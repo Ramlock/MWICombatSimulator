@@ -1,4 +1,10 @@
 {
+    "2026-11-04":
+    [
+        "Guild buffs are now read from both export formats",
+        "The Combat Stats panel shows the stats the simulation uses (house rooms, achievements, guild, community and other buffs), with effective skill levels and Rare Find",
+        "Community XP and combat drop buffs are on by default at level 20, and can be edited"
+    ],
     "2026年9月30日":
     [
         "支持迷宫升级",
