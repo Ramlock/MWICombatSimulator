@@ -26,6 +26,7 @@ import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
 import patchNote from "../patchNote.json";
+import patchNoteI18n from "../patchNote.i18n.json";
 
 const ONE_SECOND = 1e9;
 const ONE_HOUR = 60 * 60 * ONE_SECOND;
@@ -4778,7 +4779,15 @@ function updateTable(tableId, item, price) {
 // #endregion
 
 function initPatchNotes() {
+    renderPatchNotes();
+    // The language switcher in js/i18n.js calls its own updateContent, so redraw on the event instead.
+    i18next.on('languageChanged', renderPatchNotes);
+}
+
+function renderPatchNotes() {
     const patchNotesRows = document.getElementById("patchNotes");
+    patchNotesRows.replaceChildren();
+    const lang = (i18next.language || "en").startsWith("zh") ? "zh" : "en";
     for (const pn in patchNote) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
@@ -4786,14 +4795,23 @@ function initPatchNotes() {
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
         const entry = Array.isArray(patchNote[pn]) ? { fork: "shykai", notes: patchNote[pn] } : patchNote[pn];
+        // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
+        const tr = patchNoteI18n[pn];
+        const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
-        patchNoteElement.innerHTML = pn;
+        patchNoteElement.innerHTML = shown ? shown.title : pn;
         const forkBadge = document.createElement("span");
         forkBadge.className = "badge bg-secondary ms-2";
         forkBadge.textContent = entry.fork;
         patchNoteElement.appendChild(forkBadge);
+        if (shown) {
+            const mtLabel = document.createElement("small");
+            mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
+            mtLabel.textContent = patchNoteI18n._label[lang];
+            patchNoteElement.appendChild(mtLabel);
+        }
         const patchNoteList = document.createElement("ul");
-        for (const note of entry.notes) {
+        for (const note of (shown ? shown.notes : entry.notes)) {
             const noteElement = document.createElement("li");
             noteElement.innerHTML = note;
             patchNoteList.appendChild(noteElement);
