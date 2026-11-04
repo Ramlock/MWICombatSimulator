@@ -2,3 +2,4 @@
 CLAUDE.local.md
 .prettierrc
 node_modules/
+docs/ground-truth/setups/
