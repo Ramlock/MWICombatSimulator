@@ -4783,10 +4783,17 @@ function initPatchNotes() {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
+        // An entry is either upstream's plain list of notes (all from shykai's fork, checked
+        // against git history) or { fork, notes } for an entry from another fork.
+        const entry = Array.isArray(patchNote[pn]) ? { fork: "shykai", notes: patchNote[pn] } : patchNote[pn];
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = pn;
+        const forkBadge = document.createElement("span");
+        forkBadge.className = "badge bg-secondary ms-2";
+        forkBadge.textContent = entry.fork;
+        patchNoteElement.appendChild(forkBadge);
         const patchNoteList = document.createElement("ul");
-        for (const note of patchNote[pn]) {
+        for (const note of entry.notes) {
             const noteElement = document.createElement("li");
             noteElement.innerHTML = note;
             patchNoteList.appendChild(noteElement);
