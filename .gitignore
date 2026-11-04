@@ -1,2 +1,4 @@
 .claude/
 CLAUDE.local.md
+.prettierrc
+node_modules/
