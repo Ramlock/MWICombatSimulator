@@ -1,8 +1,9 @@
 // Headless calibration harness: runs the engine as src/worker.js does on the party setups in
 // docs/ground-truth/setups, then computes the in-game panel's metrics per player.
 // Usage: node tools/calibration/run.mjs [--hours 24] [--seed 1] [--tier 4]
-//        [--zone /actions/combat/infernal_abyss] [--prices <marketplace.json>] [--guild] [--out <file.json>]
-// --guild maps the setups' guildCombatBuffLevels onto the engine's guild buffs (the UI import ignores them).
+//        [--zone /actions/combat/infernal_abyss] [--prices <marketplace.json>] [--legacy-import] [--out <file.json>]
+// Guild buffs come from src/importGuildBuffs.js, as the UI import applies them (both guildBuffs and
+// the exporters' guildCombatBuffLevels). --legacy-import reads guildBuffs only, as the import did before batch 2.
 import { register } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,7 @@ const SEED = Number(arg('seed', 1));
 const TIER = Number(arg('tier', 4));
 const ZONE = arg('zone', '/actions/combat/infernal_abyss');
 const PRICES = arg('prices', path.join(here, 'marketplace-2026-11-03.json'));
-const GUILD = arg('guild', false) === true;
+const LEGACY_IMPORT = arg('legacy-import', false) === true;
 const OUT = arg('out', null);
 // extra buffs as src/worker.js:10-48 builds them (UI toggles): community buff levels and Moo Pass.
 const COM_DROP = Number(arg('comdrop', 0));
@@ -61,7 +62,7 @@ const { default: combatMonsterDetailMap } = await import(src('combatsimulator/da
 const { default: openableLootDropMap } = await import(src('combatsimulator/data/openableLootDropMap.json'));
 const { default: abilitySlotsLevelRequirementList } = await import(src('combatsimulator/data/abilitySlotsLevelRequirementList.json'));
 const { default: combatTriggerConditionDetailMap } = await import(src('combatsimulator/data/combatTriggerConditionDetailMap.json'));
-const { default: guildBuffDetailMap } = await import(src('combatsimulator/data/guildBuffDetailMap.json'));
+const { default: getImportedGuildBuffs } = await import(src('importGuildBuffs.js'));
 
 const ONE_HOUR = 3600 * 1e9;
 
@@ -90,7 +91,7 @@ function buildDto(setup, j) {
         equipment: {}, food: [], drinks: [], abilities: [],
         houseRooms: setup.houseRooms || {},
         labyrinthUpgrades: {}, // src/main.js:3184-3187
-        guildBuffs: {},
+        guildBuffs: LEGACY_IMPORT ? { ...(setup.guildBuffs || {}) } : getImportedGuildBuffs(setup),
         achievements: setup.achievements || {},
     };
     // Equipment selects exist for these locations only (src/main.js:4276-4302); trinket has no UI slot.
@@ -99,12 +100,6 @@ function buildDto(setup, j) {
         if (!it) continue;
         const type = itemDetailMap[it.itemHrid].equipmentDetail.type;
         dto.equipment[type] = new Equipment(it.itemHrid, it.enhancementLevel);
-    }
-    if (GUILD && setup.guildCombatBuffLevels) {
-        for (const [k, lvl] of Object.entries(setup.guildCombatBuffLevels)) {
-            const hrid = `/guild_buffs/${k}_combat`;
-            if (guildBuffDetailMap[hrid] && lvl > 0) dto.guildBuffs[hrid] = lvl;
-        }
     }
     // Slot counts come from the pouch (src/main.js:3156-3170 via player.combatDetails).
     const probe = Player.createFromDTO(structuredClone({ ...dto, food: [], drinks: [], abilities: [] }));
@@ -261,7 +256,7 @@ dtos.forEach((d, i) => {
     };
 });
 const kills = Object.fromEntries(Object.entries(r.deaths).filter(([k]) => !/^player\d$/.test(k)).map(([k, v]) => [k, v / simHours]));
-const summary = { args: { HOURS, SEED, TIER, ZONE, GUILD, COM_DROP, COM_EXP, MOO_PASS, PRICES: path.basename(PRICES) }, wallSeconds, simHours, encounters: r.encounters, killsPerHour: kills, maxEnrageStack: r.maxEnrageStack, players: results };
+const summary = { args: { HOURS, SEED, TIER, ZONE, LEGACY_IMPORT, COM_DROP, COM_EXP, MOO_PASS, PRICES: path.basename(PRICES) }, wallSeconds, simHours, encounters: r.encounters, killsPerHour: kills, maxEnrageStack: r.maxEnrageStack, players: results };
 const json = JSON.stringify(summary, null, 2);
 if (OUT) writeFileSync(OUT, json);
 console.log(json);

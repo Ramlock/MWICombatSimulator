@@ -10,6 +10,7 @@ import Consumable from "./combatsimulator/consumable.js";
 import HouseRoom from "./combatsimulator/houseRoom"
 import LabyrinthUpgrade from "./combatsimulator/labyrinthUpgrade";
 import GuildBuff from "./combatsimulator/guildBuff";
+import getImportedGuildBuffs from "./importGuildBuffs.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -3376,7 +3377,7 @@ function parsePlayerJson(playerJson, hrid) {
         ...playerJson.player,
         houseRooms: playerJson.houseRooms,
         labyrinthUpgrades: convertLabyrinthExportToUpgrades(playerJson.labyrinth),
-        guildBuffs: playerJson.guildBuffs,
+        guildBuffs: getImportedGuildBuffs(playerJson),
     };
     playerData.equipment = {};
     const triggerMap = playerJson.triggerMap;
@@ -3410,7 +3411,7 @@ function parsePlayerJson(playerJson, hrid) {
     player.updateCombatDetails();
     player.houseRooms = playerJson.houseRooms;
     player.labyrinthUpgrades = convertLabyrinthExportToUpgrades(playerJson.labyrinth);
-    player.guildBuffs = playerJson.guildBuffs ?? {};
+    player.guildBuffs = getImportedGuildBuffs(playerJson);
     player.achievements = playerJson.achievements ?? {};
     return player;
 }
@@ -4085,7 +4086,7 @@ function loadEquipmentSetIntoUI(equipmentSet) {
     }
 
     applyLabyrinthUpgradesToState(equipmentSet.labyrinth);
-    applyGuildBuffsToState(equipmentSet.guildBuffs);
+    applyGuildBuffsToState(getImportedGuildBuffs(equipmentSet));
 
     if (equipmentSet.achievements) {
         for (const achievement in equipmentSet.achievements) {
@@ -4374,7 +4375,7 @@ function doSoloImport() {
     }
 
     applyLabyrinthUpgradesToState(importSet.labyrinth);
-    applyGuildBuffsToState(importSet.guildBuffs);
+    applyGuildBuffsToState(getImportedGuildBuffs(importSet));
 
     if (importSet.achievements) {
         for (const achievement in importSet.achievements) {
@@ -4579,7 +4580,7 @@ function updateNextPlayer(currentPlayerNumber) {
     }
 
     applyLabyrinthUpgradesToState(importSet.labyrinth);
-    applyGuildBuffsToState(importSet.guildBuffs);
+    applyGuildBuffsToState(getImportedGuildBuffs(importSet));
 
     { // reset all achievements
         let achievements = Object.values(achievementDetailMap);
