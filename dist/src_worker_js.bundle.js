@@ -5052,6 +5052,192 @@ class Zone {
 
 /***/ }),
 
+/***/ "./src/simSetup.js":
+/*!*************************!*\
+  !*** ./src/simSetup.js ***!
+  \*************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   buildExtraBuffs: () => (/* binding */ buildExtraBuffs),
+/* harmony export */   createSimPlayer: () => (/* binding */ createSimPlayer),
+/* harmony export */   createZoneAndLabyrinth: () => (/* binding */ createZoneAndLabyrinth),
+/* harmony export */   getTimeZeroPlayer: () => (/* binding */ getTimeZeroPlayer),
+/* harmony export */   startPlayerAtTimeZero: () => (/* binding */ startPlayerAtTimeZero)
+/* harmony export */ });
+/* harmony import */ var _combatsimulator_player__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./combatsimulator/player */ "./src/combatsimulator/player.js");
+/* harmony import */ var _combatsimulator_zone__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./combatsimulator/zone */ "./src/combatsimulator/zone.js");
+/* harmony import */ var _combatsimulator_labyrinth__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./combatsimulator/labyrinth */ "./src/combatsimulator/labyrinth.js");
+// The player setup a simulation starts from, shared by src/worker.js (the simulation) and the
+// Combat Stats panel in src/main.js, so the panel shows the stats the engine uses at time 0.
+
+
+
+
+// Buffs from the page's extra toggles: Moo Pass, community buffs and personal buffs (seals).
+function buildExtraBuffs(extra) {
+    let extraBuffs = [];
+    if (extra.mooPass) {
+        const mooPassBuff = {
+            "uniqueHrid": "/buff_uniques/experience_moo_pass_buff",
+            "typeHrid": "/buff_types/wisdom",
+            "ratioBoost": 0,
+            "ratioBoostLevelBonus": 0,
+            "flatBoost": 0.05,
+            "flatBoostLevelBonus": 0,
+            "startTime": "0001-01-01T00:00:00Z",
+            "duration": 0
+        };
+        extraBuffs.push(mooPassBuff);
+    }
+    if (extra.comExp > 0) {
+        const comExpBuff = {
+            "uniqueHrid": "/buff_uniques/experience_community_buff",
+            "typeHrid": "/buff_types/wisdom",
+            "ratioBoost": 0,
+            "ratioBoostLevelBonus": 0,
+            "flatBoost": 0.005 * (extra.comExp - 1) + 0.2,
+            "flatBoostLevelBonus": 0,
+            "startTime": "0001-01-01T00:00:00Z",
+            "duration": 0
+        };
+        extraBuffs.push(comExpBuff);
+    }
+    if (extra.comDrop > 0) {
+        const comDropBuff = {
+            "uniqueHrid": "/buff_uniques/combat_community_buff",
+            "typeHrid": "/buff_types/combat_drop_quantity",
+            "ratioBoost": 0,
+            "ratioBoostLevelBonus": 0,
+            "flatBoost": 0.005 * (extra.comDrop - 1) + 0.2,
+            "flatBoostLevelBonus": 0,
+            "startTime": "0001-01-01T00:00:00Z",
+            "duration": 0
+        };
+        extraBuffs.push(comDropBuff);
+    }
+    if (extra.personalBuffs) {
+        const personalBuffs = {
+            "/items/seal_of_attack_speed": {
+                "uniqueHrid": "/buff_uniques/personal_attack_speed",
+                "typeHrid": "/buff_types/attack_speed",
+                "ratioBoost": 0.15,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            },
+            "/items/seal_of_cast_speed": {
+                "uniqueHrid": "/buff_uniques/personal_cast_speed",
+                "typeHrid": "/buff_types/cast_speed",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0.15,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            },
+            "/items/seal_of_combat_drop": {
+                "uniqueHrid": "/buff_uniques/personal_combat_drop",
+                "typeHrid": "/buff_types/combat_drop_quantity",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0.15,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            },
+            "/items/seal_of_critical_rate": {
+                "uniqueHrid": "/buff_uniques/personal_critical_rate",
+                "typeHrid": "/buff_types/critical_rate",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0.1,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            },
+            "/items/seal_of_damage": {
+                "uniqueHrid": "/buff_uniques/personal_damage",
+                "typeHrid": "/buff_types/damage",
+                "ratioBoost": 0.08,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            },
+            "/items/seal_of_rare_find": {
+                "uniqueHrid": "/buff_uniques/personal_rare_find",
+                "typeHrid": "/buff_types/rare_find",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0.6,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            },
+            "/items/seal_of_wisdom": {
+                "uniqueHrid": "/buff_uniques/personal_wisdom",
+                "typeHrid": "/buff_types/wisdom",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0.2,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": 0
+            }
+        };
+        for (let buff of extra.personalBuffs) {
+            if (personalBuffs[buff]) {
+                extraBuffs.push(personalBuffs[buff]);
+            }
+        }
+    }
+    return extraBuffs;
+}
+
+// zoneSpec: { zoneHrid, difficultyTier } or null; labyrinthSpec: { labyrinthHrid, roomLevel, crates } or null.
+function createZoneAndLabyrinth(zoneSpec, labyrinthSpec) {
+    let zone = null;
+    if (zoneSpec) {
+        zone = new _combatsimulator_zone__WEBPACK_IMPORTED_MODULE_1__["default"](zoneSpec.zoneHrid, zoneSpec.difficultyTier);
+    }
+    let labyrinth = null;
+    if (labyrinthSpec) {
+        labyrinth = new _combatsimulator_labyrinth__WEBPACK_IMPORTED_MODULE_2__["default"](labyrinthSpec.labyrinthHrid, labyrinthSpec.roomLevel, labyrinthSpec.crates);
+    }
+    return { zone, labyrinth };
+}
+
+// The engine player for one player DTO, with the zone (or labyrinth) buffs and the extra buffs.
+function createSimPlayer(playerDTO, zone, labyrinth, extraBuffs) {
+    let simPlayer = _combatsimulator_player__WEBPACK_IMPORTED_MODULE_0__["default"].createFromDTO(structuredClone(playerDTO));
+    simPlayer.zoneBuffs = zone?.buffs || labyrinth?.buffs || [];
+    simPlayer.extraBuffs = extraBuffs;
+    return simPlayer;
+}
+
+// What CombatSimulator.processCombatStartEvent does to each player at the first combat start (time 0):
+// permanent buffs (houses, labyrinth upgrades, guild, achievements, zone, extra), then reset → clearBuffs.
+function startPlayerAtTimeZero(simPlayer) {
+    simPlayer.generatePermanentBuffs();
+    simPlayer.reset(0);
+    return simPlayer;
+}
+
+// The visible player's combat stats as the engine has them at time 0.
+function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra) {
+    const { zone, labyrinth } = createZoneAndLabyrinth(zoneSpec, labyrinthSpec);
+    const simPlayer = createSimPlayer(playerDTO, zone, labyrinth, buildExtraBuffs(extra));
+    return startPlayerAtTimeZero(simPlayer);
+}
+
+
+/***/ }),
+
 /***/ "./src/worker.js":
 /*!***********************!*\
   !*** ./src/worker.js ***!
@@ -5060,152 +5246,19 @@ class Zone {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatsimulator_combatSimulator__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./combatsimulator/combatSimulator */ "./src/combatsimulator/combatSimulator.js");
-/* harmony import */ var _combatsimulator_player__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./combatsimulator/player */ "./src/combatsimulator/player.js");
-/* harmony import */ var _combatsimulator_zone__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./combatsimulator/zone */ "./src/combatsimulator/zone.js");
-/* harmony import */ var _combatsimulator_labyrinth__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./combatsimulator/labyrinth */ "./src/combatsimulator/labyrinth.js");
-
-
+/* harmony import */ var _simSetup__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./simSetup */ "./src/simSetup.js");
 
 
 
 onmessage = async function (event) {
     switch (event.data.type) {
         case "start_simulation":
-            let extraBuffs = [];
-            if (event.data.extra.mooPass) {
-                const mooPassBuff = {
-                    "uniqueHrid": "/buff_uniques/experience_moo_pass_buff",
-                    "typeHrid": "/buff_types/wisdom",
-                    "ratioBoost": 0,
-                    "ratioBoostLevelBonus": 0,
-                    "flatBoost": 0.05,
-                    "flatBoostLevelBonus": 0,
-                    "startTime": "0001-01-01T00:00:00Z",
-                    "duration": 0
-                };
-                extraBuffs.push(mooPassBuff);
-            }
-            if (event.data.extra.comExp > 0) {
-                const comExpBuff = {
-                    "uniqueHrid": "/buff_uniques/experience_community_buff",
-                    "typeHrid": "/buff_types/wisdom",
-                    "ratioBoost": 0,
-                    "ratioBoostLevelBonus": 0,
-                    "flatBoost": 0.005 * (event.data.extra.comExp - 1) + 0.2,
-                    "flatBoostLevelBonus": 0,
-                    "startTime": "0001-01-01T00:00:00Z",
-                    "duration": 0
-                };
-                extraBuffs.push(comExpBuff);
-            }
-            if (event.data.extra.comDrop > 0) {
-                const comDropBuff = {
-                    "uniqueHrid": "/buff_uniques/combat_community_buff",
-                    "typeHrid": "/buff_types/combat_drop_quantity",
-                    "ratioBoost": 0,
-                    "ratioBoostLevelBonus": 0,
-                    "flatBoost": 0.005 * (event.data.extra.comDrop - 1) + 0.2,
-                    "flatBoostLevelBonus": 0,
-                    "startTime": "0001-01-01T00:00:00Z",
-                    "duration": 0
-                };
-                extraBuffs.push(comDropBuff);
-            }
-            if (event.data.extra.personalBuffs) {
-                const personalBuffs = {
-                    "/items/seal_of_attack_speed": {
-                        "uniqueHrid": "/buff_uniques/personal_attack_speed",
-                        "typeHrid": "/buff_types/attack_speed",
-                        "ratioBoost": 0.15,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    },
-                    "/items/seal_of_cast_speed": {
-                        "uniqueHrid": "/buff_uniques/personal_cast_speed",
-                        "typeHrid": "/buff_types/cast_speed",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0.15,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    },
-                    "/items/seal_of_combat_drop": {
-                        "uniqueHrid": "/buff_uniques/personal_combat_drop",
-                        "typeHrid": "/buff_types/combat_drop_quantity",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0.15,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    },
-                    "/items/seal_of_critical_rate": {
-                        "uniqueHrid": "/buff_uniques/personal_critical_rate",
-                        "typeHrid": "/buff_types/critical_rate",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0.1,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    },
-                    "/items/seal_of_damage": {
-                        "uniqueHrid": "/buff_uniques/personal_damage",
-                        "typeHrid": "/buff_types/damage",
-                        "ratioBoost": 0.08,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    },
-                    "/items/seal_of_rare_find": {
-                        "uniqueHrid": "/buff_uniques/personal_rare_find",
-                        "typeHrid": "/buff_types/rare_find",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0.6,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    },
-                    "/items/seal_of_wisdom": {
-                        "uniqueHrid": "/buff_uniques/personal_wisdom",
-                        "typeHrid": "/buff_types/wisdom",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0.2,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": 0
-                    }
-                };
-                for (let buff of event.data.extra.personalBuffs) {
-                    if (personalBuffs[buff]) {
-                        extraBuffs.push(personalBuffs[buff]);
-                    }
-                }
-            }
-
+            let extraBuffs = (0,_simSetup__WEBPACK_IMPORTED_MODULE_1__.buildExtraBuffs)(event.data.extra);
             let playersData = event.data.players;
             let players = [];
-            let zone = null;
-            if (event.data.zone) {
-                zone = new _combatsimulator_zone__WEBPACK_IMPORTED_MODULE_2__["default"](event.data.zone.zoneHrid, event.data.zone.difficultyTier);
-            }
-            let labyrinth = null;
-            if (event.data.labyrinth) {
-                labyrinth = new _combatsimulator_labyrinth__WEBPACK_IMPORTED_MODULE_3__["default"](event.data.labyrinth.labyrinthHrid, event.data.labyrinth.roomLevel, event.data.labyrinth.crates);
-            }
+            let { zone, labyrinth } = (0,_simSetup__WEBPACK_IMPORTED_MODULE_1__.createZoneAndLabyrinth)(event.data.zone, event.data.labyrinth);
             for (let i = 0; i < playersData.length; i++) {
-                let currentPlayer = _combatsimulator_player__WEBPACK_IMPORTED_MODULE_1__["default"].createFromDTO(structuredClone(playersData[i]));
-                currentPlayer.zoneBuffs = zone?.buffs || labyrinth?.buffs || [];
-                currentPlayer.extraBuffs = extraBuffs;
-                players.push(currentPlayer);
+                players.push((0,_simSetup__WEBPACK_IMPORTED_MODULE_1__.createSimPlayer)(playersData[i], zone, labyrinth, extraBuffs));
             }
             let simulationTimeLimit = event.data.simulationTimeLimit;
             let enableHpMpVisualization = event.data.extra.enableHpMpVisualization || false;
