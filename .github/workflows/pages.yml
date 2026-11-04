@@ -1,0 +1,38 @@
+# Fork-only: publishes the committed dist/ build at the site root and again under /dist/,
+# so both https://ramlock.github.io/MWICombatSimulator/ and .../dist/ open the simulator.
+# Touches no upstream file; the build itself stays the committed dist/ (npm run build).
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site (dist at root and under /dist)
+        run: |
+          mkdir -p _site/dist
+          cp -r dist/. _site/
+          cp -r dist/. _site/dist/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
