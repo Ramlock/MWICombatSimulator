@@ -51,78 +51,18 @@ Math.random = sfc32(0x9e3779b9, 0x243f6a88, 0xb7e15162, SEED >>> 0);
 for (let i = 0; i < 20; i++) Math.random();
 
 const src = (p) => new URL('file:///' + path.join(root, 'src', p).replace(/\\/g, '/')).href;
+const { buildDto, readSetup, calcCombatLevel } = await import('./setupDto.mjs');
 const { default: CombatSimulator } = await import(src('combatsimulator/combatSimulator.js'));
 const { default: Player } = await import(src('combatsimulator/player.js'));
 const { default: Zone } = await import(src('combatsimulator/zone.js'));
-const { default: Equipment } = await import(src('combatsimulator/equipment.js'));
-const { default: Consumable } = await import(src('combatsimulator/consumable.js'));
-const { default: Ability } = await import(src('combatsimulator/ability.js'));
 const { default: itemDetailMap } = await import(src('combatsimulator/data/itemDetailMap.json'));
 const { default: combatMonsterDetailMap } = await import(src('combatsimulator/data/combatMonsterDetailMap.json'));
 const { default: openableLootDropMap } = await import(src('combatsimulator/data/openableLootDropMap.json'));
-const { default: abilitySlotsLevelRequirementList } = await import(src('combatsimulator/data/abilitySlotsLevelRequirementList.json'));
-const { default: combatTriggerConditionDetailMap } = await import(src('combatsimulator/data/combatTriggerConditionDetailMap.json'));
-const { default: getImportedGuildBuffs } = await import(src('importGuildBuffs.js'));
 
 const ONE_HOUR = 3600 * 1e9;
 
-// src/main.js:3983 fixTriggerMap
-function fixTriggerMap(triggerMap) {
-    for (const key of Object.keys(triggerMap)) {
-        if (triggerMap[key] == null) triggerMap[key] = [];
-        if (triggerMap[key].some((t) => !combatTriggerConditionDetailMap[t.conditionHrid])) delete triggerMap[key];
-    }
-}
-
-// src/main.js:745 calcCombatLevel
-function calcCombatLevel(sta, int, def, att, mel, ran, mag) {
-    return 0.1 * (sta + int + att + def + Math.max(mel, ran, mag)) + 0.5 * Math.max(att, def, mel, ran, mag);
-}
-
-// The DTO the UI builds after doSoloImport (src/main.js:4265) + startSimulation (src/main.js:3144-3213).
-function buildDto(setup, j) {
-    const triggerMap = structuredClone(setup.triggerMap || {});
-    fixTriggerMap(triggerMap);
-    const p = setup.player;
-    const dto = {
-        hrid: 'player' + j,
-        staminaLevel: p.staminaLevel, intelligenceLevel: p.intelligenceLevel, attackLevel: p.attackLevel,
-        meleeLevel: p.meleeLevel ?? p.powerLevel, defenseLevel: p.defenseLevel, rangedLevel: p.rangedLevel, magicLevel: p.magicLevel,
-        equipment: {}, food: [], drinks: [], abilities: [],
-        houseRooms: setup.houseRooms || {},
-        labyrinthUpgrades: {}, // src/main.js:3184-3187
-        guildBuffs: LEGACY_IMPORT ? { ...(setup.guildBuffs || {}) } : getImportedGuildBuffs(setup),
-        achievements: setup.achievements || {},
-    };
-    // Equipment selects exist for these locations only (src/main.js:4276-4302); trinket has no UI slot.
-    for (const loc of ['head', 'body', 'legs', 'feet', 'hands', 'off_hand', 'pouch', 'neck', 'earrings', 'ring', 'back', 'charm', 'main_hand', 'two_hand']) {
-        const it = p.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + loc);
-        if (!it) continue;
-        const type = itemDetailMap[it.itemHrid].equipmentDetail.type;
-        dto.equipment[type] = new Equipment(it.itemHrid, it.enhancementLevel);
-    }
-    // Slot counts come from the pouch (src/main.js:3156-3170 via player.combatDetails).
-    const probe = Player.createFromDTO(structuredClone({ ...dto, food: [], drinks: [], abilities: [] }));
-    probe.updateCombatDetails();
-    const food = (setup.food['/action_types/combat'] || []).map((f) => f?.itemHrid || '');
-    const drinks = (setup.drinks['/action_types/combat'] || []).map((d) => (d?.itemHrid || '').replace('power', 'melee'));
-    for (let i = 0; i < 3; i++) {
-        dto.food[i] = food[i] && i < probe.combatDetails.combatStats.foodSlots ? new Consumable(food[i], triggerMap[food[i]]) : null;
-        dto.drinks[i] = drinks[i] && i < probe.combatDetails.combatStats.drinkSlots ? new Consumable(drinks[i], triggerMap[drinks[i]]) : null;
-    }
-    // Abilities: 5 entries → slots 0..4 (src/main.js:4320-4350); slot gate src/main.js:3173-3181.
-    const abil = setup.abilities || [];
-    const hasSpecial = abil.length == 5;
-    for (let i = 0; i < 5; i++) {
-        const a = hasSpecial ? abil[i] : abil[i - 1];
-        dto.abilities[i] = a && a.abilityHrid && Number(a.level) > 0 && dto.intelligenceLevel >= abilitySlotsLevelRequirementList[i + 1]
-            ? new Ability(a.abilityHrid, Number(a.level), triggerMap[a.abilityHrid]) : null;
-    }
-    return structuredClone(dto);
-}
-
-const setups = PLAYERS.map((n) => JSON.parse(readFileSync(path.join(root, 'docs', 'ground-truth', 'setups', n + '.json'), 'utf8')));
-const dtos = setups.map((s, i) => buildDto(s, i + 1));
+const setups = PLAYERS.map(readSetup);
+const dtos = setups.map((s, i) => buildDto(s, i + 1, { legacyImport: LEGACY_IMPORT }));
 
 // Level-gap debuff (src/main.js:3195-3213)
 let maxCL = 1;

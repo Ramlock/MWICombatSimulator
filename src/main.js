@@ -11,6 +11,8 @@ import HouseRoom from "./combatsimulator/houseRoom"
 import LabyrinthUpgrade from "./combatsimulator/labyrinthUpgrade";
 import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
+import { getTimeZeroPlayer } from "./simSetup.js";
+import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -421,6 +423,7 @@ function initAchievementsModal(){
             }
             cardStatics.dataset.checked = cardStatics.dataset.checked == "true" ? "false" : "true";
             refreshAchievementStatics();
+            updateCombatStatsUI();
         });
         cardHeader.appendChild(cardStatics);
 
@@ -598,29 +601,41 @@ function changeEquipmentSetListener() {
 
 // #region Combat Stats
 
+// The visible player as the engine has it at time 0 of a simulation of the selected zone: the DTO the
+// worker gets and the worker's own setup (src/simSetup.js), so house rooms, achievements, guild buffs,
+// labyrinth upgrades (labyrinth simulations only), zone buffs, Moo Pass, community and personal buffs are in.
+function getCombatStatsUnit() {
+    player.updateCombatDetails(); // equipment-only stats of the UI player; buildSimPlayerDTO reads its slot counts
+    try {
+        let { simZone, simLabyrinth } = getSimZoneSpecs();
+        return getTimeZeroPlayer(buildSimPlayerDTO(), simZone, simLabyrinth, getSimExtra());
+    } catch (e) {
+        // e.g. no zone selected yet while the page loads
+        console.error(e);
+        return player;
+    }
+}
+
 function updateCombatStatsUI() {
-    player.updateCombatDetails();
+    let unit = getCombatStatsUnit();
 
     let combatStyleElement = document.getElementById("combatStat_combatStyleHrid");
-    let combatStyle = player.combatDetails.combatStats.combatStyleHrid;
+    let combatStyle = unit.combatDetails.combatStats.combatStyleHrid;
     combatStyleElement.setAttribute("data-i18n", "combatStyleNames." + combatStyle);
     combatStyleElement.innerHTML = combatStyleDetailMap[combatStyle].name;
 
     let damageTypeElement = document.getElementById("combatStat_damageType");
-    let damageType = damageTypeDetailMap[player.combatDetails.combatStats.damageType];
+    let damageType = damageTypeDetailMap[unit.combatDetails.combatStats.damageType];
     damageTypeElement.setAttribute("data-i18n", "damageTypeNames." + damageType.hrid);
     damageTypeElement.innerHTML = damageType.name;
 
-    let attackIntervalElement = document.getElementById("combatStat_attackInterval");
-    attackIntervalElement.innerHTML = (player.combatDetails.combatStats.attackInterval / 1e9).toLocaleString() + "s";
-
     let primaryTrainingElement = document.getElementById("combatStat_primaryTraining");
-    let primaryTraining = player.combatDetails.combatStats.primaryTraining;
+    let primaryTraining = unit.combatDetails.combatStats.primaryTraining;
     primaryTrainingElement.setAttribute("data-i18n", "skillNames." + primaryTraining);
     primaryTrainingElement.innerHTML = primaryTraining;
 
     let focusTrainingElement = document.getElementById("combatStat_focusTraining");
-    let focusTraining = player.combatDetails.combatStats.focusTraining;
+    let focusTraining = unit.combatDetails.combatStats.focusTraining;
     if (focusTraining) {
         focusTrainingElement.setAttribute("data-i18n", "skillNames." + focusTraining);
     } else {
@@ -628,94 +643,9 @@ function updateCombatStatsUI() {
     }
     focusTrainingElement.innerHTML = focusTraining;
 
-    [
-        "maxHitpoints",
-        "maxManapoints",
-        "stabAccuracyRating",
-        "stabMaxDamage",
-        "slashAccuracyRating",
-        "slashMaxDamage",
-        "smashAccuracyRating",
-        "smashMaxDamage",
-        "rangedAccuracyRating",
-        "rangedMaxDamage",
-        "magicAccuracyRating",
-        "magicMaxDamage",
-        "defensiveMaxDamage",
-        "stabEvasionRating",
-        "slashEvasionRating",
-        "smashEvasionRating",
-        "rangedEvasionRating",
-        "magicEvasionRating",
-        "totalArmor",
-        "totalWaterResistance",
-        "totalNatureResistance",
-        "totalFireResistance",
-        "totalThreat"
-    ].forEach((stat) => {
-        let element = document.getElementById("combatStat_" + stat);
-        element.innerHTML = Math.floor(player.combatDetails[stat]);
-    });
-
-    [
-        "abilityHaste",
-        "tenacity"
-    ].forEach((stat) => {
-        let element = document.getElementById("combatStat_" + stat);
-        element.innerHTML = Math.floor(player.combatDetails.combatStats[stat]);
-    });
-
-    [
-        "physicalAmplify",
-        "waterAmplify",
-        "natureAmplify",
-        "fireAmplify",
-        "healingAmplify",
-        "lifeSteal",
-        "hpRegenPer10",
-        "mpRegenPer10",
-        "physicalThorns",
-        "elementalThorns",
-        "criticalRate",
-        "criticalDamage",
-        "combatExperience",
-        "taskDamage",
-        "armorPenetration",
-        "waterPenetration",
-        "naturePenetration",
-        "firePenetration",
-        "manaLeech",
-        "castSpeed",
-        "parry",
-        "mayhem",
-        "pierce",
-        "curse",
-        "fury",
-        "weaken",
-        "ripple",
-        "bloom",
-        "blaze",
-        "attackSpeed",
-        "autoAttackDamage",
-        "abilityDamage",
-        "drinkConcentration",
-        "foodHaste",
-        "staminaExperience",
-        "intelligenceExperience",
-        "attackExperience",
-        "defenseExperience",
-        "meleeExperience",
-        "rangedExperience",
-        "magicExperience"
-
-    ].forEach((stat) => {
-        let element = document.getElementById("combatStat_" + stat);
-        let value = (100 * player.combatDetails.combatStats[stat]).toLocaleString([], {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 4,
-        });
-        element.innerHTML = value + "%";
-    });
+    for (const [stat, value] of Object.entries(getCombatStatsPanelValues(unit.combatDetails))) {
+        document.getElementById("combatStat_" + stat).innerHTML = value;
+    }
 }
 
 // #endregion
@@ -3142,6 +3072,97 @@ function initSimulationControls() {
     });
 }
 
+// The player DTO the worker gets for the player currently loaded in the UI (startSimulation sets its hrid).
+function buildSimPlayerDTO() {
+    let simLabyrinthToggle = document.getElementById("simLabyrinthToggle");
+    let simAllLabyrinthsToggle = document.getElementById("simAllLabyrinthsToggle");
+    if (!simLabyrinthToggle.checked && !simAllLabyrinthsToggle.checked) {
+        for (let i = 0; i < 3; i++) {
+            if (food[i] && i < player.combatDetails.combatStats.foodSlots) {
+                let consumable = new Consumable(food[i], triggerMap[food[i]]);
+                player.food[i] = consumable;
+            } else {
+                player.food[i] = null;
+            }
+
+            if (drinks[i] && i < player.combatDetails.combatStats.drinkSlots) {
+                let consumable = new Consumable(drinks[i], triggerMap[drinks[i]]);
+                player.drinks[i] = consumable;
+            } else {
+                player.drinks[i] = null;
+            }
+        }
+    }
+
+    for (let i = 0; i < 5; i++) {
+        if (abilities[i] && player.intelligenceLevel >= abilitySlotsLevelRequirementList[i + 1]) {
+            let abilityLevelInput = document.getElementById("inputAbilityLevel_" + i);
+            let ability = new Ability(abilities[i], Number(abilityLevelInput.value), triggerMap[abilities[i]]);
+            player.abilities[i] = ability;
+        } else {
+            player.abilities[i] = null;
+        }
+    }
+
+    let simPlayer = structuredClone(player);
+    if (!simLabyrinthToggle.checked && !simAllLabyrinthsToggle.checked) {
+        // Labyrinth upgrade buffs only apply in labyrinth simulations
+        simPlayer.labyrinthUpgrades = {};
+    }
+    return simPlayer;
+}
+
+// The extra buffs part of the worker message: Moo Pass, community buffs, personal buffs.
+function getSimExtra() {
+    let extra = {};
+    extra.mooPass = document.getElementById("mooPassToggle").checked;
+    extra.comExp = 0;
+    if (document.getElementById("comExpToggle").checked) {
+        extra.comExp = Number(document.getElementById("comExpInput").value);
+    }
+    extra.comDrop = 0;
+    if (document.getElementById("comDropToggle").checked) {
+        extra.comDrop = Number(document.getElementById("comDropInput").value);
+    }
+    extra.enableHpMpVisualization = document.getElementById("hpMpVisualizationToggle").checked;
+    extra.personalBuffs = [];
+    if (document.getElementById("personalBuffsToggle").checked) {
+        let personalBuffs = document.getElementById("personalBuffsBox").querySelectorAll("input");
+        for (let buff of personalBuffs) {
+            if (buff.checked) {
+                extra.personalBuffs.push(buff.value);
+            }
+        }
+    }
+    return extra;
+}
+
+// The zone (or labyrinth) of a single simulation, as the worker message carries it.
+function getSimZoneSpecs() {
+    let simZone = null;
+    let simLabyrinth = null;
+    if (document.getElementById("simLabyrinthToggle").checked) {
+        let crates = [];
+        Object.keys(LabyrinthSupplyItems).forEach((categoryKey) => {
+            const categorySelect = document.getElementById('select' + categoryKey);
+            if (!categorySelect) return;
+
+            if (categorySelect.value !== "") crates.push(categorySelect.value);
+        });
+        let labyrinthHrid = document.getElementById("selectLabyrinth").value;
+        let roomLevel = Number(document.getElementById("inputRoomLevel").value);
+        simLabyrinth = { labyrinthHrid: labyrinthHrid, roomLevel: roomLevel, crates: crates };
+    } else {
+        let zoneHrid = document.getElementById("selectZone").value;
+        let difficultyTier = Number(document.getElementById("selectDifficulty").value);
+        if (document.getElementById("simDungeonToggle").checked) {
+            zoneHrid = document.getElementById("selectDungeon").value;
+        }
+        simZone = { zoneHrid: zoneHrid, difficultyTier: difficultyTier };
+    }
+    return { simZone, simLabyrinth };
+}
+
 function startSimulation(selectedPlayers) {
     let simLabyrinthToggle = document.getElementById("simLabyrinthToggle");
     let simAllLabyrinthsToggle = document.getElementById("simAllLabyrinthsToggle");
@@ -3153,40 +3174,7 @@ function startSimulation(selectedPlayers) {
             updateState();
             updateUI();
             player.hrid = "player" + j.toString();
-            if (!simLabyrinthToggle.checked && !simAllLabyrinthsToggle.checked) {
-                for (let i = 0; i < 3; i++) {
-                    if (food[i] && i < player.combatDetails.combatStats.foodSlots) {
-                        let consumable = new Consumable(food[i], triggerMap[food[i]]);
-                        player.food[i] = consumable;
-                    } else {
-                        player.food[i] = null;
-                    }
-
-                    if (drinks[i] && i < player.combatDetails.combatStats.drinkSlots) {
-                        let consumable = new Consumable(drinks[i], triggerMap[drinks[i]]);
-                        player.drinks[i] = consumable;
-                    } else {
-                        player.drinks[i] = null;
-                    }
-                }
-            }
-
-            for (let i = 0; i < 5; i++) {
-                if (abilities[i] && player.intelligenceLevel >= abilitySlotsLevelRequirementList[i + 1]) {
-                    let abilityLevelInput = document.getElementById("inputAbilityLevel_" + i);
-                    let ability = new Ability(abilities[i], Number(abilityLevelInput.value), triggerMap[abilities[i]]);
-                    player.abilities[i] = ability;
-                } else {
-                    player.abilities[i] = null;
-                }
-            }
-
-            let simPlayer = structuredClone(player);
-            if (!simLabyrinthToggle.checked && !simAllLabyrinthsToggle.checked) {
-                // Labyrinth upgrade buffs only apply in labyrinth simulations
-                simPlayer.labyrinthUpgrades = {};
-            }
-            playersToSim.push(simPlayer);
+            playersToSim.push(buildSimPlayerDTO());
         }
     }
     updateNextPlayer(currentPlayerTabId);
@@ -3213,26 +3201,7 @@ function startSimulation(selectedPlayers) {
         }
     }
 
-    let extra = {};
-    extra.mooPass = document.getElementById("mooPassToggle").checked;
-    extra.comExp = 0;
-    if (document.getElementById("comExpToggle").checked) {
-        extra.comExp = Number(document.getElementById("comExpInput").value);
-    }
-    extra.comDrop = 0;
-    if (document.getElementById("comDropToggle").checked) {
-        extra.comDrop = Number(document.getElementById("comDropInput").value);
-    }
-    extra.enableHpMpVisualization = document.getElementById("hpMpVisualizationToggle").checked;
-    extra.personalBuffs = [];
-    if (document.getElementById("personalBuffsToggle").checked) {
-        let personalBuffs = document.getElementById("personalBuffsBox").querySelectorAll("input");
-        for (let buff of personalBuffs) {
-            if (buff.checked) {
-                extra.personalBuffs.push(buff.value);
-            }
-        }
-    }
+    let extra = getSimExtra();
 
     let simAllZonesToggle = document.getElementById("simAllZoneToggle");
     let simAllSoloToggle = document.getElementById("simAllSoloToggle");
@@ -3255,20 +3224,7 @@ function startSimulation(selectedPlayers) {
     });
 
     if (!simAllZonesToggle.checked && !simAllSoloToggle.checked && !simAllLabyrinthsToggle.checked) {
-        let simZone = null;
-        let simLabyrinth = null;
-        if (simLabyrinthToggle.checked) {
-            let labyrinthHrid = labyrinthSelect.value;
-            let roomLevel = Number(roomLevelInput.value);
-            simLabyrinth = { labyrinthHrid: labyrinthHrid, roomLevel: roomLevel, crates: crates };
-        } else {
-            let zoneHrid = zoneSelect.value;
-            let difficultyTier = Number(difficultySelect.value);
-            if (simDungeonToggle.checked) {
-                zoneHrid = dungeonSelect.value;
-            }
-            simZone = { zoneHrid: zoneHrid, difficultyTier: difficultyTier };
-        }
+        let { simZone, simLabyrinth } = getSimZoneSpecs();
 
         let workerMessage = {
             type: "start_simulation",
@@ -4945,6 +4901,28 @@ function initExtraBuffSection() {
 }
 
 
+// The Combat Stats panel shows the engine's time-0 stats, so every input that feeds a permanent buff
+// (house rooms, labyrinth upgrades, guild buffs, achievements, Moo Pass, community and personal buffs,
+// the zone or labyrinth and its crates) refreshes it. Element handlers run first, so the state is current.
+const combatStatsBuffInputs = [
+    "#houseRoomsList", "#labyrinthUpgradesList", "#guildBuffsList", "#achievementsList",
+    "#mooPassToggle", "#comExpToggle", "#comExpInput", "#comDropToggle", "#comDropInput",
+    "#personalBuffsToggle", "#personalBuffsBox",
+    "#selectZone", "#selectDungeon", "#selectDifficulty", "#simDungeonToggle",
+    "#simLabyrinthToggle", "#simAllLabyrinthsToggle", "#selectLabyrinth", "#inputRoomLevel",
+    ...Object.keys(LabyrinthSupplyItems).map((categoryKey) => "#select" + categoryKey),
+].join(", ");
+
+function initCombatStatsRefresh() {
+    for (const type of ["input", "change"]) {
+        document.addEventListener(type, (event) => {
+            if (event.target.closest?.(combatStatsBuffInputs)) {
+                updateCombatStatsUI();
+            }
+        });
+    }
+}
+
 function updateState() {
     updateEquipmentState();
     updateLevels();
@@ -5026,6 +5004,7 @@ initImportExportModal();
 initDamageDoneTaken();
 initPatchNotes();
 initExtraBuffSection();
+initCombatStatsRefresh();
 initHpMpVisualization();
 
 updateState();
