@@ -86,37 +86,76 @@ for (const k of KINDS) {
     checks++;
 }
 
-// 3. The setup part through the sim's own solo import, unchanged.
+// 3. The setup part through the sim's own solo import (doSoloImport, extracted from src/main.js and run on a stub page).
+// The stub page starts with PRIOR values everywhere, as if another character was loaded before.
 const mainSrc = fs.readFileSync(path.join(ROOT, 'src', 'main.js'), 'utf8');
 const start = mainSrc.indexOf('function doSoloImport()');
 const end = mainSrc.indexOf('\nfunction savePreviousPlayer');
 assert.ok(start > 0 && end > start, 'doSoloImport not found in src/main.js');
-const els = {};
-const el = (id) => (els[id] ||= { id, value: undefined, checked: undefined });
-const ctx = {
-    document: { getElementById: (id) => el(id), querySelector: (sel) => el(sel) },
-    player: { houseRooms: {}, achievements: {} },
-    houseRoomDetailMap: {}, achievementDetailMap: {}, triggerMap: null,
-    fixTriggerMap: () => {}, applyLabyrinthUpgradesToState: () => {}, refreshAchievementStatics: () => {},
-    guildSeen: null,
+const PRIOR = 'PRIOR';
+function runImport(exportObj) {
+    const els = {};
+    const el = (id) => (els[id] ||= { id, value: PRIOR, checked: PRIOR });
+    const priorHouseRooms = { '/house_rooms/dojo': 9 };
+    const ctx = {
+        document: { getElementById: (id) => el(id), querySelector: (sel) => el(sel) },
+        player: { houseRooms: priorHouseRooms, achievements: {} },
+        houseRoomDetailMap: {}, achievementDetailMap: {},
+        triggerMap: { '/abilities/prior_ability': ['prior'], '/items/prior_item': ['prior'] },
+        fixTriggerMap: () => {}, applyLabyrinthUpgradesToState: () => {}, refreshAchievementStatics: () => {},
+        guildSeen: undefined, guildApplied: 0,
+    };
+    ctx.getImportedGuildBuffs = (s) => { ctx.guildSeen = s.guildCombatBuffLevels; return {}; };
+    ctx.applyGuildBuffsToState = () => { ctx.guildApplied++; };
+    el('inputSetSolo').value = JSON.stringify(exportObj);
+    vm.runInNewContext(mainSrc.slice(start, end) + '\ndoSoloImport();', ctx);
+    return { els, ctx, priorHouseRooms };
+}
+// What each kind writes on the page, as [element id, imported value from the fixture]; a kind off must leave PRIOR there.
+const WRITES = {
+    skillLevels: [['inputLevel_magic', 96], ['inputLevel_stamina', 90]],
+    gear: [['selectEquipment_head', '/items/acrobatic_hood'], ['inputEquipmentEnhancementLevel_head', 7], ['selectEquipment_weapon', '/items/cheese_sword']],
+    consumables: [['selectFood_0', '/items/spaceberry_cake'], ['selectDrink_0', '/items/lucky_coffee'], ['selectFood_1', '']],
+    equippedAbilities: [['selectAbility_0', '/abilities/mystic_aura'], ['inputAbilityLevel_1', '20']],
+    houseRooms: [['[data-house-hrid="/house_rooms/dojo"]', 4]],
+    achievements: [['[data-achievement-hrid="/achievements/defeat_shoebill"]', true, 'checked'], ['[data-achievement-hrid="/achievements/total_level_250"]', false, 'checked']],
+    guildBuffs: [], learnedAbilities: [], inventory: [], coin: [],
 };
-ctx.getImportedGuildBuffs = (s) => { ctx.guildSeen = s.guildCombatBuffLevels; return {}; };
-ctx.applyGuildBuffsToState = () => {};
-el('inputSetSolo').value = JSON.stringify(all);
-vm.runInNewContext(mainSrc.slice(start, end) + '\ndoSoloImport();', ctx);
-assert.equal(els['inputLevel_magic'].value, 96);
-assert.equal(els['selectEquipment_head'].value, '/items/acrobatic_hood');
-assert.equal(els['inputEquipmentEnhancementLevel_head'].value, 7);
-assert.equal(els['selectEquipment_weapon'].value, '/items/cheese_sword');
-assert.equal(els['selectFood_0'].value, '/items/spaceberry_cake');
-assert.equal(els['selectDrink_0'].value, '/items/lucky_coffee');
-assert.equal(els['selectAbility_0'].value, '/abilities/mystic_aura');
-assert.equal(els['inputAbilityLevel_1'].value, '20');
-assert.equal(els['[data-house-hrid="/house_rooms/dojo"]'].value, 4);
-assert.equal(els['[data-achievement-hrid="/achievements/defeat_shoebill"]'].checked, true);
-assert.equal(els['[data-achievement-hrid="/achievements/total_level_250"]'].checked, false);
-assert.deepEqual(JSON.parse(JSON.stringify(ctx.guildSeen)), all.guildCombatBuffLevels);
-assert.ok(ctx.triggerMap['/abilities/entangle'] && ctx.triggerMap['/items/spaceberry_cake'], 'triggerMap imported');
-checks++;
+const checkKind = (r, key, imported) => {
+    for (const [id, value, prop = 'value'] of WRITES[key]) assert.equal(r.els[id]?.[prop] ?? PRIOR, imported ? value : PRIOR, `${key} ${imported ? 'on' : 'off'}: ${id}.${prop}`);
+    const tm = r.ctx.triggerMap;
+    if (key === 'equippedAbilities') {
+        assert.equal(!!tm['/abilities/entangle'], imported, `${key}: imported ability trigger`);
+        assert.equal(!!tm['/abilities/prior_ability'], !imported, `${key}: prior ability trigger`);
+    }
+    if (key === 'consumables') {
+        assert.equal(!!tm['/items/spaceberry_cake'], imported, `${key}: imported consumable trigger`);
+        assert.equal(!!tm['/items/prior_item'], !imported, `${key}: prior consumable trigger`);
+    }
+    if (key === 'houseRooms') assert.equal(r.ctx.player.houseRooms === r.priorHouseRooms, !imported, `${key}: player.houseRooms`);
+    if (key === 'guildBuffs') {
+        assert.equal(r.ctx.guildApplied, imported ? 1 : 0, `${key}: guild buffs applied`);
+        if (imported) assert.deepEqual(JSON.parse(JSON.stringify(r.ctx.guildSeen)), all.guildCombatBuffLevels);
+    }
+};
+// All on: every kind imports as today.
+{
+    const r = runImport(all);
+    for (const k of KINDS) checkKind(r, k.key, true);
+    checks++;
+}
+// Each kind off: the import succeeds, that kind keeps its prior value, every other kind imports.
+for (const k of KINDS) {
+    const r = runImport(buildExport(fixture, null, { [k.key]: false }));
+    for (const other of KINDS) checkKind(r, other.key, other.key !== k.key);
+    checks++;
+}
+// A Toolasha-style export (no new keys, abilities with 5 slots) still imports whole.
+{
+    const { learnedAbilities, inventory, coin, ...toolashaShape } = all;
+    const r = runImport(toolashaShape);
+    for (const k of KINDS) checkKind(r, k.key, true);
+    checks++;
+}
 
-console.log(`PASS: ${checks} checks (all on, ${KINDS.length} single toggles off, sim solo import at src/main.js doSoloImport)`);
+console.log(`PASS: ${checks} checks (export: all on, ${KINDS.length} single toggles off; sim solo import src/main.js doSoloImport: all on, ${KINDS.length} single kinds missing, Toolasha shape)`);

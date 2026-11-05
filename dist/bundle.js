@@ -6952,14 +6952,20 @@ function doGroupImport() {
 function doSoloImport() {
     let importSet = document.getElementById("inputSetSolo").value;
     importSet = JSON.parse(importSet);
+    // A kind missing from the import is unknown, never empty: it leaves what the sim already holds for it
+    // (docs/proposals/what-if.md 4.4 item 2; the MWICS Exporter leaves out each kind switched off).
+    const importPlayer = importSet.player ?? {};
     ["stamina", "intelligence", "attack", "melee", "defense", "ranged", "magic"].forEach((skill) => {
         let levelInput = document.getElementById("inputLevel_" + skill);
-        if (skill == "melee" && !importSet.player["meleeLevel"] && importSet.player["powerLevel"]) {
-            importSet.player["meleeLevel"] = importSet.player["powerLevel"];
+        if (skill == "melee" && !importPlayer["meleeLevel"] && importPlayer["powerLevel"]) {
+            importPlayer["meleeLevel"] = importPlayer["powerLevel"];
         }
-        levelInput.value = importSet.player[skill + "Level"];
+        if ((skill + "Level") in importPlayer) {
+            levelInput.value = importPlayer[skill + "Level"];
+        }
     });
 
+    if (Array.isArray(importPlayer.equipment)) {
     ["head", "body", "legs", "feet", "hands", "off_hand", "pouch", "neck", "earrings", "ring", "back", "charm"].forEach((type) => {
         let equipmentSelect = document.getElementById("selectEquipment_" + type);
         let enhancementLevelInput = document.getElementById("inputEquipmentEnhancementLevel_" + type);
@@ -6987,23 +6993,31 @@ function doSoloImport() {
         weaponSelect.value = "";
         weaponEnhancementLevelInput.value = 0;
     }
-    importSet.drinks = importSet.drinks["/action_types/combat"];
-    importSet.food = importSet.food["/action_types/combat"];
+    }
+    const hasDrinks = importSet.drinks != null;
+    const hasFood = importSet.food != null;
+    if (hasDrinks) importSet.drinks = importSet.drinks["/action_types/combat"] ?? [];
+    if (hasFood) importSet.food = importSet.food["/action_types/combat"] ?? [];
     for (let i = 0; i < 3; i++) {
         let drinkSelect = document.getElementById("selectDrink_" + i);
         let foodSelect = document.getElementById("selectFood_" + i);
-        if (importSet.drinks[i] != null) {
-            drinkSelect.value = importSet.drinks[i].itemHrid.replace('power', 'melee');
-        } else {
-            drinkSelect.value = "";
+        if (hasDrinks) {
+            if (importSet.drinks[i] != null) {
+                drinkSelect.value = importSet.drinks[i].itemHrid.replace('power', 'melee');
+            } else {
+                drinkSelect.value = "";
+            }
         }
-        if (importSet.food[i] != null) {
-            foodSelect.value = importSet.food[i].itemHrid;
-        } else {
-            foodSelect.value = "";
+        if (hasFood) {
+            if (importSet.food[i] != null) {
+                foodSelect.value = importSet.food[i].itemHrid;
+            } else {
+                foodSelect.value = "";
+            }
         }
     }
 
+    if (importSet.abilities) {
     let hasSpecial = false;
     if (importSet.abilities && Object.keys(importSet.abilities).length == 5) {
         hasSpecial = true;
@@ -7036,8 +7050,19 @@ function doSoloImport() {
         }
     }
 
+    }
+
     if (importSet.triggerMap) {
-        triggerMap = importSet.triggerMap;
+        // Triggers belong to their kind: with abilities missing, keep the sim's ability triggers; with food and drinks
+        // missing, keep its consumable triggers.
+        const keepPrefixes = [];
+        if (!importSet.abilities) keepPrefixes.push("/abilities/");
+        if (!hasFood && !hasDrinks) keepPrefixes.push("/items/");
+        const mergedTriggerMap = {};
+        for (const hrid in (triggerMap ?? {})) {
+            if (keepPrefixes.some((prefix) => hrid.startsWith(prefix))) mergedTriggerMap[hrid] = triggerMap[hrid];
+        }
+        triggerMap = Object.assign(mergedTriggerMap, importSet.triggerMap);
         fixTriggerMap(triggerMap);
     }
 
@@ -7051,17 +7076,12 @@ function doSoloImport() {
             }
         }
         player.houseRooms = importSet.houseRooms;
-    } else {
-        let houseRooms = Object.values(_combatsimulator_data_houseRoomDetailMap_json__WEBPACK_IMPORTED_MODULE_4__);
-        for (const room of Object.values(houseRooms)) {
-            const field = document.querySelector('[data-house-hrid="' + room.hrid + '"]');
-            field.value = '';
-            player.houseRooms[room.hrid] = 0;
-        }
     }
 
     applyLabyrinthUpgradesToState(importSet.labyrinth);
-    applyGuildBuffsToState((0,_importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__["default"])(importSet));
+    if (importSet.guildCombatBuffLevels || importSet.guildBuffs) {
+        applyGuildBuffsToState((0,_importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__["default"])(importSet));
+    }
 
     if (importSet.achievements) {
         for (const achievement in importSet.achievements) {
@@ -7073,13 +7093,6 @@ function doSoloImport() {
                 field.checked = false;
             }
             player.achievements[achievement] = field.checked;
-        }
-    } else {
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_25__);
-        for (const detail of Object.values(achievements)) {
-            const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
-            field.checked = false;
-            player.achievements[detail.hrid] = false;
         }
     }
     refreshAchievementStatics();
