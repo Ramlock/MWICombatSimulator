@@ -31,7 +31,8 @@ const OUT = arg('out', null);
 const COM_DROP = Number(arg('comdrop', 0));
 const COM_EXP = Number(arg('comexp', 0));
 const MOO_PASS = arg('moopass', false) === true;
-const PLAYERS = ['PlayerA', 'Ramlock', 'PlayerC'];
+const { partyNames } = await import('./party.mjs');
+const PLAYERS = partyNames();
 
 // Seeded Math.random (sfc32) so runs are reproducible.
 function sfc32(a, b, c, d) {

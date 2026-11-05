@@ -16,9 +16,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { root } from './engine.mjs';
 
-export const PARTY = ['PlayerA', 'Ramlock', 'PlayerC'];
+import { partyNames } from '../calibration/party.mjs';
 
-export function readParty(dir = path.join(root, 'docs', 'ground-truth', 'setups'), names = PARTY) {
+export const PARTY = partyNames();
+
+export function readParty(dir = path.join(root, 'docs', 'ground-truth', 'setups'), names = dir === path.join(root, 'docs', 'ground-truth', 'setups') ? PARTY : partyNames(dir)) {
     return names.map((n) => JSON.parse(readFileSync(path.join(dir, n + '.json'), 'utf8')));
 }
 
