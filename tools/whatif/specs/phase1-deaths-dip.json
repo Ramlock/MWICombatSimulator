@@ -1,0 +1,7 @@
+{
+  "about": "What-if phase 1 pilot: is the early-deaths dip (docs/what-if/phase-0.md:58) chance? Base on 24 fresh seeds x 100 h, deaths/h over 0-50 h vs 50-100 h",
+  "checkpoints": [50, 100],
+  "seeds": { "from": 20001, "to": 20024 },
+  "options": { "comdrop": 20, "comexp": 20, "tier": 4, "zone": "/actions/combat/infernal_abyss" },
+  "variants": [ { "name": "base", "ops": [] } ]
+}
