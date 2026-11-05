@@ -1,0 +1,11 @@
+{
+  "about": "What-if phase 0, RNG-stream prototype (engine.mjs installStreams): base vs ring+1 and food-swap on paired seeds (docs/what-if/phase-0.md)",
+  "checkpoints": [50, 100],
+  "seeds": { "from": 1, "to": 10 },
+  "options": { "comdrop": 20, "comexp": 20, "tier": 4, "zone": "/actions/combat/infernal_abyss", "streams": true },
+  "variants": [
+    { "name": "base", "ops": [] },
+    { "name": "ring+1", "ops": [ { "op": "enhance", "player": "Ramlock", "slot": "ring", "delta": 1 } ] },
+    { "name": "food-swap", "ops": [ { "op": "food", "player": "Ramlock", "replace": "/items/spaceberry_donut", "item": "/items/spaceberry_cake" } ] }
+  ]
+}

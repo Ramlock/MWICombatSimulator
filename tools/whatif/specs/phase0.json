@@ -1,0 +1,12 @@
+{
+  "about": "What-if phase 0: noise of the party sim, base vs a small and two large variants on paired seeds (docs/what-if/phase-0.md)",
+  "checkpoints": [50, 150, 300, 500],
+  "seeds": { "from": 1, "to": 12 },
+  "options": { "comdrop": 20, "comexp": 20, "tier": 4, "zone": "/actions/combat/infernal_abyss" },
+  "variants": [
+    { "name": "base", "ops": [] },
+    { "name": "ring+1", "ops": [ { "op": "enhance", "player": "Ramlock", "slot": "ring", "delta": 1 } ] },
+    { "name": "food-swap", "ops": [ { "op": "food", "player": "Ramlock", "replace": "/items/spaceberry_donut", "item": "/items/spaceberry_cake" } ] },
+    { "name": "ability-swap", "ops": [ { "op": "ability", "player": "Ramlock", "replace": "/abilities/quick_aid", "ability": "/abilities/life_drain" } ] }
+  ]
+}
