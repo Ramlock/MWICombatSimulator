@@ -51,12 +51,14 @@ let modalTriggers = [];
 let currentSimResults = {};
 
 let currentPlayerTabId = '1';
+// What an empty player is: the sim's defaults, and what a party import falls back to for a kind a slot holds nothing for.
+const EMPTY_PLAYER_DATA = "{\"player\":{\"attackLevel\":1,\"magicLevel\":1,\"meleeLevel\":1,\"rangedLevel\":1,\"defenseLevel\":1,\"staminaLevel\":1,\"intelligenceLevel\":1,\"equipment\":[]},\"food\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"drinks\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"abilities\":[{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"}],\"triggerMap\":{},\"zone\":\"/actions/combat/fly\",\"simulationTime\":\"100\",\"houseRooms\":{\"/house_rooms/dairy_barn\":0,\"/house_rooms/garden\":0,\"/house_rooms/log_shed\":0,\"/house_rooms/forge\":0,\"/house_rooms/workshop\":0,\"/house_rooms/sewing_parlor\":0,\"/house_rooms/kitchen\":0,\"/house_rooms/brewery\":0,\"/house_rooms/laboratory\":0,\"/house_rooms/dining_room\":0,\"/house_rooms/library\":0,\"/house_rooms/dojo\":0,\"/house_rooms/gym\":0,\"/house_rooms/armory\":0,\"/house_rooms/archery_range\":0,\"/house_rooms/mystical_study\":0,\"/house_rooms/observatory\":0},\"achievements\":{}}";
 let playerDataMap = {
-    "1": "{\"player\":{\"attackLevel\":1,\"magicLevel\":1,\"meleeLevel\":1,\"rangedLevel\":1,\"defenseLevel\":1,\"staminaLevel\":1,\"intelligenceLevel\":1,\"equipment\":[]},\"food\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"drinks\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"abilities\":[{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"}],\"triggerMap\":{},\"zone\":\"/actions/combat/fly\",\"simulationTime\":\"100\",\"houseRooms\":{\"/house_rooms/dairy_barn\":0,\"/house_rooms/garden\":0,\"/house_rooms/log_shed\":0,\"/house_rooms/forge\":0,\"/house_rooms/workshop\":0,\"/house_rooms/sewing_parlor\":0,\"/house_rooms/kitchen\":0,\"/house_rooms/brewery\":0,\"/house_rooms/laboratory\":0,\"/house_rooms/dining_room\":0,\"/house_rooms/library\":0,\"/house_rooms/dojo\":0,\"/house_rooms/gym\":0,\"/house_rooms/armory\":0,\"/house_rooms/archery_range\":0,\"/house_rooms/mystical_study\":0,\"/house_rooms/observatory\":0},\"achievements\":{}}",
-    "2": "{\"player\":{\"attackLevel\":1,\"magicLevel\":1,\"meleeLevel\":1,\"rangedLevel\":1,\"defenseLevel\":1,\"staminaLevel\":1,\"intelligenceLevel\":1,\"equipment\":[]},\"food\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"drinks\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"abilities\":[{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"}],\"triggerMap\":{},\"zone\":\"/actions/combat/fly\",\"simulationTime\":\"100\",\"houseRooms\":{\"/house_rooms/dairy_barn\":0,\"/house_rooms/garden\":0,\"/house_rooms/log_shed\":0,\"/house_rooms/forge\":0,\"/house_rooms/workshop\":0,\"/house_rooms/sewing_parlor\":0,\"/house_rooms/kitchen\":0,\"/house_rooms/brewery\":0,\"/house_rooms/laboratory\":0,\"/house_rooms/dining_room\":0,\"/house_rooms/library\":0,\"/house_rooms/dojo\":0,\"/house_rooms/gym\":0,\"/house_rooms/armory\":0,\"/house_rooms/archery_range\":0,\"/house_rooms/mystical_study\":0,\"/house_rooms/observatory\":0},\"achievements\":{}}",
-    "3": "{\"player\":{\"attackLevel\":1,\"magicLevel\":1,\"meleeLevel\":1,\"rangedLevel\":1,\"defenseLevel\":1,\"staminaLevel\":1,\"intelligenceLevel\":1,\"equipment\":[]},\"food\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"drinks\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"abilities\":[{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"}],\"triggerMap\":{},\"zone\":\"/actions/combat/fly\",\"simulationTime\":\"100\",\"houseRooms\":{\"/house_rooms/dairy_barn\":0,\"/house_rooms/garden\":0,\"/house_rooms/log_shed\":0,\"/house_rooms/forge\":0,\"/house_rooms/workshop\":0,\"/house_rooms/sewing_parlor\":0,\"/house_rooms/kitchen\":0,\"/house_rooms/brewery\":0,\"/house_rooms/laboratory\":0,\"/house_rooms/dining_room\":0,\"/house_rooms/library\":0,\"/house_rooms/dojo\":0,\"/house_rooms/gym\":0,\"/house_rooms/armory\":0,\"/house_rooms/archery_range\":0,\"/house_rooms/mystical_study\":0,\"/house_rooms/observatory\":0},\"achievements\":{}}",
-    "4": "{\"player\":{\"attackLevel\":1,\"magicLevel\":1,\"meleeLevel\":1,\"rangedLevel\":1,\"defenseLevel\":1,\"staminaLevel\":1,\"intelligenceLevel\":1,\"equipment\":[]},\"food\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"drinks\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"abilities\":[{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"}],\"triggerMap\":{},\"zone\":\"/actions/combat/fly\",\"simulationTime\":\"100\",\"houseRooms\":{\"/house_rooms/dairy_barn\":0,\"/house_rooms/garden\":0,\"/house_rooms/log_shed\":0,\"/house_rooms/forge\":0,\"/house_rooms/workshop\":0,\"/house_rooms/sewing_parlor\":0,\"/house_rooms/kitchen\":0,\"/house_rooms/brewery\":0,\"/house_rooms/laboratory\":0,\"/house_rooms/dining_room\":0,\"/house_rooms/library\":0,\"/house_rooms/dojo\":0,\"/house_rooms/gym\":0,\"/house_rooms/armory\":0,\"/house_rooms/archery_range\":0,\"/house_rooms/mystical_study\":0,\"/house_rooms/observatory\":0},\"achievements\":{}}",
-    "5": "{\"player\":{\"attackLevel\":1,\"magicLevel\":1,\"meleeLevel\":1,\"rangedLevel\":1,\"defenseLevel\":1,\"staminaLevel\":1,\"intelligenceLevel\":1,\"equipment\":[]},\"food\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"drinks\":{\"/action_types/combat\":[{\"itemHrid\":\"\"},{\"itemHrid\":\"\"},{\"itemHrid\":\"\"}]},\"abilities\":[{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"},{\"abilityHrid\":\"\",\"level\":\"1\"}],\"triggerMap\":{},\"zone\":\"/actions/combat/fly\",\"simulationTime\":\"100\",\"houseRooms\":{\"/house_rooms/dairy_barn\":0,\"/house_rooms/garden\":0,\"/house_rooms/log_shed\":0,\"/house_rooms/forge\":0,\"/house_rooms/workshop\":0,\"/house_rooms/sewing_parlor\":0,\"/house_rooms/kitchen\":0,\"/house_rooms/brewery\":0,\"/house_rooms/laboratory\":0,\"/house_rooms/dining_room\":0,\"/house_rooms/library\":0,\"/house_rooms/dojo\":0,\"/house_rooms/gym\":0,\"/house_rooms/armory\":0,\"/house_rooms/archery_range\":0,\"/house_rooms/mystical_study\":0,\"/house_rooms/observatory\":0},\"achievements\":{}}"
+    "1": EMPTY_PLAYER_DATA,
+    "2": EMPTY_PLAYER_DATA,
+    "3": EMPTY_PLAYER_DATA,
+    "4": EMPTY_PLAYER_DATA,
+    "5": EMPTY_PLAYER_DATA
 };
 window.revenue = 0;
 window.noRngRevenue = 0;
@@ -4189,13 +4191,60 @@ function doSoloExport() {
     }
 }
 
+// A party import writes one player's JSON over what that slot already holds, kind by kind. A kind missing from the import is
+// unknown, never empty: the slot keeps its own prior value for it (docs/proposals/what-if.md 4.4 item 2). Not the screen's value:
+// the screen still shows the previous tab's player when updateNextPlayer runs. A kind the slot holds nothing for falls back to
+// the empty player (EMPTY_PLAYER_DATA).
+function mergePlayerImport(priorJson, incomingJson) {
+    const empty = JSON.parse(EMPTY_PLAYER_DATA);
+    let prior = {};
+    try { prior = JSON.parse(priorJson) ?? {}; } catch (err) { prior = {}; }
+    const incoming = typeof incomingJson === "string" ? JSON.parse(incomingJson) : (incomingJson ?? {});
+    const merged = Object.assign({}, empty, prior);
+    merged.player = Object.assign({}, empty.player, prior.player);
+
+    // Skill levels (each one a kind) and gear: per key of the incoming "player".
+    const incomingPlayer = Object.assign({}, incoming.player);
+    if (!incomingPlayer["meleeLevel"] && incomingPlayer["powerLevel"]) {
+        incomingPlayer["meleeLevel"] = incomingPlayer["powerLevel"];
+    }
+    Object.assign(merged.player, incomingPlayer);
+
+    // Triggers belong to their kind (as in doSoloImport): with abilities missing keep the slot's ability triggers; with food and
+    // drinks both missing keep its consumable triggers.
+    if (incoming.triggerMap) {
+        const keepPrefixes = [];
+        if (!incoming.abilities) keepPrefixes.push("/abilities/");
+        if (incoming.food == null && incoming.drinks == null) keepPrefixes.push("/items/");
+        const mergedTriggerMap = {};
+        for (const hrid in (merged.triggerMap ?? {})) {
+            if (keepPrefixes.some((prefix) => hrid.startsWith(prefix))) mergedTriggerMap[hrid] = merged.triggerMap[hrid];
+        }
+        merged.triggerMap = Object.assign(mergedTriggerMap, incoming.triggerMap);
+    }
+
+    // Guild buffs come under either key; whichever the import carries replaces both.
+    if (incoming.guildCombatBuffLevels || incoming.guildBuffs) {
+        delete merged.guildCombatBuffLevels;
+        delete merged.guildBuffs;
+    }
+
+    // Every other key present in the import replaces the slot's: food, drinks, abilities, house rooms, achievements, guild buffs,
+    // and zone, simulation time, labyrinth, name.
+    for (const key of Object.keys(incoming)) {
+        if (key === "player" || key === "triggerMap") continue;
+        merged[key] = incoming[key];
+    }
+    return JSON.stringify(merged);
+}
+
 function setPlayerData(playerId, inputElementId) {
     const inputElement = document.getElementById(inputElementId);
     const value = inputElement ? inputElement.value.trim() : "";
 
     // Only set the value in the map if it's not null, undefined, or empty
     if (value) {
-        playerDataMap[playerId] = value;
+        playerDataMap[playerId] = mergePlayerImport(playerDataMap[playerId], value);
         return true;
     }
     return false;
@@ -4203,6 +4252,8 @@ function setPlayerData(playerId, inputElementId) {
 
 function doGroupImport() {
     let needUpdateCurrentTab = false;
+    // The current tab's slot holds what was last saved; the screen may hold edits since, so save it first.
+    savePreviousPlayer(currentPlayerTabId);
     const value = document.getElementById("inputSetGroupCombatAll")?.value || "";
     if (!value.trim()) {
         for (let i of ['1', '2', '3', '4', '5']) {
@@ -4211,7 +4262,11 @@ function doGroupImport() {
             }
         }
     } else {
-        playerDataMap = JSON.parse(value);
+        const importMap = JSON.parse(value);
+        for (const id of Object.keys(importMap)) {
+            const slotJson = typeof importMap[id] === "string" ? importMap[id] : JSON.stringify(importMap[id]);
+            playerDataMap[id] = mergePlayerImport(playerDataMap[id], slotJson);
+        }
         needUpdateCurrentTab = true;
     }
 

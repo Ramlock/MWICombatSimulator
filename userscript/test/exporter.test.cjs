@@ -30,6 +30,8 @@ const fixture = {
     characterItems: [
         { itemLocationHrid: '/item_locations/head', itemHrid: '/items/acrobatic_hood', enhancementLevel: 7, count: 1, hash: 'a' },
         { itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/cheese_sword', enhancementLevel: 3, count: 1, hash: 'b' },
+        { itemLocationHrid: '/item_locations/milking_tool', itemHrid: '/items/holy_milking_tool', enhancementLevel: 4, count: 1, hash: 'f' },
+        { itemLocationHrid: '/item_locations/foraging_tool', itemHrid: '/items/holy_foraging_tool', enhancementLevel: 2, count: 1, hash: 'g' },
         { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/coin', enhancementLevel: 0, count: 123456789, hash: 'c' },
         { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/spaceberry_cake', enhancementLevel: 0, count: 500, hash: 'd' },
         { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/acrobatic_hood', enhancementLevel: 5, count: 1, hash: 'e' },
@@ -77,6 +79,20 @@ assert.equal(all.abilities[1].abilityHrid, '/abilities/entangle');
 assert.equal(all.player.equipment.length, 2);
 assert.equal(all.player.magicLevel, 96);
 let checks = 1;
+
+// 1b. Gear is the combat slots only: a fixture with skilling tool slots exports none of them, and every combat slot stays.
+{
+    const slots = ['head', 'body', 'legs', 'feet', 'hands', 'off_hand', 'pouch', 'neck', 'earrings', 'ring', 'back', 'charm', 'main_hand', 'two_hand'];
+    const tools = ['milking', 'foraging', 'woodcutting', 'cheesesmithing', 'crafting', 'tailoring', 'cooking', 'brewing', 'alchemy', 'enhancing'];
+    const items = [
+        ...slots.map((s) => ({ itemLocationHrid: '/item_locations/' + s, itemHrid: '/items/' + s + '_item', enhancementLevel: 1, count: 1 })),
+        ...tools.map((t) => ({ itemLocationHrid: '/item_locations/' + t + '_tool', itemHrid: '/items/' + t + '_tool_item', enhancementLevel: 1, count: 1 })),
+    ];
+    const out = buildExport({ ...fixture, characterItems: items }, null, {});
+    assert.deepEqual(out.player.equipment.map((e) => e.itemLocationHrid), slots.map((s) => '/item_locations/' + s), 'combat slots only');
+    assert.ok(!all.player.equipment.some((e) => e.itemLocationHrid.endsWith('_tool')), 'fixture tool slot exported');
+    checks++;
+}
 
 // 2. Each one off: only its kind goes.
 for (const k of KINDS) {

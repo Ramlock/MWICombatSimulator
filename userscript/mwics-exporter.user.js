@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWICS Exporter
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.1.0
+// @version      0.1.1
 // @description  Read-only export of your character for the MWICS combat simulator: the sim's setup JSON plus learned abilities, inventory and Coin. Sends nothing to the server and presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -40,6 +40,8 @@
         { key: 'inventory', label: 'Inventory' },
         { key: 'coin', label: 'Liquid Coin' },
     ];
+    // The slots the sim imports (the skilling tool slots, /item_locations/*_tool, stay out).
+    const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'off_hand', 'pouch', 'neck', 'earrings', 'ring', 'back', 'charm', 'main_hand', 'two_hand'].map((s) => '/item_locations/' + s);
     const COMBAT_SKILLS = ['stamina', 'intelligence', 'attack', 'melee', 'defense', 'ranged', 'magic'];
     const COMBAT_SHRINES = ['force', 'tempo', 'spirit', 'rarity', 'scholar'];
     // Used only when the game's own ability data (init client data) cannot be read.
@@ -92,7 +94,7 @@
         if (on.gear) {
             out.player.equipment = [];
             for (const item of characterObj.characterItems || []) {
-                if (item.itemLocationHrid && item.itemLocationHrid !== INVENTORY) {
+                if (COMBAT_SLOTS.includes(item.itemLocationHrid)) {
                     out.player.equipment.push({ itemLocationHrid: item.itemLocationHrid, itemHrid: item.itemHrid, enhancementLevel: item.enhancementLevel || 0 });
                 }
             }
