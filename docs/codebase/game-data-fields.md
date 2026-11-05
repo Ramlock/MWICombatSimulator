@@ -54,3 +54,16 @@ The page renders only the panel that is open, in the player's UI language, and r
 | House rooms, achievements, guild buffs, learned abilities, any XP | no | none |
 
 Getting the rest from the HTML would mean opening panels, which is pressing buttons. Both plugins read the message, not the HTML; they only write their display into the page.
+
+## The export
+
+`userscript/mwics-exporter.user.js` builds one JSON from `init_character_data`, copied to the clipboard from the userscript manager's menu ("Copy export"); "Settings" holds one toggle per data kind, all on by default, kept across reloads. A kind switched off is left out of the JSON (unknown, never empty).
+
+- **Setup keys**, the same as the sim's setup JSON, read by today's import (`doSoloImport`, `src/main.js:4223`): `player` (the seven `*Level` keys from skill levels, `equipment` from gear), `food`, `drinks`, `abilities`, `triggerMap` (ability triggers with equipped abilities, consumable triggers with food and drinks), `houseRooms`, `achievements` (every achievement, `true` or `false`), `guildCombatBuffLevels`, and `name` (the character's name, always).
+- **New keys**, not read by today's import:
+  - `learnedAbilities`: `[{abilityHrid, level, experience}]`, every learned ability, from `characterAbilities`.
+  - `inventory`: `[{itemHrid, enhancementLevel, count}]`, every inventory entry except Coin.
+  - `coin`: a number, the inventory's `/items/coin` `count`.
+- The data is as of the page's last load: the script reads only `init_character_data`, so a change made since (an item bought, gear swapped) shows after a reload.
+- Today's import needs `player.equipment`, `food`, `drinks` and `abilities` (`src/main.js:4237`, `:4261-4262`, `:4297`): with gear, food and drinks, or equipped abilities switched off, the export does not import into the sim; with skill levels off, the level boxes get no value.
+- Test: `node userscript/test/exporter.test.cjs` (made-up fixture).
