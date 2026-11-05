@@ -65,5 +65,5 @@ Getting the rest from the HTML would mean opening panels, which is pressing butt
   - `inventory`: `[{itemHrid, enhancementLevel, count}]`, every inventory entry except Coin.
   - `coin`: a number, the inventory's `/items/coin` `count`.
 - The data is as of the page's last load: the script reads only `init_character_data`, so a change made since (an item bought, gear swapped) shows after a reload.
-- Today's import needs `player.equipment`, `food`, `drinks` and `abilities` (`src/main.js:4237`, `:4261-4262`, `:4297`): with gear, food and drinks, or equipped abilities switched off, the export does not import into the sim; with skill levels off, the level boxes get no value.
+- The sim's solo import (`doSoloImport`) leaves a kind missing from the JSON as the sim already holds it, so an export with some kinds switched off still imports (batch 3; the party import, `updateNextPlayer`, is not changed yet).
 - Test: `node userscript/test/exporter.test.cjs` (made-up fixture).
