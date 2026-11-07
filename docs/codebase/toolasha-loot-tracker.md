@@ -458,6 +458,12 @@ Covers: the hook on `new_battle`, `battle_updated` and `action_completed`; windo
 
 The stateless "Copy combat session" button (previous section) is the recorder's first slice and shares its player record.
 
+## Build status (userscript 0.2.0)
+
+Built in `userscript/mwics-exporter.user.js` (function `createRecorder`; tests `userscript/test/recorder.test.cjs`, `recorder-hook.test.cjs`): the hook on `new_battle`, `battle_updated`, `action_completed`, `quests_updated`, `init_character_data`; baseline from `new_battle`; windows (key as proposed, zone filled from the first `action_completed`) and fragments (60 s gap); encounter rows with per-slot damage dealt and taken by source, hit/miss/crit events, casts and attempts, mana spent and regained, status time, kills with time to kill, loot, XP, ability XP and deaths as snapshot differences; damage over time either side; healing by source (regen, heal ability, bloom marked heuristic, food series, hidden-action flagged); consume by cooldown restart with the remainder booked as a trade and `healMismatch`; raw `ambiguous[]` records; buff events and window-start buffs; casts of abilities with buffs; the task timeline; `selfOnly`; capped persistence in the manager's storage (saved every 20 encounters and on page hide); menu commands **Copy loot export**, **Clear recorded loot**, and Settings rows for the recorder and `selfOnly`. Build choices: the conservative option wherever the spec leaves one open (caps as proposed, `GM_setValue` storage, `selfOnly` off by default, no loot-log or other imports, dungeons and waves not handled).
+
+Not built, on purpose: the likelihood split, shares and the closed-form check (post-processing); the `battle_consumable_ability_updated` message (the snapshot rule covers every member, the recording player included); mana and drink consumes are recorded as consumes but not checked against a restore or buff (`checked: false`); thorns, retaliation, life steal, drain and leech (no case seen); a heal credited late (food series resolved at the next snapshot) is counted in the encounter where it is resolved, not where the rise arrived.
+
 ## Button behavior (proposed)
 
 - First slice: a menu command **Copy combat session** (the latest `new_battle` reduced and anonymized, see "The smallest useful button"). Then the recorder: **Copy loot export** beside **Copy export** and **Settings** (`GM_registerMenuCommand`, `mwics-exporter.user.js:257-258`), copying the recorder JSON to the clipboard with the same toast, and **Clear recorded loot**.
