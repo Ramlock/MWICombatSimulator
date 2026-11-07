@@ -4,7 +4,8 @@
         "fork": "Ramlock",
         "notes":
         [
-            "The Combat Stats panel now also counts the slotted drinks and the player's own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"
+            "The Combat Stats panel now also counts the slotted drinks and the player's own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat",
+            "New userscript version, the exporter 0.2.0: it records the whole party's combat while you play, with the new menu commands \"Copy loot export\" and \"Clear recorded loot\", and a setting to export only your own character"
         ]
     },
     "2026-11-04":
