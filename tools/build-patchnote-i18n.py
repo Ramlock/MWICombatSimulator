@@ -7,6 +7,9 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = json.load(open(os.path.join(root, 'patchNote.json'), encoding='utf-8'))
 
 ZH = {
+    "2026-11-07": [
+        "战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致",
+    ],
     "2026-11-04": [
         "现在可从两种导出格式读取公会增益",
         "战斗属性面板显示模拟所用的属性（房屋、成就、公会、社区及其他增益），包括有效技能等级和稀有发现",

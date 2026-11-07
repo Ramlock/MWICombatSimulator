@@ -1,4 +1,12 @@
 {
+    "2026-11-07":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "The Combat Stats panel now also counts the slotted drinks and the player's own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"
+        ]
+    },
     "2026-11-04":
     {
         "fork": "Ramlock",
