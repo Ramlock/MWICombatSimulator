@@ -163,7 +163,7 @@
     // ================= Combat recorder (read-only) =================
     // Spec: docs/codebase/toolasha-loot-tracker.md ("Recorder spec"). Pure state machine: handle(message, nowMs) per game message,
     // exportData(selfOnly) for the file, no DOM and no network. The likelihood split, shares and closed-form checks are NOT here.
-    const REC = { MAX_ENCOUNTERS: 2000, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2 };
+    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2 };
     const REC_TYPES = ['new_battle', 'battle_updated', 'action_completed', 'quests_updated', 'init_character_data'];
     const DOT_FALLBACK = { '/abilities/firestorm': { ratio: 1, ms: 6000 }, '/abilities/maim': { ratio: 1, ms: 9000 } };
     const HEAL_FALLBACK = ['/abilities/quick_aid'];

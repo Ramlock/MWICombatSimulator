@@ -432,7 +432,7 @@ A damage event whose actor cannot be named by the rules (two or more monster act
 | Item | Estimate | Basis |
 | --- | --- | --- |
 | Encounter row, 3 players, all counters | about 1.2 KB | a reduced version (casts, mana, healing, kills, no per-source damage) measured 0.7 KB per encounter in the capture; per-source tables are the estimate |
-| Ring of encounter rows | 2000 rows x 1.2 KB = about 2.4 MB, about 10 hours at about 200 encounters an hour | proposed cap |
+| Ring of encounter rows | 800 rows (`REC.MAX_ENCOUNTERS`); measured about 5.6 KB a row on a replay, so about 4.5 MB, about 4 hours at about 200 encounters an hour; slimming rows is a later item | set by the owner's session for the first test |
 | Window | about 20 KB (3 players x ~4 KB, enemy stats ~1.5 KB per monster hrid) | estimate |
 | Windows | 200 windows = about 4 MB | proposed cap; a stable farm makes very few windows |
 | Total | about 6 MB | |
