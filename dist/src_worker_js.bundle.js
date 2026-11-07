@@ -307,6 +307,49 @@ class Buff {
 
 /***/ }),
 
+/***/ "./src/combatsimulator/buffScaling.js":
+/*!********************************************!*\
+  !*** ./src/combatsimulator/buffScaling.js ***!
+  \********************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   scaleAbilityBuff: () => (/* binding */ scaleAbilityBuff),
+/* harmony export */   scaleConsumableBuff: () => (/* binding */ scaleConsumableBuff)
+/* harmony export */ });
+// How a drink's buff and an aura's buff are scaled before they are added to a unit. Shared by the combat
+// (CombatSimulator.tryUseConsumable / processAbilityBuffEffect) and the Combat Stats panel (src/simSetup.js),
+// so both compute the same value.
+
+// A drink's buff: ratio and flat scaled by drink concentration, duration shortened by it. A food's or any
+// other consumable's buff is returned as a plain copy.
+function scaleConsumableBuff(buff, consumable, drinkConcentration) {
+    const currentBuff = structuredClone(buff);
+    if (drinkConcentration > 0 && consumable.catagoryHrid.includes("drink")) {
+        currentBuff.ratioBoost *= (1 + drinkConcentration);
+        currentBuff.flatBoost *= (1 + drinkConcentration);
+        currentBuff.duration = currentBuff.duration / (1 + drinkConcentration);
+    }
+    return currentBuff;
+}
+
+// A special ability's (aura's) buff: ratio and flat scaled by 1 + the caster's effective level in the aura's skill
+// times multiplierPerSkillLevel. Any other ability buff is returned as it is (not copied).
+function scaleAbilityBuff(buff, ability, source) {
+    if (ability.isSpecialAbility && buff.multiplierForSkillHrid && buff.multiplierPerSkillLevel > 0) {
+        const multiplier = 1.0 + source.combatDetails[buff.multiplierForSkillHrid.split('/')[2] + 'Level'] * buff.multiplierPerSkillLevel;
+        const currentBuff = structuredClone(buff);
+        currentBuff.flatBoost *= multiplier;
+        currentBuff.ratioBoost *= multiplier;
+        return currentBuff;
+    }
+    return buff;
+}
+
+
+/***/ }),
+
 /***/ "./src/combatsimulator/combatSimulator.js":
 /*!************************************************!*\
   !*** ./src/combatsimulator/combatSimulator.js ***!
@@ -340,6 +383,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _events_awaitCooldownEvent__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./events/awaitCooldownEvent */ "./src/combatsimulator/events/awaitCooldownEvent.js");
 /* harmony import */ var _monster__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./monster */ "./src/combatsimulator/monster.js");
 /* harmony import */ var _ability__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./ability */ "./src/combatsimulator/ability.js");
+/* harmony import */ var _buffScaling__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./buffScaling */ "./src/combatsimulator/buffScaling.js");
+
 
 
 
@@ -1485,12 +1530,7 @@ class CombatSimulator extends EventTarget {
         }
 
         for (const buff of consumable.buffs) {
-            let currentBuff = structuredClone(buff);
-            if (source.combatDetails.combatStats.drinkConcentration > 0 && consumable.catagoryHrid.includes("drink")) {
-                currentBuff.ratioBoost *= (1 + source.combatDetails.combatStats.drinkConcentration);
-                currentBuff.flatBoost *= (1 + source.combatDetails.combatStats.drinkConcentration);
-                currentBuff.duration = currentBuff.duration / (1 + source.combatDetails.combatStats.drinkConcentration);
-            }
+            let currentBuff = (0,_buffScaling__WEBPACK_IMPORTED_MODULE_23__.scaleConsumableBuff)(buff, consumable, source.combatDetails.combatStats.drinkConcentration);
             source.addBuff(currentBuff, this.simulationTime);
             // console.log("Added buff:", currentBuff);
             let checkBuffExpirationEvent = new _events_checkBuffExpirationEvent__WEBPACK_IMPORTED_MODULE_3__["default"](this.simulationTime + currentBuff.duration, source);
@@ -1626,15 +1666,7 @@ class CombatSimulator extends EventTarget {
             let targets = source.isPlayer ? this.players : this.enemies;
             for (const target of targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0)) {
                 for (const buff of abilityEffect.buffs) {
-                    if (ability.isSpecialAbility && buff.multiplierForSkillHrid && buff.multiplierPerSkillLevel > 0) {
-                        let multiplier = 1.0 + source.combatDetails[buff.multiplierForSkillHrid.split('/')[2] + 'Level'] * buff.multiplierPerSkillLevel;
-                        let currentBuff = structuredClone(buff);
-                        currentBuff.flatBoost *= multiplier;
-                        currentBuff.ratioBoost *= multiplier;
-                        target.addBuff(currentBuff, this.simulationTime);
-                    } else {
-                        target.addBuff(buff, this.simulationTime);
-                    }
+                    target.addBuff((0,_buffScaling__WEBPACK_IMPORTED_MODULE_23__.scaleAbilityBuff)(buff, ability, source), this.simulationTime);
                     let checkBuffExpirationEvent = new _events_checkBuffExpirationEvent__WEBPACK_IMPORTED_MODULE_3__["default"](this.simulationTime + buff.duration, target);
                     this.eventQueue.addEvent(checkBuffExpirationEvent);
                 }
@@ -5060,6 +5092,7 @@ class Zone {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   applyDrinksAndAuras: () => (/* binding */ applyDrinksAndAuras),
 /* harmony export */   buildExtraBuffs: () => (/* binding */ buildExtraBuffs),
 /* harmony export */   createSimPlayer: () => (/* binding */ createSimPlayer),
 /* harmony export */   createZoneAndLabyrinth: () => (/* binding */ createZoneAndLabyrinth),
@@ -5069,8 +5102,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatsimulator_player__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./combatsimulator/player */ "./src/combatsimulator/player.js");
 /* harmony import */ var _combatsimulator_zone__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./combatsimulator/zone */ "./src/combatsimulator/zone.js");
 /* harmony import */ var _combatsimulator_labyrinth__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./combatsimulator/labyrinth */ "./src/combatsimulator/labyrinth.js");
+/* harmony import */ var _combatsimulator_buffScaling__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./combatsimulator/buffScaling */ "./src/combatsimulator/buffScaling.js");
 // The player setup a simulation starts from, shared by src/worker.js (the simulation) and the
 // Combat Stats panel in src/main.js, so the panel shows the stats the engine uses at time 0.
+
 
 
 
@@ -5228,11 +5263,35 @@ function startPlayerAtTimeZero(simPlayer) {
     return simPlayer;
 }
 
-// The visible player's combat stats as the engine has them at time 0.
-function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra) {
+// What the combat does in its first seconds with the player's slotted drinks and equipped auras: every drink's
+// buffs (scaled by drink concentration) and every aura's buffs (scaled by the caster's effective skill level, taken
+// after the drinks) are on the player. Assumes each drink and aura is active; their triggers are not evaluated.
+// Auras of other players are not included (the panel shows one player). Same scaling code as the combat (buffScaling.js).
+function applyDrinksAndAuras(simPlayer) {
+    for (const drink of simPlayer.drinks) {
+        if (!drink) continue;
+        for (const buff of drink.buffs) {
+            simPlayer.addBuff((0,_combatsimulator_buffScaling__WEBPACK_IMPORTED_MODULE_3__.scaleConsumableBuff)(buff, drink, simPlayer.combatDetails.combatStats.drinkConcentration), 0);
+        }
+    }
+    for (const ability of simPlayer.abilities) {
+        if (!ability || !ability.isSpecialAbility) continue;
+        for (const effect of ability.abilityEffects) {
+            if (effect.effectType != "/ability_effect_types/buff" || effect.targetType != "allAllies") continue;
+            for (const buff of effect.buffs) {
+                simPlayer.addBuff((0,_combatsimulator_buffScaling__WEBPACK_IMPORTED_MODULE_3__.scaleAbilityBuff)(buff, ability, simPlayer), 0);
+            }
+        }
+    }
+    return simPlayer;
+}
+
+// The visible player's combat stats as the engine has them at time 0, with the slotted drinks and equipped auras on
+// (withDrinksAndAuras, the default) as they are a few seconds into a fight, or without them (equipment and permanent buffs only).
+function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra, withDrinksAndAuras = true) {
     const { zone, labyrinth } = createZoneAndLabyrinth(zoneSpec, labyrinthSpec);
-    const simPlayer = createSimPlayer(playerDTO, zone, labyrinth, buildExtraBuffs(extra));
-    return startPlayerAtTimeZero(simPlayer);
+    const simPlayer = startPlayerAtTimeZero(createSimPlayer(playerDTO, zone, labyrinth, buildExtraBuffs(extra)));
+    return withDrinksAndAuras ? applyDrinksAndAuras(simPlayer) : simPlayer;
 }
 
 

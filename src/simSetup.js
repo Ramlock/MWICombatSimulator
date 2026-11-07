@@ -3,6 +3,7 @@
 import Player from "./combatsimulator/player";
 import Zone from "./combatsimulator/zone";
 import Labyrinth from "./combatsimulator/labyrinth";
+import { scaleConsumableBuff, scaleAbilityBuff } from "./combatsimulator/buffScaling";
 
 // Buffs from the page's extra toggles: Moo Pass, community buffs and personal buffs (seals).
 export function buildExtraBuffs(extra) {
@@ -157,9 +158,33 @@ export function startPlayerAtTimeZero(simPlayer) {
     return simPlayer;
 }
 
-// The visible player's combat stats as the engine has them at time 0.
-export function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra) {
+// What the combat does in its first seconds with the player's slotted drinks and equipped auras: every drink's
+// buffs (scaled by drink concentration) and every aura's buffs (scaled by the caster's effective skill level, taken
+// after the drinks) are on the player. Assumes each drink and aura is active; their triggers are not evaluated.
+// Auras of other players are not included (the panel shows one player). Same scaling code as the combat (buffScaling.js).
+export function applyDrinksAndAuras(simPlayer) {
+    for (const drink of simPlayer.drinks) {
+        if (!drink) continue;
+        for (const buff of drink.buffs) {
+            simPlayer.addBuff(scaleConsumableBuff(buff, drink, simPlayer.combatDetails.combatStats.drinkConcentration), 0);
+        }
+    }
+    for (const ability of simPlayer.abilities) {
+        if (!ability || !ability.isSpecialAbility) continue;
+        for (const effect of ability.abilityEffects) {
+            if (effect.effectType != "/ability_effect_types/buff" || effect.targetType != "allAllies") continue;
+            for (const buff of effect.buffs) {
+                simPlayer.addBuff(scaleAbilityBuff(buff, ability, simPlayer), 0);
+            }
+        }
+    }
+    return simPlayer;
+}
+
+// The visible player's combat stats as the engine has them at time 0, with the slotted drinks and equipped auras on
+// (withDrinksAndAuras, the default) as they are a few seconds into a fight, or without them (equipment and permanent buffs only).
+export function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra, withDrinksAndAuras = true) {
     const { zone, labyrinth } = createZoneAndLabyrinth(zoneSpec, labyrinthSpec);
-    const simPlayer = createSimPlayer(playerDTO, zone, labyrinth, buildExtraBuffs(extra));
-    return startPlayerAtTimeZero(simPlayer);
+    const simPlayer = startPlayerAtTimeZero(createSimPlayer(playerDTO, zone, labyrinth, buildExtraBuffs(extra)));
+    return withDrinksAndAuras ? applyDrinksAndAuras(simPlayer) : simPlayer;
 }

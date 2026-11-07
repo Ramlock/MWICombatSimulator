@@ -1,5 +1,5 @@
 // Check: the Combat Stats panel equals the engine's time-0 stats for Ramlock's setup.
-// Panel side: what src/main.js updateCombatStatsUI renders, getTimeZeroPlayer (src/simSetup.js) then
+// Panel side (without the drinks and auras it also shows, those start in combat): what src/main.js updateCombatStatsUI renders, getTimeZeroPlayer (src/simSetup.js) then
 // getCombatStatsPanelValues (src/combatStatsPanel.js). Engine side: a real CombatSimulator run, set up as
 // the worker sets players up, with the player's combatDetails captured at the first combat start (time 0),
 // after generatePermanentBuffs and reset, before the first encounter spawns.
@@ -73,7 +73,7 @@ let failures = 0;
 const table = {};
 for (const c of cases) {
     const zoneSpec = { zoneHrid: ZONE, difficultyTier: TIER };
-    const panelUnit = getTimeZeroPlayer(c.dto, zoneSpec, null, c.extra);
+    const panelUnit = getTimeZeroPlayer(c.dto, zoneSpec, null, c.extra, false);
     const panel = getCombatStatsPanelValues(panelUnit.combatDetails);
     const engineDetails = await engineTimeZero(c.dto, c.extra);
     const engine = getCombatStatsPanelValues(engineDetails);

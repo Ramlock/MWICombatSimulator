@@ -4,6 +4,10 @@
 //
 // Usage: node tools/whatif/optimize.mjs --out <dir> [options]
 //   --players Ramlock            whose equipment is open (comma list); each change is costed to its player
+//   --levers equip               comma list of equip (phase 1: +N and market swaps), consumables (any food or drink
+//                                with a market ask, drop one, fill an empty slot), owned (items in the exporter's
+//                                inventory), abilities (learned, at their learned level), order (ability order); all
+//   --charms                     keep charm candidates on a profit goal (left out by default: they change only EXP)
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
 //   --budget <coin> | --export <exporter JSON>   budget: typed, else `coin` of the exporter JSON (3.1)
 //   --stages 4x50,4x150,8x300    seeds x sim hours per stage: screen, halvings; the last is the finalist stage
@@ -32,9 +36,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { readParty, applyOps } from './variants.mjs';
 import { loadMarket, makePricer, TAX_LABEL } from './prices.mjs';
-import { DEFAULT_PRICES } from './engine.mjs';
+import { DEFAULT_PRICES, buildDtos, root } from './engine.mjs';
 
-const { default: itemDetailMap } = await import(new URL('../../src/combatsimulator/data/itemDetailMap.json', import.meta.url), { with: { type: 'json' } });
+const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
+const itemDetailMap = await json('itemDetailMap.json');
+const abilityDetailMap = await json('abilityDetailMap.json');
+const abilitySlotsLevelRequirementList = await json('abilitySlotsLevelRequirementList.json');
 
 function arg(name, def) {
     const i = process.argv.indexOf('--' + name);
@@ -68,9 +75,14 @@ const confirmOffset = Number(arg('confirm-seed-offset', 10000));
 const setupsDir = arg('setups', undefined);
 const pricesFile = arg('prices', DEFAULT_PRICES);
 const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
+const LEVERS = ['equip', 'consumables', 'owned', 'abilities', 'order'];
+const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : [x.trim()])));
+for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
+const exportData = arg('export', null) ? JSON.parse(readFileSync(arg('export'), 'utf8')) : null;
+if ((levers.has('owned') || levers.has('abilities')) && !exportData) throw new Error('--levers owned/abilities need --export (inventory, learned abilities)');
 let budget, budgetSource;
 if (arg('budget', null) !== null) { budget = Number(arg('budget')); budgetSource = 'typed'; }
-else if (arg('export', null)) { budget = JSON.parse(readFileSync(arg('export'), 'utf8')).coin; budgetSource = 'exporter coin'; if (!(budget >= 0)) throw new Error('exporter JSON has no coin'); }
+else if (exportData) { budget = exportData.coin; budgetSource = 'exporter coin'; if (!(budget >= 0)) throw new Error('exporter JSON has no coin'); }
 else throw new Error('--budget or --export required');
 
 const metric = (cp) => (goal === 'exp' ? cp.party.expPerHour : cp.party.profitAfterTaxPerDay);
@@ -93,7 +105,9 @@ function put(r) {
     if (!seedIndex.has(r.key)) seedIndex.set(r.key, new Set());
     seedIndex.get(r.key).add(r.seed);
 }
-const keyOf = (ops) => createHash('sha1').update(JSON.stringify({ s: applyOps(setups0, ops), o: options })).digest('hex').slice(0, 16);
+// The key holds the prices file relative to the checkout, so runs cached in one worktree match in another.
+const keyOptions = { ...options, prices: path.relative(root, path.resolve(options.prices)).split(path.sep).join('/') };
+const keyOf = (ops) => createHash('sha1').update(JSON.stringify({ s: applyOps(setups0, ops), o: keyOptions })).digest('hex').slice(0, 16);
 const allHours = [...new Set(stages.map((s) => s.h))].sort((a, b) => a - b);
 let stoppedByTime = false;
 const wallLog = []; // per run actually made in this invocation
@@ -155,15 +169,21 @@ const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'main_hand', 'two
 const slotItem = (setups, p, slot) => setups.find((s) => s.name === p).player.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + slot);
 const meetsReq = (setup, item) => (item.equipmentDetail.levelRequirements || []).every((r) => (setup.player[r.skillHrid.split('/').pop() + 'Level'] ?? 0) >= r.level);
 
+// Charms change only EXP, so a profit goal leaves them out (phase 1 measured exactly zero for every charm, docs
+// what-if/phase-1.md in the private repo); --charms keeps them. An EXP goal keeps them.
+const charmsOn = goal === 'exp' || arg('charms', false) === true;
+// Each candidate names the groups it changes (`<player>:<slot>`, `:food<i>`, `:drink<i>`, `:ability<i>`); after a
+// greedy step, candidates touching the accepted change's groups are rebuilt from the new setup.
 function candidatesFor(setups, p, slots) {
     const s = setups.find((x) => x.name === p), out = [];
     for (const slot of slots) {
+        if (slot === 'charm' && !charmsOn) continue;
         const it = slotItem(setups, p, slot);
         if (!it) continue;
         const name = it.itemHrid.split('/').pop();
         for (let d = 1; d <= maxUp; d++) {
             const c = pricer.upgrade(it.itemHrid, it.enhancementLevel, it.enhancementLevel + d);
-            out.push({ id: `${p}:${slot}+${d}`, player: p, slot, monotone: true, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
+            out.push({ id: `${p}:${slot}+${d}`, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: true, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
         }
         if (!swapsOn) continue;
         const type = itemDetailMap[it.itemHrid]?.equipmentDetail?.type;
@@ -173,11 +193,107 @@ function candidatesFor(setups, p, slots) {
                 const c = pricer.swap(it.itemHrid, it.enhancementLevel, item.hrid, L);
                 if (!c.known) continue; // no seller at this level: not a market swap
                 if (c.cost <= 0 && !sellDown) continue; // frees gold: a sell-down, dropped (design 4.3 item 2)
-                out.push({ id: `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, player: p, slot, monotone: false, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`, ops: [{ op: 'equip', player: p, slot, item: item.hrid, level: L }], cost: c });
+                out.push({ id: `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: false, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`, ops: [{ op: 'equip', player: p, slot, item: item.hrid, level: L }], cost: c });
             }
         }
     }
     return out;
+}
+
+// ---- Phase 2 levers (design 1.1-1.3, 3.6 item 2): loadout tweaks, no gold cost ----
+const short = (h) => h.split('/').pop();
+const FREE = (path, note = '') => ({ cost: 0, known: true, path, mirrors: 0, note });
+const exportFor = (p) => (exportData && exportData.name === p ? exportData : null);
+const market = loadMarket(pricesFile);
+const hasAsk = (h) => market[h]?.['0']?.a > 0; // a consumable with no ask has no expense price (engine.mjs metrics uses 500)
+const combatUse = (it) => it.consumableDetail?.usableInActionTypeMap?.['/action_types/combat'];
+const FOODS = Object.values(itemDetailMap).filter((it) => it.categoryHrid === '/item_categories/food' && combatUse(it) && hasAsk(it.hrid)).map((it) => it.hrid);
+const DRINKS = Object.values(itemDetailMap).filter((it) => it.categoryHrid === '/item_categories/drink' && combatUse(it) && hasAsk(it.hrid)).map((it) => it.hrid);
+// Open food and drink slots, as setupDto.mjs gates them (the pouch): fill every slot and count what the DTO keeps.
+function consumableSlots(setups, p) {
+    const t = structuredClone(setups), i = t.findIndex((x) => x.name === p);
+    t[i].food = { '/action_types/combat': FOODS.slice(0, 3).map((h) => ({ itemHrid: h })) };
+    t[i].drinks = { '/action_types/combat': DRINKS.slice(0, 3).map((h) => ({ itemHrid: h })) };
+    const d = buildDtos(t)[i];
+    return { food: d.food.filter(Boolean).length, drink: d.drinks.filter(Boolean).length };
+}
+function consumableCands(setups, p) {
+    const s = setups.find((x) => x.name === p), n = consumableSlots(setups, p), out = [];
+    for (const [kind, key, pool] of [['food', 'food', FOODS], ['drink', 'drinks', DRINKS]]) {
+        const list = s[key]['/action_types/combat'] || [];
+        const held = new Set(list.map((x) => x?.itemHrid).filter(Boolean));
+        for (let i = 0; i < n[kind]; i++) {
+            const cur = list[i]?.itemHrid, g = [`${p}:${kind}${i}`], from = cur ? short(cur) : 'empty';
+            for (const h of pool) {
+                if (held.has(h)) continue; // one of each item at a time (inferred game rule)
+                out.push({ id: `${p}:${kind}${i}=${short(h)}`, kind, groups: g, player: p, monotone: false, desc: `${p} ${kind} ${i + 1} ${from} -> ${short(h)}`, ops: [{ op: kind, player: p, index: i, item: h }], cost: FREE('loadout tweak, used x buy price in expenses') });
+            }
+            if (cur) out.push({ id: `${p}:${kind}${i}=none`, kind, groups: g, player: p, monotone: false, desc: `${p} ${kind} ${i + 1} ${from} -> empty`, ops: [{ op: kind, player: p, index: i, item: null }], cost: FREE('loadout tweak') });
+        }
+    }
+    return out;
+}
+// Swaps to an item in the exporter's inventory: no gold cost; selling it instead is its only price (after tax).
+function ownedCands(setups, p, slots) {
+    const ex = exportFor(p);
+    if (!ex) return [];
+    const s = setups.find((x) => x.name === p), out = [], seen = new Set();
+    for (const inv of ex.inventory || []) {
+        const item = itemDetailMap[inv.itemHrid], type = item?.equipmentDetail?.type?.split('/').pop();
+        if (!type || !meetsReq(s, item)) continue;
+        const L = inv.enhancementLevel || 0, key = inv.itemHrid + '+' + L;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const twoHand = type === 'two_hand';
+        const slot = twoHand ? 'main_hand' : type; // a two-hand weapon replaces the main hand and empties the off hand
+        if (!slots.includes(slot) || (slot === 'charm' && !charmsOn)) continue;
+        const it = slotItem(setups, p, slot) || (twoHand ? slotItem(setups, p, 'two_hand') : null);
+        if (it && it.itemHrid === inv.itemHrid && it.enhancementLevel === L) continue;
+        const sale = pricer.sell(inv.itemHrid, L);
+        const note = sale.noBuyer ? 'owned; no buyer' : `owned; selling it instead: ${fmt(sale.value)} ${TAX_LABEL}`;
+        const ops = twoHand ? [{ op: 'unequip', player: p, slot: 'main_hand' }, { op: 'unequip', player: p, slot: 'off_hand' }, { op: 'equip', player: p, slot: 'two_hand', item: inv.itemHrid, level: L }]
+            : [{ op: 'equip', player: p, slot, item: inv.itemHrid, level: L }];
+        const groups = twoHand ? [`${p}:main_hand`, `${p}:off_hand`, `${p}:two_hand`] : [`${p}:${slot}`];
+        out.push({ id: `${p}:${slot}=own:${short(inv.itemHrid)}+${L}`, kind: 'owned', groups, player: p, slot, monotone: false, desc: `${p} ${slot} ${it ? short(it.itemHrid) + ' +' + it.enhancementLevel : 'empty'} -> owned ${short(inv.itemHrid)} +${L}`, ops, cost: FREE('owned', note) });
+    }
+    return out;
+}
+// Swaps to a learned ability at its learned level (slot 0 takes special abilities only, src/main.js:807-812), and
+// every order of the other slots.
+function abilityCands(setups, p, withSwaps, withOrder) {
+    const s = setups.find((x) => x.name === p), out = [], ex = exportFor(p);
+    const ab = s.abilities || [], open = (i) => (s.player.intelligenceLevel ?? 0) >= abilitySlotsLevelRequirementList[i + 1];
+    const name = (a) => (a?.abilityHrid ? short(a.abilityHrid) + ' ' + a.level : 'empty');
+    if (withSwaps && ex) {
+        const held = new Set(ab.map((a) => a?.abilityHrid).filter(Boolean));
+        for (let i = 0; i < 5; i++) {
+            if (!open(i)) continue;
+            for (const l of ex.learnedAbilities || []) {
+                if (held.has(l.abilityHrid) || !abilityDetailMap[l.abilityHrid] || !!abilityDetailMap[l.abilityHrid].isSpecialAbility !== (i === 0)) continue;
+                out.push({ id: `${p}:ability${i}=${short(l.abilityHrid)}`, kind: 'ability', groups: [`${p}:ability${i}`], player: p, monotone: false, desc: `${p} ability ${i + 1} ${name(ab[i])} -> ${short(l.abilityHrid)} ${l.level}`, ops: [{ op: 'ability', player: p, index: i, ability: l.abilityHrid, level: l.level }], cost: FREE('learned') });
+            }
+        }
+    }
+    if (withOrder) {
+        const slots = [1, 2, 3, 4].filter((i) => open(i) && ab[i]?.abilityHrid);
+        const perms = (a) => (a.length <= 1 ? [a] : a.flatMap((x, k) => perms([...a.slice(0, k), ...a.slice(k + 1)]).map((r) => [x, ...r])));
+        for (const pm of perms(slots)) {
+            const order = [0, 1, 2, 3, 4];
+            slots.forEach((slot, k) => { order[slot] = pm[k]; });
+            const moved = order.map((j, i) => (j !== i ? i : -1)).filter((i) => i >= 0);
+            if (!moved.length) continue;
+            out.push({ id: `${p}:order=${order.join('')}`, kind: 'order', groups: moved.map((i) => `${p}:ability${i}`), player: p, monotone: false, desc: `${p} ability order ${order.slice(1).map((j) => name(ab[j]).split(' ')[0]).join(', ')}`, ops: [{ op: 'abilityOrder', player: p, order }], cost: FREE('loadout tweak') });
+        }
+    }
+    return out;
+}
+function allCandidates(setups, p) {
+    return [
+        ...(levers.has('equip') ? candidatesFor(setups, p, openSlots) : []),
+        ...(levers.has('consumables') ? consumableCands(setups, p) : []),
+        ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
+        ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
+    ];
 }
 const openSlots = onlySlots || COMBAT_SLOTS;
 
@@ -204,7 +320,7 @@ async function main() {
     const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgetSource, taxLabel: TAX_LABEL, players, steps: [], singles: [], apart: [] };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = 0;
-    let cands = players.flatMap((p) => candidatesFor(setups0, p, openSlots));
+    let cands = players.flatMap((p) => allCandidates(setups0, p));
     if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
     result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
     cands = cands.filter((c) => c.cost.known && c.cost.cost <= budget);
@@ -241,11 +357,14 @@ async function main() {
         console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
         // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
         const newBase = req(baseOps, fin.h, fin.k * baseMult, 'base');
-        // Re-screen the survivors on the new base; the accepted slot gets fresh candidates from its new item.
-        const setupsNow = applyOps(setups0, baseOps);
-        const fresh = candidatesFor(setupsNow, best.player, [best.slot]).filter((c) => c.cost.known && (c.monotone || !onlyCands));
-        finalists = [...finalists.filter((c) => c !== best && !(c.player === best.player && c.slot === best.slot)), ...fresh]
-            .filter((c) => c.cost.cost <= budget - spent);
+        // Re-screen the survivors on the new base, rebuilt from the new setup (a survivor whose change no longer
+        // applies drops out). The accepted change's equipment slots get fresh candidates from the new item, as in
+        // phase 1; the other groups it touched keep only their survivors, so a loadout step does not re-add dozens.
+        const setupsNow = applyOps(setups0, baseOps), touched = new Set(best.groups);
+        const survivors = new Set(finalists.filter((c) => c !== best).map((c) => c.id));
+        finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && c.cost.cost <= budget - spent && (
+            c.groups.some((g) => touched.has(g)) && c.kind === 'equip' && (best.kind === 'equip' || best.kind === 'owned')
+                ? (c.monotone || !onlyCands || onlyCands.includes(c.id)) : (survivors.has(c.id) && c.id !== best.id)));
         if (!await ensure([...newBase, ...finalists.flatMap((c) => req([...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
     }

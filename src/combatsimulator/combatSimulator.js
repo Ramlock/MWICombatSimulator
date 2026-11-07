@@ -21,6 +21,7 @@ import AbilityCastEndEvent from "./events/abilityCastEndEvent";
 import AwaitCooldownEvent from "./events/awaitCooldownEvent";
 import Monster from "./monster";
 import Ability from "./ability";
+import { scaleConsumableBuff, scaleAbilityBuff } from "./buffScaling";
 
 const ONE_SECOND = 1e9;
 const HOT_TICK_INTERVAL = 5 * ONE_SECOND;
@@ -1143,12 +1144,7 @@ class CombatSimulator extends EventTarget {
         }
 
         for (const buff of consumable.buffs) {
-            let currentBuff = structuredClone(buff);
-            if (source.combatDetails.combatStats.drinkConcentration > 0 && consumable.catagoryHrid.includes("drink")) {
-                currentBuff.ratioBoost *= (1 + source.combatDetails.combatStats.drinkConcentration);
-                currentBuff.flatBoost *= (1 + source.combatDetails.combatStats.drinkConcentration);
-                currentBuff.duration = currentBuff.duration / (1 + source.combatDetails.combatStats.drinkConcentration);
-            }
+            let currentBuff = scaleConsumableBuff(buff, consumable, source.combatDetails.combatStats.drinkConcentration);
             source.addBuff(currentBuff, this.simulationTime);
             // console.log("Added buff:", currentBuff);
             let checkBuffExpirationEvent = new CheckBuffExpirationEvent(this.simulationTime + currentBuff.duration, source);
@@ -1284,15 +1280,7 @@ class CombatSimulator extends EventTarget {
             let targets = source.isPlayer ? this.players : this.enemies;
             for (const target of targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0)) {
                 for (const buff of abilityEffect.buffs) {
-                    if (ability.isSpecialAbility && buff.multiplierForSkillHrid && buff.multiplierPerSkillLevel > 0) {
-                        let multiplier = 1.0 + source.combatDetails[buff.multiplierForSkillHrid.split('/')[2] + 'Level'] * buff.multiplierPerSkillLevel;
-                        let currentBuff = structuredClone(buff);
-                        currentBuff.flatBoost *= multiplier;
-                        currentBuff.ratioBoost *= multiplier;
-                        target.addBuff(currentBuff, this.simulationTime);
-                    } else {
-                        target.addBuff(buff, this.simulationTime);
-                    }
+                    target.addBuff(scaleAbilityBuff(buff, ability, source), this.simulationTime);
                     let checkBuffExpirationEvent = new CheckBuffExpirationEvent(this.simulationTime + buff.duration, target);
                     this.eventQueue.addEvent(checkBuffExpirationEvent);
                 }

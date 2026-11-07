@@ -604,7 +604,7 @@ function changeEquipmentSetListener() {
 
 // #region Combat Stats
 
-// The visible player as the engine has it at time 0 of a simulation of the selected zone: the DTO the
+// The visible player as the engine has it at time 0 of a simulation of the selected zone, with the slotted drinks and the equipped auras on (as in the first seconds of a fight): the DTO the
 // worker gets and the worker's own setup (src/simSetup.js), so house rooms, achievements, guild buffs,
 // labyrinth upgrades (labyrinth simulations only), zone buffs, Moo Pass, community and personal buffs are in.
 function getCombatStatsUnit() {
