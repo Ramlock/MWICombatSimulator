@@ -80,7 +80,7 @@ A userscript can read every message (our exporter's `MessageEvent.prototype.data
 | (a) Userscript to a local helper | `GM_xmlhttpRequest` POSTs each new line to `http://127.0.0.1:<port>`; the helper appends to the jsonl and owns the cursor | unattended, append-only, one writer, cursor lives with the file, the helper can be the watcher | one more process to run; a local HTTP port other pages could try to reach |
 | (b) File System Access API | `showDirectoryPicker` once; the page appends to a file in the picked folder | no helper | the permission needs a click again after the browser restarts, so it breaks unattended; the handle belongs to the page, not the script manager; Chrome only |
 | (c) Periodic downloads | `GM_download` or an anchor download | no helper | no append: a new file per batch, in Downloads, which is not the target folder; duplicates; a download prompt in some setups |
-| (d) A script that holds its own game connection | a bot logs in and listens | no browser needed | needs his login or session token; **no credential-free way exists** (the socket authenticates with the account's session), a second connection may also kick or flag the first, so it is out |
+| (d) A script that holds its own game connection | a bot logs in and listens | no browser needed | needs the account's login or session token; **no credential-free way exists** (the socket authenticates with the account's session), a second connection may also kick or flag the first, so it is out |
 
 **Recommendation: (a).** Hardening it needs:
 
@@ -102,15 +102,15 @@ A userscript can read every message (our exporter's `MessageEvent.prototype.data
 
 ### The cursor: "always from the last message it knew of"
 
-- The helper holds the cursor: `{id, t}` of the newest guild line it wrote, in `state\cursor.json` beside the helper (ids and times only, never text; the state file is saved to a temp file, flushed, then swapped, with a `.bak`, as the CGS watchers do).
+- The helper holds the cursor: `{id, t}` of the newest guild line it wrote, in `state\cursor.json` beside the helper (ids and times only, never text; the state file is saved to a temp file, flushed, then swapped, with a `.bak`, as a typical chat watcher does).
 - On every connect the script reads `init_character_data.guildChatHistory`, asks `GET /v1/cursor`, and sends only the lines **after** the cursor (by position of the cursor's `id` in the array, falling back to `t` if the id is not found). The same dedupe applies to a `guild_chat_history_updated` array and to a reconnect. The helper also drops any `id` it already holds (a small set of the last 1,000 ids, rebuilt from the file's tail at start), so a repeated history cannot double-write.
 - **After the tab was closed for an hour:** the next connect brings the history. If the cursor's line is inside it, everything after it is written with `src:"history"` and no gap. If the history's oldest line is newer than the cursor, the lines between are not obtainable (the client cannot ask for older chat): the helper writes one `gap` line `{from: cursor t, to: oldest t in the history}` and then the lines. The first-ever run has no cursor: it writes the history as `history` lines and marks a `gap` from nothing; the watcher (below) hands over none of it.
 - A line older than the cursor's `t` that appears later (a late arrival) is written once if its `id` is new, tagged `late:true`.
 
 ### The watcher
 
-- A `Watch-GuildChat.ps1` in the project (`D:\Git\MWI\tools\`, private repo, owned by `MWI Manager`), modelled on the CGS Discord watcher (`D:\Git\CGS\Docs\Handbook\Tooling\chat-watchers.md`): each run is one drain, reads the jsonl from its own saved cursor, hands the new `msg` lines to the recipient as **one session message per drain**, and advances its cursor **only after the send succeeded**. State holds ids and byte offsets only, never text, git-ignored, with `.bak` recovery. Delete the state and the next run hands over nothing old. `gap` and `session` lines are handed over only as a one-line count ("1 gap, 2 hours"), `update` lines only when they delete a line already handed over.
-- The recipient is a choice for `MWI Manager` (question 1). A drain should skip `system` lines and the account's own lines by default (question 4).
+- A watcher script (not built; it would live with the helper, outside this repo), modelled on a chat-tail watcher that hands a session each new line once from a saved cursor: each run is one drain, reads the jsonl from its own saved cursor, hands the new `msg` lines to the recipient as **one session message per drain**, and advances its cursor **only after the send succeeded**. State holds ids and byte offsets only, never text, git-ignored, with `.bak` recovery. Delete the state and the next run hands over nothing old. `gap` and `session` lines are handed over only as a one-line count ("1 gap, 2 hours"), `update` lines only when they delete a line already handed over.
+- The recipient is the owner's choice (question 1). A drain should skip `system` lines and the account's own lines by default (question 4).
 
 ### Read-only guarantees
 
@@ -129,11 +129,33 @@ A userscript can read every message (our exporter's `MessageEvent.prototype.data
 - Chat translation on: `m` may be the translation; `o` is kept when present, so a check for `o` is part of the first logged session.
 - The game's multi-tab behaviour: two tabs would both send; the helper's id dedupe makes that harmless.
 
-## 4. Open questions for MWI Manager
+## 4. Open questions (as asked in batch 1; the answers are in section 5)
 
-1. **Recipient of the drain.** Recommendation: `MWI Manager`, who routes to whoever needs it; a worker session is not permanent.
+1. **Recipient of the drain.** Recommendation: the owner's coordinating session, which routes to whoever needs it.
 2. **Folder.** Recommendation: a private folder outside every repo, as above (needs a granted private folder).
 3. **Retention.** Other people's words sit on disk indefinitely. Recommendation: monthly files, keep 12 months, then delete; the helper does not prune, a separate command does, run by the owner.
-4. **What a drain hands over.** Recommendation: other people's non-system lines only; his own lines and system lines stay in the file but are not handed over.
+4. **What a drain hands over.** Recommendation: other people's non-system lines only; the account's own lines and system lines stay in the file but are not handed over.
 5. **Is a first live capture allowed?** Every "unverified" above is settled by one real session with a throwaway logging build (the exporter plus a `console.log` of the guild channel's raw messages, to the browser console only, nothing stored). Recommendation: yes, before any build, and the owner reads the console themself since the content is other people's words.
-6. **The helper's language and where it lives.** Recommendation: PowerShell 5.1 `HttpListener` (no install, same as the other project tools), source under `D:\Git\MWI\tools\`, run by a scheduled task or a long-lived loop as the CGS watchers are.
+6. **The helper's language and where it lives.** Recommendation: PowerShell 5.1 `HttpListener` (no install, same as the other project tools), source kept with the owner's private tools, run by a scheduled task or a long-lived loop.
+
+## 5. As built (batch 2, 2026-11-07)
+
+Built: the userscript `userscript/mwics-guildchat.user.js` (tests: `userscript/test/guildchat.test.cjs`, run `node userscript/test/guildchat.test.cjs`) and a reference helper (PowerShell 5.1 `HttpListener`, kept in the owner's private repo, so not in this fork). Not built: the watcher that hands lines to a session; nothing reads the file yet. Nothing is deleted or pruned: the file keeps every line, system and own lines included.
+
+Where the build differs from or fixes the proposal above:
+
+- The **userscript** writes the `gap` line (it sees the history array and the helper's cursor), not the helper. The helper accepts four line types (`msg`, `update`, `gap`, `session`), drops unknown fields, clips text at 4,000 characters and refuses a bad `v`, `type`, time or `src`.
+- Wire protocol: `POST /v1/lines` with a JSON array (at most 256 lines, 256 KiB; over either is `413`, a non-array is `400`) and `GET /v1/cursor` (`{"id","t"}` or `{}`); header `X-MWI-Token`; `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (else `403`); a wrong or missing token is `401` with no body. An `Origin` is accepted when absent, from a script manager's extension scheme, or from the game's own pages; any other web page is `403`. No CORS headers are ever sent. Default port `47631`, bound to `127.0.0.1` only.
+- The helper dedupes `msg` ids against the last 1,000 (rebuilt from the file's tail on start), flags a line older than the cursor `late:true`, and writes `update` deletions once per id. The cursor (newest `msg` by time) is saved after every batch to a state file next to the chat file (ids and times only; temp file, flush, swap, `.bak`), and rebuilt from the file tail if both are unreadable.
+- The helper's log carries a timestamp, route, status and counts only; no message text or sender name ever enters the log or the state file.
+- The userscript queues up to 1,000 lines while the helper is unreachable, retries with backoff (2 s doubling to 60 s), and past the cap drops the oldest and writes one `gap` line once the helper is back. One toast tells the user when the helper is unreachable or the token is wrong.
+- Read-only: a test greps the userscript source (comments excluded) for a socket `.send(`, the chat request types, `new WebSocket`, `localStorage`, `sessionStorage`, `document.cookie`, `indexedDB`, `dispatchEvent`, `click()` and for any network host other than the local helper, and fails on any.
+- Still unverified until the first real session: history depth, id type and order, `o` when translation is on, whether a normal member ever receives a deleted line, and whether the script manager sends an `Origin` (the helper accepts both cases).
+
+### Install (five steps)
+
+1. Install `mwics-guildchat.user.js` in Tampermonkey (open the raw file) and accept the `@connect 127.0.0.1` prompt on first use.
+2. Run the helper's start script once; it prints a token (shown once) and starts listening.
+3. In the game tab: Tampermonkey menu, MWICS Guild Chat Export, Set helper token, paste it.
+4. Reload the game tab.
+5. Done: lines appear in the helper's folder as `guild-YYYY-MM.jsonl`; the menu's Status entry shows live, sent and queued counts.
