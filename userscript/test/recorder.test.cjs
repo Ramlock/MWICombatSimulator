@@ -266,9 +266,159 @@ test('persistence round trip, clear, and the caps drop the oldest rows', () => {
     assert.equal(r.state.encounters[2].battleId, 15);
 });
 
-test('the module has no network or storage calls of its own', () => {
+test('the recorder and the sink have no network or storage calls of their own; the only request goes to a local helper', () => {
     const src = fs.readFileSync(path.join(ROOT, 'userscript', 'mwics-exporter.user.js'), 'utf8');
-    for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'GM_xmlhttpRequest', 'sendBeacon']) assert.ok(!src.includes(bad), bad);
+    const pure = src.slice(src.indexOf('==/UserScript=='), src.indexOf("if (typeof module !== 'undefined' && module.exports)"));
+    for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'GM_', 'sendBeacon', 'WebSocket']) assert.ok(!pure.includes(bad), 'module part: ' + bad);
+    for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'sendBeacon', 'new WebSocket']) assert.ok(!src.includes(bad), bad);
+    assert.equal((src.match(/GM_xmlhttpRequest\(/g) || []).length, 1);
+    assert.deepEqual(src.match(/^\/\/ @connect\s+\S+/gm).map((l) => l.split(/\s+/).pop()), ['127.0.0.1', 'localhost']);
+    assert.ok(/url: helperUrl\(\) \+ '\/v1\/combat'/.test(src));
+    assert.ok(/\^http:\\\/\\\/\(127\\\.0\\\.0\\\.1\|localhost\):\\d\+\$/.test(src), 'the helper address is limited to localhost');
+});
+
+// ---- helper sink ----
+const { createSink, SINK } = mod.exports;
+function sinkFor(r, o) {
+    o = o || {};
+    const calls = [], timers = [];
+    let t = 1e6;
+    const sink = createSink({
+        recorder: r, enabled: () => o.enabled !== false, selfOnly: () => !!o.selfOnly, sent: o.sent, saveSent: o.saveSent,
+        post: async (body) => { calls.push(J(body)); return o.respond ? o.respond(body, calls.length) : { ok: true, status: 200, text: JSON.stringify({ accepted: body.records.length, duplicate: 0, rejected: 0 }) }; },
+        now: () => t, setTimer: (fn, ms) => timers.push({ fn, ms }), log() {},
+    });
+    return { sink, calls, timers, advance: (ms) => { t += ms; } };
+}
+const tick = () => new Promise((res) => setImmediate(res));
+const run = (r, s, n0, n1) => { for (let i = n0; i <= n1; i++) { r.handle(NB(i, [unit()], [mon('/monsters/m')]), 1000 + i * 100); s.sink.notify(); } };
+const settle = async (s) => { await s.sink.finish(); for (let i = 0; i < 20; i++) await tick(); };
+const keysOf = (calls) => calls.flatMap((c) => c.records.map((x) => x.key));
+
+async function atest(name, fn) { await fn(); n++; console.log('ok - ' + name); }
+
+(async () => {
+await atest('sink: an encounter goes out only after four later ones have closed; window and tasks go at once', async () => {
+    const r = fresh(), s = sinkFor(r);
+    r.handle({ type: 'quests_updated', endCharacterQuests: [{ status: '/quest_status/in_progress', category: 'c', monsterHrid: '/monsters/m', goalCount: 5, currentCount: 1 }] }, 900);
+    s.sink.notify();
+    run(r, s, 1, 3);
+    await tick();
+    let types = s.calls.flatMap((c) => c.records.map((x) => x.type));
+    assert.ok(!types.includes('encounter'));
+    assert.ok(types.includes('window') && types.includes('task'));
+    run(r, s, 4, 8);
+    await tick();
+    const encs = s.calls.flatMap((c) => c.records).filter((x) => x.type === 'encounter');
+    assert.equal(r.state.encounters.length, 7);
+    assert.equal(encs.length, 3);
+    assert.ok(encs.every((x) => x.key.startsWith('enc:') && x.data.battleId));
+    assert.ok(s.calls.every((c) => c.v === 1 && c.records.length <= SINK.BATCH_RECORDS));
+});
+
+await atest('sink: finish() sends the rest, nothing is sent twice, and the idle timer sends the tail', async () => {
+    const r = fresh(), s = sinkFor(r);
+    run(r, s, 1, 8);
+    await tick();
+    const before = keysOf(s.calls).length;
+    await settle(s);
+    const all = keysOf(s.calls);
+    assert.equal(new Set(all).size, all.length, 'no key twice');
+    assert.equal(all.filter((k) => k.startsWith('enc:')).length, 7);
+    assert.ok(all.length > before);
+    const r2 = fresh(), s2 = sinkFor(r2);
+    run(r2, s2, 1, 8);
+    await tick();
+    s2.advance(SINK.IDLE_MS + 1);
+    s2.timers.forEach((x) => x.fn());
+    await tick(); await tick();
+    assert.equal(keysOf(s2.calls).filter((k) => k.startsWith('enc:')).length, 7);
+});
+
+await atest('sink: a failed send keeps the queue and retries with a doubling wait; 413 halves the batch', async () => {
+    const r = fresh();
+    let fail = 2;
+    const s = sinkFor(r, { respond: (b) => (fail-- > 0 ? { ok: false, status: 0 } : { ok: true, status: 200, text: JSON.stringify({ accepted: b.records.length, duplicate: 0, rejected: 0 }) }) });
+    run(r, s, 1, 8);
+    await tick();
+    assert.equal(s.sink.state.stats.failed, 1);
+    const retry1 = s.timers.filter((x) => x.ms === SINK.RETRY_MIN_MS);
+    assert.equal(retry1.length, 1);
+    retry1[0].fn(); await tick();
+    assert.equal(s.sink.state.stats.failed, 2);
+    assert.ok(s.timers.some((x) => x.ms === SINK.RETRY_MIN_MS * 2));
+    s.timers.filter((x) => x.ms === SINK.RETRY_MIN_MS * 2)[0].fn(); await tick();
+    assert.equal(s.sink.state.queue.length, 0);
+    assert.ok(keysOf(s.calls.slice(2)).some((k) => k.startsWith('enc:')));
+
+    const r2 = fresh();
+    const sizes = [];
+    const s2 = sinkFor(r2, { respond: (b) => { sizes.push(b.records.length); return b.records.length > 2 ? { ok: false, status: 413 } : { ok: true, status: 200, text: '{"accepted":1,"duplicate":0,"rejected":0}' }; } });
+    run(r2, s2, 1, 12);
+    await settle(s2);
+    assert.equal(s2.sink.state.queue.length, 0);
+    assert.ok(sizes.some((x) => x > 2) && sizes[sizes.length - 1] <= 2);
+});
+
+await atest('sink: a record the helper keeps refusing is dropped from the queue, not retried forever', async () => {
+    const r = fresh();
+    const s = sinkFor(r, { respond: () => ({ ok: false, status: 400 }) });
+    run(r, s, 1, 8);
+    await settle(s);
+    assert.equal(s.sink.state.queue.length, 0);
+    assert.ok(s.sink.state.stats.rejected > 0);
+});
+
+await atest('sink: sent keys are remembered across a reload; a window re-sent only when it changed', async () => {
+    const r = fresh();
+    let saved = [];
+    const s = sinkFor(r, { saveSent: (k) => { saved = k.slice(); } });
+    run(r, s, 1, 8);
+    await settle(s);
+    assert.ok(saved.length > 0);
+    const wins = keysOf(s.calls).filter((k) => k.startsWith('win:'));
+    assert.ok(wins.length >= 1);
+    const s2 = sinkFor(r, { sent: saved });
+    await settle(s2);
+    assert.equal(s2.calls.length, 0, 'nothing new after a reload');
+    run(r, s2, 9, 12);
+    await settle(s2);
+    const k2 = keysOf(s2.calls);
+    assert.ok(k2.every((k) => !saved.includes(k)));
+    assert.ok(k2.some((k) => k.startsWith('win:')), 'the window changed (more battles), a new revision goes');
+});
+
+await atest('sink: nothing is queued when disabled; selfOnly holds until self is known, then sends only the self slot', async () => {
+    const r = fresh(), off = sinkFor(r, { enabled: false });
+    run(r, off, 1, 8);
+    await settle(off);
+    assert.equal(off.calls.length, 0);
+    const r2 = fresh(), s = sinkFor(r2, { selfOnly: true });
+    run(r2, s, 1, 8);
+    await settle(s);
+    assert.equal(s.calls.length, 0, 'self unknown: held');
+    const r3 = fresh(), s3 = sinkFor(r3, { selfOnly: true });
+    r3.handle({ type: 'init_character_data', character: { id: 7 } }, 500);
+    for (let i = 1; i <= 8; i++) { r3.handle(NB(i, [unit({ character: { id: 7 } }), unit({ character: { id: 8 } })], [mon('/monsters/m')]), 1000 + i * 100); s3.sink.notify(); }
+    await settle(s3);
+    const recs = s3.calls.flatMap((c) => c.records).filter((x) => x.type === 'encounter' || x.type === 'window');
+    assert.ok(recs.length > 0);
+    assert.ok(recs.every((x) => x.data.players.length === 1 && x.data.players[0].self));
+    assert.ok(!JSON.stringify(s3.calls).includes('"id":8'));
+});
+
+await atest('sink: no names or ids travel; the window sent has no internal key', async () => {
+    const r = fresh(), s = sinkFor(r);
+    r.handle({ type: 'init_character_data', character: { id: 7, name: 'Someone' } }, 500);
+    r.handle(NB(1, [unit({ character: { id: 7, name: 'Someone' } })], [mon('/monsters/m')]), 1000);
+    s.sink.notify();
+    r.handle(NB(2, [unit({ character: { id: 7, name: 'Someone' } })], [mon('/monsters/m')]), 1100);
+    await settle(s);
+    const text = JSON.stringify(s.calls);
+    assert.ok(!text.includes('Someone'));
+    const w = s.calls.flatMap((c) => c.records).find((x) => x.type === 'window');
+    assert.ok(!('key' in w.data) || w.data.key === undefined);
 });
 
 console.log(n + ' tests passed');
+})().catch((e) => { console.error(e); process.exit(1); });

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         MWICS Exporter
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.2.0
-// @description  Read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot). Sends nothing anywhere and presses nothing in the game.
+// @version      0.3.0
+// @description  Read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
 // @match        https://www.milkywayidle.com/*
@@ -12,7 +12,10 @@
 // @grant        GM_setClipboard
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
+// @connect      127.0.0.1
+// @connect      localhost
 // @downloadURL  https://raw.githubusercontent.com/Ramlock/MWICombatSimulator/main/userscript/mwics-exporter.user.js
 // @updateURL    https://raw.githubusercontent.com/Ramlock/MWICombatSimulator/main/userscript/mwics-exporter.user.js
 // ==/UserScript==
@@ -232,6 +235,12 @@
             return { loot, xp: { ...(p.totalSkillExperienceMap || {}) }, abilityXp: { ...(p.totalAbilityExperienceMap || {}) }, deaths: nz(p.deathCount, 0), cons, buffs };
         });
     }
+
+    // Views of a row for the file and for the helper: the window without its internal key, and the party cut to the self slot.
+    const plainWin = (w) => ({ ...w, key: undefined });
+    const pickSelfWin = (w) => ({ ...w, key: undefined, players: w.players.filter((p) => p.self) });
+    const pickSelfEnc = (e) => ({ ...e, players: e.players.filter((p) => p.self), ambiguous: e.ambiguous.filter((a) => (a.target.side === 'p' && e.players.some((p) => p.self && p.slot === a.target.idx)) || a.target.side === 'm') });
+    const hasSelf = (S) => S.windows.some((w) => w.players.some((p) => p.self)) || S.encounters.some((e) => e.players.some((p) => p.self));
 
     function createRecorder(opts) {
         opts = opts || {};
@@ -543,14 +552,13 @@
 
         // ---- export ----
         function exportData(selfOnly, nowMs) {
-            const wins = S.windows.map((w) => ({ ...w, key: undefined }));
+            const wins = S.windows.map(plainWin);
             let encs = S.encounters;
             let sel = wins;
             if (selfOnly) {
-                const hasSelf = wins.some((w) => w.players.some((p) => p.self)) || encs.some((e) => e.players.some((p) => p.self));
-                if (!hasSelf) throw new Error('selfOnly is on but the recorder cannot tell which player is you (reload the game page once with the exporter on, then fight).');
-                sel = wins.map((w) => ({ ...w, players: w.players.filter((p) => p.self) }));
-                encs = encs.map((e) => ({ ...e, players: e.players.filter((p) => p.self), ambiguous: e.ambiguous.filter((a) => (a.target.side === 'p' && e.players.some((p) => p.self && p.slot === a.target.idx)) || a.target.side === 'm') }));
+                if (!hasSelf(S)) throw new Error('selfOnly is on but the recorder cannot tell which player is you (reload the game page once with the exporter on, then fight).');
+                sel = wins.map(pickSelfWin);
+                encs = encs.map(pickSelfEnc);
             }
             return { format: 'mwics-loot', version: 1, exportedAt: new Date(nowMs || Date.now()).toISOString(), selfOnly: !!selfOnly, attribution: 'counter (exact) unless a field says heuristic; ambiguous ticks are raw, flagged, and split afterwards', windows: sel, encounters: encs, tasks: S.quests, lootLog: [], notes: { ...S.stats, openEncounterNotExported: !!S.cur } };
         }
@@ -562,8 +570,144 @@
         return { handle, exportData, persistable, restore, clear, state: S };
     }
 
+    // ---- Helper sink ----
+    // Hands the recorder's finished rows to a local helper (POST /v1/combat, docs/codebase/toolasha-loot-tracker.md, "Writing to disk").
+    // It never touches the network itself: deps.post(body) -> Promise<{ok, status, text}> does, in the browser part. It only reads the recorder.
+    // Queue and retry as the guild chat script; keys already handed over are remembered (deps.sent, deps.saveSent) so a reload does not resend.
+    // An encounter is held back until SINK.DELAY later ones have closed: heal series credit a consume record up to 4 encounters late.
+    const SINK = { DELAY: 4, BATCH_RECORDS: 64, BATCH_BYTES: 900 * 1024, MAX_QUEUE: 2000, MAX_SENT: 5000, RETRY_MIN_MS: 2000, RETRY_MAX_MS: 60000, WINDOW_MS: 600000, IDLE_MS: 90000, FORMAT_VERSION: 1 };
+    const encKey = (e) => 'enc:' + e.startedAt + ':' + e.battleId;
+    const winKeyOf = (w) => 'win:' + w.startedAt + '#' + w.battles + '.' + w.buffEvents.length + (w.open ? '' : '.c');
+
+    function createSink(deps) {
+        const S = deps.recorder.state;
+        const st = {
+            sent: new Set(deps.sent || []), order: (deps.sent || []).slice(), queued: new Set(), queue: [], maxRecords: SINK.BATCH_RECORDS,
+            retryMs: SINK.RETRY_MIN_MS, flushing: false, timerSet: false, idleSet: false, lastActivity: 0, sig: '', lastWin: new Map(),
+            stats: { accepted: 0, duplicate: 0, rejected: 0, failed: 0, dropped: 0, lastStatus: null },
+        };
+
+        function add(key, type, data) {
+            if (st.sent.has(key) || st.queued.has(key)) return;
+            st.queued.add(key);
+            st.queue.push({ key, type, data });
+            if (st.queue.length > SINK.MAX_QUEUE) { st.queued.delete(st.queue.shift().key); st.stats.dropped++; }
+        }
+
+        // Looks at the recorder and queues what is new. final: also the encounters still inside the delay and the open window.
+        function scan(final) {
+            if (!deps.enabled()) return;
+            const selfOnly = !!deps.selfOnly();
+            if (selfOnly && !hasSelf(S)) return; // held: the rows go once the self slot is known
+            const lastW = S.windows[S.windows.length - 1];
+            const sig = [S.stats.closed, S.windows.length, lastW ? lastW.buffEvents.length + '.' + lastW.battles + (lastW.open ? 'o' : 'c') : '', S.quests.length, S.quests.length ? S.quests[S.quests.length - 1].t : ''].join('|');
+            if (!final && sig === st.sig) return;
+            st.sig = sig;
+            const encs = S.encounters;
+            for (let i = 0; i < encs.length; i++) {
+                if (!final && encs.length - 1 - i < SINK.DELAY) break;
+                add(encKey(encs[i]), 'encounter', selfOnly ? pickSelfEnc(encs[i]) : encs[i]);
+            }
+            for (const w of S.windows) {
+                const key = winKeyOf(w);
+                if (st.sent.has(key) || st.queued.has(key)) continue;
+                if (w.open && !final) {
+                    const last = st.lastWin.get(w.startedAt);
+                    if (last !== undefined && deps.now() - last < SINK.WINDOW_MS) continue;
+                }
+                st.lastWin.set(w.startedAt, deps.now());
+                add(key, 'window', selfOnly ? pickSelfWin(w) : plainWin(w));
+            }
+            for (const q of S.quests) add('task:' + q.t, 'task', q);
+        }
+
+        function takeBatch() {
+            const out = [];
+            let bytes = 32;
+            for (const r of st.queue) {
+                const size = JSON.stringify(r).length + 1;
+                if (out.length >= st.maxRecords || (out.length && bytes + size > SINK.BATCH_BYTES)) break;
+                out.push(r);
+                bytes += size;
+            }
+            return out;
+        }
+
+        function markSent(batch) {
+            for (const r of batch) {
+                st.queued.delete(r.key);
+                if (!st.sent.has(r.key)) { st.sent.add(r.key); st.order.push(r.key); }
+            }
+            st.queue.splice(0, batch.length);
+            while (st.order.length > SINK.MAX_SENT) st.sent.delete(st.order.shift());
+            if (deps.saveSent) deps.saveSent(st.order);
+        }
+
+        async function flush() {
+            if (st.flushing || !deps.enabled()) return;
+            st.flushing = true;
+            try {
+                while (st.queue.length) {
+                    const batch = takeBatch();
+                    let res;
+                    try { res = await deps.post({ v: SINK.FORMAT_VERSION, records: batch }); } catch { res = { ok: false, status: 0 }; }
+                    st.stats.lastStatus = res ? res.status : 0;
+                    if (res && res.ok) {
+                        try { const b = JSON.parse(res.text); st.stats.accepted += b.accepted | 0; st.stats.duplicate += b.duplicate | 0; st.stats.rejected += b.rejected | 0; } catch { /* counts only */ }
+                        markSent(batch);
+                        st.retryMs = SINK.RETRY_MIN_MS;
+                        continue;
+                    }
+                    if (res && (res.status === 413 || res.status === 400)) {
+                        if (batch.length > 1) { st.maxRecords = Math.max(1, Math.floor(batch.length / 2)); continue; }
+                        st.stats.rejected++; // a single record the helper refuses: not retried, still in the in-browser record
+                        markSent(batch);
+                        continue;
+                    }
+                    st.stats.failed++;
+                    deps.log('send failed status=' + (res ? res.status : 'none') + ' queued=' + st.queue.length);
+                    scheduleRetry();
+                    return;
+                }
+            } finally {
+                st.flushing = false;
+            }
+        }
+
+        function scheduleRetry() {
+            if (st.timerSet) return;
+            st.timerSet = true;
+            const wait = st.retryMs;
+            st.retryMs = Math.min(st.retryMs * 2, SINK.RETRY_MAX_MS);
+            deps.setTimer(() => { st.timerSet = false; flush(); }, wait);
+        }
+
+        // After a quiet stretch the rows still inside the delay go too.
+        function armIdle() {
+            if (st.idleSet) return;
+            st.idleSet = true;
+            deps.setTimer(() => {
+                st.idleSet = false;
+                if (deps.now() - st.lastActivity >= SINK.IDLE_MS) { scan(true); flush(); } else armIdle();
+            }, SINK.IDLE_MS);
+        }
+
+        // Called after every message the recorder handled.
+        function notify() {
+            st.lastActivity = deps.now();
+            scan(false);
+            if (st.queue.length) flush();
+            if (deps.enabled()) armIdle();
+        }
+
+        // Page hidden or closing: everything not yet queued goes into the queue and one send is tried.
+        function finish() { scan(true); return flush(); }
+
+        return { notify, finish, flush, scan, state: st };
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { buildExport, KINDS, defaultToggles, createRecorder, gameData, REC, REC_TYPES };
+        module.exports = { buildExport, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -579,6 +723,41 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
+    const VERSION = '0.3.0'; // keep equal to @version (a test checks it)
+    const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
+    let helperToast = false;
+    function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
+    function helperToken() { return String(GM_getValue(HELPER_TOKEN_KEY, '')); }
+    function loadSent() { try { const a = JSON.parse(GM_getValue(SENT_KEY, '[]')); return Array.isArray(a) ? a : []; } catch { return []; } }
+    function helperRequest(body) {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: helperUrl() + '/v1/combat',
+                headers: { 'X-MWI-Token': helperToken(), 'Content-Type': 'application/json' },
+                data: JSON.stringify(body),
+                timeout: 10000,
+                onload: (r) => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
+                onerror: () => resolve({ ok: false, status: 0 }),
+                ontimeout: () => resolve({ ok: false, status: 0 }),
+            });
+        });
+    }
+    const sink = createSink({
+        recorder,
+        enabled: () => !!recToggles.recorder && recToggles.sendToHelper !== false && helperToken() !== '',
+        selfOnly: () => !!recToggles.selfOnly,
+        sent: loadSent(),
+        saveSent: (keys) => { try { GM_setValue(SENT_KEY, JSON.stringify(keys)); } catch (err) { console.error('[MWICS Exporter] could not save the sent keys', err); } },
+        post: async (body) => {
+            const r = await helperRequest(body);
+            if (!r.ok && !helperToast && document.body) { helperToast = true; toast('MWICS Exporter: helper not reachable or token wrong (status ' + r.status + '). Recorded data is kept and sending is retried.'); }
+            return r;
+        },
+        now: () => Date.now(),
+        setTimer: (fn, ms) => setTimeout(fn, ms),
+        log: (text) => console.debug('[MWICS Exporter] ' + text),
+    });
     function loadRecorded() {
         try {
             const w = JSON.parse(GM_getValue(REC_WIN_KEY, 'null')), e = JSON.parse(GM_getValue(REC_ENC_KEY, 'null'));
@@ -616,10 +795,11 @@
                     const type = m ? m[1] : null;
                     if (type === 'init_character_data' || message.includes('"init_character_data"')) {
                         const obj = JSON.parse(message);
-                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; if (recToggles.recorder) recorder.handle(obj, Date.now()); }
+                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
                     } else if (recToggles.recorder && type && REC_TYPES.includes(type)) {
                         recorder.handle(JSON.parse(message), Date.now());
                         if (recorder.state.dirty >= 20) saveRecorded();
+                        sink.notify();
                     }
                 }
             } catch (e) {
@@ -649,18 +829,48 @@
         toast('MWICS Exporter: copied (character data from ' + latest.receivedAt.toLocaleTimeString() + ').');
     }
 
-    function copyLootExport() {
-        if (!recorder.state.encounters.length) { toast('MWICS Exporter: nothing recorded yet. Fight for a few encounters first (the recorder needs a battle that starts after the page loaded).'); return; }
-        try {
-            const json = JSON.stringify(recorder.exportData(!!recToggles.selfOnly));
-            GM_setClipboard(json, 'text');
-            toast('MWICS Exporter: loot export copied (' + recorder.state.encounters.length + ' encounters, ' + (json.length / 1048576).toFixed(2) + ' MB).');
-        } catch (e) { toast('MWICS Exporter: ' + e.message); }
+    // The combat recording as one JSON text; null (with a toast) when there is nothing to give.
+    function recordingJson() {
+        if (!recorder.state.encounters.length) { toast('MWICS Exporter: nothing recorded yet. Fight for a few encounters first (the recorder needs a battle that starts after the page loaded).'); return null; }
+        try { return JSON.stringify(recorder.exportData(!!recToggles.selfOnly)); } catch (e) { toast('MWICS Exporter: ' + e.message); return null; }
     }
-    function clearLoot() {
+    function copyRecording() {
+        const json = recordingJson();
+        if (json === null) return;
+        GM_setClipboard(json, 'text');
+        toast('MWICS Exporter: combat recording copied (' + recorder.state.encounters.length + ' encounters, ' + (json.length / 1048576).toFixed(2) + ' MB).');
+    }
+    // Same content as the copy, written to a downloaded file (no clipboard), for players without a helper.
+    function saveRecording() {
+        const json = recordingJson();
+        if (json === null) return;
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'mwics-combat-recording-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast('MWICS Exporter: combat recording saved as a file (' + recorder.state.encounters.length + ' encounters, ' + (json.length / 1048576).toFixed(2) + ' MB).');
+    }
+    function clearRecording() {
         recorder.clear();
         saveRecorded();
-        toast('MWICS Exporter: recorded loot cleared.');
+        toast('MWICS Exporter: recorded combat data cleared (what the helper already wrote to disk stays).');
+    }
+    function setHelperToken() {
+        const v = page.prompt('Paste the token the helper printed:', helperToken());
+        if (v !== null) { GM_setValue(HELPER_TOKEN_KEY, v.trim()); helperToast = false; sink.scan(true); sink.flush(); }
+    }
+    function setHelperUrl() {
+        const v = page.prompt('Helper address:', helperUrl());
+        if (v !== null && /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(v.trim())) GM_setValue(HELPER_URL_KEY, v.trim());
+    }
+    function helperStatus() {
+        const s = sink.state.stats;
+        const on = recToggles.sendToHelper !== false && recToggles.recorder;
+        toast('MWICS Exporter v' + VERSION + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + '.');
     }
 
     function openSettings() {
@@ -672,7 +882,7 @@
         const box = document.createElement('div');
         box.style.cssText = 'background:#1e1f24;color:#e6e6e6;border:1px solid #444;border-radius:8px;padding:16px 20px;min-width:320px;font:14px sans-serif;color-scheme:dark';
         const title = document.createElement('div');
-        title.textContent = 'MWICS Exporter: what to export';
+        title.textContent = 'MWICS Exporter v' + VERSION + ': what to export';
         title.style.cssText = 'font-weight:bold;margin-bottom:10px';
         box.appendChild(title);
         for (const k of KINDS) {
@@ -687,16 +897,16 @@
             box.appendChild(row);
         }
         const sep = document.createElement('div');
-        sep.textContent = 'Combat recorder (loot, damage, healing, buffs; stays in this browser)';
+        sep.textContent = 'Combat recorder (loot, damage, healing, buffs; kept in this browser, and appended to a file when a helper token is set)';
         sep.style.cssText = 'font-weight:bold;margin:12px 0 4px';
         box.appendChild(sep);
-        for (const [key, label] of [['recorder', 'Combat recorder'], ['selfOnly', 'Only my own data (leave the other party members out of the loot export)']]) {
+        for (const [key, label] of [['recorder', 'Combat recorder'], ['sendToHelper', 'Send to the helper (needs a helper token, set from the menu)'], ['selfOnly', 'Only my own data (leave the other party members out of the recording and of what is sent to the helper)']]) {
             const row = document.createElement('label');
             row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer';
             const cb = document.createElement('input');
             cb.type = 'checkbox';
-            cb.checked = !!recToggles[key];
-            cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); });
+            cb.checked = key === 'sendToHelper' ? recToggles.sendToHelper !== false : !!recToggles[key];
+            cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); if (key === 'sendToHelper' && cb.checked) { sink.scan(true); sink.flush(); } });
             row.appendChild(cb);
             row.appendChild(document.createTextNode(label));
             box.appendChild(row);
@@ -717,10 +927,14 @@
 
     loadRecorded();
     hook();
-    page.addEventListener('pagehide', saveRecorded);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveRecorded(); });
-    GM_registerMenuCommand('Copy export', copyExport);
-    GM_registerMenuCommand('Copy loot export', copyLootExport);
-    GM_registerMenuCommand('Clear recorded loot', clearLoot);
+    page.addEventListener('pagehide', () => { saveRecorded(); sink.finish(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { saveRecorded(); sink.finish(); } });
+    GM_registerMenuCommand('Copy character export (player, gear, inventory)', copyExport);
+    GM_registerMenuCommand('Copy combat recording (clipboard)', copyRecording);
+    GM_registerMenuCommand('Save combat recording (file)', saveRecording);
+    GM_registerMenuCommand('Clear recorded combat data', clearRecording);
+    GM_registerMenuCommand('Set helper token', setHelperToken);
+    GM_registerMenuCommand('Set helper address', setHelperUrl);
+    GM_registerMenuCommand('Status', helperStatus);
     GM_registerMenuCommand('Settings', openSettings);
 })();
