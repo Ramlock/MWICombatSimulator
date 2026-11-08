@@ -121,5 +121,10 @@
     },
     "simLabyrinth" : "模拟迷宫",
     "simAllLabyrinths" : "模拟所有迷宫",
-    "roomLevel" : "房间等级"
+    "roomLevel" : "房间等级",
+    "selectCharacter": "选择角色：",
+    "configureTrigger": "配置触发器",
+    "error": "错误",
+    "copyToClipboard": "复制到剪贴板",
+    "none": "无"
 }
