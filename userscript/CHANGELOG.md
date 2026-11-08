@@ -4,6 +4,12 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWICS Exporter (`mwics-exporter.user.js`)
 
+### 0.4.0 (2026-11-08)
+
+- New menu command "Copy group export (party, for Group Combat import)": copies your whole party in the format of the simulator's Group Combat "All players import". Your own slot is complete. For the others, abilities, food and drinks come from the battle; levels, gear, triggers, house rooms and achievements appear once you open that member's profile in the game. Anything not available is left out, so the simulator keeps its current value for it. Guild buff levels of the others are not available.
+- On the simulator page (the fork's site and local copies) the script adds an "Import party from game" button that imports the party straight from the open game tab, with no copy and paste. It refuses when the game tab has not shared a party or the data is more than 30 minutes old.
+- Still read-only toward the game.
+
 ### 0.3.0 (2026-11-07)
 
 - The combat recording can be written to a file on your own computer while you play, through a small helper program that you run yourself (queue, retry, and a one-time token pasted from the menu).
