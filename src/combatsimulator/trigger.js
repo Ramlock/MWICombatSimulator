@@ -115,9 +115,7 @@ class Trigger {
             case "/combat_trigger_conditions/maim":
             case "/combat_trigger_conditions/curse":
             case "/combat_trigger_conditions/weaken":
-                let buffHrid = "/buff_uniques";
-                buffHrid += this.conditionHrid.slice(this.conditionHrid.lastIndexOf("/"));
-                return source.combatBuffs[buffHrid];
+                return source.combatBuffs[this.getBuffHrid()];
             case "/combat_trigger_conditions/critical_aura":
             case "/combat_trigger_conditions/critical_coffee":
             case "/combat_trigger_conditions/intelligence_coffee":
@@ -135,10 +133,13 @@ class Trigger {
             case "/combat_trigger_conditions/speed_aura":
             case "/combat_trigger_conditions/toughness":
             case "/combat_trigger_conditions/enrage":
-                let buffPrefix = "/buff_uniques";
-                buffPrefix += this.conditionHrid.slice(this.conditionHrid.lastIndexOf("/"));
-                let buffs = Object.keys(source.combatBuffs).filter(buff => buff.startsWith(buffPrefix));
-                return source.combatBuffs[buffs?.[0]];
+                const buffPrefix = this.getBuffHrid();
+                for (const buff in source.combatBuffs) {
+                    if (buff.startsWith(buffPrefix)) {
+                        return source.combatBuffs[buff];
+                    }
+                }
+                return source.combatBuffs[undefined];
             case "/combat_trigger_conditions/current_hp":
                 return source.combatDetails.currentHitpoints;
             case "/combat_trigger_conditions/current_mp":
@@ -158,6 +159,14 @@ class Trigger {
             default:
                 throw new Error("Unknown conditionHrid in trigger: " + this.conditionHrid);
         }
+    }
+
+    // "/buff_uniques/<last part of the condition hrid>", built once.
+    getBuffHrid() {
+        if (this.buffHrid === undefined) {
+            this.buffHrid = "/buff_uniques" + this.conditionHrid.slice(this.conditionHrid.lastIndexOf("/"));
+        }
+        return this.buffHrid;
     }
 
     compareValue(dependencyValue) {
