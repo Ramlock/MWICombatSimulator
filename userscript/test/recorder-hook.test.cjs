@@ -54,7 +54,7 @@ await test('messages pass through unchanged, other sockets are ignored, the reco
     b.send(JSON.stringify(NB(2)), 'wss://example.com/other');
     b.send(NB(3));
     b.send(NB(4));
-    assert.deepEqual(Object.keys(b.commands), ['Copy character export (player, gear, inventory)', 'Copy combat recording (clipboard)', 'Save combat recording (file)', 'Clear recorded combat data', 'Set helper token', 'Set helper address', 'Status', 'Settings']);
+    assert.deepEqual(Object.keys(b.commands), ['Copy character export (player, gear, inventory)', 'Copy group export (party, for Group Combat import)', 'Copy combat recording (clipboard)', 'Save combat recording (file)', 'Clear recorded combat data', 'Set helper token', 'Set helper address', 'Status', 'Settings']);
     b.commands['Copy combat recording (clipboard)']();
     assert.equal(b.clip.length, 1);
     assert.equal(b.reqs.length, 0, 'no token set: nothing is sent');
@@ -132,7 +132,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0\.3\.0/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0\.4\.0/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -163,8 +163,33 @@ await test('a refused or unreachable helper keeps the data and retries; the togg
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0\.3\.0/);
-    assert.ok(SRC.includes("const VERSION = '0.3.0'"));
+    assert.match(SRC, /@version\s+0\.4\.0/);
+    assert.ok(SRC.includes("const VERSION = '0.4.0'"));
+});
+
+await test('Copy group export: reads the battle start and a shared profile from the socket, keeps profiles across a reload, never sends', async () => {
+    const store = {};
+    const b = boot(store);
+    const NAME = 'Copy group export (party, for Group Combat import)';
+    b.commands[NAME]();
+    assert.equal(b.clip.length, 0, 'no character data yet: nothing copied');
+    assert.ok(b.toasts.some((t) => /no character data/.test(t)));
+    b.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [] });
+    const mk = (id, name, ab) => unit({ isPlayer: true, name, character: { id, name }, combatAbilities: [{ abilityHrid: ab, level: 9 }], combatConsumables: [{ itemHrid: '/items/x_coffee', count: 1 }] });
+    b.send({ type: 'new_battle', battleId: 1, combatStartTime: 'x', players: [mk(2, 'Ann', '/abilities/a1'), mk(1, 'Zed', '/abilities/a2')], monsters: [{ ...unit({}), hrid: '/monsters/m' }] });
+    b.send({ type: 'profile_shared', profile: { sharableCharacter: { id: 2, name: 'Ann' }, characterSkills: [{ characterID: 2, skillHrid: '/skills/attack', level: 33 }], wearableItemMap: {} } });
+    b.commands[NAME]();
+    const g = JSON.parse(b.clip[0]);
+    assert.deepEqual(Object.keys(g), ['1', '2']);
+    assert.equal(g['1'].player.attackLevel, 33);
+    assert.equal(g['1'].abilities[1].abilityHrid, '/abilities/a1');
+    assert.equal(g['2'].name, 'Zed');
+    assert.ok(b.toasts.some((t) => /slot 1: missing .*gear/.test(t) || /missing/.test(t)));
+    assert.equal(b.reqs.length, 0);
+    const again = boot(store);
+    again.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [] });
+    again.commands[NAME]();
+    assert.equal(JSON.parse(again.clip[0])['1'].player.attackLevel, 33, 'the shared profile and the party survive a reload');
 });
 
 console.log(n + ' tests passed');

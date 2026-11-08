@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWICS Exporter
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.3.0
+// @version      0.4.0
 // @description  Read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -81,6 +81,19 @@
         return levels;
     }
 
+    // The sim's five ability slots: the special ability first, then up to four others in the order given.
+    function abilitySlots(list, clientObj) {
+        const slots = [];
+        for (let i = 0; i < 5; i++) slots.push({ abilityHrid: '', level: 1 });
+        let next = 1;
+        for (const a of list || []) {
+            if (!a?.abilityHrid) continue;
+            if (isSpecial(a.abilityHrid, clientObj)) slots[0] = { abilityHrid: a.abilityHrid, level: a.level || 1 };
+            else if (next < 5) slots[next++] = { abilityHrid: a.abilityHrid, level: a.level || 1 };
+        }
+        return slots;
+    }
+
     // Pure: builds the export from the game's init_character_data payload. A kind switched off is left out (unknown, never empty).
     function buildExport(characterObj, clientObj, toggles) {
         const on = { ...defaultToggles(), ...(toggles || {}) };
@@ -115,14 +128,7 @@
         }
 
         if (on.equippedAbilities) {
-            out.abilities = [];
-            for (let i = 0; i < 5; i++) out.abilities.push({ abilityHrid: '', level: 1 });
-            let next = 1;
-            for (const a of characterObj.combatUnit?.combatAbilities || []) {
-                if (!a?.abilityHrid) continue;
-                if (isSpecial(a.abilityHrid, clientObj)) out.abilities[0] = { abilityHrid: a.abilityHrid, level: a.level || 1 };
-                else if (next < 5) out.abilities[next++] = { abilityHrid: a.abilityHrid, level: a.level || 1 };
-            }
+            out.abilities = abilitySlots(characterObj.combatUnit?.combatAbilities, clientObj);
         }
 
         if (on.equippedAbilities || on.consumables) {
@@ -161,6 +167,115 @@
             out.coin = coin?.count || 0;
         }
         return out;
+    }
+
+    // ================= Group export (the party, for the sim's "All players import") =================
+    // Pure. The sim takes one JSON object keyed by slot "1".."5", each value a player in the same shape as buildExport. Self comes
+    // from init_character_data. The others come from what the game shows for them: the battle start (abilities, food, drinks, slot
+    // order) and, once the player opened a member's profile in the game, the shared profile (levels, gear, triggers, house, achievements).
+    // A kind nothing supplies is left out (unknown, never empty): the sim keeps the slot's prior value for it.
+    const PROFILE_MAX = 20;
+    const SLOT_KINDS = ['skillLevels', 'gear', 'equippedAbilities', 'consumables', 'triggers', 'houseRooms', 'achievements', 'guildBuffs'];
+
+    // A battle start cut down to what the group export needs, in the game's slot order.
+    function trimBattle(msg) {
+        return (msg && msg.players || []).filter((p) => p && p.isPlayer !== false).map((p) => ({
+            id: p.character?.id ?? null,
+            name: p.name || p.character?.name || '',
+            abilities: (p.combatAbilities || []).filter((a) => a?.abilityHrid).map((a) => ({ abilityHrid: a.abilityHrid, level: a.level || 1 })),
+            consumables: (p.combatConsumables || []).filter((c) => c?.itemHrid).map((c) => c.itemHrid),
+        }));
+    }
+
+    // A shared profile (the game's profile_shared message) cut down to what the group export needs; null when it names nobody.
+    function trimProfile(msg) {
+        const p = (msg && msg.profile) || null;
+        if (!p) return null;
+        const id = p.characterSkills?.[0]?.characterID ?? p.sharableCharacter?.id ?? null;
+        const name = p.sharableCharacter?.name || '';
+        if (id == null && !name) return null;
+        const out = { id, name, t: Date.now() };
+        if (Array.isArray(p.characterSkills)) {
+            out.skills = {};
+            for (const s of p.characterSkills) {
+                const k = String(s.skillHrid || '').split('/').pop();
+                if (COMBAT_SKILLS.includes(k)) out.skills[k] = s.level;
+            }
+        }
+        if (p.wearableItemMap) out.equipment = Object.values(p.wearableItemMap).filter((i) => i && COMBAT_SLOTS.includes(i.itemLocationHrid)).map((i) => ({ itemLocationHrid: i.itemLocationHrid, itemHrid: i.itemHrid, enhancementLevel: i.enhancementLevel || 0 }));
+        if (Array.isArray(p.equippedAbilities)) out.abilities = p.equippedAbilities.filter((a) => a?.abilityHrid).map((a) => ({ abilityHrid: a.abilityHrid, level: a.level || 1 }));
+        if (p.abilityCombatTriggersMap) out.abilityTriggers = p.abilityCombatTriggersMap;
+        if (p.consumableCombatTriggersMap) out.consumableTriggers = p.consumableCombatTriggersMap;
+        if (p.characterHouseRoomMap) { out.houseRooms = {}; for (const r of Object.values(p.characterHouseRoomMap)) if (r?.houseRoomHrid) out.houseRooms[r.houseRoomHrid] = r.level; }
+        if (p.characterAchievements) { out.achievements = {}; for (const a of Object.values(p.characterAchievements)) if (a?.achievementHrid) out.achievements[a.achievementHrid] = !!a.isCompleted; }
+        return out;
+    }
+
+    // ctx: { characterObj (init_character_data), clientObj, toggles, members (trimBattle result), profiles (trimProfile results) }.
+    // Returns { group, slots: [{ slot, name, self, have[], missing[] }] }, or null when no slot has any data.
+    function buildGroupExport(ctx) {
+        const on = { ...defaultToggles(), ...(ctx.toggles || {}), learnedAbilities: false, inventory: false, coin: false };
+        const co = ctx.characterObj || null, client = ctx.clientObj || null;
+        const selfId = co?.character?.id ?? null;
+        const profiles = ctx.profiles || [];
+        const roster = [];
+        for (const m of (ctx.members || []).slice(0, 5)) roster.push({ id: m.id, name: m.name, unit: m });
+        if (!roster.length && co?.partyInfo?.partySlotMap) {
+            Object.values(co.partyInfo.partySlotMap).slice(0, 5).forEach((m, i) => { if (m?.characterID != null) roster[i] = { id: m.characterID, name: '', unit: null }; });
+        }
+        const group = {}, slots = [];
+        const find = (r) => profiles.find((p) => (p.id != null && p.id === r.id) || (p.name && p.name === r.name));
+        const add = (slot, r) => {
+            const isSelf = !!co && selfId != null && r.id === selfId;
+            const prof = isSelf ? null : find(r);
+            let out; const have = [];
+            if (isSelf) {
+                out = buildExport(co, client, on);
+                if (on.skillLevels) have.push('skillLevels');
+                if (on.gear) have.push('gear');
+                if (on.equippedAbilities) have.push('equippedAbilities');
+                if (on.consumables) have.push('consumables');
+                if (on.equippedAbilities || on.consumables) have.push('triggers');
+                if (on.houseRooms) have.push('houseRooms');
+                if (on.achievements) have.push('achievements');
+                if (on.guildBuffs) have.push('guildBuffs');
+            } else {
+                out = {};
+                const player = {};
+                if (on.skillLevels && prof?.skills) { for (const s of COMBAT_SKILLS) if (prof.skills[s] != null) player[s + 'Level'] = prof.skills[s]; have.push('skillLevels'); }
+                if (on.gear && prof?.equipment) { player.equipment = prof.equipment; have.push('gear'); }
+                if (Object.keys(player).length) out.player = player;
+                if (on.equippedAbilities) {
+                    const list = r.unit ? r.unit.abilities : prof?.abilities;
+                    if (list) { out.abilities = abilitySlots(list, client); have.push('equippedAbilities'); }
+                }
+                if (on.consumables && r.unit) {
+                    const drinks = [], food = [];
+                    for (const h of r.unit.consumables || []) {
+                        const cat = client?.itemDetailMap?.[h]?.categoryHrid;
+                        const isDrink = cat ? cat.endsWith('/drink') : /coffee$/.test(h);
+                        (isDrink ? drinks : food).push(h);
+                    }
+                    const pad = (a) => { const l = []; for (let i = 0; i < 3; i++) l.push({ itemHrid: a[i] || '' }); return { [COMBAT]: l }; };
+                    out.food = pad(food); out.drinks = pad(drinks); have.push('consumables');
+                }
+                const trig = { ...(on.equippedAbilities && prof?.abilityTriggers ? prof.abilityTriggers : {}), ...(on.consumables && prof?.consumableTriggers ? prof.consumableTriggers : {}) };
+                if ((on.equippedAbilities && prof?.abilityTriggers) || (on.consumables && prof?.consumableTriggers)) { out.triggerMap = trig; have.push('triggers'); }
+                if (on.houseRooms && prof?.houseRooms) { out.houseRooms = prof.houseRooms; have.push('houseRooms'); }
+                if (on.achievements && prof?.achievements) { out.achievements = prof.achievements; have.push('achievements'); }
+                if (r.name || prof?.name) out.name = r.name || prof.name;
+            }
+            if (!have.length) return;
+            const wanted = SLOT_KINDS.filter((k) => (k === 'triggers' ? (on.equippedAbilities || on.consumables) : on[k]));
+            group[String(slot)] = out;
+            slots.push({ slot, name: out.name || '', self: isSelf, have, missing: wanted.filter((k) => !have.includes(k)) });
+        };
+        if (!roster.length && co && selfId != null) roster.push({ id: selfId, name: co.character?.name || '', unit: null });
+        roster.forEach((r, i) => { if (r) add(i + 1, r); });
+        if (co && selfId != null && !roster.some((r) => r && r.id === selfId)) {
+            for (let s = 1; s <= 5; s++) if (!group[String(s)] && !roster[s - 1]) { add(s, { id: selfId, name: co.character?.name || '', unit: null }); break; }
+        }
+        return slots.length ? { group, slots } : null;
     }
 
     // ================= Combat recorder (read-only) =================
@@ -707,7 +822,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { buildExport, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { buildExport, buildGroupExport, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -723,7 +838,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.3.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.4.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -774,6 +889,19 @@
     }
     function recordedSize() { try { return (GM_getValue(REC_ENC_KEY, '').length + GM_getValue(REC_WIN_KEY, '').length) / 1048576; } catch { return 0; } }
 
+    // What the game showed about the party: the last battle start's members and the shared profiles seen (kept across reloads).
+    const GROUP_KEY = 'mwicsGroupState';
+    let grp = { members: [], profiles: [] };
+    try { const g = JSON.parse(GM_getValue(GROUP_KEY, 'null')); if (g && Array.isArray(g.members) && Array.isArray(g.profiles)) grp = g; } catch { /* start empty */ }
+    function saveGroup() { try { GM_setValue(GROUP_KEY, JSON.stringify(grp)); } catch (err) { console.error('[MWICS Exporter] could not save the party data', err); } }
+    function noteBattle(obj) { const m = trimBattle(obj); if (m.length) { grp.members = m; saveGroup(); } }
+    function noteProfile(obj) {
+        const p = trimProfile(obj);
+        if (!p) return;
+        grp.profiles = [p, ...grp.profiles.filter((q) => !((q.id != null && q.id === p.id) || (q.name && q.name === p.name)))].slice(0, PROFILE_MAX);
+        saveGroup();
+    }
+
     function loadToggles() {
         try { return { ...defaultToggles(), ...(JSON.parse(GM_getValue(TOGGLES_KEY, '{}')) || {}) }; } catch { return defaultToggles(); }
     }
@@ -796,10 +924,16 @@
                     if (type === 'init_character_data' || message.includes('"init_character_data"')) {
                         const obj = JSON.parse(message);
                         if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
-                    } else if (recToggles.recorder && type && REC_TYPES.includes(type)) {
-                        recorder.handle(JSON.parse(message), Date.now());
-                        if (recorder.state.dirty >= 20) saveRecorded();
-                        sink.notify();
+                    } else if (type === 'profile_shared') {
+                        noteProfile(JSON.parse(message));
+                    } else if (type && REC_TYPES.includes(type)) {
+                        const obj = JSON.parse(message);
+                        if (type === 'new_battle') noteBattle(obj);
+                        if (recToggles.recorder) {
+                            recorder.handle(obj, Date.now());
+                            if (recorder.state.dirty >= 20) saveRecorded();
+                            sink.notify();
+                        }
                     }
                 }
             } catch (e) {
@@ -814,12 +948,12 @@
         try { return page.localStorageUtil?.getInitClientData?.() || null; } catch { return null; }
     }
 
-    function toast(text) {
+    function toast(text, ms) {
         const el = document.createElement('div');
         el.textContent = text;
         el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#1e1f24;color:#e6e6e6;border:1px solid #444;border-radius:6px;padding:10px 16px;font:14px sans-serif;box-shadow:0 4px 16px #0008';
         document.body.appendChild(el);
-        setTimeout(() => el.remove(), 3500);
+        setTimeout(() => el.remove(), ms || 3500);
     }
 
     function copyExport() {
@@ -827,6 +961,24 @@
         const json = JSON.stringify(buildExport(latest.characterObj, clientData(), loadToggles()));
         GM_setClipboard(json, 'text');
         toast('MWICS Exporter: copied (character data from ' + latest.receivedAt.toLocaleTimeString() + ').');
+    }
+
+    const KIND_LABEL = { skillLevels: 'levels', gear: 'gear', equippedAbilities: 'abilities', consumables: 'food and drinks', triggers: 'triggers', houseRooms: 'house rooms', achievements: 'achievements', guildBuffs: 'guild buffs' };
+    // The party as the sim's "All players import" text; null (with a toast) when there is nothing to give.
+    function groupResult() {
+        if (!latest) { toast('MWICS Exporter: no character data yet. Reload the game page with the exporter on, then try again.'); return null; }
+        const r = buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles });
+        if (!r) { toast('MWICS Exporter: no party data yet. Start a battle (or reload the game page), then try again.'); return null; }
+        return r;
+    }
+    function copyGroup() {
+        const r = groupResult();
+        if (!r) return;
+        GM_setClipboard(JSON.stringify(r.group), 'text');
+        const lines = r.slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete'));
+        console.info('[MWICS Exporter] group export copied. ' + lines.join('; '));
+        const gaps = r.slots.some((s) => s.missing.length);
+        toast('MWICS Exporter: group copied (' + r.slots.length + ' players). ' + lines.join('; ') + (gaps ? '. Open each member\'s profile in the game for levels, gear, triggers and house rooms, then copy again; what is missing keeps its value in the simulator.' : '.'), gaps ? 12000 : 3500);
     }
 
     // The combat recording as one JSON text; null (with a toast) when there is nothing to give.
@@ -930,6 +1082,7 @@
     page.addEventListener('pagehide', () => { saveRecorded(); sink.finish(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { saveRecorded(); sink.finish(); } });
     GM_registerMenuCommand('Copy character export (player, gear, inventory)', copyExport);
+    GM_registerMenuCommand('Copy group export (party, for Group Combat import)', copyGroup);
     GM_registerMenuCommand('Copy combat recording (clipboard)', copyRecording);
     GM_registerMenuCommand('Save combat recording (file)', saveRecording);
     GM_registerMenuCommand('Clear recorded combat data', clearRecording);

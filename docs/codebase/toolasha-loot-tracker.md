@@ -475,6 +475,21 @@ Design decisions (session-settled): the recorder appends what it records to a fi
 - **Menu names.** **Copy character export (player, gear, inventory)** (was **Copy export**), **Copy combat recording (clipboard)** (was **Copy loot export**), **Save combat recording (file)** (new: the same content as a downloaded `.json` file through a blob link, no clipboard), **Clear recorded combat data** (was **Clear recorded loot**; it does not delete what the helper already wrote), **Set helper token**, **Set helper address**, **Status** (version, counts written, held, rejected, queued, failed), **Settings** (the title shows the version).
 - **Not verified here.** Behaviour against the real helper (the tests use a mocked request function); the manager's storage limit for the sent-keys list; many hours of continuous sending.
 
+## Group export (userscript 0.4.0)
+
+Menu entry `Copy group export (party, for Group Combat import)` copies the text the simulator's Group Combat `All players import` takes (`src/main.js` `doGroupImport` / `mergePlayerImport`): one object keyed by slot `"1"`..`"5"`, each value a player in the character export's shape. A kind a slot has no data for is left out; the import then keeps that slot's prior value (unknown, never empty). Never invented: no guesses by weapon type.
+
+| Kind | Self | Other party members |
+|---|---|---|
+| Slot order, name | battle start, else party list of the character data, else slot 1 alone | battle start (`new_battle.players`) |
+| Abilities, food, drinks | character data | battle start (`combatAbilities`; `combatConsumables`, split into drinks and food by item category, else by a name ending `coffee`) |
+| Base skill levels, gear, triggers, house rooms, achievements | character data | only from a shared profile (`profile_shared`), which the game sends when the player opens that member's profile; the battle's own levels are buffed, so they are not used |
+| Guild buff levels | character data | not available |
+
+- `trimProfile` keeps the last 20 profiles (combat skills, combat gear slots, equipped abilities, both trigger maps, house rooms, achievements); `trimBattle` keeps the last battle's members. Both are stored in the script's storage and survive a reload.
+- Field names of `profile_shared` follow the third-party tool's reading of it; they are not yet checked against a recorded message (synthetic fixtures in `userscript/test/group.test.cjs`).
+- The toast and the console name what is missing per slot. Inventory, Coin and learned abilities are never part of the group export. Read-only toward the game; nothing is sent.
+
 ## Button behavior (proposed)
 
 - First slice: a menu command **Copy combat session** (the latest `new_battle` reduced and anonymized, see "The smallest useful button"). Then the recorder: **Copy loot export** beside **Copy export** and **Settings** (`GM_registerMenuCommand`, `mwics-exporter.user.js:257-258`), copying the recorder JSON to the clipboard with the same toast, and **Clear recorded loot**.
