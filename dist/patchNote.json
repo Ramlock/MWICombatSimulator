@@ -4,10 +4,7 @@
         "fork": "Ramlock",
         "notes":
         [
-            "The Combat Stats panel now also counts the slotted drinks and the player's own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat",
-            "New userscript version, the exporter 0.2.0: it records the whole party's combat while you play, with the new menu commands \"Copy loot export\" and \"Clear recorded loot\", and a setting to export only your own character",
-            "New optional userscript, Guild Chat Export 0.1.0: it saves your guild chat live to a file on your own computer through a small helper program that you run yourself; it only reads what the game already shows you, never types in the chat, and does nothing without the helper",
-            "Exporter 0.3.0: the combat recording can now be written to a file on your own computer while you play, through the same kind of helper program (you paste its token once from the menu), and a new \"Save combat recording (file)\" command downloads it as a file without a helper; the menu commands are renamed: \"Copy character export\" (player, gear, inventory), \"Copy combat recording\" and \"Clear recorded combat data\""
+            "The Combat Stats panel now also counts the slotted drinks and the player's own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"
         ]
     },
     "2026-11-04":
