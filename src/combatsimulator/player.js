@@ -103,7 +103,7 @@ class Player extends CombatUnit {
             this.combatDetails.combatStats.focusTraining = "";
         }
 
-        [
+        const stats = [
             "stabAccuracy",
             "slashAccuracy",
             "smashAccuracy",
@@ -174,12 +174,24 @@ class Player extends CombatUnit {
             "rangedExperience",
             "magicExperience",
             "retaliation"
-        ].forEach((stat) => {
-            this.combatDetails.combatStats[stat] = Object.values(this.equipment)
-                .filter((equipment) => equipment != null)
-                .map((equipment) => equipment.getCombatStat(stat))
-                .reduce((prev, cur) => prev + cur, 0);
-        });
+        ];
+        // The equipment sums only change when a slot does: cache them, keyed on the equipment objects.
+        const slots = Object.values(this.equipment);
+        const cache = this.equipmentStatsCache;
+        if (!cache || cache.slots.length !== slots.length || slots.some((equipment, i) => equipment !== cache.slots[i])) {
+            const sums = {};
+            for (const stat of stats) {
+                sums[stat] = slots
+                    .filter((equipment) => equipment != null)
+                    .map((equipment) => equipment.getCombatStat(stat))
+                    .reduce((prev, cur) => prev + cur, 0);
+            }
+            this.equipmentStatsCache = { slots, sums };
+        }
+        const sums = this.equipmentStatsCache.sums;
+        for (const stat of stats) {
+            this.combatDetails.combatStats[stat] = sums[stat];
+        }
 
         if (this.equipment["/equipment_types/pouch"]) {
             this.combatDetails.combatStats.foodSlots =
