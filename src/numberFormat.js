@@ -4,7 +4,8 @@
 // Rules: at most 4 significant figures (trailing zeros dropped). From 10000 up, suffixes k, M, B, T (123.5k, 1.235M).
 // Below 10000, whole numbers show in full with a thousands separator (1,234); decimals show at 4 significant figures.
 // Percentages take the same rules plus a percent sign. ISO mode (the page's ISO toggle) separates the percent sign
-// ("1.79 %") and groups thousands with a space ("1 234"); off, it is "1.79%" and "1,234".
+// ("1.79 %") and groups thousands with a space ("1 234"); off, it is "1.79%" and "1,234". The ISO gaps are
+// no-break spaces (U+00A0), so "100 %" never wraps onto two lines in a narrow column.
 
 const SUFFIXES = [
     { base: 1e12, suffix: "T" },
@@ -54,7 +55,7 @@ function withSuffix(abs) {
 
 // The display text of a number. Non-numbers and non-finite values pass through as text.
 export function formatNumber(value, options = {}) {
-    const separator = options.thousandsSeparator ?? (isIso(options) ? " " : ",");
+    const separator = options.thousandsSeparator ?? (isIso(options) ? " " : ",");
     const number = typeof value === "string" ? Number(value) : value;
     if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
     if (number === 0) return "0";
@@ -74,7 +75,7 @@ export function formatNumber(value, options = {}) {
 
 // A value already in percent units (12.5 for 12.5%).
 export function formatPercent(value, options = {}) {
-    return formatNumber(value, options) + (isIso(options) ? " %" : "%");
+    return formatNumber(value, options) + (isIso(options) ? " %" : "%");
 }
 
 // The exact value, for the hover title.
