@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.6.0 (2026-11-08)
+
+- The per-player colouring was removed at the user's request: damage numbers go back to the game's red, teammates' names go back to plain, and the "Teammate colours" settings and the miss ring are gone. Colours you picked stay in the script's storage, unused.
+
 ### 0.5.1 (2026-11-08)
 
 - New default teammate colours, slot 1 to 5: magenta, gold, lime, indigo, brown (best first, since slot 1 is filled most often). Colours you picked yourself stay as they are.

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.5.1
-// @description  Combat tracker and read-only export for the MWICS combat simulator. Live: damage numbers on enemies and teammates' names drawn in each teammate's colour (display only). Export: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
+// @version      0.6.0
+// @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
 // @match        https://www.milkywayidle.com/*
@@ -374,8 +374,6 @@
     function createRecorder(opts) {
         opts = opts || {};
         const getClient = opts.clientData || (() => null);
-        // opts.onHit({ battleId, idx, value, crit, dealer }): each damage event on a monster, dealer = party slot or null when not attributed.
-        const onHit = opts.onHit || null;
         const S = {
             selfId: null, zone: null, cur: null, prev: null, win: null, windows: [], encounters: [], quests: [], lastT: 0,
             dot: [], series: [], carry: [], idx: 0, stats: { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 },
@@ -615,7 +613,6 @@
         function ambiguous(enc, t, x, side, actors, reason) {
             if (enc.ambiguous.length < REC.MAX_AMBIGUOUS) enc.ambiguous.push({ kind: side === 'm' ? 'dealt' : 'taken', reason, battleId: enc.battleId, t, target: { side, idx: x.idx, hrid: side === 'm' ? (enc.monsters[x.idx] || {}).hrid : null }, dmgDelta: x.dDmg, hpChange: x.drop, crit: x.crit, actors: actors.map((a) => actorOf(enc, a)) });
             enc.unattributed[side === 'm' ? 'dealt' : 'taken'] += x.drop;
-            if (onHit && side === 'm') onHit({ battleId: enc.battleId, idx: x.idx, value: x.drop, crit: x.crit, dealer: null });
         }
 
         function damageEvent(enc, t, x, actors, side) {
@@ -637,7 +634,6 @@
                 pr.dealt.total += dmg; bump(pr.dealt.byMonster, hrid, dmg);
                 const b = pr.dealt.bySource[ab] || (pr.dealt.bySource[ab] = { amount: 0, events: 0, hits: 0, misses: 0, crits: 0 });
                 b.amount += dmg; tally(b); tally(pr.events.dealt);
-                if (onHit) onHit({ battleId: enc.battleId, idx: x.idx, value: dmg, crit: x.crit, dealer: src.idx });
             } else {
                 const pr = enc.players[x.idx];
                 const hrid = src.hrid || (enc.monsters[src.idx] || {}).hrid || '?';
@@ -701,102 +697,6 @@
         function clear() { S.windows = []; S.encounters = []; S.quests = []; S.win = null; S.cur = null; S.prev = null; S.dot = []; S.series = []; S.carry = []; S.stats = { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 }; }
 
         return { handle, exportData, persistable, restore, clear, state: S };
-    }
-
-    // ---- Combat tracker: teammate colours on the drawn damage numbers ----
-    // The game draws one damage splat per battle_updated per unit, worth that unit's HP drop in the update (CombatUnit.componentDidUpdate;
-    // docs/codebase/combat-tracker.md). The recorder's attribution of that same update is queued here per monster index before the page
-    // renders, and each new splat takes the first queued entry with its value. Display only: nothing here reaches the game.
-    const TINT = {
-        // Default colour per party slot, best first (slot 1 is filled most often, 4 and 5 only in dungeons): magenta, gold, lime, indigo,
-        // brown. Kept off the game's red (its red stays the fallback for hits with no known dealer).
-        PALETTE: ['#c026d3', '#a16207', '#4d7c0f', '#3730a3', '#78350f'],
-        MAX_AGE_MS: 4000,
-        MAX_QUEUE: 20,
-    };
-    const normColor = (c) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : null);
-    function defaultColors() { return { on: true, byId: {}, fallback: null }; }
-
-    // opts.colors() -> { on, byId: { characterId: '#rrggbb' }, fallback: '#rrggbb' | null }; opts.now() -> ms.
-    function createTint(opts) {
-        const now = opts.now || (() => Date.now());
-        let party = [], battleId = null;
-        const q = new Map();
-        const fresh = (idx, t) => (q.get(idx) || []).filter((e) => t - e.t <= TINT.MAX_AGE_MS);
-        function colorOfSlot(slot) {
-            const c = opts.colors();
-            const id = party[slot];
-            return (id != null && normColor(c.byId && c.byId[id])) || TINT.PALETTE[slot % TINT.PALETTE.length];
-        }
-        // new_battle: the party's character ids by slot; the queue of the previous battle is dropped.
-        function setParty(bid, ids) { battleId = bid; party = ids.slice(); q.clear(); }
-        function noteHit(h) {
-            if (!h || h.battleId !== battleId) return;
-            const t = now();
-            const a = fresh(h.idx, t);
-            a.push({ value: h.value, dealer: h.dealer, t });
-            if (a.length > TINT.MAX_QUEUE) a.splice(0, a.length - TINT.MAX_QUEUE);
-            q.set(h.idx, a);
-        }
-        // The colour for a new splat of monster idx showing value: a teammate's colour, the fallback, or null (keep the game's own).
-        // A splat can also show the sum of several queued updates (two updates drawn in one render): it takes their dealer when they share one.
-        // knownOnly: no fallback, null unless the dealer is known (misses).
-        function splatColor(idx, value, knownOnly) {
-            const t = now();
-            const a = fresh(idx, t);
-            let dealer = null, n = 0;
-            const i = a.findIndex((e) => e.value === value);
-            if (i >= 0) { dealer = a[i].dealer; n = i + 1; }
-            else {
-                let sum = 0;
-                for (let k = 0; k < a.length; k++) {
-                    sum += a[k].value;
-                    if (sum === value) { n = k + 1; const ds = new Set(a.slice(0, n).map((e) => e.dealer)); dealer = ds.size === 1 ? a[0].dealer : null; break; }
-                    if (sum > value) break;
-                }
-            }
-            q.set(idx, a.slice(n));
-            if (dealer == null) return knownOnly ? null : normColor(opts.colors().fallback);
-            return colorOfSlot(dealer);
-        }
-        return { setParty, noteHit, splatColor, colorOfSlot, party: () => party.slice(), battleId: () => battleId };
-    }
-
-    // One splat slot (a direct child div of the splats container; React reuses it for later splats). Colours it when it turns into a new
-    // damage splat, clears it otherwise. A miss keeps the game's grey fill and gets a thin inner ring in the dealer's colour, only when the
-    // dealer is known. A slot's last seen splat is kept in data-mwct so a re-render of the same splat is not taken twice.
-    function tintSlot(slot, idx, tint) {
-        const cls = String(slot.className || ''), text = String(slot.textContent || '').trim();
-        const dmg = cls.includes('CombatUnit_damage') || cls.includes('CombatUnit_criticalDamage');
-        const miss = cls.includes('CombatUnit_miss');
-        if (!dmg && !miss) {
-            if (slot.dataset.mwct) { delete slot.dataset.mwct; slot.style.backgroundColor = ''; slot.style.boxShadow = ''; }
-            return;
-        }
-        const key = cls + '|' + text;
-        if (slot.dataset.mwct === key) return;
-        slot.dataset.mwct = key;
-        if (miss) {
-            const ring = tint.splatColor(idx, 0, true);
-            slot.style.backgroundColor = '';
-            slot.style.boxShadow = ring ? 'inset 0 0 0 2px ' + ring : '';
-            return;
-        }
-        const c = tint.splatColor(idx, Number(text));
-        slot.style.backgroundColor = c || '';
-        slot.style.boxShadow = '';
-    }
-
-    // A combat unit element's React props (read only): { isPlayer, index } of the CombatUnit component, or null.
-    function unitInfo(el) {
-        if (!el) return null;
-        const k = Object.keys(el).find((s) => s.startsWith('__reactFiber$') || s.startsWith('__reactInternalInstance$'));
-        let f = k ? el[k] : null;
-        for (let n = 0; f && n < 10; n++, f = f.return) {
-            const p = f.memoizedProps;
-            if (p && p.combatUnit && typeof p.index === 'number') return { isPlayer: !!p.combatUnit.isPlayer, index: p.index };
-        }
-        return null;
     }
 
     // ---- Helper sink ----
@@ -936,7 +836,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { buildExport, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, TINT, createTint, tintSlot, unitInfo, defaultColors };
+        module.exports = { buildExport, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -951,17 +851,8 @@
         try { return { recorder: true, selfOnly: false, ...(JSON.parse(GM_getValue(RECORDER_KEY, '{}')) || {}) }; } catch { return { recorder: true, selfOnly: false }; }
     }
     let recToggles = loadRecToggles();
-    // Tracker colours (per character id), kept in the script's storage like the other settings.
-    const COLORS_KEY = 'mwicsTrackerColors';
-    function loadColors() { try { return { ...defaultColors(), ...(JSON.parse(GM_getValue(COLORS_KEY, '{}')) || {}) }; } catch { return defaultColors(); } }
-    let colors = loadColors();
-    function saveColors() { GM_setValue(COLORS_KEY, JSON.stringify(colors)); paintNames(); }
-    const tint = createTint({ colors: () => colors });
-    const onHit = (h) => { if (colors.on) tint.noteHit(h); };
-    const recorder = createRecorder({ clientData: () => clientData(), onHit });
-    // With the recorder off, a second recorder feeds the colours only; it keeps nothing (its finished rows are dropped at each battle start).
-    const liveRec = createRecorder({ clientData: () => clientData(), onHit });
-    const VERSION = '0.5.1'; // keep equal to @version (a test checks it)
+    const recorder = createRecorder({ clientData: () => clientData() });
+    const VERSION = '0.6.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1060,23 +951,16 @@
                     const type = m ? m[1] : null;
                     if (type === 'init_character_data' || message.includes('"init_character_data"')) {
                         const obj = JSON.parse(message);
-                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } else liveRec.handle(obj, Date.now()); }
+                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
                     } else if (type === 'profile_shared') {
                         noteProfile(JSON.parse(message));
                     } else if (type && REC_TYPES.includes(type)) {
                         const obj = JSON.parse(message);
-                        if (type === 'new_battle') {
-                            noteBattle(obj);
-                            tint.setParty(obj.battleId, (obj.players || []).map((p) => (p && p.character ? p.character.id : null)));
-                            scheduleScan();
-                        } else if (type === 'battle_updated' && colors.on) rescanIfStale();
+                        if (type === 'new_battle') noteBattle(obj);
                         if (recToggles.recorder) {
                             recorder.handle(obj, Date.now());
                             if (recorder.state.dirty >= 20) saveRecorded();
                             sink.notify();
-                        } else if (colors.on) {
-                            liveRec.handle(obj, Date.now());
-                            if (type === 'new_battle') { liveRec.state.encounters.length = 0; liveRec.state.windows.length = 0; }
                         }
                     }
                 }
@@ -1090,68 +974,6 @@
 
     function clientData() {
         try { return page.localStorageUtil?.getInitClientData?.() || null; } catch { return null; }
-    }
-
-    // ---- Combat tracker, page side: watch each monster's splats, colour the party's names ----
-    // Units are found by their class prefix (the suffix is a build hash). A unit's side and index come from its React props; when those
-    // cannot be read, from its order in the players or monsters area.
-    const watched = new Map(); // splats container -> its unit element
-    function unitOf(el) {
-        const info = unitInfo(el);
-        if (info) return info;
-        const area = el.closest('[class*="BattlePanel_monstersArea"], [class*="BattlePanel_playersArea"]');
-        if (!area) return null;
-        const units = [...area.querySelectorAll('[class*="CombatUnit_combatUnit"]')];
-        return { isPlayer: String(area.className).includes('playersArea'), index: units.indexOf(el) };
-    }
-    function onSplats(container, records) {
-        if (!colors.on) return;
-        const unit = watched.get(container);
-        const info = unit && unitOf(unit);
-        if (!info || info.isPlayer || info.index < 0) return;
-        const slots = new Set();
-        for (const r of records) {
-            let n = r.target;
-            while (n && n.parentNode !== container) n = n.parentNode;
-            if (n) slots.add(n);
-            for (const a of r.addedNodes || []) if (a.parentNode === container) slots.add(a);
-        }
-        for (const s of container.children) if (slots.has(s)) tintSlot(s, info.index, tint);
-    }
-    function scan() {
-        const doc = page.document || document;
-        for (const [c, u] of watched) if (!u.isConnected) watched.delete(c);
-        for (const u of doc.querySelectorAll('[class*="CombatUnit_combatUnit"]')) {
-            const c = u.querySelector('[class*="CombatUnit_splatsContainer"]');
-            if (!c || watched.has(c)) continue;
-            watched.set(c, u);
-            new MutationObserver((recs) => onSplats(c, recs)).observe(c, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
-        }
-        paintNames();
-    }
-    // The page renders the new battle after the message is read: scan just after, and once more in case the combat panel mounts late.
-    let scanTimer = 0, lastRescan = 0;
-    function scheduleScan() {
-        if (scanTimer) return;
-        scanTimer = setTimeout(() => { scanTimer = 0; scan(); setTimeout(scan, 1500); }, 50);
-    }
-    // During a battle: when the combat panel was closed and opened again its units are new elements; look again, at most every 2 s.
-    function rescanIfStale() {
-        const t = Date.now();
-        if (t - lastRescan < 2000) return;
-        if (watched.size && [...watched.values()].every((u) => u.isConnected)) return;
-        lastRescan = t;
-        scan();
-    }
-    function paintNames() {
-        const doc = page.document || document;
-        for (const u of doc.querySelectorAll('[class*="CombatUnit_combatUnit"]')) {
-            const info = unitOf(u);
-            const name = u.querySelector('[class*="CombatUnit_name"]');
-            if (!info || !info.isPlayer || !name) continue;
-            name.style.color = colors.on && info.index >= 0 ? tint.colorOfSlot(info.index) : '';
-        }
-        if (!colors.on) for (const c of watched.keys()) for (const s of c.children) { s.style.backgroundColor = ''; s.style.boxShadow = ''; delete s.dataset.mwct; }
     }
 
     function toast(text, ms) {
@@ -1268,58 +1090,6 @@
         toast('MWI Combat Tracker v' + VERSION + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + '.');
     }
 
-    // Settings: "Teammate colours", one colour per member of the current party, plus the colour of hits with no known dealer.
-    function colorSection(box) {
-        const head = document.createElement('div');
-        head.textContent = 'Teammate colours (damage numbers on enemies and names in the combat window)';
-        head.style.cssText = 'font-weight:bold;margin:12px 0 4px';
-        box.appendChild(head);
-        const onRow = document.createElement('label');
-        onRow.style.cssText = 'display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer';
-        const on = document.createElement('input');
-        on.type = 'checkbox';
-        on.checked = !!colors.on;
-        on.addEventListener('change', () => { colors.on = on.checked; saveColors(); });
-        onRow.appendChild(on);
-        onRow.appendChild(document.createTextNode('Colour by teammate'));
-        box.appendChild(onRow);
-        const btnCss = 'background:#2d2f36;color:#e6e6e6;border:1px solid #555;border-radius:4px;padding:2px 8px;cursor:pointer';
-        function colorRow(label, value, onPick, resetLabel, onReset) {
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:3px 0';
-            const input = document.createElement('input');
-            input.type = 'color';
-            input.value = value;
-            input.style.cssText = 'width:36px;height:22px;padding:0;border:1px solid #555;background:#2d2f36;cursor:pointer';
-            input.addEventListener('input', () => onPick(input.value));
-            const text = document.createElement('span');
-            text.textContent = label;
-            text.style.cssText = 'flex:1';
-            const reset = document.createElement('button');
-            reset.textContent = resetLabel;
-            reset.style.cssText = btnCss;
-            reset.addEventListener('click', () => { input.value = onReset(); });
-            row.appendChild(input); row.appendChild(text); row.appendChild(reset);
-            box.appendChild(row);
-        }
-        const ids = tint.party();
-        if (!ids.length) {
-            const none = document.createElement('div');
-            none.textContent = 'Start a battle to list your party here.';
-            none.style.cssText = 'opacity:.7;padding:4px 0';
-            box.appendChild(none);
-        }
-        ids.forEach((id, slot) => {
-            const m = grp.members.find((x) => x.id != null && x.id === id);
-            const name = (m && m.name) || 'Slot ' + (slot + 1);
-            colorRow(name, tint.colorOfSlot(slot), (v) => { if (id == null) return; colors.byId = { ...colors.byId, [id]: v }; saveColors(); }, 'Default', () => {
-                if (id != null) { const b = { ...colors.byId }; delete b[id]; colors.byId = b; saveColors(); }
-                return tint.colorOfSlot(slot);
-            });
-        });
-        colorRow('Hits the tracker cannot attribute' + (colors.fallback ? '' : ' (now: the game\'s own red)'), colors.fallback || '#d32f2f', (v) => { colors.fallback = v; saveColors(); }, 'Game red', () => { colors.fallback = null; saveColors(); return '#d32f2f'; });
-    }
-
     function openSettings() {
         document.getElementById('mwics-exporter-settings')?.remove();
         const toggles = loadToggles();
@@ -1362,7 +1132,6 @@
         size.textContent = 'Recorded so far: ' + recorder.state.encounters.length + ' encounters, ' + recordedSize().toFixed(2) + ' MB saved.';
         size.style.cssText = 'opacity:.7;padding:4px 0';
         box.appendChild(size);
-        colorSection(box);
         const renamed = document.createElement('div');
         renamed.textContent = 'This script was called MWICS Exporter until version 0.5.0. If both are installed, keep this one and remove the old one (save its combat recording first if you want it: settings and recordings do not carry over).';
         renamed.style.cssText = 'opacity:.7;padding:8px 0 0;max-width:520px';
