@@ -170,6 +170,7 @@ class CombatUnit {
             list.push(buff);
         }
         this.boostsByType = boostsByType;
+        this.statsDirty = false;
 
         if (this.isPlayer) {
             if (this.combatDetails.combatStats.hpRegenPer10 === 0) {
@@ -503,6 +504,10 @@ class CombatUnit {
             delete this.combatBuffs[buff.uniqueHrid];
         });
 
+        // Nothing expired and nothing overrode a rebuilt stat since the last rebuild: the rebuild would change nothing.
+        if (expiredBuffs.length === 0 && !this.statsDirty) {
+            return;
+        }
         this.updateCombatDetails();
     }
 
@@ -518,6 +523,9 @@ class CombatUnit {
         this.silenceExpireTime = null;
         this.isBlinded = false;
         this.blindExpireTime = null;
+        if (this.combatDetails?.combatStats && this.combatDetails.combatStats.damageTaken !== 0) {
+            this.statsDirty = true; // a rebuild restores damageTaken from the buffs
+        }
         this.combatDetails.combatStats.damageTaken = 0;
     }
 
