@@ -14,13 +14,13 @@ class EventQueue {
     }
 
     containsEventOfType(type) {
-        let heapEvents = this.minHeap.toArray();
+        let heapEvents = this.minHeap.heapArray;
 
         return heapEvents.some((event) => event.type == type);
     }
 
     containsEventOfTypeAndHrid(type, hrid) {
-        let heapEvents = this.minHeap.toArray();
+        let heapEvents = this.minHeap.heapArray;
         return heapEvents.some((event) => event.type == type && event.hrid == hrid);
     }
 
@@ -38,7 +38,7 @@ class EventQueue {
 
     clearMatching(fn) {
         let cleared = false;
-        let heapEvents = this.minHeap.toArray();
+        let heapEvents = this.minHeap.heapArray.slice(); // a snapshot: removal reorders the heap
 
         for (const event of heapEvents) {
             if (fn(event)) {
@@ -50,7 +50,7 @@ class EventQueue {
     }
 
     getMatching(fn) {
-        let heapEvents = this.minHeap.toArray(); 
+        let heapEvents = this.minHeap.heapArray;
     
         for (const event of heapEvents) {
             if (fn(event)) {
