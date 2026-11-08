@@ -5043,7 +5043,8 @@ function updateUI() {
 const darkModeToggle = document.getElementById('darkModeToggle');
 const body = document.body;
 
-if (localStorage.getItem('darkModeEnabled') === 'true') {
+// Dark Mode is the default; a stored 'false' (the user turned it off) wins. index.html applies the class before first paint.
+if (localStorage.getItem('darkModeEnabled') !== 'false') {
     body.classList.add('dark-mode');
     const tables = document.getElementsByClassName('profit-table');
     for (const table of tables) {

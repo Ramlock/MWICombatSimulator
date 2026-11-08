@@ -14,6 +14,7 @@ ZH = {
         "黑暗模式开关移到右上角，位于语言按钮旁边",
         "模拟器现已支持葡萄牙语，使用游戏官方的葡萄牙语名称",
         "葡萄牙语文本使用游戏官方的葡萄牙语术语，页面中更多内容已翻译",
+        "页面默认以黑暗模式打开；关闭开关后会被记住",
     ],
     "2026-11-07": [
         "战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致",
@@ -172,6 +173,7 @@ PT = [
         "A chave do modo escuro foi para o canto superior direito, ao lado dos botões de idioma",
         "O simulador agora está disponível em português, com os nomes oficiais do jogo em português",
         "O texto em português usa os termos oficiais do jogo em português, e mais partes da página foram traduzidas",
+        "A página abre no modo escuro por padrão; desligar a chave fica lembrado",
     ],
     ["O painel de Atributos de Combate agora também conta as bebidas equipadas e as auras equipadas do próprio jogador, sem nenhuma opção para ligar; os atributos mostrados batem com os que o mesmo jogador tem em combate"],
     [

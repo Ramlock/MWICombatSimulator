@@ -114,6 +114,10 @@
 </head>
 
 <body class="p-3">
+    <script>
+        // Dark Mode is the default: applied before first paint unless the user turned it off (main.js keeps the toggle in step).
+        try { if (localStorage.getItem('darkModeEnabled') !== 'false') document.body.classList.add('dark-mode'); } catch (e) { document.body.classList.add('dark-mode'); }
+    </script>
     <!-- Top right: Dark Mode and ISO number toggles; js/i18n.js adds the language buttons after them. -->
     <div id="topRightControls" style="position: fixed; top: 10px; right: 10px; z-index: 1000; display: flex; align-items: center; gap: 12px;">
         <div class="form-check form-switch m-0">
@@ -2053,10 +2057,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=5da9e033"></script>
+    <script src="js/i18n.js?v=afd63edb"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.5da9e033.js" type="module"></script>
+    <script src="bundle.afd63edb.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">

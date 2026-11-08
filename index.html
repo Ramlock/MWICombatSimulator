@@ -114,6 +114,10 @@
 </head>
 
 <body class="p-3">
+    <script>
+        // Dark Mode is the default: applied before first paint unless the user turned it off (main.js keeps the toggle in step).
+        try { if (localStorage.getItem('darkModeEnabled') !== 'false') document.body.classList.add('dark-mode'); } catch (e) { document.body.classList.add('dark-mode'); }
+    </script>
     <!-- Top right: Dark Mode and ISO number toggles; js/i18n.js adds the language buttons after them. -->
     <div id="topRightControls" style="position: fixed; top: 10px; right: 10px; z-index: 1000; display: flex; align-items: center; gap: 12px;">
         <div class="form-check form-switch m-0">
