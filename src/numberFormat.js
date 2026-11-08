@@ -139,6 +139,14 @@ export function setNumberText(element, value, unit = "") {
     element.dataset.unit = unit;
 }
 
+// The number a cell holds, for comparisons and exports: the exact value this module stored (data-num, or a table's
+// data-sort-value), never the display text, which can read "12.3k" or "1 234". Plain text cells fall back to their text.
+export function cellValue(cell) {
+    const raw = cell.dataset?.num ?? cell.dataset?.sortValue;
+    if (raw !== undefined && raw !== "") return Number(raw);
+    return parseFloat(String(cell.textContent).replace(/[,\s ]/g, ""));
+}
+
 // Re-formats every number this module rendered under `root`, after the settings change.
 export function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {

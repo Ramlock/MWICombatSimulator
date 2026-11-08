@@ -2275,6 +2275,7 @@ function getImportedGuildBuffs(importSet) {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   cellValue: () => (/* binding */ cellValue),
 /* harmony export */   exactNumber: () => (/* binding */ exactNumber),
 /* harmony export */   exactUnit: () => (/* binding */ exactUnit),
 /* harmony export */   formatNumber: () => (/* binding */ formatNumber),
@@ -2427,6 +2428,14 @@ function setNumberText(element, value, unit = "") {
     element.title = exactUnit(value, unit);
     element.dataset.num = String(value);
     element.dataset.unit = unit;
+}
+
+// The number a cell holds, for comparisons and exports: the exact value this module stored (data-num, or a table's
+// data-sort-value), never the display text, which can read "12.3k" or "1 234". Plain text cells fall back to their text.
+function cellValue(cell) {
+    const raw = cell.dataset?.num ?? cell.dataset?.sortValue;
+    if (raw !== undefined && raw !== "") return Number(raw);
+    return parseFloat(String(cell.textContent).replace(/[,\s ]/g, ""));
 }
 
 // Re-formats every number this module rendered under `root`, after the settings change.
@@ -4520,7 +4529,7 @@ function showAllSimulationResults(simResults) {
 
         for (let row = 1; row < rows.length; row++) {
             const cell = rows[row].cells[col];
-            const value = parseFloat(cell.textContent.replace(/,/g, ''));
+            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.cellValue)(cell);
             if (value >= 30) {
                 cell.style.backgroundColor = 'green';
                 cell.style.color = 'white';
@@ -4539,7 +4548,7 @@ function showAllSimulationResults(simResults) {
             // 找到最大值及其单元格
             for (let row = 1; row < rows.length; row++) {
                 const cell = rows[row].cells[col];
-                const value = parseFloat(cell.textContent.replace(/,/g, ''));
+                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.cellValue)(cell);
                 if (value > max) {
                     max = value;
                     maxCell = cell;
@@ -5196,7 +5205,9 @@ document.getElementById('buttonExportResults').addEventListener('click', functio
         var csvRow = [];
 
         cols.forEach(function (col) {
-            csvRow.push('"' + col.innerText.replace(/"/g, '""') + '"');
+            // Numbers export as their exact value, not the display text ("12.3k").
+            const text = col.dataset.num !== undefined ? col.dataset.num : col.innerText;
+            csvRow.push('"' + text.replace(/"/g, '""') + '"');
         });
 
         csv.push(csvRow.join(','));
@@ -8169,4 +8180,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.a90bf827.js.map
+//# sourceMappingURL=bundle.5ec0241b.js.map

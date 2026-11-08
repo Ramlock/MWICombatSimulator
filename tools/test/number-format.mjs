@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 register(pathToFileURL(path.join(root, 'tools/calibration/hooks.mjs')).href);
-const { formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
+const { cellValue, setNumberText, setNumberFormatSettings, formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
 
 const cases = [
     [0, '0'],
@@ -91,6 +91,22 @@ for (const [fn, expected] of optionCases) {
     const got = fn();
     if (got !== expected) failures.push(`${fn.toString()} = ${got}, expected ${expected}`);
 }
+
+// The all-zones table: highlight, labyrinth check and sort read the stored exact value, not "12.3k" / "1 234" text.
+// Formatting is the same in every language (en, pt, zh), so the ISO switch is the only axis.
+for (const iso of [false, true]) {
+    setNumberFormatSettings({ iso });
+    const cells = [950, 12300, 1234, 29.5, 1500000].map((v) => { const c = { dataset: {} }; setNumberText(c, v); c.dataset.sortValue = v; return c; });
+    const values = cells.map(cellValue);
+    const best = values.indexOf(Math.max(...values));
+    if (best !== 4) failures.push(`iso=${iso}: highlight picks ${cells[best].textContent}, expected the 1.5M cell`);
+    if (cellValue(cells[3]) >= 30 || cellValue(cells[0]) < 30) failures.push(`iso=${iso}: labyrinth >= 30 check`);
+    const sorted = [...cells].sort((a, b) => cellValue(b) - cellValue(a)).map((c) => Number(c.dataset.num));
+    if (sorted.join() !== '1500000,12300,1234,950,29.5') failures.push(`iso=${iso}: sort ${sorted.join()}`);
+    if (!/k|M| /.test(cells.map((c) => c.textContent).join(''))) failures.push(`iso=${iso}: the check did not exercise formatted text`);
+}
+setNumberFormatSettings({ iso: false });
+if (cellValue({ dataset: {}, textContent: '1,234' }) !== 1234 || cellValue({ dataset: {}, textContent: '1 234' }) !== 1234) failures.push('plain text cell fallback');
 
 const total = cases.length + optionCases.length;
 if (failures.length) {

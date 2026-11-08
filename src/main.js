@@ -13,7 +13,7 @@ import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
-import { formatNumber, formatUnit, percentSign, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
+import { cellValue, formatNumber, formatUnit, percentSign, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -1498,7 +1498,7 @@ function showAllSimulationResults(simResults) {
 
         for (let row = 1; row < rows.length; row++) {
             const cell = rows[row].cells[col];
-            const value = parseFloat(cell.textContent.replace(/,/g, ''));
+            const value = cellValue(cell);
             if (value >= 30) {
                 cell.style.backgroundColor = 'green';
                 cell.style.color = 'white';
@@ -1517,7 +1517,7 @@ function showAllSimulationResults(simResults) {
             // 找到最大值及其单元格
             for (let row = 1; row < rows.length; row++) {
                 const cell = rows[row].cells[col];
-                const value = parseFloat(cell.textContent.replace(/,/g, ''));
+                const value = cellValue(cell);
                 if (value > max) {
                     max = value;
                     maxCell = cell;
@@ -2174,7 +2174,9 @@ document.getElementById('buttonExportResults').addEventListener('click', functio
         var csvRow = [];
 
         cols.forEach(function (col) {
-            csvRow.push('"' + col.innerText.replace(/"/g, '""') + '"');
+            // Numbers export as their exact value, not the display text ("12.3k").
+            const text = col.dataset.num !== undefined ? col.dataset.num : col.innerText;
+            csvRow.push('"' + text.replace(/"/g, '""') + '"');
         });
 
         csv.push(csvRow.join(','));
