@@ -2,7 +2,14 @@
 
 The userscripts in this folder are separate from the simulator. Their changes are listed here, never in the simulator's patch notes (`patchNote.json`). Keep each script's `@version` equal to its latest section.
 
-## MWICS Exporter (`mwics-exporter.user.js`)
+## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
+
+### 0.5.0 (2026-11-08)
+
+- Renamed from MWICS Exporter to MWI Combat Tracker. Your script manager sees the new name as a different script: install this version, then remove MWICS Exporter. Settings and the stored combat recording do not carry over, so copy or save the recording from the old script first if you want it.
+- New: teammate colours. The damage numbers on enemies are drawn in the colour of the teammate who dealt the hit, and each teammate's name in the combat window is drawn in the same colour. Each party slot has a default colour (never red) until you pick one in Settings, under "Teammate colours"; a picked colour follows that player whatever their slot.
+- A hit the tracker cannot tie to one teammate (several hits merged into one number, damage with no known attacker) keeps the game's red. That colour can be picked in Settings too. Critical hits keep their orange glow; misses and heals are not recoloured.
+- Display only: it changes what your own page draws, never anything sent to the game.
 
 ### 0.4.1 (2026-11-08)
 

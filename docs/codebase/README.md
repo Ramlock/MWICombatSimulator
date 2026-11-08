@@ -12,6 +12,7 @@ Documents upstream `testing` at commit `95db2f6` of `https://github.com/shykai/M
 - `game-data.md`: one row per file in `src/combatsimulator/data/`, with unused fields.
 - `observed-gaps.md`: unused data, dead code, TODOs, hard-coded constants, ignored inputs.
 - `game-data-fields.md`: where the game sends each kind of character data (message, field path), for our read-only exporter; why the HTML is not a source.
+- `combat-tracker.md`: how the game draws damage numbers and how the userscript colours them by teammate.
 
 `js/i18n.js` is the i18next translation setup (about 1.3 MB of strings). `dist/` is the committed webpack build the site serves.
 
