@@ -3,8 +3,8 @@
 // Covers: the recorder hands each monster damage event to onHit (dealer slot, or null when ambiguous); a splat takes the queued hit
 // with its value (teammate colour), a merged splat (sum of queued hits) takes their shared dealer or the fallback; stale and
 // previous-battle hits are dropped; picked colours by character id override the slot palette; the palette stays off red; a reused
-// splat slot is recoloured, cleared when it empties, and a re-render of the same splat is not taken twice; misses are consumed and
-// never coloured; React props are read for the unit side and index.
+// splat slot is recoloured, cleared when it empties, and a re-render of the same splat is not taken twice; misses are consumed, keep
+// their grey fill and get a ring in the dealer's colour only when the dealer is known; React props are read for the unit side and index.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -128,6 +128,30 @@ test('a miss consumes its queued hit and is never coloured; heal splats are left
     tintSlot(h, 0, t);
     assert.equal(h.style.backgroundColor, '');
     assert.equal(t.splatColor(0, 0), TINT.PALETTE[1], 'the first miss took only its own entry');
+});
+
+test('a miss keeps the grey fill: a ring in the dealer colour when known, none when unattributed (even with a fallback)', () => {
+    const clock = { t: 0 }, colors = defaultColors(), t = tintAt(colors, clock);
+    colors.fallback = '#aabbcc';
+    t.setParty(5, [11, 22]);
+    t.noteHit({ battleId: 5, idx: 0, value: 0, dealer: 1 });
+    const s = slot();
+    Object.assign(s, { className: 'CombatUnit_splat__1 CombatUnit_miss__4', textContent: '0' });
+    tintSlot(s, 0, t);
+    assert.equal(s.style.backgroundColor, '');
+    assert.equal(s.style.boxShadow, 'inset 0 0 0 2px ' + TINT.PALETTE[1]);
+    Object.assign(s, { className: '', textContent: '' });
+    tintSlot(s, 0, t);
+    assert.equal(s.style.boxShadow, '', 'cleared when the slot empties');
+    t.noteHit({ battleId: 5, idx: 0, value: 0, dealer: null });
+    Object.assign(s, { className: 'CombatUnit_splat__1 CombatUnit_miss__4', textContent: '0' });
+    tintSlot(s, 0, t);
+    assert.equal(s.style.boxShadow, '');
+    assert.equal(s.style.backgroundColor, '');
+});
+
+test('default palette, slot 1 to 5: magenta, gold, lime, indigo, brown', () => {
+    assert.equal(TINT.PALETTE.join(','), '#c026d3,#ca8a04,#4d7c0f,#3730a3,#78350f');
 });
 
 test('unit side and index come from the React props', () => {

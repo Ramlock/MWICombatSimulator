@@ -4,6 +4,11 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.5.1 (2026-11-08)
+
+- New default teammate colours, slot 1 to 5: magenta, gold, lime, indigo, brown (best first, since slot 1 is filled most often). Colours you picked yourself stay as they are.
+- A miss on an enemy keeps its grey fill and gets a thin ring in the colour of the teammate who missed, when the tracker knows who it was.
+
 ### 0.5.0 (2026-11-08)
 
 - Renamed from MWICS Exporter to MWI Combat Tracker. Your script manager sees the new name as a different script: install this version, then remove MWICS Exporter. Settings and the stored combat recording do not carry over, so copy or save the recording from the old script first if you want it.

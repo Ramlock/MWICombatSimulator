@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.5.0
+// @version      0.5.1
 // @description  Combat tracker and read-only export for the MWICS combat simulator. Live: damage numbers on enemies and teammates' names drawn in each teammate's colour (display only). Export: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -708,8 +708,9 @@
     // docs/codebase/combat-tracker.md). The recorder's attribution of that same update is queued here per monster index before the page
     // renders, and each new splat takes the first queued entry with its value. Display only: nothing here reaches the game.
     const TINT = {
-        // Default colour per party slot, kept off the game's red (its red stays the fallback for hits with no known dealer).
-        PALETTE: ['#2563eb', '#16a34a', '#9333ea', '#d97706', '#0891b2'],
+        // Default colour per party slot, best first (slot 1 is filled most often, 4 and 5 only in dungeons): magenta, gold, lime, indigo,
+        // brown. Kept off the game's red (its red stays the fallback for hits with no known dealer).
+        PALETTE: ['#c026d3', '#ca8a04', '#4d7c0f', '#3730a3', '#78350f'],
         MAX_AGE_MS: 4000,
         MAX_QUEUE: 20,
     };
@@ -739,7 +740,8 @@
         }
         // The colour for a new splat of monster idx showing value: a teammate's colour, the fallback, or null (keep the game's own).
         // A splat can also show the sum of several queued updates (two updates drawn in one render): it takes their dealer when they share one.
-        function splatColor(idx, value) {
+        // knownOnly: no fallback, null unless the dealer is known (misses).
+        function splatColor(idx, value, knownOnly) {
             const t = now();
             const a = fresh(idx, t);
             let dealer = null, n = 0;
@@ -754,27 +756,35 @@
                 }
             }
             q.set(idx, a.slice(n));
-            if (dealer == null) return normColor(opts.colors().fallback);
+            if (dealer == null) return knownOnly ? null : normColor(opts.colors().fallback);
             return colorOfSlot(dealer);
         }
         return { setParty, noteHit, splatColor, colorOfSlot, party: () => party.slice(), battleId: () => battleId };
     }
 
     // One splat slot (a direct child div of the splats container; React reuses it for later splats). Colours it when it turns into a new
-    // damage splat, clears it otherwise. A slot's last seen splat is kept in data-mwct so a re-render of the same splat is not taken twice.
+    // damage splat, clears it otherwise. A miss keeps the game's grey fill and gets a thin inner ring in the dealer's colour, only when the
+    // dealer is known. A slot's last seen splat is kept in data-mwct so a re-render of the same splat is not taken twice.
     function tintSlot(slot, idx, tint) {
         const cls = String(slot.className || ''), text = String(slot.textContent || '').trim();
         const dmg = cls.includes('CombatUnit_damage') || cls.includes('CombatUnit_criticalDamage');
         const miss = cls.includes('CombatUnit_miss');
         if (!dmg && !miss) {
-            if (slot.dataset.mwct) { delete slot.dataset.mwct; slot.style.backgroundColor = ''; }
+            if (slot.dataset.mwct) { delete slot.dataset.mwct; slot.style.backgroundColor = ''; slot.style.boxShadow = ''; }
             return;
         }
         const key = cls + '|' + text;
         if (slot.dataset.mwct === key) return;
         slot.dataset.mwct = key;
-        const c = tint.splatColor(idx, miss ? 0 : Number(text));
-        slot.style.backgroundColor = dmg && c ? c : '';
+        if (miss) {
+            const ring = tint.splatColor(idx, 0, true);
+            slot.style.backgroundColor = '';
+            slot.style.boxShadow = ring ? 'inset 0 0 0 2px ' + ring : '';
+            return;
+        }
+        const c = tint.splatColor(idx, Number(text));
+        slot.style.backgroundColor = c || '';
+        slot.style.boxShadow = '';
     }
 
     // A combat unit element's React props (read only): { isPlayer, index } of the CombatUnit component, or null.
@@ -951,7 +961,7 @@
     const recorder = createRecorder({ clientData: () => clientData(), onHit });
     // With the recorder off, a second recorder feeds the colours only; it keeps nothing (its finished rows are dropped at each battle start).
     const liveRec = createRecorder({ clientData: () => clientData(), onHit });
-    const VERSION = '0.5.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.5.1'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1141,7 +1151,7 @@
             if (!info || !info.isPlayer || !name) continue;
             name.style.color = colors.on && info.index >= 0 ? tint.colorOfSlot(info.index) : '';
         }
-        if (!colors.on) for (const c of watched.keys()) for (const s of c.children) { s.style.backgroundColor = ''; delete s.dataset.mwct; }
+        if (!colors.on) for (const c of watched.keys()) for (const s of c.children) { s.style.backgroundColor = ''; s.style.boxShadow = ''; delete s.dataset.mwct; }
     }
 
     function toast(text, ms) {
