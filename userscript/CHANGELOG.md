@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.7.0 (2026-11-08)
+
+- A teammate's guild buff levels now come from their shared profile: open the profile in the game, then import or copy the party. The notice names the teammates whose guild buffs came from their profile. This corrects 0.6.1, which said a profile does not carry them. A profile opened before this version holds no guild buffs: open it again.
+
 ### 0.6.1 (2026-11-08)
 
 - The notice after a party import or group copy no longer suggests that opening a teammate's profile fills in missing guild buffs: a profile does not carry them. The notice now says to set them in the simulator, and the profile advice names only the missing parts a profile does carry (levels, gear, abilities, triggers, house rooms, achievements).

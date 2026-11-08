@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.6.1
+// @version      0.7.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -69,18 +69,24 @@
         return FALLBACK_SPECIAL_ABILITIES.includes(abilityHrid);
     }
 
+    function combatBuffHrid(name, clientObj) {
+        const shrineHrid = '/guild_shrines/' + name;
+        for (const [hrid, buff] of Object.entries(clientObj?.guildBuffDetailMap || {})) {
+            if (buff.shrineHrid === shrineHrid && buff.isCombat) return hrid;
+        }
+        return '/guild_buffs/' + name + '_combat';
+    }
     function guildCombatBuffLevels(characterObj, clientObj) {
         const buffMap = characterObj.characterGuildBuffMap || {};
         const unlocked = characterObj.guildBuildingLevelMap || {};
         const levels = {};
-        for (const name of COMBAT_SHRINES) {
-            const shrineHrid = '/guild_shrines/' + name;
-            let buffHrid = '/guild_buffs/' + name + '_combat';
-            for (const [hrid, buff] of Object.entries(clientObj?.guildBuffDetailMap || {})) {
-                if (buff.shrineHrid === shrineHrid && buff.isCombat) { buffHrid = hrid; break; }
-            }
-            levels[name] = Math.min(buffMap[buffHrid]?.level || 0, unlocked[shrineHrid] || 0);
-        }
+        for (const name of COMBAT_SHRINES) levels[name] = Math.min(buffMap[combatBuffHrid(name, clientObj)]?.level || 0, unlocked['/guild_shrines/' + name] || 0);
+        return levels;
+    }
+    // A teammate's own purchased levels, from their shared profile (guildBuffLevelMap, keyed by guild-buff hrid; no unlocked cap is shown).
+    function profileGuildLevels(levelMap, clientObj) {
+        const levels = {};
+        for (const name of COMBAT_SHRINES) { const v = levelMap[combatBuffHrid(name, clientObj)]; levels[name] = typeof v === 'number' ? v : v?.level || 0; }
         return levels;
     }
 
@@ -210,6 +216,8 @@
         if (p.abilityCombatTriggersMap) out.abilityTriggers = p.abilityCombatTriggersMap;
         if (p.consumableCombatTriggersMap) out.consumableTriggers = p.consumableCombatTriggersMap;
         if (p.characterHouseRoomMap) { out.houseRooms = {}; for (const r of Object.values(p.characterHouseRoomMap)) if (r?.houseRoomHrid) out.houseRooms[r.houseRoomHrid] = r.level; }
+        if (p.guildId != null) out.guildId = p.guildId;
+        if (p.guildBuffLevelMap && typeof p.guildBuffLevelMap === 'object') out.guildBuffLevelMap = p.guildBuffLevelMap;
         if (p.characterAchievements) { out.achievements = {}; for (const a of Object.values(p.characterAchievements)) if (a?.achievementHrid) out.achievements[a.achievementHrid] = !!a.isCompleted; }
         return out;
     }
@@ -231,7 +239,7 @@
         const add = (slot, r) => {
             const isSelf = !!co && selfId != null && r.id === selfId;
             const prof = isSelf ? null : find(r);
-            let out; const have = [];
+            let out, guild; const have = [];
             if (isSelf) {
                 out = buildExport(co, client, on);
                 if (on.skillLevels) have.push('skillLevels');
@@ -266,12 +274,14 @@
                 if ((on.equippedAbilities && prof?.abilityTriggers) || (on.consumables && prof?.consumableTriggers)) { out.triggerMap = trig; have.push('triggers'); }
                 if (on.houseRooms && prof?.houseRooms) { out.houseRooms = prof.houseRooms; have.push('houseRooms'); }
                 if (on.achievements && prof?.achievements) { out.achievements = prof.achievements; have.push('achievements'); }
+                // Guild buffs: the teammate's own levels, when their profile was opened (a profile cached before 0.7.0 has none).
+                if (on.guildBuffs && prof?.guildBuffLevelMap) { out.guildCombatBuffLevels = profileGuildLevels(prof.guildBuffLevelMap, client); have.push('guildBuffs'); guild = 'profile'; }
                 if (r.name || prof?.name) out.name = r.name || prof.name;
             }
             if (!have.length) return;
             const wanted = SLOT_KINDS.filter((k) => (k === 'triggers' ? (on.equippedAbilities || on.consumables) : on[k]));
             group[String(slot)] = out;
-            slots.push({ slot, name: out.name || '', self: isSelf, have, missing: wanted.filter((k) => !have.includes(k)) });
+            slots.push({ slot, name: out.name || '', self: isSelf, have, missing: wanted.filter((k) => !have.includes(k)), ...(guild ? { guild } : {}) });
         };
         if (!roster.length && co && selfId != null) roster.push({ id: selfId, name: co.character?.name || '', unit: null });
         roster.forEach((r, i) => { if (r) add(i + 1, r); });
@@ -837,18 +847,19 @@
 
     // The notice after a group copy or import: per slot what is missing, and how each gap can be filled.
     const KIND_LABEL = { skillLevels: 'levels', gear: 'gear', equippedAbilities: 'abilities', consumables: 'food and drinks', triggers: 'triggers', houseRooms: 'house rooms', achievements: 'achievements', guildBuffs: 'guild buffs' };
-    const PROFILE_KINDS = ['skillLevels', 'gear', 'equippedAbilities', 'triggers', 'houseRooms', 'achievements'];
+    const PROFILE_KINDS = ['skillLevels', 'gear', 'equippedAbilities', 'triggers', 'houseRooms', 'achievements', 'guildBuffs'];
+    const GUILD_NOTE = { profile: ' (guild buffs from their profile)' };
     const listText = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
     function groupNotice(what, slots, again) {
-        const lines = slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete'));
+        const lines = slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete') + (GUILD_NOTE[s.guild] || ''));
         const gaps = slots.some((s) => s.missing.length);
-        // Only these kinds come with a teammate's profile; guild buffs never do (each player sets them in the simulator).
         const fromProfile = PROFILE_KINDS.filter((k) => slots.some((s) => !s.self && s.missing.includes(k)));
         const hints = [];
         if (fromProfile.length) hints.push('Open each member\'s profile in the game for ' + listText(fromProfile.map((k) => KIND_LABEL[k])) + again);
-        if (slots.some((s) => s.missing.includes('guildBuffs'))) hints.push('Guild buffs are not in a teammate\'s profile: set them in the simulator');
-        return { lines, gaps, text: 'MWI Combat Tracker: ' + what + ' (' + slots.length + ' players). ' + lines.join('; ') + '.' + (gaps ? ' ' + hints.map((h) => h + '. ').join('') + 'What is missing keeps its value in the simulator.' : '') };
+        const tail = gaps ? 'What is missing keeps its value in the simulator.' : '';
+        return { lines, gaps, text: ('MWI Combat Tracker: ' + what + ' (' + slots.length + ' players). ' + lines.join('; ') + '. ' + hints.map((h) => h + '. ').join('') + tail).trim() };
     }
+
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
@@ -867,7 +878,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.6.1'; // keep equal to @version (a test checks it)
+    const VERSION = '0.7.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }

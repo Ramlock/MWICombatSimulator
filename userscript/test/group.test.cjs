@@ -125,12 +125,24 @@ test('trimProfile and trimBattle drop everything the import does not read', () =
     assert.deepEqual(Object.keys(t[0]), ['id', 'name', 'abilities', 'consumables']);
 });
 
-test('the notice never sends guild buffs to the profile: they are set in the simulator', () => {
+test("guild buffs: the teammate's own levels from an opened profile; nothing without one", () => {
+    const pm = profileMsg(11, 'Bravo'); pm.profile.guildId = 7; pm.profile.guildBuffLevelMap = { '/guild_buffs/force_combat': 2 };
+    const tp = trimProfile(pm);
+    assert.equal(tp.guildId, 7); assert.deepEqual(tp.guildBuffLevelMap, { '/guild_buffs/force_combat': 2 });
+    const r = buildGroupExport(ctx({ profiles: [tp] }));
+    assert.equal(r.group['1'].guildCombatBuffLevels.force, 2); assert.equal(r.group['1'].guildCombatBuffLevels.tempo, 0);
+    assert.equal(r.slots[0].guild, 'profile'); assert.ok(!r.slots[0].missing.includes('guildBuffs'));
+    assert.ok(!('guildCombatBuffLevels' in r.group['3'])); assert.ok(r.slots[2].missing.includes('guildBuffs')); assert.equal(r.slots[2].guild, undefined);
+    const old = trimProfile(profileMsg(11, 'Bravo'));
+    assert.ok(buildGroupExport(ctx({ profiles: [old] })).slots[0].missing.includes('guildBuffs'), 'a profile without the map (cached before 0.7.0) still misses guild buffs');
+});
+
+test('the notice names the teammates whose guild buffs came from their profile, and sends the rest to the profile', () => {
     const what = 'party imported from the game tab (0 min old)', again = ', then press this button again';
-    const g = groupNotice(what, [{ slot: 1, self: false, missing: ['guildBuffs'] }, { slot: 2, self: true, missing: [] }, { slot: 3, self: false, missing: ['guildBuffs'] }], again);
-    assert.equal(g.text, "MWI Combat Tracker: party imported from the game tab (0 min old) (3 players). slot 1: missing guild buffs; slot 2 (you): complete; slot 3: missing guild buffs. Guild buffs are not in a teammate's profile: set them in the simulator. What is missing keeps its value in the simulator.");
-    const m = groupNotice(what, [{ slot: 1, self: false, missing: ['skillLevels', 'gear', 'triggers', 'houseRooms', 'achievements', 'guildBuffs'] }, { slot: 2, self: true, missing: [] }], again);
-    assert.equal(m.text, "MWI Combat Tracker: party imported from the game tab (0 min old) (2 players). slot 1: missing levels, gear, triggers, house rooms, achievements, guild buffs; slot 2 (you): complete. Open each member's profile in the game for levels, gear, triggers, house rooms and achievements, then press this button again. Guild buffs are not in a teammate's profile: set them in the simulator. What is missing keeps its value in the simulator.");
+    const g = groupNotice(what, [{ slot: 1, self: false, missing: [], guild: 'profile' }, { slot: 2, self: true, missing: [] }, { slot: 3, self: false, missing: ['skillLevels', 'gear', 'triggers', 'houseRooms', 'achievements', 'guildBuffs'] }], again);
+    assert.equal(g.text, "MWI Combat Tracker: party imported from the game tab (0 min old) (3 players). slot 1: complete (guild buffs from their profile); slot 2 (you): complete; slot 3: missing levels, gear, triggers, house rooms, achievements, guild buffs. Open each member's profile in the game for levels, gear, triggers, house rooms, achievements and guild buffs, then press this button again. What is missing keeps its value in the simulator.");
+    const m = groupNotice(what, [{ slot: 1, self: false, missing: ['guildBuffs'] }, { slot: 2, self: true, missing: [] }], again);
+    assert.equal(m.text, "MWI Combat Tracker: party imported from the game tab (0 min old) (2 players). slot 1: missing guild buffs; slot 2 (you): complete. Open each member's profile in the game for guild buffs, then press this button again. What is missing keeps its value in the simulator.");
     assert.equal(groupNotice('group copied', [{ slot: 1, self: true, missing: [] }], ', then copy again').text, 'MWI Combat Tracker: group copied (1 players). slot 1 (you): complete.');
 });
 
