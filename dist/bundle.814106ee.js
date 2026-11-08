@@ -7983,6 +7983,20 @@ function updateUI() {
     updateContent();
 }
 
+// Portuguese item and price names are longer than the dropdowns ("Perneiras de Placas Sagradas"): in Portuguese, hovering a
+// dropdown shows its full selected name as a tooltip. English and Chinese get no tooltip.
+document.addEventListener('mouseover', (event) => {
+    const select = event.target.closest?.('select');
+    if (!select) return;
+    if (document.documentElement.lang === 'pt-BR') {
+        select.title = select.options[select.selectedIndex]?.text ?? '';
+        select.dataset.hoverName = '1';
+    } else if (select.dataset.hoverName) {
+        select.removeAttribute('title');
+        delete select.dataset.hoverName;
+    }
+});
+
 const darkModeToggle = document.getElementById('darkModeToggle');
 const body = document.body;
 
@@ -8067,4 +8081,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.82bb3624.js.map
+//# sourceMappingURL=bundle.814106ee.js.map
