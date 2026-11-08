@@ -2320,9 +2320,9 @@ function showKills(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += dropAmount;
+        tableRow += numberHtml(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += price * dropAmount;
+        tableRow += numberHtml(price * dropAmount);
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
         total += price * dropAmount;
@@ -2368,9 +2368,9 @@ function showKills(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += dropAmount;
+        tableRow += numberHtml(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += price * dropAmount;
+        tableRow += numberHtml(price * dropAmount);
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
         noRngTotal += price * dropAmount;
@@ -2504,9 +2504,9 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + amount + '">';
-        tableRow += amount;
+        tableRow += numberHtml(amount);
         tableRow += '</td><td data-total="' + price * amount + '">';
-        tableRow += price * amount;
+        tableRow += numberHtml(price * amount);
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
         total += price * amount;
@@ -4857,7 +4857,8 @@ function updateTable(tableId, item, price) {
     if (priceTd.innerText != price) {
         priceTd.innerText = price;
     }
-    totalTd.innerText = newTotal;
+    // The total shows formatted (numberHtml: exact value on hover, ISO toggle refreshes it); the exact value stays in data-total.
+    totalTd.innerHTML = numberHtml(newTotal);
     totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;

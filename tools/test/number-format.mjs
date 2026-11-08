@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 register(pathToFileURL(path.join(root, 'tools/calibration/hooks.mjs')).href);
-const { cellValue, setNumberText, setNumberFormatSettings, formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
+const { cellValue, setNumberText, setNumberFormatSettings, formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml, refreshFormattedNumbers } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
 
 const cases = [
     [0, '0'],
@@ -125,7 +125,31 @@ const simsBody = mainSource.slice(mainSource.indexOf('function updateAllSimsModa
 if (!/typeof item\[key\] === 'number'\) cell\.dataset\.sortValue/.test(simsBody)) failures.push('the DifficultyTier cell has no sortValue');
 if (/cell\.textContent\.(startsWith|includes)/.test(simsBody)) failures.push('updateAllSimsModal reads cell text as data');
 const tableBody = mainSource.slice(mainSource.indexOf('function updateTable('), mainSource.indexOf('// #endregion', mainSource.indexOf('function updateTable(')));
-if (/(amountTd|totalTd)\.innerText/.test(tableBody.replace(/totalTd\.innerText = newTotal;/, ''))) failures.push('updateTable reads cell text as data');
+if (/(amountTd|totalTd)\.innerText/.test(tableBody)) failures.push('updateTable reads cell text as data');
+
+// The price tables' Amount and Total cells: shown through numberHtml (4 significant figures, k/M/B/T from 10000, exact value on hover,
+// the ISO toggle re-formats them), with the exact values kept in data-amount / data-total. The Price cell stays raw (it is typed into).
+setNumberFormatSettings({ iso: false });
+const priceCases = [[1875400.20696, '1.875M', '1,875,400.20696'], [7.6154702400000005, '7.615', '7.61547024'], [230674225.45608002, '230.7M', '230,674,225.45608']];
+for (const [value, text, exact] of priceCases) {
+    const html = numberHtml(value);
+    if (!html.includes('>' + text + '<')) failures.push(`price table cell ${value}: expected display ${text}, got ${html}`);
+    if (!html.includes('title="' + exact + '"')) failures.push(`price table cell ${value}: expected hover ${exact}, got ${html}`);
+    if (!html.includes('data-num="' + value + '"')) failures.push(`price table cell ${value}: exact value not carried, got ${html}`);
+}
+{
+    // The ISO toggle's refresh reaches a number cell written by numberHtml (a fake root with one span built from numberHtml's attributes).
+    const span = { dataset: { num: '230674225.45608002', unit: '' }, textContent: '', title: '' };
+    const root = { querySelectorAll: (sel) => (sel === '[data-num]' ? [span] : []) };
+    setNumberFormatSettings({ iso: true });
+    refreshFormattedNumbers(root);
+    if (span.textContent.replaceAll(' ', ' ') !== '230.7 M' || span.title.replaceAll(' ', ' ') !== '230 674 225.45608') failures.push(`ISO refresh of a price table cell: ${span.textContent} / ${span.title}`);
+    setNumberFormatSettings({ iso: false });
+}
+const rowBuilders = mainSource.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('tableRow += '));
+if (rowBuilders.some((l) => /^tableRow \+= (dropAmount|amount|price \* dropAmount|price \* amount);$/.test(l))) failures.push('a price table row builder writes a raw Amount or Total');
+if (rowBuilders.filter((l) => /numberHtml\(/.test(l)).length !== 6) failures.push('the three row builders do not write Amount and Total through numberHtml');
+if (!/totalTd\.innerHTML = numberHtml\(newTotal\)/.test(tableBody) || !/totalTd\.dataset\.total = newTotal/.test(tableBody)) failures.push('updateTable does not write the total through numberHtml and keep data-total');
 
 const total = cases.length + optionCases.length;
 if (failures.length) {

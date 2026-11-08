@@ -5351,9 +5351,9 @@ function showKills(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += dropAmount;
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += price * dropAmount;
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
         total += price * dropAmount;
@@ -5399,9 +5399,9 @@ function showKills(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += dropAmount;
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += price * dropAmount;
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
         noRngTotal += price * dropAmount;
@@ -5535,9 +5535,9 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + amount + '">';
-        tableRow += amount;
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(amount);
         tableRow += '</td><td data-total="' + price * amount + '">';
-        tableRow += price * amount;
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(price * amount);
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
         total += price * amount;
@@ -7888,7 +7888,8 @@ function updateTable(tableId, item, price) {
     if (priceTd.innerText != price) {
         priceTd.innerText = price;
     }
-    totalTd.innerText = newTotal;
+    // The total shows formatted (numberHtml: exact value on hover, ISO toggle refreshes it); the exact value stays in data-total.
+    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(newTotal);
     totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;
@@ -8182,4 +8183,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.2241054a.js.map
+//# sourceMappingURL=bundle.17b363ca.js.map
