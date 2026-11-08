@@ -13,14 +13,14 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'mwics-exporter.user.js')
 function boot(store, opts) {
     opts = opts || {};
     class ME { constructor(d, url) { this._d = d; this.currentTarget = { url }; } get data() { return this._d; } }
-    const commands = {}, clip = [], toasts = [], reqs = [], timers = [], downloads = [];
-    const el = () => ({ style: {}, remove() {}, appendChild() {}, addEventListener() {}, click() { downloads.push({ href: this.href, name: this.download }); }, set textContent(v) { toasts.push(v); } });
+    const commands = {}, clip = [], toasts = [], reqs = [], timers = [], downloads = [], intervals = [], created = [];
+    const el = () => { const e = { style: {}, remove() {}, appendChild() {}, addEventListener(ev, fn) { this.on = fn; }, click() { downloads.push({ href: this.href, name: this.download }); }, set textContent(v) { toasts.push(v); } }; created.push(e); return e; };
     const blobs = [];
     const sandbox = {
         console, setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, JSON, Date, WeakSet, Object, Promise, Math, Set, Map, Array, String, Number, Error, RegExp, Blob: class { constructor(parts) { blobs.push(parts.join('')); } },
         URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
         unsafeWindow: { MessageEvent: ME, addEventListener() {}, prompt: () => opts.prompt },
-        document: { body: { appendChild() {} }, createElement: el, addEventListener() {}, getElementById: () => null, visibilityState: 'visible' },
+        document: { body: { appendChild() {} }, createElement: el, addEventListener() {}, getElementById: (id) => (opts.dom && opts.dom[id]) || null, visibilityState: 'visible' }, location: opts.location, setInterval: (fn) => { intervals.push(fn); return intervals.length; }, clearInterval: (i) => { intervals[i - 1] = null; },
         GM_registerMenuCommand: (n, f) => { commands[n] = f; },
         GM_setClipboard: (t) => clip.push(t),
         GM_getValue: (k, d) => (k in store ? store[k] : d),
@@ -34,7 +34,7 @@ function boot(store, opts) {
     };
     vm.runInNewContext(SRC, sandbox);
     const send = (msg, url) => new ME(typeof msg === 'string' ? msg : JSON.stringify(msg), url || 'wss://api.milkywayidle.com/ws').data;
-    return { commands, clip, toasts, send, reqs, timers, downloads, blobs };
+    return { commands, clip, toasts, send, reqs, timers, downloads, blobs, intervals, created };
 }
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -160,6 +160,38 @@ await test('a refused or unreachable helper keeps the data and retries; the togg
     for (let id = 1; id <= 8; id++) off.send(NB(id));
     await tick(); await tick();
     assert.equal(off.reqs.length, 0);
+});
+
+await test('cross-tab link: the game tab leaves the party in storage; the simulator page button imports it, refuses stale or missing data', () => {
+    const store = {};
+    const game = boot(store);
+    game.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [] });
+    const snap = JSON.parse(store.mwicsGroupSnapshot);
+    assert.deepEqual(Object.keys(snap.group), ['1']);
+    assert.equal(game.reqs.length, 0);
+
+    const mkSim = (s) => {
+        const input = { value: '' }, clicks = [];
+        const dom = { buttonImportExport: { parentElement: { insertAdjacentElement(pos, e) { dom.inserted = [pos, e]; } } }, inputSetGroupCombatAll: input, buttonImportSet: { click() { clicks.push('import:' + input.value); } }, 'group-combat-tab': { click() { clicks.push('tab'); } } };
+        const sim = boot(s, { location: { hostname: 'ramlock.github.io' }, dom });
+        sim.intervals[0]();
+        return { sim, dom, clicks, input, press: () => sim.created.find((e) => e.id === 'mwicsImportParty').on() };
+    };
+    const a = mkSim(store);
+    assert.deepEqual(Object.keys(a.sim.commands), [], 'on the simulator page there is no menu and no hook');
+    assert.equal(a.dom.inserted[0], 'afterend');
+    a.press();
+    assert.deepEqual(a.clicks.map((c) => c.split(':')[0]), ['tab', 'import']);
+    assert.deepEqual(Object.keys(JSON.parse(a.input.value)), ['1']);
+
+    const b = mkSim({ ...store, mwicsGroupSnapshot: JSON.stringify({ ...snap, t: Date.now() - 31 * 60000 }) });
+    b.press();
+    assert.equal(b.clicks.length, 0);
+    assert.ok(b.sim.toasts.some((t) => /3\d min old/.test(t)));
+    const c = mkSim({});
+    c.press();
+    assert.equal(c.clicks.length, 0);
+    assert.ok(c.sim.toasts.some((t) => /no party data from the game/.test(t)));
 });
 
 await test('the version in the header, the settings title and the status agree', () => {

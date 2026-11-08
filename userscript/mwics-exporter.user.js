@@ -7,6 +7,9 @@
 // @license      CC-BY-NC-SA-4.0
 // @match        https://www.milkywayidle.com/*
 // @match        https://test.milkywayidle.com/*
+// @match        https://ramlock.github.io/MWICombatSimulator/*
+// @match        http://localhost/*
+// @match        http://127.0.0.1/*
 // @run-at       document-start
 // @grant        GM_registerMenuCommand
 // @grant        GM_setClipboard
@@ -276,6 +279,17 @@
             for (let s = 1; s <= 5; s++) if (!group[String(s)] && !roster[s - 1]) { add(s, { id: selfId, name: co.character?.name || '', unit: null }); break; }
         }
         return slots.length ? { group, slots } : null;
+    }
+
+    // The game tab leaves the latest group export in the script's storage; the simulator page reads it (cross-tab link).
+    const SNAP_MAX_AGE_MS = 30 * 60000;
+    function checkGroupSnapshot(raw, now) {
+        let s = null;
+        try { s = JSON.parse(raw); } catch { s = null; }
+        if (!s || !s.group || !Object.keys(s.group).length) return { ok: false, message: 'MWICS Exporter: no party data from the game yet. Open the game in another tab with the exporter on, start a battle, then try again.' };
+        const ageMin = Math.max(0, Math.round((now - (s.t || 0)) / 60000));
+        if (now - (s.t || 0) > SNAP_MAX_AGE_MS) return { ok: false, message: 'MWICS Exporter: the party data from the game is ' + ageMin + ' min old (limit ' + SNAP_MAX_AGE_MS / 60000 + '). Open or refresh the game tab, then try again.' };
+        return { ok: true, group: s.group, slots: s.slots || [], ageMin };
     }
 
     // ================= Combat recorder (read-only) =================
@@ -822,7 +836,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { buildExport, buildGroupExport, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { buildExport, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -894,18 +908,32 @@
     let grp = { members: [], profiles: [] };
     try { const g = JSON.parse(GM_getValue(GROUP_KEY, 'null')); if (g && Array.isArray(g.members) && Array.isArray(g.profiles)) grp = g; } catch { /* start empty */ }
     function saveGroup() { try { GM_setValue(GROUP_KEY, JSON.stringify(grp)); } catch (err) { console.error('[MWICS Exporter] could not save the party data', err); } }
-    function noteBattle(obj) { const m = trimBattle(obj); if (m.length) { grp.members = m; saveGroup(); } }
+    function noteBattle(obj) { const m = trimBattle(obj); if (m.length) { grp.members = m; saveGroup(); publishSnapshot(); } }
     function noteProfile(obj) {
         const p = trimProfile(obj);
         if (!p) return;
         grp.profiles = [p, ...grp.profiles.filter((q) => !((q.id != null && q.id === p.id) || (q.name && q.name === p.name)))].slice(0, PROFILE_MAX);
         saveGroup();
+        publishSnapshot();
+    }
+    // The latest group export for the simulator page (same build as the clipboard copy), rewritten when the party, a profile,
+    // the character data or the toggles change.
+    const SNAP_KEY = 'mwicsGroupSnapshot';
+    function buildGroup() {
+        if (!latest) return null;
+        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles });
+    }
+    function publishSnapshot() {
+        try {
+            const r = buildGroup();
+            if (r) GM_setValue(SNAP_KEY, JSON.stringify({ t: Date.now(), group: r.group, slots: r.slots }));
+        } catch (err) { console.error('[MWICS Exporter] could not publish the party for the simulator', err); }
     }
 
     function loadToggles() {
         try { return { ...defaultToggles(), ...(JSON.parse(GM_getValue(TOGGLES_KEY, '{}')) || {}) }; } catch { return defaultToggles(); }
     }
-    function saveToggles(t) { GM_setValue(TOGGLES_KEY, JSON.stringify(t)); }
+    function saveToggles(t) { GM_setValue(TOGGLES_KEY, JSON.stringify(t)); publishSnapshot(); }
 
     // Read-only hook, chained onto whatever getter is already there (Toolasha and MWITools hook the same getter and chain
     // the same way, so load order does not matter). It reads the message the page already received; it never sends.
@@ -923,7 +951,7 @@
                     const type = m ? m[1] : null;
                     if (type === 'init_character_data' || message.includes('"init_character_data"')) {
                         const obj = JSON.parse(message);
-                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
+                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
                     } else if (type === 'profile_shared') {
                         noteProfile(JSON.parse(message));
                     } else if (type && REC_TYPES.includes(type)) {
@@ -967,7 +995,7 @@
     // The party as the sim's "All players import" text; null (with a toast) when there is nothing to give.
     function groupResult() {
         if (!latest) { toast('MWICS Exporter: no character data yet. Reload the game page with the exporter on, then try again.'); return null; }
-        const r = buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles });
+        const r = buildGroup();
         if (!r) { toast('MWICS Exporter: no party data yet. Start a battle (or reload the game page), then try again.'); return null; }
         return r;
     }
@@ -975,10 +1003,41 @@
         const r = groupResult();
         if (!r) return;
         GM_setClipboard(JSON.stringify(r.group), 'text');
-        const lines = r.slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete'));
-        console.info('[MWICS Exporter] group export copied. ' + lines.join('; '));
-        const gaps = r.slots.some((s) => s.missing.length);
-        toast('MWICS Exporter: group copied (' + r.slots.length + ' players). ' + lines.join('; ') + (gaps ? '. Open each member\'s profile in the game for levels, gear, triggers and house rooms, then copy again; what is missing keeps its value in the simulator.' : '.'), gaps ? 12000 : 3500);
+        reportGroup('group copied', r.slots, ', then copy again');
+    }
+    function reportGroup(what, slots, again) {
+        const lines = slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete'));
+        console.info('[MWICS Exporter] ' + what + '. ' + lines.join('; '));
+        const gaps = slots.some((s) => s.missing.length);
+        toast('MWICS Exporter: ' + what + ' (' + slots.length + ' players). ' + lines.join('; ') + (gaps ? '. Open each member\'s profile in the game for levels, gear, triggers and house rooms' + again + '; what is missing keeps its value in the simulator.' : '.'), gaps ? 12000 : 3500);
+    }
+
+    // ---- The simulator page: a button that imports the party the game tab left in storage ----
+    function addSimButton() {
+        const anchor = document.getElementById('buttonImportExport');
+        if (!anchor || !anchor.parentElement || document.getElementById('mwicsImportParty')) return !!document.getElementById('mwicsImportParty');
+        const wrap = document.createElement('div');
+        wrap.className = 'col-md-auto';
+        const b = document.createElement('button');
+        b.id = 'mwicsImportParty'; b.type = 'button'; b.className = 'btn btn-primary';
+        b.textContent = 'Import party from game (MWICS Exporter)';
+        b.addEventListener('click', importPartyFromGame);
+        wrap.appendChild(b);
+        anchor.parentElement.insertAdjacentElement('afterend', wrap);
+        return true;
+    }
+    function importPartyFromGame() {
+        const c = checkGroupSnapshot(GM_getValue(SNAP_KEY, ''), Date.now());
+        if (!c.ok) { toast(c.message, 8000); return; }
+        const input = document.getElementById('inputSetGroupCombatAll'), go = document.getElementById('buttonImportSet'), tab = document.getElementById('group-combat-tab');
+        if (!input || !go || !tab) { toast('MWICS Exporter: this simulator page has no Group Combat import.', 8000); return; }
+        tab.click();
+        input.value = JSON.stringify(c.group);
+        go.click();
+        reportGroup('party imported from the game tab (' + c.ageMin + ' min old)', c.slots, ', then press this button again');
+    }
+    function startSim() {
+        const timer = setInterval(() => { if (addSimButton()) clearInterval(timer); }, 500);
     }
 
     // The combat recording as one JSON text; null (with a toast) when there is nothing to give.
@@ -1077,6 +1136,8 @@
         document.body.appendChild(wrap);
     }
 
+    // On any page that is not the game this script only adds the import button to the simulator (no hook, no menu).
+    if (!/(^|\.)milkywayidle\.com$/.test(typeof location !== 'undefined' ? location.hostname : 'www.milkywayidle.com')) { startSim(); return; }
     loadRecorded();
     hook();
     page.addEventListener('pagehide', () => { saveRecorded(); sink.finish(); });

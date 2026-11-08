@@ -488,6 +488,7 @@ Menu entry `Copy group export (party, for Group Combat import)` copies the text 
 
 - `trimProfile` keeps the last 20 profiles (combat skills, combat gear slots, equipped abilities, both trigger maps, house rooms, achievements); `trimBattle` keeps the last battle's members. Both are stored in the script's storage and survive a reload.
 - Field names of `profile_shared` follow the third-party tool's reading of it; they are not yet checked against a recorded message (synthetic fixtures in `userscript/test/group.test.cjs`).
+- Cross-tab link: the same script matches the fork's Pages site and local pages (`@match`), and there only adds an `Import party from game (MWICS Exporter)` button beside Import/Export (no hook, no menu). The game tab rewrites the same group export into script storage (`mwicsGroupSnapshot`: time, group, slots) when the character data, the battle start, a shared profile or the toggles change. The button reads it, refuses when there is none or it is older than 30 minutes (`SNAP_MAX_AGE_MS`), else opens the Group Combat tab, fills `#inputSetGroupCombatAll` and presses `#buttonImportSet`, so the page needs no change. Never imports an empty party.
 - The toast and the console name what is missing per slot. Inventory, Coin and learned abilities are never part of the group export. Read-only toward the game; nothing is sent.
 
 ## Button behavior (proposed)
