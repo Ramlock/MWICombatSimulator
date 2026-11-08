@@ -2098,6 +2098,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
+const NO_BOOSTS = Object.freeze([]);
+
 class CombatUnit {
     isPlayer;
     isStunned = false;
@@ -2260,6 +2262,16 @@ class CombatUnit {
     constructor() { }
 
     updateCombatDetails() {
+        // Group the buffs by type once per rebuild (insertion order kept, so every sum adds in the same order as before).
+        const boostsByType = new Map();
+        for (const buff of Object.values(this.combatBuffs)) {
+            let list = boostsByType.get(buff.typeHrid);
+            if (!list) boostsByType.set(buff.typeHrid, list = []);
+            list.push(buff);
+        }
+        this.boostsByType = boostsByType;
+        this.statsDirty = false;
+
         if (this.isPlayer) {
             if (this.combatDetails.combatStats.hpRegenPer10 === 0) {
                 this.combatDetails.combatStats.hpRegenPer10 = 0.01;
@@ -2474,6 +2486,7 @@ class CombatUnit {
 
         this.combatDetails.combatStats.retaliation += this.getBuffBoost("/buff_types/retaliation").flatBoost;
         this.combatDetails.combatStats.tenacity += this.getBuffBoost("/buff_types/tenacity").flatBoost;
+        this.boostsByType = null;
     }
 
     addBuffs(buffs, currentTime) {
@@ -2591,6 +2604,10 @@ class CombatUnit {
             delete this.combatBuffs[buff.uniqueHrid];
         });
 
+        // Nothing expired and nothing overrode a rebuilt stat since the last rebuild: the rebuild would change nothing.
+        if (expiredBuffs.length === 0 && !this.statsDirty) {
+            return;
+        }
         this.updateCombatDetails();
     }
 
@@ -2606,10 +2623,16 @@ class CombatUnit {
         this.silenceExpireTime = null;
         this.isBlinded = false;
         this.blindExpireTime = null;
+        if (this.combatDetails?.combatStats && this.combatDetails.combatStats.damageTaken !== 0) {
+            this.statsDirty = true; // a rebuild restores damageTaken from the buffs
+        }
         this.combatDetails.combatStats.damageTaken = 0;
     }
 
     getBuffBoosts(type) {
+        if (this.boostsByType) {
+            return this.boostsByType.get(type) || NO_BOOSTS;
+        }
         let boosts = [];
         Object.values(this.combatBuffs)
             .filter((buff) => buff.typeHrid == type)
@@ -3661,13 +3684,13 @@ class EventQueue {
     }
 
     containsEventOfType(type) {
-        let heapEvents = this.minHeap.toArray();
+        let heapEvents = this.minHeap.heapArray;
 
         return heapEvents.some((event) => event.type == type);
     }
 
     containsEventOfTypeAndHrid(type, hrid) {
-        let heapEvents = this.minHeap.toArray();
+        let heapEvents = this.minHeap.heapArray;
         return heapEvents.some((event) => event.type == type && event.hrid == hrid);
     }
 
@@ -3685,7 +3708,7 @@ class EventQueue {
 
     clearMatching(fn) {
         let cleared = false;
-        let heapEvents = this.minHeap.toArray();
+        let heapEvents = this.minHeap.heapArray.slice(); // a snapshot: removal reorders the heap
 
         for (const event of heapEvents) {
             if (fn(event)) {
@@ -3697,7 +3720,7 @@ class EventQueue {
     }
 
     getMatching(fn) {
-        let heapEvents = this.minHeap.toArray(); 
+        let heapEvents = this.minHeap.heapArray;
     
         for (const event of heapEvents) {
             if (fn(event)) {
@@ -4348,7 +4371,7 @@ class Player extends _combatUnit__WEBPACK_IMPORTED_MODULE_1__["default"] {
             this.combatDetails.combatStats.focusTraining = "";
         }
 
-        [
+        const stats = [
             "stabAccuracy",
             "slashAccuracy",
             "smashAccuracy",
@@ -4419,12 +4442,24 @@ class Player extends _combatUnit__WEBPACK_IMPORTED_MODULE_1__["default"] {
             "rangedExperience",
             "magicExperience",
             "retaliation"
-        ].forEach((stat) => {
-            this.combatDetails.combatStats[stat] = Object.values(this.equipment)
-                .filter((equipment) => equipment != null)
-                .map((equipment) => equipment.getCombatStat(stat))
-                .reduce((prev, cur) => prev + cur, 0);
-        });
+        ];
+        // The equipment sums only change when a slot does: cache them, keyed on the equipment objects.
+        const slots = Object.values(this.equipment);
+        const cache = this.equipmentStatsCache;
+        if (!cache || cache.slots.length !== slots.length || slots.some((equipment, i) => equipment !== cache.slots[i])) {
+            const sums = {};
+            for (const stat of stats) {
+                sums[stat] = slots
+                    .filter((equipment) => equipment != null)
+                    .map((equipment) => equipment.getCombatStat(stat))
+                    .reduce((prev, cur) => prev + cur, 0);
+            }
+            this.equipmentStatsCache = { slots, sums };
+        }
+        const sums = this.equipmentStatsCache.sums;
+        for (const stat of stats) {
+            this.combatDetails.combatStats[stat] = sums[stat];
+        }
 
         if (this.equipment["/equipment_types/pouch"]) {
             this.combatDetails.combatStats.foodSlots =
@@ -4888,9 +4923,7 @@ class Trigger {
             case "/combat_trigger_conditions/maim":
             case "/combat_trigger_conditions/curse":
             case "/combat_trigger_conditions/weaken":
-                let buffHrid = "/buff_uniques";
-                buffHrid += this.conditionHrid.slice(this.conditionHrid.lastIndexOf("/"));
-                return source.combatBuffs[buffHrid];
+                return source.combatBuffs[this.getBuffHrid()];
             case "/combat_trigger_conditions/critical_aura":
             case "/combat_trigger_conditions/critical_coffee":
             case "/combat_trigger_conditions/intelligence_coffee":
@@ -4908,10 +4941,13 @@ class Trigger {
             case "/combat_trigger_conditions/speed_aura":
             case "/combat_trigger_conditions/toughness":
             case "/combat_trigger_conditions/enrage":
-                let buffPrefix = "/buff_uniques";
-                buffPrefix += this.conditionHrid.slice(this.conditionHrid.lastIndexOf("/"));
-                let buffs = Object.keys(source.combatBuffs).filter(buff => buff.startsWith(buffPrefix));
-                return source.combatBuffs[buffs?.[0]];
+                const buffPrefix = this.getBuffHrid();
+                for (const buff in source.combatBuffs) {
+                    if (buff.startsWith(buffPrefix)) {
+                        return source.combatBuffs[buff];
+                    }
+                }
+                return source.combatBuffs[undefined];
             case "/combat_trigger_conditions/current_hp":
                 return source.combatDetails.currentHitpoints;
             case "/combat_trigger_conditions/current_mp":
@@ -4931,6 +4967,14 @@ class Trigger {
             default:
                 throw new Error("Unknown conditionHrid in trigger: " + this.conditionHrid);
         }
+    }
+
+    // "/buff_uniques/<last part of the condition hrid>", built once.
+    getBuffHrid() {
+        if (this.buffHrid === undefined) {
+            this.buffHrid = "/buff_uniques" + this.conditionHrid.slice(this.conditionHrid.lastIndexOf("/"));
+        }
+        return this.buffHrid;
     }
 
     compareValue(dependencyValue) {
@@ -5479,4 +5523,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"/buff_uniques/labyrinth_upgrade_atta
 /***/ })
 
 }]);
-//# sourceMappingURL=src_worker_js.cc22f0c8.js.map
+//# sourceMappingURL=src_worker_js.8b9aac30.js.map

@@ -13,6 +13,7 @@ ZH = {
         "右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住",
         "页面默认以黑暗模式打开，关闭后会被记住；黑暗模式开关位于右上角，语言按钮旁边",
         "模拟器现已支持葡萄牙语，整个页面使用游戏官方的葡萄牙语名称和术语",
+        "模拟速度提升约五倍，结果不变",
     ],
     "2026-11-07": [
         "战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致",
@@ -170,6 +171,7 @@ PT = [
         "Nova chave Números ISO no canto superior direito: porcentagens como 1.79 % e milhares como 1 234; vem desligada e é lembrada",
         "A página abre no modo escuro por padrão, e desligá-lo fica lembrado; a chave do modo escuro fica no canto superior direito, ao lado dos botões de idioma",
         "O simulador agora está disponível em português, com os nomes e termos oficiais do jogo em toda a página",
+        "As simulações rodam cerca de cinco vezes mais rápido; os resultados não mudam",
     ],
     ["O painel de Atributos de Combate agora também conta as bebidas equipadas e as auras equipadas do próprio jogador, sem nenhuma opção para ligar; os atributos mostrados batem com os que o mesmo jogador tem em combate"],
     [

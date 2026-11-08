@@ -7,7 +7,8 @@
             "Numbers in the results show at 4 significant figures, with k, M, B and T from 10,000 up (123.5k, 1.235M); hover a number for its exact value",
             "New ISO numbers toggle at the top right: percentages as 1.79 % and thousands as 1 234; it is off by default and remembered",
             "The page opens in Dark Mode by default, and turning it off is remembered; the Dark Mode toggle sits at the top right, next to the language buttons",
-            "The simulator is now available in Portuguese, using the game's own Portuguese names and terms across the page"
+            "The simulator is now available in Portuguese, using the game's own Portuguese names and terms across the page",
+            "Simulations run about five times faster; results are unchanged"
         ]
     },
     "2026-11-07":
