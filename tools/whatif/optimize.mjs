@@ -5,7 +5,9 @@
 // Usage: node tools/whatif/optimize.mjs --out <dir> [options]
 //   --players Ramlock            whose equipment is open (comma list); each change is costed to its player
 //   --levers equip               comma list of equip (phase 1: +N and market swaps), consumables (any food or drink
-//                                with a market ask, drop one, fill an empty slot), owned (items in the exporter's
+//                                with a market ask, drop one, fill an empty slot; one of each food or drink type),
+//                                pairs (two slots of a kind changed together, each to another tier of its type),
+//                                owned (items in the exporter's
 //                                inventory), abilities (learned, at their learned level), order (ability order); all
 //   --charms                     keep charm candidates on a profit goal (left out by default: they change only EXP)
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
@@ -25,6 +27,7 @@
 //   --only-candidates a,b        restrict to these candidate ids (a pilot)
 //   --max-steps 20  --jobs <n>  --max-minutes <n> (stop issuing runs after n minutes; rerun resumes)
 //   --confirm-seed-offset 10000  --setups <dir>  --prices <marketplace.json>
+//   --cache-from <runs.jsonl,...> earlier searches' run caches, read only (runs are keyed by setup, so any match counts)
 //   --comdrop 20 --comexp 20 --tier 4 --zone /actions/combat/infernal_abyss
 // Every run is cached in <out>/runs.jsonl by (resulting setups, options, seed); a rerun with the same args
 // resumes. Results: <out>/result.json and <out>/result.md. Exit code 3 = stopped by --max-minutes, rerun.
@@ -37,6 +40,7 @@ import os from 'node:os';
 import { readParty, applyOps } from './variants.mjs';
 import { loadMarket, makePricer, TAX_LABEL } from './prices.mjs';
 import { DEFAULT_PRICES, buildDtos, root } from './engine.mjs';
+import { consumableType, swapCands, tierPairCands } from './consumables.mjs';
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
 const itemDetailMap = await json('itemDetailMap.json');
@@ -75,7 +79,7 @@ const confirmOffset = Number(arg('confirm-seed-offset', 10000));
 const setupsDir = arg('setups', undefined);
 const pricesFile = arg('prices', DEFAULT_PRICES);
 const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-const LEVERS = ['equip', 'consumables', 'owned', 'abilities', 'order'];
+const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order'];
 const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : [x.trim()])));
 for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
 const exportData = arg('export', null) ? JSON.parse(readFileSync(arg('export'), 'utf8')) : null;
@@ -94,7 +98,9 @@ const t0 = Date.now();
 const CACHE = path.join(OUT, 'runs.jsonl');
 const seedIndex = new Map(); // key -> Set of seeds run for that setup
 const cache = new Map(); // key#seed -> { wallSeconds, hours, byHours: {h: metricsCheckpoint} }
-if (existsSync(CACHE)) for (const l of readFileSync(CACHE, 'utf8').split('\n').filter(Boolean)) { const r = JSON.parse(l); put(r); }
+// --cache-from a.jsonl,b.jsonl: earlier runs.jsonl files read as well (never written), so a new search reuses
+// another search's runs of the same setups without copying them.
+for (const f of [...(list(arg('cache-from', null)) || []), CACHE]) if (existsSync(f)) for (const l of readFileSync(f, 'utf8').split('\n').filter(Boolean)) put(JSON.parse(l));
 function put(r) {
     const id = r.key + '#' + r.seed;
     const prev = cache.get(id);
@@ -217,19 +223,15 @@ function consumableSlots(setups, p) {
     const d = buildDtos(t)[i];
     return { food: d.food.filter(Boolean).length, drink: d.drinks.filter(Boolean).length };
 }
-function consumableCands(setups, p) {
+// One food and one drink of each type at a time (consumables.mjs); --levers pairs adds both slots of a kind
+// changed together, each to another tier of its own type.
+const typeOf = (h) => consumableType(itemDetailMap[h]);
+function consumableCands(setups, p, withSingles, withPairs) {
     const s = setups.find((x) => x.name === p), n = consumableSlots(setups, p), out = [];
     for (const [kind, key, pool] of [['food', 'food', FOODS], ['drink', 'drinks', DRINKS]]) {
-        const list = s[key]['/action_types/combat'] || [];
-        const held = new Set(list.map((x) => x?.itemHrid).filter(Boolean));
-        for (let i = 0; i < n[kind]; i++) {
-            const cur = list[i]?.itemHrid, g = [`${p}:${kind}${i}`], from = cur ? short(cur) : 'empty';
-            for (const h of pool) {
-                if (held.has(h)) continue; // one of each item at a time (inferred game rule)
-                out.push({ id: `${p}:${kind}${i}=${short(h)}`, kind, groups: g, player: p, monotone: false, desc: `${p} ${kind} ${i + 1} ${from} -> ${short(h)}`, ops: [{ op: kind, player: p, index: i, item: h }], cost: FREE('loadout tweak, used x buy price in expenses') });
-            }
-            if (cur) out.push({ id: `${p}:${kind}${i}=none`, kind, groups: g, player: p, monotone: false, desc: `${p} ${kind} ${i + 1} ${from} -> empty`, ops: [{ op: kind, player: p, index: i, item: null }], cost: FREE('loadout tweak') });
-        }
+        const list = Array.from({ length: n[kind] }, (_, i) => s[key]['/action_types/combat']?.[i]?.itemHrid || null);
+        if (withSingles) out.push(...swapCands(p, kind, list, n[kind], pool, typeOf));
+        if (withPairs) out.push(...tierPairCands(p, kind, list, n[kind], pool, typeOf));
     }
     return out;
 }
@@ -290,7 +292,7 @@ function abilityCands(setups, p, withSwaps, withOrder) {
 function allCandidates(setups, p) {
     return [
         ...(levers.has('equip') ? candidatesFor(setups, p, openSlots) : []),
-        ...(levers.has('consumables') ? consumableCands(setups, p) : []),
+        ...(levers.has('consumables') || levers.has('pairs') ? consumableCands(setups, p, levers.has('consumables'), levers.has('pairs')) : []),
         ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
         ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
     ];
