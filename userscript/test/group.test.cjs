@@ -1,7 +1,7 @@
 // Node test for the group export of userscript/mwics-exporter.user.js (buildGroupExport, trimBattle, trimProfile), synthetic data only.
 // Run: node userscript/test/group.test.cjs
 const assert = require('node:assert/strict');
-const { buildGroupExport, trimBattle, trimProfile, buildExport } = require('../mwics-exporter.user.js');
+const { buildGroupExport, trimBattle, trimProfile, buildExport, groupNotice } = require('../mwics-exporter.user.js');
 
 const COMBAT = '/action_types/combat';
 const client = {
@@ -123,6 +123,15 @@ test('trimProfile and trimBattle drop everything the import does not read', () =
     assert.equal(trimProfile({ profile: { characterSkills: [] } }), null);
     const t = trimBattle({ players: [{ ...battle.players[0], totalLootMap: { a: 1 }, combatDetails: { x: 1 } }] });
     assert.deepEqual(Object.keys(t[0]), ['id', 'name', 'abilities', 'consumables']);
+});
+
+test('the notice never sends guild buffs to the profile: they are set in the simulator', () => {
+    const what = 'party imported from the game tab (0 min old)', again = ', then press this button again';
+    const g = groupNotice(what, [{ slot: 1, self: false, missing: ['guildBuffs'] }, { slot: 2, self: true, missing: [] }, { slot: 3, self: false, missing: ['guildBuffs'] }], again);
+    assert.equal(g.text, "MWI Combat Tracker: party imported from the game tab (0 min old) (3 players). slot 1: missing guild buffs; slot 2 (you): complete; slot 3: missing guild buffs. Guild buffs are not in a teammate's profile: set them in the simulator. What is missing keeps its value in the simulator.");
+    const m = groupNotice(what, [{ slot: 1, self: false, missing: ['skillLevels', 'gear', 'triggers', 'houseRooms', 'achievements', 'guildBuffs'] }, { slot: 2, self: true, missing: [] }], again);
+    assert.equal(m.text, "MWI Combat Tracker: party imported from the game tab (0 min old) (2 players). slot 1: missing levels, gear, triggers, house rooms, achievements, guild buffs; slot 2 (you): complete. Open each member's profile in the game for levels, gear, triggers, house rooms and achievements, then press this button again. Guild buffs are not in a teammate's profile: set them in the simulator. What is missing keeps its value in the simulator.");
+    assert.equal(groupNotice('group copied', [{ slot: 1, self: true, missing: [] }], ', then copy again').text, 'MWI Combat Tracker: group copied (1 players). slot 1 (you): complete.');
 });
 
 console.log(n + ' tests passed');

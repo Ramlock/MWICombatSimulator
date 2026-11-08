@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.6.0
+// @version      0.6.1
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -835,8 +835,23 @@
         return { notify, finish, flush, scan, state: st };
     }
 
+    // The notice after a group copy or import: per slot what is missing, and how each gap can be filled.
+    const KIND_LABEL = { skillLevels: 'levels', gear: 'gear', equippedAbilities: 'abilities', consumables: 'food and drinks', triggers: 'triggers', houseRooms: 'house rooms', achievements: 'achievements', guildBuffs: 'guild buffs' };
+    const PROFILE_KINDS = ['skillLevels', 'gear', 'equippedAbilities', 'triggers', 'houseRooms', 'achievements'];
+    const listText = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+    function groupNotice(what, slots, again) {
+        const lines = slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete'));
+        const gaps = slots.some((s) => s.missing.length);
+        // Only these kinds come with a teammate's profile; guild buffs never do (each player sets them in the simulator).
+        const fromProfile = PROFILE_KINDS.filter((k) => slots.some((s) => !s.self && s.missing.includes(k)));
+        const hints = [];
+        if (fromProfile.length) hints.push('Open each member\'s profile in the game for ' + listText(fromProfile.map((k) => KIND_LABEL[k])) + again);
+        if (slots.some((s) => s.missing.includes('guildBuffs'))) hints.push('Guild buffs are not in a teammate\'s profile: set them in the simulator');
+        return { lines, gaps, text: 'MWI Combat Tracker: ' + what + ' (' + slots.length + ' players). ' + lines.join('; ') + '.' + (gaps ? ' ' + hints.map((h) => h + '. ').join('') + 'What is missing keeps its value in the simulator.' : '') };
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { buildExport, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -852,7 +867,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.6.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.6.1'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -991,7 +1006,6 @@
         toast('MWI Combat Tracker: copied (character data from ' + latest.receivedAt.toLocaleTimeString() + ').');
     }
 
-    const KIND_LABEL = { skillLevels: 'levels', gear: 'gear', equippedAbilities: 'abilities', consumables: 'food and drinks', triggers: 'triggers', houseRooms: 'house rooms', achievements: 'achievements', guildBuffs: 'guild buffs' };
     // The party as the sim's "All players import" text; null (with a toast) when there is nothing to give.
     function groupResult() {
         if (!latest) { toast('MWI Combat Tracker: no character data yet. Reload the game page with the exporter on, then try again.'); return null; }
@@ -1006,10 +1020,9 @@
         reportGroup('group copied', r.slots, ', then copy again');
     }
     function reportGroup(what, slots, again) {
-        const lines = slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete'));
-        console.info('[MWI Combat Tracker] ' + what + '. ' + lines.join('; '));
-        const gaps = slots.some((s) => s.missing.length);
-        toast('MWI Combat Tracker: ' + what + ' (' + slots.length + ' players). ' + lines.join('; ') + (gaps ? '. Open each member\'s profile in the game for levels, gear, triggers and house rooms' + again + '; what is missing keeps its value in the simulator.' : '.'), gaps ? 12000 : 3500);
+        const n = groupNotice(what, slots, again);
+        console.info('[MWI Combat Tracker] ' + what + '. ' + n.lines.join('; '));
+        toast(n.text, n.gaps ? 12000 : 3500);
     }
 
     // ---- The simulator page: a button that imports the party the game tab left in storage ----

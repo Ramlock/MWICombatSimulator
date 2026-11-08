@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.6.1 (2026-11-08)
+
+- The notice after a party import or group copy no longer suggests that opening a teammate's profile fills in missing guild buffs: a profile does not carry them. The notice now says to set them in the simulator, and the profile advice names only the missing parts a profile does carry (levels, gear, abilities, triggers, house rooms, achievements).
+
 ### 0.6.0 (2026-11-08)
 
 - The per-player colouring was removed at the user's request: damage numbers go back to the game's red, teammates' names go back to plain, and the "Teammate colours" settings and the miss ring are gone. Colours you picked stay in the script's storage, unused.

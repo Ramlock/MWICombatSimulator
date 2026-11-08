@@ -132,7 +132,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0\.6\.0/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0\.6\.1/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -197,8 +197,8 @@ await test('cross-tab link: the game tab leaves the party in storage; the simula
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0\.6\.0/);
-    assert.ok(SRC.includes("const VERSION = '0.6.0'"));
+    assert.match(SRC, /@version\s+0\.6\.1/);
+    assert.ok(SRC.includes("const VERSION = '0.6.1'"));
 });
 
 await test('Copy group export: reads the battle start and a shared profile from the socket, keeps profiles across a reload, never sends', async () => {
