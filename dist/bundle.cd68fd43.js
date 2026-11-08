@@ -16,8 +16,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   levelStats: () => (/* binding */ levelStats),
 /* harmony export */   percentCombatStats: () => (/* binding */ percentCombatStats)
 /* harmony export */ });
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
 // What the Combat Stats panel (index.html, ids combatStat_*) shows for a combat unit's combatDetails.
 // Shared by src/main.js (rendering) and tools/calibration/panel-check.mjs (the check against the engine).
+
+
 
 // Effective skill levels: the raw level plus every level buff (house rooms, ...).
 const levelStats = ["stamina", "intelligence", "attack", "melee", "defense", "ranged", "magic"].map((skill) => skill + "Level");
@@ -101,24 +104,22 @@ const percentCombatStats = [
     "magicExperience"
 ];
 
-// The text of every numeric panel row, keyed by the element id's suffix (combatStat_<key>).
+// The HTML of every numeric panel row, keyed by the element id's suffix (combatStat_<key>). Display text follows
+// src/numberFormat.js; each value carries its exact figure (hover title), so equal panels mean equal stats.
 function getCombatStatsPanelValues(combatDetails) {
     const values = {};
-    values.attackInterval = (combatDetails.combatStats.attackInterval / 1e9).toLocaleString() + "s";
+    values.attackInterval = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(combatDetails.combatStats.attackInterval / 1e9, "s");
     levelStats.forEach((stat) => {
-        values[stat] = combatDetails[stat].toLocaleString([], { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        values[stat] = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(combatDetails[stat]);
     });
     flooredStats.forEach((stat) => {
-        values[stat] = String(Math.floor(combatDetails[stat]));
+        values[stat] = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(Math.floor(combatDetails[stat]));
     });
     flooredCombatStats.forEach((stat) => {
-        values[stat] = String(Math.floor(combatDetails.combatStats[stat]));
+        values[stat] = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(Math.floor(combatDetails.combatStats[stat]));
     });
     percentCombatStats.forEach((stat) => {
-        values[stat] = (100 * combatDetails.combatStats[stat]).toLocaleString([], {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 4,
-        }) + "%";
+        values[stat] = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.percentHtml)(100 * combatDetails.combatStats[stat]);
     });
     return values;
 }
@@ -2222,6 +2223,147 @@ function getImportedGuildBuffs(importSet) {
 
 /***/ }),
 
+/***/ "./src/numberFormat.js":
+/*!*****************************!*\
+  !*** ./src/numberFormat.js ***!
+  \*****************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   exactNumber: () => (/* binding */ exactNumber),
+/* harmony export */   formatNumber: () => (/* binding */ formatNumber),
+/* harmony export */   formatPercent: () => (/* binding */ formatPercent),
+/* harmony export */   numberFormatSettings: () => (/* binding */ numberFormatSettings),
+/* harmony export */   numberHtml: () => (/* binding */ numberHtml),
+/* harmony export */   percentHtml: () => (/* binding */ percentHtml),
+/* harmony export */   refreshFormattedNumbers: () => (/* binding */ refreshFormattedNumbers),
+/* harmony export */   setNumberFormatSettings: () => (/* binding */ setNumberFormatSettings),
+/* harmony export */   setNumberText: () => (/* binding */ setNumberText)
+/* harmony export */ });
+// Display formatting for numbers shown in the simulator UI. Display only: stored data, exports, URLs and the
+// import/export formats keep full precision and never go through this module.
+//
+// Rules: at most 4 significant figures (trailing zeros dropped). From 10000 up, suffixes k, M, B, T (123.5k, 1.235M).
+// Below 10000, whole numbers show in full with a thousands separator (1,234); decimals show at 4 significant figures.
+// Percentages take the same rules plus a percent sign. ISO mode (the page's ISO toggle) separates the percent sign
+// ("1.79 %") and groups thousands with a space ("1 234"); off, it is "1.79%" and "1,234".
+
+const SUFFIXES = [
+    { base: 1e12, suffix: "T" },
+    { base: 1e9, suffix: "B" },
+    { base: 1e6, suffix: "M" },
+    { base: 1e3, suffix: "k" },
+];
+
+const SIG_FIGS = 4;
+const SUFFIX_FROM = 10000;
+
+// Page-wide settings, set from the UI (the ISO toggle). Pure calls can pass their own options instead:
+// { iso } overrides the toggle, { thousandsSeparator } overrides the separator the mode implies.
+const numberFormatSettings = {
+    iso: false,
+};
+
+function isIso(options) {
+    return options.iso ?? numberFormatSettings.iso;
+}
+
+function setNumberFormatSettings(settings) {
+    Object.assign(numberFormatSettings, settings);
+}
+
+function groupThousands(integerText, separator) {
+    return integerText.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
+}
+
+function roundSig(abs) {
+    return Number(abs.toPrecision(SIG_FIGS));
+}
+
+function withSuffix(abs) {
+    for (let i = 0; i < SUFFIXES.length; i++) {
+        const { base, suffix } = SUFFIXES[i];
+        if (abs < base) continue;
+        const scaled = roundSig(abs / base);
+        // Rounding can carry into the next suffix (999950 -> 1000k -> 1M).
+        if (scaled >= 1000 && i > 0) {
+            return String(roundSig(abs / SUFFIXES[i - 1].base)) + SUFFIXES[i - 1].suffix;
+        }
+        return String(scaled) + suffix;
+    }
+    return String(roundSig(abs));
+}
+
+// The display text of a number. Non-numbers and non-finite values pass through as text.
+function formatNumber(value, options = {}) {
+    const separator = options.thousandsSeparator ?? (isIso(options) ? " " : ",");
+    const number = typeof value === "string" ? Number(value) : value;
+    if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
+    if (number === 0) return "0";
+
+    const sign = number < 0 ? "-" : "";
+    const abs = Math.abs(number);
+
+    if (abs >= SUFFIX_FROM) return sign + withSuffix(abs);
+    if (Number.isInteger(abs)) return sign + groupThousands(String(abs), separator);
+
+    const rounded = roundSig(abs);
+    if (rounded >= SUFFIX_FROM) return sign + withSuffix(rounded);
+    if (rounded === 0) return "0";
+    if (rounded >= 1000) return sign + groupThousands(String(rounded), separator);
+    return sign + String(rounded);
+}
+
+// A value already in percent units (12.5 for 12.5%).
+function formatPercent(value, options = {}) {
+    return formatNumber(value, options) + (isIso(options) ? " %" : "%");
+}
+
+// The exact value, for the hover title.
+function exactNumber(value) {
+    const number = typeof value === "string" ? Number(value) : value;
+    if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
+    return number.toLocaleString("en-US", { maximumSignificantDigits: 15 });
+}
+
+function escapeAttribute(text) {
+    return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+// HTML for innerHTML sites: the display text with the exact value on hover. `unit` is appended to both.
+// The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
+function numberHtml(value, unit = "") {
+    return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '" title="' +
+        escapeAttribute(exactNumber(value) + unit) + '">' + formatNumber(value) + unit + "</span>";
+}
+
+function percentHtml(value) {
+    return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + "%") + '">' +
+        formatPercent(value) + "</span>";
+}
+
+// For textContent sites: sets the display text and the hover title on an element.
+function setNumberText(element, value, unit = "") {
+    element.textContent = formatNumber(value) + unit;
+    element.title = exactNumber(value) + unit;
+    element.dataset.num = String(value);
+    element.dataset.unit = unit;
+}
+
+// Re-formats every number this module rendered under `root`, after the settings change.
+function refreshFormattedNumbers(root) {
+    root.querySelectorAll("[data-num]").forEach((element) => {
+        element.textContent = formatNumber(element.dataset.num) + (element.dataset.unit ?? "");
+    });
+    root.querySelectorAll("[data-pct]").forEach((element) => {
+        element.textContent = formatPercent(element.dataset.pct);
+    });
+}
+
+
+/***/ }),
+
 /***/ "./src/simSetup.js":
 /*!*************************!*\
   !*** ./src/simSetup.js ***!
@@ -2441,7 +2583,7 @@ function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra, withDrinks
   \*****************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["现在可从两种导出格式读取公会增益","战斗属性面板显示模拟所用的属性（房屋、成就、公会、社区及其他增益），包括有效技能等级和稀有发现","社区经验和战斗掉落增益默认开启（20级），并可编辑"]}}}');
+module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值","右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住","黑暗模式开关移到右上角，位于语言按钮旁边"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["现在可从两种导出格式读取公会增益","战斗属性面板显示模拟所用的属性（房屋、成就、公会、社区及其他增益），包括有效技能等级和稀有发现","社区经验和战斗掉落增益默认开启（20级），并可编辑"]}}}');
 
 /***/ }),
 
@@ -2451,7 +2593,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation b
   \************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"2026-11-07":{"fork":"Ramlock","notes":["The Combat Stats panel now also counts the slotted drinks and the player\'s own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are now read from both export formats","The Combat Stats panel shows the stats the simulation uses (house rooms, achievements, guild, community and other buffs), with effective skill levels and Rare Find","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
+module.exports = /*#__PURE__*/JSON.parse('{"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show at 4 significant figures, with k, M, B and T from 10,000 up (123.5k, 1.235M); hover a number for its exact value","New ISO numbers toggle at the top right: percentages as 1.79 % and thousands as 1 234; it is off by default and remembered","The Dark Mode toggle moved to the top right, next to the language buttons"]},"2026-11-07":{"fork":"Ramlock","notes":["The Combat Stats panel now also counts the slotted drinks and the player\'s own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are now read from both export formats","The Combat Stats panel shows the stats the simulation uses (house rooms, achievements, guild, community and other buffs), with effective skill levels and Rare Find","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
 
 /***/ }),
 
@@ -2784,19 +2926,21 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! ./importGuildBuffs.js */ "./src/importGuildBuffs.js");
 /* harmony import */ var _simSetup_js__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! ./simSetup.js */ "./src/simSetup.js");
 /* harmony import */ var _combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! ./combatStatsPanel.js */ "./src/combatStatsPanel.js");
-/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
-/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
-/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
-/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
-/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
-/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
-/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
+/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
+/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
+/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
+/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
+/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
+/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
+/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
 
 
 
@@ -2871,7 +3015,7 @@ function onWorkerMessage(event) {
     switch (event.data.type) {
         case "simulation_result":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = "100% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
             //console.log("SIM RESULTS: ", event.data.simResult);
             showSimulationResult(event.data.simResult);
             updateContent();
@@ -2882,7 +3026,7 @@ function onWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = progress + "% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
             // 实时更新图表
             if (event.data.timeSeriesData && document.getElementById('hpMpVisualizationToggle').checked) {
                 updateChartsRealtime(event.data.timeSeriesData);
@@ -2899,7 +3043,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_result_allZones":
         case "simulation_result_allLabyrinths":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = "100% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
             showAllSimulationResults(event.data.simResults);
             updateContent();
             buttonStartSimulation.disabled = false;
@@ -2909,7 +3053,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = progress + "% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
             break;
         case "simulation_error":
             showErrorModal(event.data.error.toString());
@@ -3164,7 +3308,7 @@ function applyGuildBuffsToState(importMap) {
 }
 
 function refreshAchievementStatics() {
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_24__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_25__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
         const checks = document.querySelectorAll(`input[data-achievement-hrid][data-tier="${tier.sortIndex}"]`);
         const done = Array.from(checks).filter(cb => cb.checked).length;
@@ -3189,9 +3333,9 @@ function initAchievementsModal(){
     let newChildren = [];
     player.achievements = {};
 
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_24__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_25__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
-        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_25__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
+        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_26__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
         let detailMapCount = detailMap.length;
         if (detailMapCount <= 0) continue;
 
@@ -3424,10 +3568,10 @@ function updateCombatStatsUI() {
     let combatStyleElement = document.getElementById("combatStat_combatStyleHrid");
     let combatStyle = unit.combatDetails.combatStats.combatStyleHrid;
     combatStyleElement.setAttribute("data-i18n", "combatStyleNames." + combatStyle);
-    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[combatStyle].name;
+    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[combatStyle].name;
 
     let damageTypeElement = document.getElementById("combatStat_damageType");
-    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[unit.combatDetails.combatStats.damageType];
+    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[unit.combatDetails.combatStats.damageType];
     damageTypeElement.setAttribute("data-i18n", "damageTypeNames." + damageType.hrid);
     damageTypeElement.innerHTML = damageType.name;
 
@@ -3670,9 +3814,9 @@ function updateAbilityUI() {
         let inputElement = document.getElementById("inputAbilityLevel_" + i);
         let triggerButton = document.getElementById("buttonAbilityTrigger_" + i);
 
-        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_18__[i + 1];
-        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_18__[i + 1];
-        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_18__[i + 1] || !main_abilities[i];
+        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_19__[i + 1];
+        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_19__[i + 1];
+        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_19__[i + 1] || !main_abilities[i];
         let moveUpButton = document.getElementById("selectAbilityMoveUp_" + i);
         moveUpButton.onclick = () => swapAbilityOrder(i, -1);
     }
@@ -3891,7 +4035,7 @@ function updateTriggerModal() {
 
         triggerComparatorSelect.value = modalTriggers[i].comparatorHrid;
 
-        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_17__[modalTriggers[i].comparatorHrid].allowValue) {
+        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_18__[modalTriggers[i].comparatorHrid].allowValue) {
             showElement(triggerValueInput);
             triggerValueInput.value = modalTriggers[i].value;
         } else {
@@ -3909,7 +4053,7 @@ function fillTriggerDependencySelect(element) {
     element.length = 0;
     element.add(new Option("", ""));
 
-    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_15__).sort(
+    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_16__).sort(
         (a, b) => a.sortIndex - b.sortIndex
     )) {
         let opt = new Option(dependency.name, dependency.hrid);
@@ -3919,13 +4063,13 @@ function fillTriggerDependencySelect(element) {
 }
 
 function fillTriggerConditionSelect(element, dependencyHrid) {
-    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_15__[dependencyHrid];
+    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_16__[dependencyHrid];
 
     let conditions;
     if (dependency.isSingleTarget) {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_16__).filter((condition) => condition.isSingleTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_17__).filter((condition) => condition.isSingleTarget);
     } else {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_16__).filter((condition) => condition.isMultiTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_17__).filter((condition) => condition.isMultiTarget);
     }
 
     element.length = 0;
@@ -3939,9 +4083,9 @@ function fillTriggerConditionSelect(element, dependencyHrid) {
 }
 
 function fillTriggerComparatorSelect(element, conditionHrid) {
-    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_16__[conditionHrid];
+    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_17__[conditionHrid];
 
-    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_17__[hrid]);
+    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_18__[hrid]);
 
     element.length = 0;
     element.add(new Option("", ""));
@@ -3971,7 +4115,7 @@ function initZones() {
     let zoneSelect = document.getElementById("selectZone");
 
     // TOOD dungeon wave spawns
-    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -3996,7 +4140,7 @@ function initZones() {
         }
     });
 
-    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount > 1)
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -4039,7 +4183,7 @@ function initZones() {
         }
     });
 
-    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount == 1)
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -4071,7 +4215,7 @@ function initZones() {
 function initDungeons() {
     let dungeonSelect = document.getElementById("selectDungeon");
 
-    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
         .filter((action) => action.type == "/action_types/combat" && action.category == "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -4094,7 +4238,7 @@ let isLabyRinthSim = false;
 function initLabyrinth() {
     let labyrinthSelect = document.getElementById("selectLabyrinth");
 
-    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
+    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -4263,11 +4407,11 @@ function showSimulationResult(simResult) {
     showDamageTaken(simResult, playerToDisplay);
     renderWipeEvents(simResult);
     window.profit = window.revenue - window.expenses;
-    document.getElementById('profitSpan').innerText = window.profit.toLocaleString();
-    document.getElementById('profitPreview').innerText = window.profit.toLocaleString();
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('profitPreview'), window.profit);
     window.noRngProfit = window.noRngRevenue - window.expenses;
-    document.getElementById('noRngProfitSpan').innerText = window.noRngProfit.toLocaleString();
-    document.getElementById('noRngProfitPreview').innerText = window.noRngProfit.toLocaleString();
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     
     // 显示战斗图表
     if (document.getElementById('hpMpVisualizationToggle').checked) {
@@ -4662,15 +4806,15 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 difficultyTier = simResult.roomLevel;
             }
 
-            let encountersPerHour = (simResult.encounters / hoursSimulated).toFixed(1);
+            let encountersPerHour = simResult.encounters / hoursSimulated;
             let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-            let deathsPerHour = (playerDeaths / hoursSimulated).toFixed(2);
+            let deathsPerHour = playerDeaths / hoursSimulated;
 
             let totalExperience = 0;
             if (simResult.experienceGained[playerToDisplay]) {
                 totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
             }
-            let totalExperiencePerHour = (totalExperience / hoursSimulated).toFixed(0);
+            let totalExperiencePerHour = totalExperience / hoursSimulated;
 
             let experiencePerHour = {};
             const skills = ["Stamina", "Intelligence", "Attack", "Melee", "Defense", "Ranged", "Magic"];
@@ -4679,7 +4823,7 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 let experience = simResult.experienceGained[playerToDisplay]?.[skillLower] ?? 0;
                 let experiencePerHourValue = 0;
                 if (experience != 0) {
-                    experiencePerHourValue = (experience / hoursSimulated).toFixed(0);
+                    experiencePerHourValue = experience / hoursSimulated;
                 }
                 experiencePerHour[skill] = experiencePerHourValue;
             });
@@ -4728,8 +4872,8 @@ function calcDropMaps(simResult, playerToDisplay) {
     for (const monster of monsters) {
         const dropMap = new Map();
         const rareDropMap = new Map();
-        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[monster].dropTable) {
-            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[monster].dropTable) {
+        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[monster].dropTable) {
+            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[monster].dropTable) {
                 if (drop.minDifficultyTier > simResult.difficultyTier) {
                     continue;
                 }
@@ -4740,8 +4884,8 @@ function calcDropMaps(simResult, playerToDisplay) {
 
                 dropMap.set(drop.itemHrid, { "dropRate": Math.min(1.0, dropRate * dropRateMultiplier), "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
             }
-            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[monster].rareDropTable)
-                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[monster].rareDropTable) {
+            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[monster].rareDropTable)
+                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[monster].rareDropTable) {
                     if (drop.minDifficultyTier > simResult.difficultyTier) {
                         continue;
                     }
@@ -4869,9 +5013,9 @@ function getDropProfit(simResult, playerToDisplay) {
         expenses += price * amount;
     }
 
-    simResult["noRngRevenue"] = (noRngTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    simResult["expenses"] = (expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    simResult["noRngProfit"] = (noRngTotal - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    simResult["noRngRevenue"] = noRngTotal;
+    simResult["expenses"] = expenses;
+    simResult["noRngProfit"] = noRngTotal - expenses;
 }
 
 function updateAllSimsModal(data) {
@@ -4882,7 +5026,12 @@ function updateAllSimsModal(data) {
 
         Object.keys(item).forEach(key => {
             const cell = document.createElement('td');
-            cell.textContent = item[key];
+            if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
+                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(cell, item[key]);
+                cell.dataset.sortValue = item[key];
+            } else {
+                cell.textContent = item[key];
+            }
             if (key === 'ZoneName') {
                 if (cell.textContent.startsWith("/action")) {
                     cell.setAttribute("data-i18n", "actionNames." + item[key]);
@@ -4908,8 +5057,8 @@ function sortTable(tableId, columnIndex, direction) {
     const rows = Array.from(tbody.querySelectorAll('tr'));
 
     const sortedRows = rows.sort((rowA, rowB) => {
-        const cellA = rowA.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
-        const cellB = rowB.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
+        const cellA = rowA.children[columnIndex].dataset.sortValue ?? rowA.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
+        const cellB = rowB.children[columnIndex].dataset.sortValue ?? rowB.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
 
         const valueA = parseFloat(cellA.replace(/,/g, ''));
         const valueB = parseFloat(cellB.replace(/,/g, ''));
@@ -5003,34 +5152,34 @@ function showKills(simResult, playerToDisplay) {
             failedDungeonsRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.dungeonsFailed");
             newChildren.push(failedDungeonsRow);
         }
-        encountersPerHour = (simResult.dungeonsCompleted / hoursSimulated).toFixed(1);
-        let averageTime = (hoursSimulated * 60 / simResult.dungeonsCompleted).toFixed(1);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
+        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Average Time", averageTime]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.averageTime");
         if (simResult.minDungenonTime > 0) {
-            let minimumTime = (simResult.minDungenonTime / ONE_SECOND / 60).toFixed(1);
+            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
             let minimumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Minimum Time", minimumTime]);
             minimumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.minimumTime");
             newChildren.push(minimumTimeRow);
         }
         if (simResult.maxDungenonTime > 0) {
-            let maximumTime = (simResult.maxDungenonTime / ONE_SECOND / 60).toFixed(1);
+            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
             let maximumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Maximum Time", maximumTime]);
             maximumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.maximumTime");
             newChildren.push(maximumTimeRow);
         }
     } else {
-        encountersPerHour = (simResult.encounters / hoursSimulated).toFixed(1); 
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.encounters / hoursSimulated);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Encounters", encountersPerHour]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.encounters");
     }
 
     if (simResult.labyAttemptCount > 0) {
-        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (simResult.labyAttemptCount / hoursSimulated).toFixed(1)]);
+        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
         labyAttemptCountRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labyAttemptCount");
         newChildren.push(labyAttemptCountRow);
 
-        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (simResult.encounters / simResult.labyAttemptCount * 100).toFixed(1) + "%"]);
+        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
         labySuccessRateRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labySuccessRate");
         newChildren.push(labySuccessRateRow);
     }
@@ -5042,7 +5191,7 @@ function showKills(simResult, playerToDisplay) {
     }
 
     if (simResult.debuffOnLevelGap[playerToDisplay] != 0) {
-        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (simResult.debuffOnLevelGap[playerToDisplay] * 100).toFixed(1) + "%"]);
+        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
         debuffOnLevelGapRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.debuffOnLevelGap");
         newChildren.push(debuffOnLevelGapRow);
     }
@@ -5053,10 +5202,10 @@ function showKills(simResult, playerToDisplay) {
         .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
         .sort()
         .forEach(monster => {
-            let killsPerHour = (simResult.deaths[monster] / hoursSimulated).toFixed(1);
+            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
             let monsterRow = createRow(
                 ["col-md-6", "col-md-6 text-end"],
-                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[monster].name, killsPerHour]
+                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[monster].name, killsPerHour]
             );
             monsterRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + monster);
             newChildren.push(monsterRow);
@@ -5069,7 +5218,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of totalDropMap.entries()) {
         let dropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, dropAmount.toLocaleString()]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(dropAmount)]
         );
         dropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newDropChildren.push(dropRow);
@@ -5117,7 +5266,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
         let noRngDropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, dropAmount.toLocaleString()]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(dropAmount)]
         );
         noRngDropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newNoRngDropChildren.push(noRngDropRow);
@@ -5158,9 +5307,9 @@ function showKills(simResult, playerToDisplay) {
         noRngTotal += price * dropAmount;
     }
 
-    document.getElementById('revenueSpan').innerText = total.toLocaleString();
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('revenueSpan'), total);
     window.revenue = total;
-    document.getElementById('noRngRevenueSpan').innerText = noRngTotal.toLocaleString();
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
     window.noRngRevenue = noRngTotal;
 
     let resultAccordion = document.getElementById("noRngDropsAccordion");
@@ -5176,7 +5325,7 @@ function showDeaths(simResult, playerToDisplay) {
 
     let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
     let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-    let deathsPerHour = (playerDeaths / hoursSimulated).toFixed(2);
+    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(playerDeaths / hoursSimulated);
 
     let deathRow = createRow(["col-md-6", "col-md-6 text-end"], ["Player", deathsPerHour]);
     deathRow.firstElementChild.setAttribute("data-i18n", "common:player");
@@ -5193,7 +5342,7 @@ function showExperienceGained(simResult, playerToDisplay) {
     if (simResult.experienceGained[playerToDisplay]) {
         totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
     }
-    let totalExperiencePerHour = (totalExperience / hoursSimulated).toFixed(0);
+    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(totalExperience / hoursSimulated);
     let totalRow = createRow(["col-md-6", "col-md-6 text-end"], ["Total", totalExperiencePerHour]);
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -5203,7 +5352,7 @@ function showExperienceGained(simResult, playerToDisplay) {
         if (experience == 0) {
             return;
         }
-        let experiencePerHour = (experience / hoursSimulated).toFixed(0);
+        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(experience / hoursSimulated);
         let experienceRow = createRow(["col-md-6", "col-md-6 text-end"], [skill, experiencePerHour]);
         experienceRow.firstElementChild.setAttribute("data-i18n", "leaderboardCategoryNames." + skill.toLowerCase());
         newChildren.push(experienceRow);
@@ -5222,7 +5371,7 @@ function showHpSpent(simResult, playerToDisplay) {
         let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
         let hpSpentSources = [];
         for (const source of Object.keys(simResult.hitpointsSpent[playerToDisplay])) {
-            let hpSpentPerHour = (simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated).toFixed(2);
+            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
             let hpSpentRow = createRow(["col-md-6", "col-md-6 text-end"], [_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[source].name, hpSpentPerHour]);
             hpSpentRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + source);
             hpSpentSources.push(hpSpentRow);
@@ -5250,7 +5399,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
     let expensesModalTable = document.querySelector("#expensesTable > tbody");
     let total = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let consumablesPerHour = (amount / hoursSimulated).toFixed(0);
+        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(amount / hoursSimulated);
         let consumableRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
             [_combatsimulator_data_itemDetailMap_json__WEBPACK_IMPORTED_MODULE_3__[consumable].name, consumablesPerHour]
@@ -5294,7 +5443,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         total += price * amount;
     }
 
-    document.getElementById('expensesSpan').innerText = total.toLocaleString();
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('expensesSpan'), total);
     window.expenses = total;
 
     resultDiv.replaceChildren(...newChildren);
@@ -5315,9 +5464,9 @@ function showManaUsed(simResult, playerToDisplay) {
 
     for (let ability in playerManaUsed) {
         let manaUsed = playerManaUsed[ability];
-        let manaPerHour = (manaUsed / hoursSimulated).toFixed(0);
-        let castsPerHour = (manaPerHour / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost).toFixed(2);
-        castsPerHour = " (" + castsPerHour + ")";
+        let manaPerHourValue = Math.round(manaUsed / hoursSimulated);
+        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(manaPerHourValue);
+        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
 
         let manaRow = createRow(
             ["col-md-6", "col-md-2", "col-md-4 text-end"],
@@ -5344,10 +5493,10 @@ function showHitpointsGained(simResult, playerToDisplay) {
     let hitpointsGained = Object.entries(simResult.hitpointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalHitpointsGained = hitpointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalHitpointsPerSecond = (totalHitpointsGained / secondsSimulated).toFixed(2);
+    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(totalHitpointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalHitpointsPerSecond, "100%"]
+        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -5382,12 +5531,12 @@ function showHitpointsGained(simResult, playerToDisplay) {
                 }
                 break;
         }
-        let hitpointsPerSecond = (amount / secondsSimulated).toFixed(2);
-        let percentage = ((100 * amount) / totalHitpointsGained).toFixed(0);
+        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)((100 * amount) / totalHitpointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-            [sourceText, hitpointsPerSecond, percentage + "%"]
+            [sourceText, hitpointsPerSecond, percentage]
         );
         row.firstElementChild.setAttribute("data-i18n", sourceFullHrid);
         newChildren.push(row);
@@ -5410,10 +5559,10 @@ function showManapointsGained(simResult, playerToDisplay) {
     let manapointsGained = Object.entries(simResult.manapointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalManapointsGained = manapointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalManapointsPerSecond = (totalManapointsGained / secondsSimulated).toFixed(2);
+    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(totalManapointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalManapointsPerSecond, "100%"]
+        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -5443,12 +5592,12 @@ function showManapointsGained(simResult, playerToDisplay) {
                 sourceFullHrid = "itemNames." + source;
                 break;
         }
-        let manapointsPerSecond = (amount / secondsSimulated).toFixed(2);
-        let percentage = ((100 * amount) / totalManapointsGained).toFixed(0);
+        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)((100 * amount) / totalManapointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-            [sourceText, manapointsPerSecond, percentage + "%"]
+            [sourceText, manapointsPerSecond, percentage]
         );
         row.firstElementChild.setAttribute("data-i18n", sourceFullHrid);
         newChildren.push(row);
@@ -5468,7 +5617,7 @@ function showManapointsGained(simResult, playerToDisplay) {
             ["col-md-6", "col-md-6 text-end"],
             [
                 "Run Out Ratio",
-                (totalTimeForOut / simResult.simulatedTime * 100).toFixed(2) + "%"
+                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(totalTimeForOut / simResult.simulatedTime * 100)
             ]
         );
         ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
@@ -5538,14 +5687,14 @@ function showDamageDone(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageDoneAccordionEnemy" + enemyIndex
         );
-        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[target].name;
+        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[target].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageDone\">Damage Done</span> (" + "<span data-i18n=\"monsterNames." + target + "\">" + targetName + "</span>" + ")</b>";
 
         if (simResult.bossSpawns.includes(target)) {
-            let hoursSpentOnBoss = (aliveSecondsSimulated / 60 / 60).toFixed(2);
-            let percentSpentOnBoss = (aliveSecondsSimulated / totalSecondsSimulated * 100).toFixed(2);
+            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
+            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
 
-            let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "h(" + percentSpentOnBoss + "%)"]);
+            let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "(" + percentSpentOnBoss + ")"]);
             bossRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + target);
             bossTimeDiv.replaceChildren(bossRow);
 
@@ -5566,7 +5715,7 @@ function showDamageDone(simResult, playerToDisplay) {
                 continue;
             }
             let aliveSecondsSimulated = simResult.timeSpentAlive[idx].timeSpentAlive / ONE_SECOND / simResult.timeSpentAlive[idx].count;
-            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, aliveSecondsSimulated.toFixed(1) + "s"]);
+            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(aliveSecondsSimulated, "s")]);
             newChildren.push(bossRow);
         }
         if (newChildren.length > 0) {
@@ -5635,7 +5784,7 @@ function showDamageTaken(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageTakenAccordionEnemy" + enemyIndex
         );
-        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[source].name;
+        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[source].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageTaken\">Damage Taken</span> (" + "<span data-i18n=\"monsterNames." + source + "\">" + sourceName + "</span>" + ")</b>";
 
         enemyIndex++;
@@ -5653,12 +5802,12 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     let totalCasts = sortedDamageDone.reduce((prev, cur) => prev + cur[1].casts, 0);
     let totalMisses = sortedDamageDone.reduce((prev, cur) => prev + cur[1].misses, 0);
     let totalDamage = sortedDamageDone.reduce((prev, cur) => prev + cur[1].damage, 0);
-    let totalHitChance = ((100 * (totalCasts - totalMisses)) / totalCasts).toFixed(1);
-    let totalDamagePerSecond = (totalDamage / secondsSimulated).toFixed(2);
+    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
+    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(totalDamage / secondsSimulated);
 
     let totalRow = createRow(
         ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-        ["Total", totalHitChance + "%", totalDamagePerSecond, "100%"]
+        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -5701,13 +5850,13 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
                 break;
         }
 
-        let hitChance = ((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts).toFixed(1);
-        let damagePerSecond = (damageInfo.damage / secondsSimulated).toFixed(2);
-        let percentage = ((100 * damageInfo.damage) / totalDamage).toFixed(0);
+        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
+        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.numberHtml)(damageInfo.damage / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentHtml)((100 * damageInfo.damage) / totalDamage);
 
         let row = createRow(
             ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-            [abilityText, hitChance + "%", damagePerSecond, percentage + "%"]
+            [abilityText, hitChance, damagePerSecond, percentage]
         );
         row.firstElementChild.setAttribute("data-i18n", abilityFullHrid);
         newChildren.push(row);
@@ -5897,7 +6046,7 @@ function buildSimPlayerDTO() {
     }
 
     for (let i = 0; i < 5; i++) {
-        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_18__[i + 1]) {
+        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_19__[i + 1]) {
             let abilityLevelInput = document.getElementById("inputAbilityLevel_" + i);
             let ability = new _combatsimulator_ability_js__WEBPACK_IMPORTED_MODULE_7__["default"](main_abilities[i], Number(abilityLevelInput.value), triggerMap[main_abilities[i]]);
             player.abilities[i] = ability;
@@ -6044,7 +6193,7 @@ function startSimulation(selectedPlayers) {
         worker.onmessage = onWorkerMessage;
         worker.postMessage(workerMessage);
     } else if (simAllLabyrinthsToggle.checked) {
-        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
+        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -6077,7 +6226,7 @@ function startSimulation(selectedPlayers) {
         let targetHrids = {};
 
         if (simAllZonesToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -6088,7 +6237,7 @@ function startSimulation(selectedPlayers) {
         }
 
         if (simAllSoloToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -6242,7 +6391,7 @@ document.getElementById("buttonUploadJSONSimulate").addEventListener("click", (e
                     let targetHrids = {};
 
                     if (simAllZonesToggle.checked) {
-                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__)
+                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__)
                             .filter(a =>
                                 a.type === "/action_types/combat" &&
                                 a.category !== "/action_categories/combat/dungeons" &&
@@ -6747,7 +6896,7 @@ function fixTriggerMap(triggerMap) {
             triggerMap[key] = [];
         }
         for (const trigger of triggerMap[key]) {
-            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_16__[trigger.conditionHrid]) {
+            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_17__[trigger.conditionHrid]) {
                 err = true;
                 break;
             }
@@ -6858,7 +7007,7 @@ function loadEquipmentSetIntoUI(equipmentSet) {
             player.achievements[achievement] = field.checked;
         }
     } else {
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_25__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_26__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -7407,7 +7556,7 @@ function updateNextPlayer(currentPlayerNumber) {
     applyGuildBuffsToState((0,_importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__["default"])(importSet));
 
     { // reset all achievements
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_25__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_26__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -7517,37 +7666,37 @@ async function fetchPrices() {
         window.prices["/items/coin"] = { "ask": 1, "bid": 1, "vendor": 1 };
 
         window.prices["/items/small_treasure_chest"] = {
-            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/small_treasure_chest"].map((item) => {
+            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/small_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/small_treasure_chest"].map((item) => {
+            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/small_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/small_treasure_chest"].map((item) => {
+            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/small_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
             }).reduce((a, b) => a + b, 0),
         };
 
         window.prices["/items/medium_treasure_chest"] = {
-            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/medium_treasure_chest"].map((item) => {
+            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/medium_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/medium_treasure_chest"].map((item) => {
+            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/medium_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/medium_treasure_chest"].map((item) => {
+            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/medium_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
             }).reduce((a, b) => a + b, 0),
         };
 
         window.prices["/items/large_treasure_chest"] = {
-            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/large_treasure_chest"].map((item) => {
+            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/large_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/large_treasure_chest"].map((item) => {
+            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/large_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_23__["/items/large_treasure_chest"].map((item) => {
+            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__["/items/large_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
             }).reduce((a, b) => a + b, 0),
         };
@@ -7607,18 +7756,18 @@ document.addEventListener("input", (e) => {
         }
 
         window.expenses += expensesDifference;
-        document.getElementById('expensesSpan').innerText = window.expenses.toLocaleString();
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
         window.revenue += revenueDifference;
-        document.getElementById('revenueSpan').innerText = window.revenue.toLocaleString();
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
         window.noRngRevenue += noRngRevenueDifference;
-        document.getElementById('noRngRevenueSpan').innerText = window.noRngRevenue.toLocaleString();
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
 
         window.profit = window.revenue - window.expenses;
-        document.getElementById('profitPreview').innerText = window.profit.toLocaleString();
-        document.getElementById('profitSpan').innerText = window.profit.toLocaleString();
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('profitSpan'), window.profit);
         window.noRngProfit = window.noRngRevenue - window.expenses;
-        document.getElementById('noRngProfitSpan').innerText = window.noRngProfit.toLocaleString();
-        document.getElementById('noRngProfitPreview').innerText = window.noRngProfit.toLocaleString();
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     }
 });
 
@@ -7655,15 +7804,15 @@ function renderPatchNotes() {
     const patchNotesRows = document.getElementById("patchNotes");
     patchNotesRows.replaceChildren();
     const lang = (i18next.language || "en").startsWith("zh") ? "zh" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_26__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_27__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_26__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_26__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_26__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_27__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_27__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_27__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_27__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_28__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -7674,7 +7823,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_27__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_28__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -7853,6 +8002,17 @@ darkModeToggle.addEventListener('change', () => {
     localStorage.setItem('darkModeEnabled', darkModeToggle.checked);
 });
 
+// ISO number display (1 234, 1.79 %): off by default, remembered like Dark Mode.
+const isoNumbersToggle = document.getElementById('isoNumbersToggle');
+isoNumbersToggle.checked = localStorage.getItem('isoNumbersEnabled') === 'true';
+(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+
+isoNumbersToggle.addEventListener('change', () => {
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+    localStorage.setItem('isoNumbersEnabled', isoNumbersToggle.checked);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.refreshFormattedNumbers)(document);
+});
+
 function updateContent() {
     document.querySelectorAll('[data-i18n]').forEach(function (element) {
         const key = element.getAttribute('data-i18n');
@@ -7904,4 +8064,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.54ee5b04.js.map
+//# sourceMappingURL=bundle.cd68fd43.js.map

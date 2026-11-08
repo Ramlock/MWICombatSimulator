@@ -26,6 +26,7 @@
         "equipmentSets": "模拟装备方案",
         "importExport": "导入/导出",
         "darkMode": "黑暗模式",
+        "isoNumbers": "ISO 数字格式",
         "load": "加载",
         "save": "保存",
         "delete": "删除",
