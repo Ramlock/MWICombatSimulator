@@ -4861,7 +4861,8 @@ function initPatchNotes() {
 function renderPatchNotes() {
     const patchNotesRows = document.getElementById("patchNotes");
     patchNotesRows.replaceChildren();
-    const lang = (i18next.language || "en").startsWith("zh") ? "zh" : "en";
+    const shownLanguage = i18next.language || "en";
+    const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
     for (const pn in patchNote) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
