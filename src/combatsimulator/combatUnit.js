@@ -1,3 +1,5 @@
+const NO_BOOSTS = Object.freeze([]);
+
 class CombatUnit {
     isPlayer;
     isStunned = false;
@@ -160,6 +162,15 @@ class CombatUnit {
     constructor() { }
 
     updateCombatDetails() {
+        // Group the buffs by type once per rebuild (insertion order kept, so every sum adds in the same order as before).
+        const boostsByType = new Map();
+        for (const buff of Object.values(this.combatBuffs)) {
+            let list = boostsByType.get(buff.typeHrid);
+            if (!list) boostsByType.set(buff.typeHrid, list = []);
+            list.push(buff);
+        }
+        this.boostsByType = boostsByType;
+
         if (this.isPlayer) {
             if (this.combatDetails.combatStats.hpRegenPer10 === 0) {
                 this.combatDetails.combatStats.hpRegenPer10 = 0.01;
@@ -374,6 +385,7 @@ class CombatUnit {
 
         this.combatDetails.combatStats.retaliation += this.getBuffBoost("/buff_types/retaliation").flatBoost;
         this.combatDetails.combatStats.tenacity += this.getBuffBoost("/buff_types/tenacity").flatBoost;
+        this.boostsByType = null;
     }
 
     addBuffs(buffs, currentTime) {
@@ -510,6 +522,9 @@ class CombatUnit {
     }
 
     getBuffBoosts(type) {
+        if (this.boostsByType) {
+            return this.boostsByType.get(type) || NO_BOOSTS;
+        }
         let boosts = [];
         Object.values(this.combatBuffs)
             .filter((buff) => buff.typeHrid == type)
