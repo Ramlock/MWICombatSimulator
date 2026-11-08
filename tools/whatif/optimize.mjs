@@ -7,6 +7,7 @@
 //   --levers equip               comma list of equip (phase 1: +N and market swaps), consumables (any food or drink
 //                                with a market ask, drop one, fill an empty slot; one of each food or drink type),
 //                                pairs (two slots of a kind changed together, each to another tier of its type),
+//                                triggers (each numeric term over its grid, structure changes; design 3.5),
 //                                owned (items in the exporter's
 //                                inventory), abilities (learned, at their learned level), order (ability order); all
 //   --charms                     keep charm candidates on a profit goal (left out by default: they change only EXP)
@@ -28,6 +29,11 @@
 //   --max-steps 20  --jobs <n>  --max-minutes <n> (stop issuing runs after n minutes; rerun resumes)
 //   --confirm-seed-offset 10000  --setups <dir>  --prices <marketplace.json>
 //   --cache-from <runs.jsonl,...> earlier searches' run caches, read only (runs are keyed by setup, so any match counts)
+//   Triggers (design 3.5): --probe 1x50 (base seeds x sim hours the counter records; kept in <out>/probe.json)
+//   --trigger-owners toxic_pollen,star_fruit_gummy   search only these owners' triggers (hrid or its last part;
+//                                the last part avoids Git Bash rewriting a leading /)   --trigger-fixed <owners>  skip these
+//   --trigger-cands <json>       the user's own candidates, { "<player>": { "<owner hrid>": [[terms], ...] } };
+//                                they replace the generated ones for that owner
 //   --comdrop 20 --comexp 20 --tier 4 --zone /actions/combat/infernal_abyss
 // Every run is cached in <out>/runs.jsonl by (resulting setups, options, seed); a rerun with the same args
 // resumes. Results: <out>/result.json and <out>/result.md. Exit code 3 = stopped by --max-minutes, rerun.
@@ -41,6 +47,9 @@ import { readParty, applyOps } from './variants.mjs';
 import { loadMarket, makePricer, TAX_LABEL } from './prices.mjs';
 import { DEFAULT_PRICES, buildDtos, root } from './engine.mjs';
 import { consumableType, swapCands, tierPairCands } from './consumables.mjs';
+import { installProbe, summarize, mergeProbes, triggerCands, localCands } from './triggers.mjs';
+import { runParty } from './engine.mjs';
+const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
 const itemDetailMap = await json('itemDetailMap.json');
@@ -79,7 +88,7 @@ const confirmOffset = Number(arg('confirm-seed-offset', 10000));
 const setupsDir = arg('setups', undefined);
 const pricesFile = arg('prices', DEFAULT_PRICES);
 const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order'];
+const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order', 'triggers'];
 const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : [x.trim()])));
 for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
 const exportData = arg('export', null) ? JSON.parse(readFileSync(arg('export'), 'utf8')) : null;
@@ -89,6 +98,10 @@ if (arg('budget', null) !== null) { budget = Number(arg('budget')); budgetSource
 else if (exportData) { budget = exportData.coin; budgetSource = 'exporter coin'; if (!(budget >= 0)) throw new Error('exporter JSON has no coin'); }
 else throw new Error('--budget or --export required');
 
+const [probeK, probeH] = String(arg('probe', '1x50')).split('x').map(Number);
+const trigOpts = { owners: list(arg('trigger-owners', null)), fixed: list(arg('trigger-fixed', null)) };
+const userTrig = arg('trigger-cands', null) ? JSON.parse(readFileSync(arg('trigger-cands'), 'utf8')) : {};
+let probeStore = null; // set by probeBase() before candidates are built
 const metric = (cp) => (goal === 'exp' ? cp.party.expPerHour : cp.party.profitAfterTaxPerDay);
 const setups0 = readParty(setupsDir);
 const pricer = makePricer(loadMarket(pricesFile));
@@ -295,7 +308,29 @@ function allCandidates(setups, p) {
         ...(levers.has('consumables') || levers.has('pairs') ? consumableCands(setups, p, levers.has('consumables'), levers.has('pairs')) : []),
         ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
         ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
+        ...(levers.has('triggers') ? triggerCands(setups.find((x) => x.name === p), p, probeStore, { ...trigOpts, user: userTrig[p] }) : []),
     ];
+}
+
+// The trigger counter (design 3.5 item 2): base runs with the probe, cut to percentiles, kept in <out>/probe.json
+// for this base. Each probe run must equal the plain run of the same seed (the probe only observes): it is checked
+// against the cached plain run when there is one (tools/test/whatif-triggers.mjs checks it on a generic party).
+async function probeBase() {
+    const file = path.join(OUT, 'probe.json'), key = keyOf([]);
+    if (existsSync(file)) { const p = JSON.parse(readFileSync(file, 'utf8')); if (p.key === key && p.k === probeK && p.h === probeH) return p.store; }
+    const stores = [];
+    for (const seed of seedsFor(probeK)) {
+        let st;
+        const t1 = Date.now();
+        const res = await runParty({ ...options, setups: setups0, seed, checkpoints: [probeH], onPlayers: (pls, names) => { st = installProbe(pls, names, players, Trigger); } });
+        const cached = cache.get(key + '#' + seed)?.byHours[probeH];
+        if (cached && JSON.stringify(cached) !== JSON.stringify(res.checkpoints[0])) throw new Error(`probe changed the run of seed ${seed}: the counter must only observe`);
+        console.log(`probe seed ${seed} ${probeH} h: ${((Date.now() - t1) / 1000).toFixed(0)} s, ${cached ? 'equal to the cached plain run' : 'no cached plain run to compare'}`);
+        stores.push(summarize(st));
+    }
+    const store = mergeProbes(stores);
+    writeFileSync(file, JSON.stringify({ key, k: probeK, h: probeH, store }));
+    return store;
 }
 const openSlots = onlySlots || COMBAT_SLOTS;
 
@@ -322,6 +357,7 @@ async function main() {
     const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgetSource, taxLabel: TAX_LABEL, players, steps: [], singles: [], apart: [] };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = 0;
+    if (levers.has('triggers')) probeStore = await probeBase();
     let cands = players.flatMap((p) => allCandidates(setups0, p));
     if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
     result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
@@ -366,7 +402,11 @@ async function main() {
         const survivors = new Set(finalists.filter((c) => c !== best).map((c) => c.id));
         finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && c.cost.cost <= budget - spent && (
             c.groups.some((g) => touched.has(g)) && c.kind === 'equip' && (best.kind === 'equip' || best.kind === 'owned')
-                ? (c.monotone || !onlyCands || onlyCands.includes(c.id)) : (survivors.has(c.id) && c.id !== best.id)));
+                ? (c.monotone || !onlyCands || onlyCands.includes(c.id))
+                : c.groups.some((g) => touched.has(g)) && c.kind === 'trigger' ? false // stale: built on the owner's old list
+                    : (survivors.has(c.id) && c.id !== best.id)));
+        // Coordinate-wise rounds (3.5 item 3): the changed owner's terms get local candidates around the new values.
+        if (best.kind === 'trigger') finalists.push(...localCands(setupsNow.find((x) => x.name === best.player), best.player, probeStore, best.owner));
         if (!await ensure([...newBase, ...finalists.flatMap((c) => req([...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
     }

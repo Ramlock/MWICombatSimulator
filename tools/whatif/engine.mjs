@@ -237,7 +237,7 @@ function snapshot(sim) {
     });
 }
 
-// opts: { setups: [setup JSON], names, seed, streams (bool, the RNG-stream prototype above), checkpoints: [hours ascending], tier, zone, comdrop, comexp, moopass, prices, legacyImport }
+// opts: { setups: [setup JSON], names, seed, streams (bool, the RNG-stream prototype above), checkpoints: [hours ascending], tier, zone, comdrop, comexp, moopass, prices, legacyImport, onPlayers(players, names, sim) }
 // Returns { wallSeconds, checkpoints: [metrics at each checkpoint] }.
 export async function runParty(opts) {
     const { setups, seed, checkpoints, tier = 4, zone: zoneHrid = '/actions/combat/infernal_abyss' } = opts;
@@ -255,6 +255,7 @@ export async function runParty(opts) {
     });
     const sim = new CombatSimulator(players, zone, null, {});
     if (opts.streams) installStreams(sim, zone, seed);
+    if (opts.onPlayers) opts.onPlayers(players, names, sim); // an observer (the trigger counter, triggers.mjs); it must not change the run
     const t0 = Date.now();
     // simulate()'s loop (src/combatsimulator/combatSimulator.js:173-203) without the progress events.
     sim.reset();
