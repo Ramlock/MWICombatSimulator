@@ -36,6 +36,12 @@ if (process.argv.includes('--live')) {
         const page = await chrome.newPage();
         const r = await page.send('Runtime.evaluate', { expression: '1+1', returnByValue: true });
         if (r.result.value !== 2) failures.push('live: evaluate');
+        // A page alert must not block the next command; it is accepted and logged.
+        await page.send('Runtime.evaluate', { expression: "setTimeout(() => alert('dialog-check'), 0); 0" });
+        await new Promise((res) => setTimeout(res, 300));
+        const after = await page.send('Runtime.evaluate', { expression: '2+2', returnByValue: true }, 5000);
+        if (after.result.value !== 4) failures.push('live: command after a dialog');
+        if (!page.dialogs.includes('alert: dialog-check')) failures.push('live: dialog not logged: ' + JSON.stringify(page.dialogs));
         page.close();
         await chrome.close();
         throws('live: port refused after close', () => assertOwnedPort(chrome.port));

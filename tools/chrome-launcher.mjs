@@ -57,25 +57,35 @@ const netstat = () => process.platform === 'win32'
     ? execFileSync('netstat', ['-ano', '-p', 'TCP'], { encoding: 'utf8' }) + execFileSync('netstat', ['-ano', '-p', 'TCPv6'], { encoding: 'utf8' })
     : execFileSync('ss', ['-ltnp'], { encoding: 'utf8' });
 
-// A minimal CDP client over one WebSocket.
-function cdpSocket(url) {
+// A minimal CDP client over one WebSocket. Every command times out (a page dialog or a hung page never blocks the
+// caller forever); events go to on(method, handler).
+function cdpSocket(url, commandTimeoutMs) {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(url);
         let id = 0;
         const pending = new Map();
+        const handlers = new Map();
         ws.addEventListener('message', (m) => {
             const d = JSON.parse(m.data);
-            if (d.id && pending.has(d.id)) { const p = pending.get(d.id); pending.delete(d.id); d.error ? p.reject(new Error(d.error.message)) : p.resolve(d.result); }
+            if (d.id && pending.has(d.id)) { const p = pending.get(d.id); pending.delete(d.id); clearTimeout(p.timer); d.error ? p.reject(new Error(d.error.message)) : p.resolve(d.result); }
+            else if (d.method) for (const h of handlers.get(d.method) ?? []) h(d.params);
         });
         ws.addEventListener('error', reject);
         ws.addEventListener('open', () => resolve({
-            send: (method, params = {}) => new Promise((res, rej) => { const i = ++id; pending.set(i, { resolve: res, reject: rej }); ws.send(JSON.stringify({ id: i, method, params })); }),
+            send: (method, params = {}, timeoutMs = commandTimeoutMs) => new Promise((res, rej) => {
+                const i = ++id;
+                const timer = setTimeout(() => { pending.delete(i); rej(new Error(`${method} timed out after ${timeoutMs} ms`)); }, timeoutMs);
+                pending.set(i, { resolve: res, reject: rej, timer });
+                ws.send(JSON.stringify({ id: i, method, params }));
+            }),
+            on: (method, handler) => { if (!handlers.has(method)) handlers.set(method, []); handlers.get(method).push(handler); },
             close: () => ws.close(),
         }));
     });
 }
 
-export async function launchChrome({ userDataDir, chromePath = DEFAULT_CHROME, width = 1600, height = 1100, extraArgs = [], timeoutMs = 20000 } = {}) {
+export async function launchChrome({ userDataDir, chromePath = DEFAULT_CHROME, width = 1600, height = 1100, extraArgs = [], timeoutMs = 20000, commandTimeoutMs = 30000,
+    onDialog = (p) => console.log(`[chrome-launcher] page dialog accepted (${p.type}): ${p.message}`) } = {}) {
     if (!userDataDir) throw new Error('userDataDir is required (a new folder of your own)');
     if (fs.existsSync(userDataDir) && fs.readdirSync(userDataDir).length) throw new Error(`userDataDir ${userDataDir} is not empty: use a fresh one`);
     fs.mkdirSync(userDataDir, { recursive: true });
@@ -99,7 +109,15 @@ export async function launchChrome({ userDataDir, chromePath = DEFAULT_CHROME, w
                 assertOwnedPort(port);
                 const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
                 if (!String(target.webSocketDebuggerUrl).startsWith(`ws://127.0.0.1:${port}/`)) throw new Error('refused: new target is not on our port');
-                const page = await cdpSocket(target.webSocketDebuggerUrl);
+                const page = await cdpSocket(target.webSocketDebuggerUrl, commandTimeoutMs);
+                // A page dialog (alert, confirm, prompt) blocks every later command: accept it and log its text.
+                page.dialogs = [];
+                page.on('Page.javascriptDialogOpening', (p) => {
+                    page.dialogs.push(`${p.type}: ${p.message}`);
+                    onDialog(p);
+                    page.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
+                });
+                await page.send('Page.enable');
                 await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
                 return page;
             },
