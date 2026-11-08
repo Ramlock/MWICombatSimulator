@@ -13,7 +13,7 @@ import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
-import { formatNumber, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
+import { formatNumber, formatUnit, percentSign, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -73,7 +73,7 @@ function onWorkerMessage(event) {
     switch (event.data.type) {
         case "simulation_result":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = "100" + percentSign() + " (" + formatUnit((Date.now() - simStartTime) / 1000, "s") + ")";
             //console.log("SIM RESULTS: ", event.data.simResult);
             showSimulationResult(event.data.simResult);
             updateContent();
@@ -84,7 +84,7 @@ function onWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = progress + percentSign() + " (" + formatUnit((Date.now() - simStartTime) / 1000, "s") + ")";
             // 实时更新图表
             if (event.data.timeSeriesData && document.getElementById('hpMpVisualizationToggle').checked) {
                 updateChartsRealtime(event.data.timeSeriesData);
@@ -101,7 +101,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_result_allZones":
         case "simulation_result_allLabyrinths":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = "100" + percentSign() + " (" + formatUnit((Date.now() - simStartTime) / 1000, "s") + ")";
             showAllSimulationResults(event.data.simResults);
             updateContent();
             buttonStartSimulation.disabled = false;
@@ -111,7 +111,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = progress + percentSign() + " (" + formatUnit((Date.now() - simStartTime) / 1000, "s") + ")";
             break;
         case "simulation_error":
             showErrorModal(event.data.error.toString());
@@ -411,7 +411,7 @@ function initAchievementsModal(){
         buffName.setAttribute("data-i18n", "buffTypeNames."+tier["buff"].typeHrid);
         bufDesc.appendChild(buffName);
         let buffValue = createElement("i", "");
-        buffValue.innerText = ":+" + parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100 + "%";
+        buffValue.innerText = ":+" + parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100 + percentSign();
         bufDesc.appendChild(buffValue);
         cardHeader.appendChild(bufDesc);
 

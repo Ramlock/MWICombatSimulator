@@ -2234,9 +2234,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   exactNumber: () => (/* binding */ exactNumber),
 /* harmony export */   formatNumber: () => (/* binding */ formatNumber),
 /* harmony export */   formatPercent: () => (/* binding */ formatPercent),
+/* harmony export */   formatUnit: () => (/* binding */ formatUnit),
 /* harmony export */   numberFormatSettings: () => (/* binding */ numberFormatSettings),
 /* harmony export */   numberHtml: () => (/* binding */ numberHtml),
 /* harmony export */   percentHtml: () => (/* binding */ percentHtml),
+/* harmony export */   percentSign: () => (/* binding */ percentSign),
 /* harmony export */   refreshFormattedNumbers: () => (/* binding */ refreshFormattedNumbers),
 /* harmony export */   setNumberFormatSettings: () => (/* binding */ setNumberFormatSettings),
 /* harmony export */   setNumberText: () => (/* binding */ setNumberText)
@@ -2318,7 +2320,19 @@ function formatNumber(value, options = {}) {
 
 // A value already in percent units (12.5 for 12.5%).
 function formatPercent(value, options = {}) {
-    return formatNumber(value, options) + (isIso(options) ? " %" : "%");
+    return formatNumber(value, options) + percentSign(options);
+}
+
+// The percent sign as the mode writes it: "%" off, a no-break space and "%" in ISO mode.
+function percentSign(options = {}) {
+    return isIso(options) ? " %" : "%";
+}
+
+// A number followed by a unit ("2.878s"): ISO mode puts a no-break space between them ("2.878 s"), as it does before "%".
+// Magnitude suffixes (k, M, B, T) are part of the number and stay attached ("1.302M s").
+function formatUnit(value, unit = "", options = {}) {
+    if (!unit) return formatNumber(value, options);
+    return formatNumber(value, options) + (isIso(options) ? " " : "") + unit;
 }
 
 // The exact value, for the hover title.
@@ -2336,7 +2350,7 @@ function escapeAttribute(text) {
 // The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
 function numberHtml(value, unit = "") {
     return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '" title="' +
-        escapeAttribute(exactNumber(value) + unit) + '">' + formatNumber(value) + unit + "</span>";
+        escapeAttribute(exactNumber(value) + unit) + '">' + formatUnit(value, unit) + "</span>";
 }
 
 function percentHtml(value) {
@@ -2346,7 +2360,7 @@ function percentHtml(value) {
 
 // For textContent sites: sets the display text and the hover title on an element.
 function setNumberText(element, value, unit = "") {
-    element.textContent = formatNumber(value) + unit;
+    element.textContent = formatUnit(value, unit);
     element.title = exactNumber(value) + unit;
     element.dataset.num = String(value);
     element.dataset.unit = unit;
@@ -2355,7 +2369,7 @@ function setNumberText(element, value, unit = "") {
 // Re-formats every number this module rendered under `root`, after the settings change.
 function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
-        element.textContent = formatNumber(element.dataset.num) + (element.dataset.unit ?? "");
+        element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
         element.textContent = formatPercent(element.dataset.pct);
@@ -3016,7 +3030,7 @@ function onWorkerMessage(event) {
     switch (event.data.type) {
         case "simulation_result":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = "100" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
             //console.log("SIM RESULTS: ", event.data.simResult);
             showSimulationResult(event.data.simResult);
             updateContent();
@@ -3027,7 +3041,7 @@ function onWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = progress + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
             // 实时更新图表
             if (event.data.timeSeriesData && document.getElementById('hpMpVisualizationToggle').checked) {
                 updateChartsRealtime(event.data.timeSeriesData);
@@ -3044,7 +3058,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_result_allZones":
         case "simulation_result_allLabyrinths":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = "100" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
             showAllSimulationResults(event.data.simResults);
             updateContent();
             buttonStartSimulation.disabled = false;
@@ -3054,7 +3068,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatNumber)((Date.now() - simStartTime) / 1000) + "s)";
+            progressbar.innerHTML = progress + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
             break;
         case "simulation_error":
             showErrorModal(event.data.error.toString());
@@ -3354,7 +3368,7 @@ function initAchievementsModal(){
         buffName.setAttribute("data-i18n", "buffTypeNames."+tier["buff"].typeHrid);
         bufDesc.appendChild(buffName);
         let buffValue = createElement("i", "");
-        buffValue.innerText = ":+" + parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100 + "%";
+        buffValue.innerText = ":+" + parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100 + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)();
         bufDesc.appendChild(buffValue);
         cardHeader.appendChild(bufDesc);
 
@@ -8081,4 +8095,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.814106ee.js.map
+//# sourceMappingURL=bundle.b7bddca4.js.map

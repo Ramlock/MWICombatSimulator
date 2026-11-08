@@ -75,7 +75,19 @@ export function formatNumber(value, options = {}) {
 
 // A value already in percent units (12.5 for 12.5%).
 export function formatPercent(value, options = {}) {
-    return formatNumber(value, options) + (isIso(options) ? " %" : "%");
+    return formatNumber(value, options) + percentSign(options);
+}
+
+// The percent sign as the mode writes it: "%" off, a no-break space and "%" in ISO mode.
+export function percentSign(options = {}) {
+    return isIso(options) ? " %" : "%";
+}
+
+// A number followed by a unit ("2.878s"): ISO mode puts a no-break space between them ("2.878 s"), as it does before "%".
+// Magnitude suffixes (k, M, B, T) are part of the number and stay attached ("1.302M s").
+export function formatUnit(value, unit = "", options = {}) {
+    if (!unit) return formatNumber(value, options);
+    return formatNumber(value, options) + (isIso(options) ? " " : "") + unit;
 }
 
 // The exact value, for the hover title.
@@ -93,7 +105,7 @@ function escapeAttribute(text) {
 // The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
 export function numberHtml(value, unit = "") {
     return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '" title="' +
-        escapeAttribute(exactNumber(value) + unit) + '">' + formatNumber(value) + unit + "</span>";
+        escapeAttribute(exactNumber(value) + unit) + '">' + formatUnit(value, unit) + "</span>";
 }
 
 export function percentHtml(value) {
@@ -103,7 +115,7 @@ export function percentHtml(value) {
 
 // For textContent sites: sets the display text and the hover title on an element.
 export function setNumberText(element, value, unit = "") {
-    element.textContent = formatNumber(value) + unit;
+    element.textContent = formatUnit(value, unit);
     element.title = exactNumber(value) + unit;
     element.dataset.num = String(value);
     element.dataset.unit = unit;
@@ -112,7 +124,7 @@ export function setNumberText(element, value, unit = "") {
 // Re-formats every number this module rendered under `root`, after the settings change.
 export function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
-        element.textContent = formatNumber(element.dataset.num) + (element.dataset.unit ?? "");
+        element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
         element.textContent = formatPercent(element.dataset.pct);

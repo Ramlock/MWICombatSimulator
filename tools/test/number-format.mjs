@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 register(pathToFileURL(path.join(root, 'tools/calibration/hooks.mjs')).href);
-const { formatNumber, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
+const { formatNumber, formatUnit, percentSign, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
 
 const cases = [
     [0, '0'],
@@ -64,6 +64,14 @@ const optionCases = [
     [() => exactNumber(1234567.891), '1,234,567.891'],
     [() => numberHtml(123456, 's'), '<span data-num="123456" data-unit="s" title="123,456s">123.5ks</span>'],
     [() => percentHtml(12.5), '<span data-pct="12.5" title="12.5%">12.5%</span>'],
+    // Units: ISO puts a no-break space between number and unit, like before "%"; off they stay attached.
+    [() => formatUnit(2.878, 's'), '2.878s'],
+    [() => formatUnit(2.878, 's', { iso: true }), '2.878 s'],
+    [() => formatUnit(1.5, 'h', { iso: true }), '1.5 h'],
+    [() => formatUnit(123456, 's', { iso: true }), '123.5k s'],
+    [() => formatUnit(7, '', { iso: true }), '7'],
+    [() => percentSign(), '%'],
+    [() => percentSign({ iso: true }), ' %'],
 ];
 for (const [fn, expected] of optionCases) {
     const got = fn();
