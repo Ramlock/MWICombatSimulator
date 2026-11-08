@@ -710,7 +710,7 @@
     const TINT = {
         // Default colour per party slot, best first (slot 1 is filled most often, 4 and 5 only in dungeons): magenta, gold, lime, indigo,
         // brown. Kept off the game's red (its red stays the fallback for hits with no known dealer).
-        PALETTE: ['#c026d3', '#ca8a04', '#4d7c0f', '#3730a3', '#78350f'],
+        PALETTE: ['#c026d3', '#a16207', '#4d7c0f', '#3730a3', '#78350f'],
         MAX_AGE_MS: 4000,
         MAX_QUEUE: 20,
     };

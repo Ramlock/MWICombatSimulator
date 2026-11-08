@@ -21,7 +21,7 @@ Read from a saved copy of the game page (bundle and stylesheet, 2026-11-07). Cla
 
 ## Settings and storage
 
-Script storage key `mwicsTrackerColors`: `{ on, byId: { characterId: '#rrggbb' }, fallback: '#rrggbb' | null }`. Colours follow the character id, so a player keeps their colour in any slot. Until one is picked a slot takes `TINT.PALETTE[slot]` (slot 1 to 5: magenta `#c026d3`, gold `#ca8a04`, lime `#4d7c0f`, indigo `#3730a3`, brown `#78350f`; best first, none red). The Settings dialog has a "Teammate colours" section: an on/off box, one colour per member of the current party with a Default button, and the colour of unattributed hits with a Game red button.
+Script storage key `mwicsTrackerColors`: `{ on, byId: { characterId: '#rrggbb' }, fallback: '#rrggbb' | null }`. Colours follow the character id, so a player keeps their colour in any slot. Until one is picked a slot takes `TINT.PALETTE[slot]` (slot 1 to 5: magenta `#c026d3`, gold `#a16207`, lime `#4d7c0f`, indigo `#3730a3`, brown `#78350f`; best first, none red). The Settings dialog has a "Teammate colours" section: an on/off box, one colour per member of the current party with a Default button, and the colour of unattributed hits with a Game red button.
 
 With the recorder switched off, a second recorder instance feeds the colours and keeps nothing.
 

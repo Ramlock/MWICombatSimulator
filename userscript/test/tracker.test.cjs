@@ -151,7 +151,7 @@ test('a miss keeps the grey fill: a ring in the dealer colour when known, none w
 });
 
 test('default palette, slot 1 to 5: magenta, gold, lime, indigo, brown', () => {
-    assert.equal(TINT.PALETTE.join(','), '#c026d3,#ca8a04,#4d7c0f,#3730a3,#78350f');
+    assert.equal(TINT.PALETTE.join(','), '#c026d3,#a16207,#4d7c0f,#3730a3,#78350f');
 });
 
 test('unit side and index come from the React props', () => {
