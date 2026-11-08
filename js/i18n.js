@@ -12812,10 +12812,14 @@ document.addEventListener('DOMContentLoaded', function () {
     function addLanguageSwitcher() {
         const switcherContainer = document.createElement('div');
         switcherContainer.className = 'language-switcher';
-        switcherContainer.style.position = 'fixed';
-        switcherContainer.style.top = '10px';
-        switcherContainer.style.right = '10px';
-        switcherContainer.style.zIndex = '1000';
+        // The page's top-right bar (index.html) holds the toggles; the buttons go after them.
+        const topRightControls = document.getElementById('topRightControls');
+        if (!topRightControls) {
+            switcherContainer.style.position = 'fixed';
+            switcherContainer.style.top = '10px';
+            switcherContainer.style.right = '10px';
+            switcherContainer.style.zIndex = '1000';
+        }
 
         const enButton = document.createElement('button');
         enButton.className = 'btn btn-sm ' + (i18next.language === 'en' ? 'btn-primary' : 'btn-outline-primary');
@@ -12839,6 +12843,6 @@ document.addEventListener('DOMContentLoaded', function () {
         switcherContainer.appendChild(document.createTextNode(' '));
         switcherContainer.appendChild(zhButton);
 
-        document.body.appendChild(switcherContainer);
+        (topRightControls ?? document.body).appendChild(switcherContainer);
     }
 });

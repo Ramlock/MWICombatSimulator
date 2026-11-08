@@ -1,6 +1,8 @@
 // What the Combat Stats panel (index.html, ids combatStat_*) shows for a combat unit's combatDetails.
 // Shared by src/main.js (rendering) and tools/calibration/panel-check.mjs (the check against the engine).
 
+import { numberHtml, percentHtml } from "./numberFormat.js";
+
 // Effective skill levels: the raw level plus every level buff (house rooms, ...).
 export const levelStats = ["stamina", "intelligence", "attack", "melee", "defense", "ranged", "magic"].map((skill) => skill + "Level");
 
@@ -83,24 +85,22 @@ export const percentCombatStats = [
     "magicExperience"
 ];
 
-// The text of every numeric panel row, keyed by the element id's suffix (combatStat_<key>).
+// The HTML of every numeric panel row, keyed by the element id's suffix (combatStat_<key>). Display text follows
+// src/numberFormat.js; each value carries its exact figure (hover title), so equal panels mean equal stats.
 export function getCombatStatsPanelValues(combatDetails) {
     const values = {};
-    values.attackInterval = (combatDetails.combatStats.attackInterval / 1e9).toLocaleString() + "s";
+    values.attackInterval = numberHtml(combatDetails.combatStats.attackInterval / 1e9, "s");
     levelStats.forEach((stat) => {
-        values[stat] = combatDetails[stat].toLocaleString([], { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        values[stat] = numberHtml(combatDetails[stat]);
     });
     flooredStats.forEach((stat) => {
-        values[stat] = String(Math.floor(combatDetails[stat]));
+        values[stat] = numberHtml(Math.floor(combatDetails[stat]));
     });
     flooredCombatStats.forEach((stat) => {
-        values[stat] = String(Math.floor(combatDetails.combatStats[stat]));
+        values[stat] = numberHtml(Math.floor(combatDetails.combatStats[stat]));
     });
     percentCombatStats.forEach((stat) => {
-        values[stat] = (100 * combatDetails.combatStats[stat]).toLocaleString([], {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 4,
-        }) + "%";
+        values[stat] = percentHtml(100 * combatDetails.combatStats[stat]);
     });
     return values;
 }

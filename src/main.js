@@ -13,6 +13,7 @@ import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
+import { formatNumber, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -72,7 +73,7 @@ function onWorkerMessage(event) {
     switch (event.data.type) {
         case "simulation_result":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = "100% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
             //console.log("SIM RESULTS: ", event.data.simResult);
             showSimulationResult(event.data.simResult);
             updateContent();
@@ -83,7 +84,7 @@ function onWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = progress + "% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
             // 实时更新图表
             if (event.data.timeSeriesData && document.getElementById('hpMpVisualizationToggle').checked) {
                 updateChartsRealtime(event.data.timeSeriesData);
@@ -100,7 +101,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_result_allZones":
         case "simulation_result_allLabyrinths":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = "100% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
             showAllSimulationResults(event.data.simResults);
             updateContent();
             buttonStartSimulation.disabled = false;
@@ -110,7 +111,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + "% (" + ((Date.now() - simStartTime) / 1000).toFixed(2) + "s)";
+            progressbar.innerHTML = progress + "% (" + formatNumber((Date.now() - simStartTime) / 1000) + "s)";
             break;
         case "simulation_error":
             showErrorModal(event.data.error.toString());
@@ -1464,11 +1465,11 @@ function showSimulationResult(simResult) {
     showDamageTaken(simResult, playerToDisplay);
     renderWipeEvents(simResult);
     window.profit = window.revenue - window.expenses;
-    document.getElementById('profitSpan').innerText = window.profit.toLocaleString();
-    document.getElementById('profitPreview').innerText = window.profit.toLocaleString();
+    setNumberText(document.getElementById('profitSpan'), window.profit);
+    setNumberText(document.getElementById('profitPreview'), window.profit);
     window.noRngProfit = window.noRngRevenue - window.expenses;
-    document.getElementById('noRngProfitSpan').innerText = window.noRngProfit.toLocaleString();
-    document.getElementById('noRngProfitPreview').innerText = window.noRngProfit.toLocaleString();
+    setNumberText(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+    setNumberText(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     
     // 显示战斗图表
     if (document.getElementById('hpMpVisualizationToggle').checked) {
@@ -1863,15 +1864,15 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 difficultyTier = simResult.roomLevel;
             }
 
-            let encountersPerHour = (simResult.encounters / hoursSimulated).toFixed(1);
+            let encountersPerHour = simResult.encounters / hoursSimulated;
             let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-            let deathsPerHour = (playerDeaths / hoursSimulated).toFixed(2);
+            let deathsPerHour = playerDeaths / hoursSimulated;
 
             let totalExperience = 0;
             if (simResult.experienceGained[playerToDisplay]) {
                 totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
             }
-            let totalExperiencePerHour = (totalExperience / hoursSimulated).toFixed(0);
+            let totalExperiencePerHour = totalExperience / hoursSimulated;
 
             let experiencePerHour = {};
             const skills = ["Stamina", "Intelligence", "Attack", "Melee", "Defense", "Ranged", "Magic"];
@@ -1880,7 +1881,7 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 let experience = simResult.experienceGained[playerToDisplay]?.[skillLower] ?? 0;
                 let experiencePerHourValue = 0;
                 if (experience != 0) {
-                    experiencePerHourValue = (experience / hoursSimulated).toFixed(0);
+                    experiencePerHourValue = experience / hoursSimulated;
                 }
                 experiencePerHour[skill] = experiencePerHourValue;
             });
@@ -2070,9 +2071,9 @@ function getDropProfit(simResult, playerToDisplay) {
         expenses += price * amount;
     }
 
-    simResult["noRngRevenue"] = (noRngTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    simResult["expenses"] = (expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    simResult["noRngProfit"] = (noRngTotal - expenses).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    simResult["noRngRevenue"] = noRngTotal;
+    simResult["expenses"] = expenses;
+    simResult["noRngProfit"] = noRngTotal - expenses;
 }
 
 function updateAllSimsModal(data) {
@@ -2083,7 +2084,12 @@ function updateAllSimsModal(data) {
 
         Object.keys(item).forEach(key => {
             const cell = document.createElement('td');
-            cell.textContent = item[key];
+            if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
+                setNumberText(cell, item[key]);
+                cell.dataset.sortValue = item[key];
+            } else {
+                cell.textContent = item[key];
+            }
             if (key === 'ZoneName') {
                 if (cell.textContent.startsWith("/action")) {
                     cell.setAttribute("data-i18n", "actionNames." + item[key]);
@@ -2109,8 +2115,8 @@ function sortTable(tableId, columnIndex, direction) {
     const rows = Array.from(tbody.querySelectorAll('tr'));
 
     const sortedRows = rows.sort((rowA, rowB) => {
-        const cellA = rowA.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
-        const cellB = rowB.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
+        const cellA = rowA.children[columnIndex].dataset.sortValue ?? rowA.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
+        const cellB = rowB.children[columnIndex].dataset.sortValue ?? rowB.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
 
         const valueA = parseFloat(cellA.replace(/,/g, ''));
         const valueB = parseFloat(cellB.replace(/,/g, ''));
@@ -2204,34 +2210,34 @@ function showKills(simResult, playerToDisplay) {
             failedDungeonsRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.dungeonsFailed");
             newChildren.push(failedDungeonsRow);
         }
-        encountersPerHour = (simResult.dungeonsCompleted / hoursSimulated).toFixed(1);
-        let averageTime = (hoursSimulated * 60 / simResult.dungeonsCompleted).toFixed(1);
+        encountersPerHour = numberHtml(simResult.dungeonsCompleted / hoursSimulated);
+        let averageTime = numberHtml(hoursSimulated * 60 / simResult.dungeonsCompleted);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Average Time", averageTime]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.averageTime");
         if (simResult.minDungenonTime > 0) {
-            let minimumTime = (simResult.minDungenonTime / ONE_SECOND / 60).toFixed(1);
+            let minimumTime = numberHtml(simResult.minDungenonTime / ONE_SECOND / 60);
             let minimumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Minimum Time", minimumTime]);
             minimumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.minimumTime");
             newChildren.push(minimumTimeRow);
         }
         if (simResult.maxDungenonTime > 0) {
-            let maximumTime = (simResult.maxDungenonTime / ONE_SECOND / 60).toFixed(1);
+            let maximumTime = numberHtml(simResult.maxDungenonTime / ONE_SECOND / 60);
             let maximumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Maximum Time", maximumTime]);
             maximumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.maximumTime");
             newChildren.push(maximumTimeRow);
         }
     } else {
-        encountersPerHour = (simResult.encounters / hoursSimulated).toFixed(1); 
+        encountersPerHour = numberHtml(simResult.encounters / hoursSimulated);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Encounters", encountersPerHour]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.encounters");
     }
 
     if (simResult.labyAttemptCount > 0) {
-        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (simResult.labyAttemptCount / hoursSimulated).toFixed(1)]);
+        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", numberHtml(simResult.labyAttemptCount / hoursSimulated)]);
         labyAttemptCountRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labyAttemptCount");
         newChildren.push(labyAttemptCountRow);
 
-        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (simResult.encounters / simResult.labyAttemptCount * 100).toFixed(1) + "%"]);
+        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", percentHtml(simResult.encounters / simResult.labyAttemptCount * 100)]);
         labySuccessRateRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labySuccessRate");
         newChildren.push(labySuccessRateRow);
     }
@@ -2243,7 +2249,7 @@ function showKills(simResult, playerToDisplay) {
     }
 
     if (simResult.debuffOnLevelGap[playerToDisplay] != 0) {
-        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (simResult.debuffOnLevelGap[playerToDisplay] * 100).toFixed(1) + "%"]);
+        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", percentHtml(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
         debuffOnLevelGapRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.debuffOnLevelGap");
         newChildren.push(debuffOnLevelGapRow);
     }
@@ -2254,7 +2260,7 @@ function showKills(simResult, playerToDisplay) {
         .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
         .sort()
         .forEach(monster => {
-            let killsPerHour = (simResult.deaths[monster] / hoursSimulated).toFixed(1);
+            let killsPerHour = numberHtml(simResult.deaths[monster] / hoursSimulated);
             let monsterRow = createRow(
                 ["col-md-6", "col-md-6 text-end"],
                 [combatMonsterDetailMap[monster].name, killsPerHour]
@@ -2270,7 +2276,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of totalDropMap.entries()) {
         let dropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, dropAmount.toLocaleString()]
+            [name, numberHtml(dropAmount)]
         );
         dropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newDropChildren.push(dropRow);
@@ -2318,7 +2324,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
         let noRngDropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, dropAmount.toLocaleString()]
+            [name, numberHtml(dropAmount)]
         );
         noRngDropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newNoRngDropChildren.push(noRngDropRow);
@@ -2359,9 +2365,9 @@ function showKills(simResult, playerToDisplay) {
         noRngTotal += price * dropAmount;
     }
 
-    document.getElementById('revenueSpan').innerText = total.toLocaleString();
+    setNumberText(document.getElementById('revenueSpan'), total);
     window.revenue = total;
-    document.getElementById('noRngRevenueSpan').innerText = noRngTotal.toLocaleString();
+    setNumberText(document.getElementById('noRngRevenueSpan'), noRngTotal);
     window.noRngRevenue = noRngTotal;
 
     let resultAccordion = document.getElementById("noRngDropsAccordion");
@@ -2377,7 +2383,7 @@ function showDeaths(simResult, playerToDisplay) {
 
     let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
     let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-    let deathsPerHour = (playerDeaths / hoursSimulated).toFixed(2);
+    let deathsPerHour = numberHtml(playerDeaths / hoursSimulated);
 
     let deathRow = createRow(["col-md-6", "col-md-6 text-end"], ["Player", deathsPerHour]);
     deathRow.firstElementChild.setAttribute("data-i18n", "common:player");
@@ -2394,7 +2400,7 @@ function showExperienceGained(simResult, playerToDisplay) {
     if (simResult.experienceGained[playerToDisplay]) {
         totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
     }
-    let totalExperiencePerHour = (totalExperience / hoursSimulated).toFixed(0);
+    let totalExperiencePerHour = numberHtml(totalExperience / hoursSimulated);
     let totalRow = createRow(["col-md-6", "col-md-6 text-end"], ["Total", totalExperiencePerHour]);
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -2404,7 +2410,7 @@ function showExperienceGained(simResult, playerToDisplay) {
         if (experience == 0) {
             return;
         }
-        let experiencePerHour = (experience / hoursSimulated).toFixed(0);
+        let experiencePerHour = numberHtml(experience / hoursSimulated);
         let experienceRow = createRow(["col-md-6", "col-md-6 text-end"], [skill, experiencePerHour]);
         experienceRow.firstElementChild.setAttribute("data-i18n", "leaderboardCategoryNames." + skill.toLowerCase());
         newChildren.push(experienceRow);
@@ -2423,7 +2429,7 @@ function showHpSpent(simResult, playerToDisplay) {
         let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
         let hpSpentSources = [];
         for (const source of Object.keys(simResult.hitpointsSpent[playerToDisplay])) {
-            let hpSpentPerHour = (simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated).toFixed(2);
+            let hpSpentPerHour = numberHtml(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
             let hpSpentRow = createRow(["col-md-6", "col-md-6 text-end"], [abilityDetailMap[source].name, hpSpentPerHour]);
             hpSpentRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + source);
             hpSpentSources.push(hpSpentRow);
@@ -2451,7 +2457,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
     let expensesModalTable = document.querySelector("#expensesTable > tbody");
     let total = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let consumablesPerHour = (amount / hoursSimulated).toFixed(0);
+        let consumablesPerHour = numberHtml(amount / hoursSimulated);
         let consumableRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
             [itemDetailMap[consumable].name, consumablesPerHour]
@@ -2495,7 +2501,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         total += price * amount;
     }
 
-    document.getElementById('expensesSpan').innerText = total.toLocaleString();
+    setNumberText(document.getElementById('expensesSpan'), total);
     window.expenses = total;
 
     resultDiv.replaceChildren(...newChildren);
@@ -2516,9 +2522,9 @@ function showManaUsed(simResult, playerToDisplay) {
 
     for (let ability in playerManaUsed) {
         let manaUsed = playerManaUsed[ability];
-        let manaPerHour = (manaUsed / hoursSimulated).toFixed(0);
-        let castsPerHour = (manaPerHour / abilityDetailMap[ability].manaCost).toFixed(2);
-        castsPerHour = " (" + castsPerHour + ")";
+        let manaPerHourValue = Math.round(manaUsed / hoursSimulated);
+        let manaPerHour = numberHtml(manaPerHourValue);
+        let castsPerHour = " (" + numberHtml(manaPerHourValue / abilityDetailMap[ability].manaCost) + ")";
 
         let manaRow = createRow(
             ["col-md-6", "col-md-2", "col-md-4 text-end"],
@@ -2545,10 +2551,10 @@ function showHitpointsGained(simResult, playerToDisplay) {
     let hitpointsGained = Object.entries(simResult.hitpointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalHitpointsGained = hitpointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalHitpointsPerSecond = (totalHitpointsGained / secondsSimulated).toFixed(2);
+    let totalHitpointsPerSecond = numberHtml(totalHitpointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalHitpointsPerSecond, "100%"]
+        ["Total", totalHitpointsPerSecond, percentHtml(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -2583,12 +2589,12 @@ function showHitpointsGained(simResult, playerToDisplay) {
                 }
                 break;
         }
-        let hitpointsPerSecond = (amount / secondsSimulated).toFixed(2);
-        let percentage = ((100 * amount) / totalHitpointsGained).toFixed(0);
+        let hitpointsPerSecond = numberHtml(amount / secondsSimulated);
+        let percentage = percentHtml((100 * amount) / totalHitpointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-            [sourceText, hitpointsPerSecond, percentage + "%"]
+            [sourceText, hitpointsPerSecond, percentage]
         );
         row.firstElementChild.setAttribute("data-i18n", sourceFullHrid);
         newChildren.push(row);
@@ -2611,10 +2617,10 @@ function showManapointsGained(simResult, playerToDisplay) {
     let manapointsGained = Object.entries(simResult.manapointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalManapointsGained = manapointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalManapointsPerSecond = (totalManapointsGained / secondsSimulated).toFixed(2);
+    let totalManapointsPerSecond = numberHtml(totalManapointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalManapointsPerSecond, "100%"]
+        ["Total", totalManapointsPerSecond, percentHtml(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -2644,12 +2650,12 @@ function showManapointsGained(simResult, playerToDisplay) {
                 sourceFullHrid = "itemNames." + source;
                 break;
         }
-        let manapointsPerSecond = (amount / secondsSimulated).toFixed(2);
-        let percentage = ((100 * amount) / totalManapointsGained).toFixed(0);
+        let manapointsPerSecond = numberHtml(amount / secondsSimulated);
+        let percentage = percentHtml((100 * amount) / totalManapointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-            [sourceText, manapointsPerSecond, percentage + "%"]
+            [sourceText, manapointsPerSecond, percentage]
         );
         row.firstElementChild.setAttribute("data-i18n", sourceFullHrid);
         newChildren.push(row);
@@ -2669,7 +2675,7 @@ function showManapointsGained(simResult, playerToDisplay) {
             ["col-md-6", "col-md-6 text-end"],
             [
                 "Run Out Ratio",
-                (totalTimeForOut / simResult.simulatedTime * 100).toFixed(2) + "%"
+                percentHtml(totalTimeForOut / simResult.simulatedTime * 100)
             ]
         );
         ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
@@ -2743,10 +2749,10 @@ function showDamageDone(simResult, playerToDisplay) {
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageDone\">Damage Done</span> (" + "<span data-i18n=\"monsterNames." + target + "\">" + targetName + "</span>" + ")</b>";
 
         if (simResult.bossSpawns.includes(target)) {
-            let hoursSpentOnBoss = (aliveSecondsSimulated / 60 / 60).toFixed(2);
-            let percentSpentOnBoss = (aliveSecondsSimulated / totalSecondsSimulated * 100).toFixed(2);
+            let hoursSpentOnBoss = numberHtml(aliveSecondsSimulated / 60 / 60, "h");
+            let percentSpentOnBoss = percentHtml(aliveSecondsSimulated / totalSecondsSimulated * 100);
 
-            let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "h(" + percentSpentOnBoss + "%)"]);
+            let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "(" + percentSpentOnBoss + ")"]);
             bossRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + target);
             bossTimeDiv.replaceChildren(bossRow);
 
@@ -2767,7 +2773,7 @@ function showDamageDone(simResult, playerToDisplay) {
                 continue;
             }
             let aliveSecondsSimulated = simResult.timeSpentAlive[idx].timeSpentAlive / ONE_SECOND / simResult.timeSpentAlive[idx].count;
-            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, aliveSecondsSimulated.toFixed(1) + "s"]);
+            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, numberHtml(aliveSecondsSimulated, "s")]);
             newChildren.push(bossRow);
         }
         if (newChildren.length > 0) {
@@ -2854,12 +2860,12 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     let totalCasts = sortedDamageDone.reduce((prev, cur) => prev + cur[1].casts, 0);
     let totalMisses = sortedDamageDone.reduce((prev, cur) => prev + cur[1].misses, 0);
     let totalDamage = sortedDamageDone.reduce((prev, cur) => prev + cur[1].damage, 0);
-    let totalHitChance = ((100 * (totalCasts - totalMisses)) / totalCasts).toFixed(1);
-    let totalDamagePerSecond = (totalDamage / secondsSimulated).toFixed(2);
+    let totalHitChance = percentHtml((100 * (totalCasts - totalMisses)) / totalCasts);
+    let totalDamagePerSecond = numberHtml(totalDamage / secondsSimulated);
 
     let totalRow = createRow(
         ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-        ["Total", totalHitChance + "%", totalDamagePerSecond, "100%"]
+        ["Total", totalHitChance, totalDamagePerSecond, percentHtml(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -2902,13 +2908,13 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
                 break;
         }
 
-        let hitChance = ((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts).toFixed(1);
-        let damagePerSecond = (damageInfo.damage / secondsSimulated).toFixed(2);
-        let percentage = ((100 * damageInfo.damage) / totalDamage).toFixed(0);
+        let hitChance = percentHtml((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
+        let damagePerSecond = numberHtml(damageInfo.damage / secondsSimulated);
+        let percentage = percentHtml((100 * damageInfo.damage) / totalDamage);
 
         let row = createRow(
             ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-            [abilityText, hitChance + "%", damagePerSecond, percentage + "%"]
+            [abilityText, hitChance, damagePerSecond, percentage]
         );
         row.firstElementChild.setAttribute("data-i18n", abilityFullHrid);
         newChildren.push(row);
@@ -4808,18 +4814,18 @@ document.addEventListener("input", (e) => {
         }
 
         window.expenses += expensesDifference;
-        document.getElementById('expensesSpan').innerText = window.expenses.toLocaleString();
+        setNumberText(document.getElementById('expensesSpan'), window.expenses);
         window.revenue += revenueDifference;
-        document.getElementById('revenueSpan').innerText = window.revenue.toLocaleString();
+        setNumberText(document.getElementById('revenueSpan'), window.revenue);
         window.noRngRevenue += noRngRevenueDifference;
-        document.getElementById('noRngRevenueSpan').innerText = window.noRngRevenue.toLocaleString();
+        setNumberText(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
 
         window.profit = window.revenue - window.expenses;
-        document.getElementById('profitPreview').innerText = window.profit.toLocaleString();
-        document.getElementById('profitSpan').innerText = window.profit.toLocaleString();
+        setNumberText(document.getElementById('profitPreview'), window.profit);
+        setNumberText(document.getElementById('profitSpan'), window.profit);
         window.noRngProfit = window.noRngRevenue - window.expenses;
-        document.getElementById('noRngProfitSpan').innerText = window.noRngProfit.toLocaleString();
-        document.getElementById('noRngProfitPreview').innerText = window.noRngProfit.toLocaleString();
+        setNumberText(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+        setNumberText(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     }
 });
 
@@ -5052,6 +5058,17 @@ darkModeToggle.addEventListener('change', () => {
         table.classList.toggle('table-striped');
     }
     localStorage.setItem('darkModeEnabled', darkModeToggle.checked);
+});
+
+// ISO number display (1 234, 1.79 %): off by default, remembered like Dark Mode.
+const isoNumbersToggle = document.getElementById('isoNumbersToggle');
+isoNumbersToggle.checked = localStorage.getItem('isoNumbersEnabled') === 'true';
+setNumberFormatSettings({ iso: isoNumbersToggle.checked });
+
+isoNumbersToggle.addEventListener('change', () => {
+    setNumberFormatSettings({ iso: isoNumbersToggle.checked });
+    localStorage.setItem('isoNumbersEnabled', isoNumbersToggle.checked);
+    refreshFormattedNumbers(document);
 });
 
 function updateContent() {
