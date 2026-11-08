@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 register(pathToFileURL(path.join(root, 'tools/calibration/hooks.mjs')).href);
-const { formatNumber, formatUnit, percentSign, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
+const { formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
 
 const cases = [
     [0, '0'],
@@ -72,6 +72,11 @@ const optionCases = [
     [() => formatUnit(7, '', { iso: true }), '7'],
     [() => percentSign(), '%'],
     [() => percentSign({ iso: true }), ' %'],
+    // Hover (exact value) follows the mode: off as before, ISO grouped with no-break spaces and a no-break space before the unit.
+    [() => exactNumber(1234567.891, { iso: true }), '1 234 567.891'],
+    [() => exactUnit(2.87769784172662, 's'), '2.87769784172662s'],
+    [() => exactUnit(2.87769784172662, 's', { iso: true }), '2.87769784172662 s'],
+    [() => exactUnit(1234.5, 'h', { iso: true }), '1 234.5 h'],
 ];
 for (const [fn, expected] of optionCases) {
     const got = fn();

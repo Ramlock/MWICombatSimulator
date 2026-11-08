@@ -90,11 +90,19 @@ export function formatUnit(value, unit = "", options = {}) {
     return formatNumber(value, options) + (isIso(options) ? " " : "") + unit;
 }
 
-// The exact value, for the hover title.
-export function exactNumber(value) {
+// The exact value, for the hover title. It follows the mode like the display text: off "1,234,567.891",
+// ISO "1 234 567.891" (no-break spaces).
+export function exactNumber(value, options = {}) {
     const number = typeof value === "string" ? Number(value) : value;
     if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
-    return number.toLocaleString("en-US", { maximumSignificantDigits: 15 });
+    const text = number.toLocaleString("en-US", { maximumSignificantDigits: 15 });
+    return isIso(options) ? text.replace(/,/g, " ") : text;
+}
+
+// The exact value with its unit, spaced like formatUnit: off "2.87769784172662s", ISO "2.87769784172662 s".
+export function exactUnit(value, unit = "", options = {}) {
+    if (!unit) return exactNumber(value, options);
+    return exactNumber(value, options) + (isIso(options) ? " " : "") + unit;
 }
 
 function escapeAttribute(text) {
@@ -105,18 +113,18 @@ function escapeAttribute(text) {
 // The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
 export function numberHtml(value, unit = "") {
     return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '" title="' +
-        escapeAttribute(exactNumber(value) + unit) + '">' + formatUnit(value, unit) + "</span>";
+        escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
 }
 
 export function percentHtml(value) {
-    return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + "%") + '">' +
+    return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
         formatPercent(value) + "</span>";
 }
 
 // For textContent sites: sets the display text and the hover title on an element.
 export function setNumberText(element, value, unit = "") {
     element.textContent = formatUnit(value, unit);
-    element.title = exactNumber(value) + unit;
+    element.title = exactUnit(value, unit);
     element.dataset.num = String(value);
     element.dataset.unit = unit;
 }
@@ -125,8 +133,10 @@ export function setNumberText(element, value, unit = "") {
 export function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
         element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
+        element.title = exactUnit(element.dataset.num, element.dataset.unit ?? "");
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
         element.textContent = formatPercent(element.dataset.pct);
+        element.title = exactNumber(element.dataset.pct) + percentSign();
     });
 }

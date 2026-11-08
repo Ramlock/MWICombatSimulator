@@ -2276,6 +2276,7 @@ function getImportedGuildBuffs(importSet) {
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   exactNumber: () => (/* binding */ exactNumber),
+/* harmony export */   exactUnit: () => (/* binding */ exactUnit),
 /* harmony export */   formatNumber: () => (/* binding */ formatNumber),
 /* harmony export */   formatPercent: () => (/* binding */ formatPercent),
 /* harmony export */   formatUnit: () => (/* binding */ formatUnit),
@@ -2379,11 +2380,19 @@ function formatUnit(value, unit = "", options = {}) {
     return formatNumber(value, options) + (isIso(options) ? " " : "") + unit;
 }
 
-// The exact value, for the hover title.
-function exactNumber(value) {
+// The exact value, for the hover title. It follows the mode like the display text: off "1,234,567.891",
+// ISO "1 234 567.891" (no-break spaces).
+function exactNumber(value, options = {}) {
     const number = typeof value === "string" ? Number(value) : value;
     if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
-    return number.toLocaleString("en-US", { maximumSignificantDigits: 15 });
+    const text = number.toLocaleString("en-US", { maximumSignificantDigits: 15 });
+    return isIso(options) ? text.replace(/,/g, " ") : text;
+}
+
+// The exact value with its unit, spaced like formatUnit: off "2.87769784172662s", ISO "2.87769784172662 s".
+function exactUnit(value, unit = "", options = {}) {
+    if (!unit) return exactNumber(value, options);
+    return exactNumber(value, options) + (isIso(options) ? " " : "") + unit;
 }
 
 function escapeAttribute(text) {
@@ -2394,18 +2403,18 @@ function escapeAttribute(text) {
 // The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
 function numberHtml(value, unit = "") {
     return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '" title="' +
-        escapeAttribute(exactNumber(value) + unit) + '">' + formatUnit(value, unit) + "</span>";
+        escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
 }
 
 function percentHtml(value) {
-    return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + "%") + '">' +
+    return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
         formatPercent(value) + "</span>";
 }
 
 // For textContent sites: sets the display text and the hover title on an element.
 function setNumberText(element, value, unit = "") {
     element.textContent = formatUnit(value, unit);
-    element.title = exactNumber(value) + unit;
+    element.title = exactUnit(value, unit);
     element.dataset.num = String(value);
     element.dataset.unit = unit;
 }
@@ -2414,9 +2423,11 @@ function setNumberText(element, value, unit = "") {
 function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
         element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
+        element.title = exactUnit(element.dataset.num, element.dataset.unit ?? "");
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
         element.textContent = formatPercent(element.dataset.pct);
+        element.title = exactNumber(element.dataset.pct) + percentSign();
     });
 }
 
@@ -3038,6 +3049,13 @@ let buttonStopSimulation = document.getElementById("buttonStopSimulation");
 let progressbar = document.getElementById("simulationProgressBar");
 let simStartTime = 0;
 
+// The progress bar text, "37% (1.2s)", with the exact elapsed time on hover, both in the number mode in force when drawn.
+function setProgressText(percent) {
+    const elapsed = (Date.now() - simStartTime) / 1000;
+    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)(elapsed, "s") + ")";
+    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.exactUnit)(elapsed, "s") + ")";
+}
+
 let worker = new Worker(new URL(/* worker import */ __webpack_require__.p + __webpack_require__.u(2), __webpack_require__.b));
 let multiWorker = new Worker(new URL(/* worker import */ __webpack_require__.p + __webpack_require__.u("src_multiWorker_js-_004d1"), __webpack_require__.b));
 let workerPool = [];
@@ -3074,7 +3092,7 @@ function onWorkerMessage(event) {
     switch (event.data.type) {
         case "simulation_result":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
+            setProgressText("100");
             //console.log("SIM RESULTS: ", event.data.simResult);
             showSimulationResult(event.data.simResult);
             updateContent();
@@ -3085,7 +3103,7 @@ function onWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
+            setProgressText(progress);
             // 实时更新图表
             if (event.data.timeSeriesData && document.getElementById('hpMpVisualizationToggle').checked) {
                 updateChartsRealtime(event.data.timeSeriesData);
@@ -3102,7 +3120,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_result_allZones":
         case "simulation_result_allLabyrinths":
             progressbar.style.width = "100%";
-            progressbar.innerHTML = "100" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
+            setProgressText("100");
             showAllSimulationResults(event.data.simResults);
             updateContent();
             buttonStartSimulation.disabled = false;
@@ -3112,7 +3130,7 @@ function onMultiWorkerMessage(event) {
         case "simulation_progress":
             let progress = Math.floor(100 * event.data.progress);
             progressbar.style.width = progress + "%";
-            progressbar.innerHTML = progress + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.formatUnit)((Date.now() - simStartTime) / 1000, "s") + ")";
+            setProgressText(progress);
             break;
         case "simulation_error":
             showErrorModal(event.data.error.toString());
@@ -3412,7 +3430,9 @@ function initAchievementsModal(){
         buffName.setAttribute("data-i18n", "buffTypeNames."+tier["buff"].typeHrid);
         bufDesc.appendChild(buffName);
         let buffValue = createElement("i", "");
-        buffValue.innerText = ":+" + parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100 + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)();
+        const buffPercent = parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100;
+        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)();
+        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.percentSign)();
         bufDesc.appendChild(buffValue);
         cardHeader.appendChild(bufDesc);
 
@@ -8139,4 +8159,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.0f7f3025.js.map
+//# sourceMappingURL=bundle.94405168.js.map
