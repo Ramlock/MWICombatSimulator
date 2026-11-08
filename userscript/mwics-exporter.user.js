@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWICS Exporter
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.4.0
+// @version      0.4.1
 // @description  Read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -852,7 +852,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.4.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.4.1'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1014,16 +1014,22 @@
 
     // ---- The simulator page: a button that imports the party the game tab left in storage ----
     function addSimButton() {
+        if (document.getElementById('mwicsImportParty')) return true;
         const anchor = document.getElementById('buttonImportExport');
-        if (!anchor || !anchor.parentElement || document.getElementById('mwicsImportParty')) return !!document.getElementById('mwicsImportParty');
+        // Its own row under the button row (a new column inside that row would widen it and push the Dark Mode toggle out of line).
+        const row = anchor && anchor.closest ? anchor.closest('.row') : null;
+        if (!row) return false;
         const wrap = document.createElement('div');
-        wrap.className = 'col-md-auto';
+        wrap.className = 'row mt-2';
+        const col = document.createElement('div');
+        col.className = 'col-md-auto';
         const b = document.createElement('button');
         b.id = 'mwicsImportParty'; b.type = 'button'; b.className = 'btn btn-primary';
         b.textContent = 'Import party from game (MWICS Exporter)';
         b.addEventListener('click', importPartyFromGame);
-        wrap.appendChild(b);
-        anchor.parentElement.insertAdjacentElement('afterend', wrap);
+        col.appendChild(b);
+        wrap.appendChild(col);
+        row.insertAdjacentElement('afterend', wrap);
         return true;
     }
     function importPartyFromGame() {

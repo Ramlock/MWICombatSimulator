@@ -132,7 +132,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0\.4\.0/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0\.4\.1/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -172,7 +172,7 @@ await test('cross-tab link: the game tab leaves the party in storage; the simula
 
     const mkSim = (s) => {
         const input = { value: '' }, clicks = [];
-        const dom = { buttonImportExport: { parentElement: { insertAdjacentElement(pos, e) { dom.inserted = [pos, e]; } } }, inputSetGroupCombatAll: input, buttonImportSet: { click() { clicks.push('import:' + input.value); } }, 'group-combat-tab': { click() { clicks.push('tab'); } } };
+        const dom = { buttonImportExport: { closest(sel) { dom.closestSel = sel; return { insertAdjacentElement(pos, e) { dom.inserted = [pos, e]; } }; } }, inputSetGroupCombatAll: input, buttonImportSet: { click() { clicks.push('import:' + input.value); } }, 'group-combat-tab': { click() { clicks.push('tab'); } } };
         const sim = boot(s, { location: { hostname: 'ramlock.github.io' }, dom });
         sim.intervals[0]();
         return { sim, dom, clicks, input, press: () => sim.created.find((e) => e.id === 'mwicsImportParty').on() };
@@ -180,6 +180,8 @@ await test('cross-tab link: the game tab leaves the party in storage; the simula
     const a = mkSim(store);
     assert.deepEqual(Object.keys(a.sim.commands), [], 'on the simulator page there is no menu and no hook');
     assert.equal(a.dom.inserted[0], 'afterend');
+    assert.equal(a.dom.closestSel, '.row', 'the button goes after the whole button row, never into it (that row would widen and push the Dark Mode toggle out of line)');
+    assert.match(a.dom.inserted[1].className, /\brow\b.*\bmt-2\b/, 'its own row with a top margin');
     a.press();
     assert.deepEqual(a.clicks.map((c) => c.split(':')[0]), ['tab', 'import']);
     assert.deepEqual(Object.keys(JSON.parse(a.input.value)), ['1']);
@@ -195,8 +197,8 @@ await test('cross-tab link: the game tab leaves the party in storage; the simula
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0\.4\.0/);
-    assert.ok(SRC.includes("const VERSION = '0.4.0'"));
+    assert.match(SRC, /@version\s+0\.4\.1/);
+    assert.ok(SRC.includes("const VERSION = '0.4.1'"));
 });
 
 await test('Copy group export: reads the battle start and a shared profile from the socket, keeps profiles across a reload, never sends', async () => {
