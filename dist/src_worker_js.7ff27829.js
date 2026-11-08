@@ -3667,7 +3667,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
-/* harmony import */ var heap_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! heap-js */ "./node_modules/heap-js/dist/heap-js.es5.js");
+/* harmony import */ var heap_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! heap-js */ "../../../node_modules/heap-js/dist/heap-js.es5.js");
 
 
 class EventQueue {
@@ -5523,4 +5523,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"/buff_uniques/labyrinth_upgrade_atta
 /***/ })
 
 }]);
-//# sourceMappingURL=src_worker_js.8b9aac30.js.map
+//# sourceMappingURL=src_worker_js.7ff27829.js.map

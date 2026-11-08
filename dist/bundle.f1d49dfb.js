@@ -2431,11 +2431,11 @@ function setNumberText(element, value, unit = "") {
 }
 
 // The number a cell holds, for comparisons and exports: the exact value this module stored (data-num, or a table's
-// data-sort-value), never the display text, which can read "12.3k" or "1 234". Plain text cells fall back to their text.
+// data-sort-value), never the display text, which can read "12.3k" or "1 234". A cell with no exact value is a bug in how it was built, so this throws rather than reading its text.
 function cellValue(cell) {
     const raw = cell.dataset?.num ?? cell.dataset?.sortValue;
-    if (raw !== undefined && raw !== "") return Number(raw);
-    return parseFloat(String(cell.textContent).replace(/[,\s ]/g, ""));
+    if (raw === undefined || raw === "") throw new Error("cellValue: the cell carries no exact value (data-num / data-sort-value)");
+    return Number(raw);
 }
 
 // Re-formats every number this module rendered under `root`, after the settings change.
@@ -2913,7 +2913,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"8694abcd","2":"ddb45cea","3":"5eeddd50","5":"c0d687e1","src_multiWorker_js-_004d1":"e3dcae48","src_multiWorker_js-_004d2":"e3dcae48","src_multiWorker_js-_004d3":"e3dcae48","src_multiWorker_js-_004d0":"e3dcae48","src_multiWorker_js-_004d4":"e3dcae48"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"f67cd48a","2":"66c151bc","3":"cac1bbd0","5":"1537fa72","src_multiWorker_js-_004d1":"bf8bc401","src_multiWorker_js-_004d2":"bf8bc401","src_multiWorker_js-_004d3":"bf8bc401","src_multiWorker_js-_004d0":"bf8bc401","src_multiWorker_js-_004d4":"bf8bc401"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -5129,11 +5129,13 @@ function updateAllSimsModal(data) {
                 cell.dataset.sortValue = item[key];
             } else {
                 cell.textContent = item[key];
+                // The tier shows as plain text but carries its exact value like every numeric cell.
+                if (typeof item[key] === 'number') cell.dataset.sortValue = item[key];
             }
             if (key === 'ZoneName') {
-                if (cell.textContent.startsWith("/action")) {
+                if (String(item[key]).startsWith("/action")) {
                     cell.setAttribute("data-i18n", "actionNames." + item[key]);
-                } else if (cell.textContent.startsWith("/monsters")) {
+                } else if (String(item[key]).startsWith("/monsters")) {
                     cell.setAttribute("data-i18n", "monsterNames." + item[key]);
                 }
 
@@ -5155,11 +5157,9 @@ function sortTable(tableId, columnIndex, direction) {
     const rows = Array.from(tbody.querySelectorAll('tr'));
 
     const sortedRows = rows.sort((rowA, rowB) => {
-        const cellA = rowA.children[columnIndex].dataset.sortValue ?? rowA.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
-        const cellB = rowB.children[columnIndex].dataset.sortValue ?? rowB.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
-
-        const valueA = parseFloat(cellA.replace(/,/g, ''));
-        const valueB = parseFloat(cellB.replace(/,/g, ''));
+        // The exact value the cell was built with (cellValue throws when a cell has none), never its display text.
+        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.cellValue)(rowA.children[columnIndex]);
+        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_15__.cellValue)(rowB.children[columnIndex]);
 
         return direction === 'asc' ? valueA - valueB : valueB - valueA;
     });
@@ -5205,8 +5205,8 @@ document.getElementById('buttonExportResults').addEventListener('click', functio
         var csvRow = [];
 
         cols.forEach(function (col) {
-            // Numbers export as their exact value, not the display text ("12.3k").
-            const text = col.dataset.num !== undefined ? col.dataset.num : col.innerText;
+            // Numbers export as their exact value, not the display text ("12.3k"); header and text cells export their text.
+            const text = col.dataset.num ?? col.dataset.sortValue ?? col.innerText;
             csvRow.push('"' + text.replace(/"/g, '""') + '"');
         });
 
@@ -5350,9 +5350,9 @@ function showKills(simResult, playerToDisplay) {
             }
         }
         tableRow += price;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-amount="' + dropAmount + '">';
         tableRow += dropAmount;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-total="' + price * dropAmount + '">';
         tableRow += price * dropAmount;
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
@@ -5398,9 +5398,9 @@ function showKills(simResult, playerToDisplay) {
             }
         }
         tableRow += price;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-amount="' + dropAmount + '">';
         tableRow += dropAmount;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-total="' + price * dropAmount + '">';
         tableRow += price * dropAmount;
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
@@ -5534,9 +5534,9 @@ function showConsumablesUsed(simResult, playerToDisplay) {
             }
         }
         tableRow += price;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-amount="' + amount + '">';
         tableRow += amount;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-total="' + price * amount + '">';
         tableRow += price * amount;
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
@@ -7881,13 +7881,15 @@ function updateTable(tableId, item, price) {
     let priceTd = row[1];
     let amountTd = row[2];
     let totalTd = row[3];
-    let oldTotal = totalTd.innerText;
-    let newTotal = price * amountTd.innerText;
+    // The amount and the old total come from the cells' exact values (data-amount / data-total), never their text.
+    let oldTotal = Number(totalTd.dataset.total);
+    let newTotal = price * Number(amountTd.dataset.amount);
 
     if (priceTd.innerText != price) {
         priceTd.innerText = price;
     }
     totalTd.innerText = newTotal;
+    totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;
 }
@@ -8180,4 +8182,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.5ec0241b.js.map
+//# sourceMappingURL=bundle.f1d49dfb.js.map

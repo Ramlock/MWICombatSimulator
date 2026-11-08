@@ -1,6 +1,7 @@
 // Test: the simulator's display number formatter (src/numberFormat.js).
 // Usage: node tools/test/number-format.mjs        Exit code 0 on pass, 1 on fail.
 import { register } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -106,7 +107,25 @@ for (const iso of [false, true]) {
     if (!/k|M| /.test(cells.map((c) => c.textContent).join(''))) failures.push(`iso=${iso}: the check did not exercise formatted text`);
 }
 setNumberFormatSettings({ iso: false });
-if (cellValue({ dataset: {}, textContent: '1,234' }) !== 1234 || cellValue({ dataset: {}, textContent: '1 234' }) !== 1234) failures.push('plain text cell fallback');
+// A cell with no exact value is a bug in how it was built: cellValue fails loudly and never reads the text.
+for (const bad of [{ dataset: {}, textContent: '1,234' }, { dataset: {}, textContent: '1 234' }, { dataset: { sortValue: '' }, textContent: '5' }, { textContent: '7' }]) {
+    let threw = false;
+    try { cellValue(bad); } catch (e) { threw = /no exact value/.test(e.message); }
+    if (!threw) failures.push(`cellValue did not throw for a cell with no exact value (text "${bad.textContent}")`);
+}
+if (cellValue({ dataset: { sortValue: '0' } }) !== 0 || cellValue({ dataset: { num: '1234.5678' } }) !== 1234.5678) failures.push('cellValue exact values');
+
+// The table code in src/main.js reads no display text as data: sortTable goes through cellValue, the tier cell carries its exact value,
+// and the price table keeps its amounts and totals in data-amount / data-total.
+const mainSource = fs.readFileSync(new URL('../../src/main.js', import.meta.url), 'utf8');
+const sortBody = mainSource.slice(mainSource.indexOf('function sortTable('), mainSource.indexOf('function updateSortIndicators('));
+if (/textContent|innerText/.test(sortBody)) failures.push('sortTable reads display text');
+if (!/cellValue\(rowA/.test(sortBody)) failures.push('sortTable does not use cellValue');
+const simsBody = mainSource.slice(mainSource.indexOf('function updateAllSimsModal('), mainSource.indexOf('let currentSortColumn'));
+if (!/typeof item\[key\] === 'number'\) cell\.dataset\.sortValue/.test(simsBody)) failures.push('the DifficultyTier cell has no sortValue');
+if (/cell\.textContent\.(startsWith|includes)/.test(simsBody)) failures.push('updateAllSimsModal reads cell text as data');
+const tableBody = mainSource.slice(mainSource.indexOf('function updateTable('), mainSource.indexOf('// #endregion', mainSource.indexOf('function updateTable(')));
+if (/(amountTd|totalTd)\.innerText/.test(tableBody.replace(/totalTd\.innerText = newTotal;/, ''))) failures.push('updateTable reads cell text as data');
 
 const total = cases.length + optionCases.length;
 if (failures.length) {

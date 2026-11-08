@@ -2098,11 +2098,13 @@ function updateAllSimsModal(data) {
                 cell.dataset.sortValue = item[key];
             } else {
                 cell.textContent = item[key];
+                // The tier shows as plain text but carries its exact value like every numeric cell.
+                if (typeof item[key] === 'number') cell.dataset.sortValue = item[key];
             }
             if (key === 'ZoneName') {
-                if (cell.textContent.startsWith("/action")) {
+                if (String(item[key]).startsWith("/action")) {
                     cell.setAttribute("data-i18n", "actionNames." + item[key]);
-                } else if (cell.textContent.startsWith("/monsters")) {
+                } else if (String(item[key]).startsWith("/monsters")) {
                     cell.setAttribute("data-i18n", "monsterNames." + item[key]);
                 }
 
@@ -2124,11 +2126,9 @@ function sortTable(tableId, columnIndex, direction) {
     const rows = Array.from(tbody.querySelectorAll('tr'));
 
     const sortedRows = rows.sort((rowA, rowB) => {
-        const cellA = rowA.children[columnIndex].dataset.sortValue ?? rowA.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
-        const cellB = rowB.children[columnIndex].dataset.sortValue ?? rowB.children[columnIndex].textContent.trim().replace(/[\s,]/g, '');
-
-        const valueA = parseFloat(cellA.replace(/,/g, ''));
-        const valueB = parseFloat(cellB.replace(/,/g, ''));
+        // The exact value the cell was built with (cellValue throws when a cell has none), never its display text.
+        const valueA = cellValue(rowA.children[columnIndex]);
+        const valueB = cellValue(rowB.children[columnIndex]);
 
         return direction === 'asc' ? valueA - valueB : valueB - valueA;
     });
@@ -2174,8 +2174,8 @@ document.getElementById('buttonExportResults').addEventListener('click', functio
         var csvRow = [];
 
         cols.forEach(function (col) {
-            // Numbers export as their exact value, not the display text ("12.3k").
-            const text = col.dataset.num !== undefined ? col.dataset.num : col.innerText;
+            // Numbers export as their exact value, not the display text ("12.3k"); header and text cells export their text.
+            const text = col.dataset.num ?? col.dataset.sortValue ?? col.innerText;
             csvRow.push('"' + text.replace(/"/g, '""') + '"');
         });
 
@@ -2319,9 +2319,9 @@ function showKills(simResult, playerToDisplay) {
             }
         }
         tableRow += price;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-amount="' + dropAmount + '">';
         tableRow += dropAmount;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-total="' + price * dropAmount + '">';
         tableRow += price * dropAmount;
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
@@ -2367,9 +2367,9 @@ function showKills(simResult, playerToDisplay) {
             }
         }
         tableRow += price;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-amount="' + dropAmount + '">';
         tableRow += dropAmount;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-total="' + price * dropAmount + '">';
         tableRow += price * dropAmount;
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
@@ -2503,9 +2503,9 @@ function showConsumablesUsed(simResult, playerToDisplay) {
             }
         }
         tableRow += price;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-amount="' + amount + '">';
         tableRow += amount;
-        tableRow += '</td><td>';
+        tableRow += '</td><td data-total="' + price * amount + '">';
         tableRow += price * amount;
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
@@ -4850,13 +4850,15 @@ function updateTable(tableId, item, price) {
     let priceTd = row[1];
     let amountTd = row[2];
     let totalTd = row[3];
-    let oldTotal = totalTd.innerText;
-    let newTotal = price * amountTd.innerText;
+    // The amount and the old total come from the cells' exact values (data-amount / data-total), never their text.
+    let oldTotal = Number(totalTd.dataset.total);
+    let newTotal = price * Number(amountTd.dataset.amount);
 
     if (priceTd.innerText != price) {
         priceTd.innerText = price;
     }
     totalTd.innerText = newTotal;
+    totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;
 }
