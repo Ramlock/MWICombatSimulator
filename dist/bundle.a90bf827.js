@@ -2344,7 +2344,14 @@ function withSuffix(abs) {
 }
 
 // The display text of a number. Non-numbers and non-finite values pass through as text.
+// ISO mode spaces the magnitude letter like a unit ("301.6 k", "1.031 M", "1.2 B"; no-break space). B and T stay the
+// game's letters rather than SI G and T.
 function formatNumber(value, options = {}) {
+    const text = formatNumberAttached(value, options);
+    return isIso(options) ? text.replace(/(\d)([kMBT])$/, "$1 $2") : text;
+}
+
+function formatNumberAttached(value, options) {
     const separator = options.thousandsSeparator ?? (isIso(options) ? " " : ",");
     const number = typeof value === "string" ? Number(value) : value;
     if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
@@ -2365,7 +2372,8 @@ function formatNumber(value, options = {}) {
 
 // A value already in percent units (12.5 for 12.5%).
 function formatPercent(value, options = {}) {
-    return formatNumber(value, options) + percentSign(options);
+    const text = formatNumber(value, options);
+    return / [kMBT]$/.test(text) ? text + "%" : text + percentSign(options);
 }
 
 // The percent sign as the mode writes it: "%" off, a no-break space and "%" in ISO mode.
@@ -2374,10 +2382,12 @@ function percentSign(options = {}) {
 }
 
 // A number followed by a unit ("2.878s"): ISO mode puts a no-break space between them ("2.878 s"), as it does before "%".
-// Magnitude suffixes (k, M, B, T) are part of the number and stay attached ("1.302M s").
 function formatUnit(value, unit = "", options = {}) {
-    if (!unit) return formatNumber(value, options);
-    return formatNumber(value, options) + (isIso(options) ? " " : "") + unit;
+    const text = formatNumber(value, options);
+    if (!unit) return text;
+    if (!isIso(options)) return text + unit;
+    // ISO: a magnitude letter joins the unit as its prefix ("123.5 ks", "1.2 Ms"); otherwise a no-break space ("2.878 s").
+    return / [kMBT]$/.test(text) ? text + unit : text + " " + unit;
 }
 
 // The exact value, for the hover title. It follows the mode like the display text: off "1,234,567.891",
@@ -8159,4 +8169,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.94405168.js.map
+//# sourceMappingURL=bundle.a90bf827.js.map
