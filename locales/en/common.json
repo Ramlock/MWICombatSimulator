@@ -122,5 +122,10 @@
     },
     "simLabyrinth" : "Sim Labyrinth",
     "simAllLabyrinths" : "Sim All Labyrinths",
-    "roomLevel" : "Room Level"
+    "roomLevel" : "Room Level",
+    "selectCharacter": "Select a Character: ",
+    "configureTrigger": "Configure Trigger",
+    "error": "Error",
+    "copyToClipboard": "Copy to clipboard",
+    "none": "None"
 }

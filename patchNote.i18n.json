@@ -17,7 +17,7 @@
             "title": "30/09/2026",
             "notes": [
                 "Suporte a melhorias do Labirinto",
-                "Suporte a bônus de santuário"
+                "Suporte a buffs de santuário"
             ]
         }
     },
@@ -77,7 +77,7 @@
         "pt": {
             "title": "03/03/2026",
             "notes": [
-                "Suporte aos bônus pessoais dados pelos pergaminhos do Labirinto"
+                "Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"
             ]
         }
     },
@@ -122,7 +122,7 @@
                 "Corrigidas as durações de Maldição e Enfraquecer, por wangchyan",
                 "Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan",
                 "Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan",
-                "Corrigidos alguns bônus da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan",
+                "Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan",
                 "Corrigido Invencível não afetando direito a Tenacidade, por wangchyan",
                 "Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan",
                 "As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"
@@ -161,7 +161,7 @@
                 "Recurso experimental: gráficos de HP/MP, por wangchyan",
                 "Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan",
                 "Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan",
-                "Corrigidas Socorro Rápido e habilidades parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"
+                "Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"
             ]
         }
     },
@@ -191,7 +191,7 @@
         "pt": {
             "title": "24/12/2025",
             "notes": [
-                "Corrigida uma falha na escolha de habilidades que podia causar falta anormal de mana e problemas parecidos"
+                "Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"
             ]
         }
     },
@@ -207,8 +207,8 @@
         "pt": {
             "title": "18/12/2025",
             "notes": [
-                "Suporte ao sistema de conquistas e seus bônus",
-                "Os drops de monstros de masmorra não se aplicam mais"
+                "Suporte ao sistema de conquistas e seus buffs",
+                "O loot de monstros de masmorra não se aplicam mais"
             ]
         }
     },
@@ -223,7 +223,7 @@
         "pt": {
             "title": "06/12/2025",
             "notes": [
-                "Corrigido um erro causado quando, depois de uma atualização do jogo, habilidades sem gatilho mudaram de [] para null"
+                "Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"
             ]
         }
     },
@@ -284,7 +284,7 @@
         "pt": {
             "title": "09/09/2025",
             "notes": [
-                "Reviver não limpa mais todos os bônus por engano",
+                "Reviver não limpa mais todos os buffs por engano",
                 "O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"
             ]
         }
@@ -305,7 +305,7 @@
             "title": "21/08/2025",
             "notes": [
                 "Nova simulação em lote de combate solo e as opções de monstro correspondentes",
-                "Novas opções de MooPass e de bônus comunitários, com seus efeitos",
+                "Novas opções de MooPass e de buffs comunitários, com seus efeitos",
                 "Melhoria dos atributos de equipamentos refinados",
                 "Redução dos atributos do Bispo Encantado",
                 "Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"
@@ -323,7 +323,7 @@
         "pt": {
             "title": "20/08/2025",
             "notes": [
-                "Corrigidos possíveis erros nos cálculos de XP e de drops em casos extremos"
+                "Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"
             ]
         }
     },
@@ -359,7 +359,7 @@
         "pt": {
             "title": "18/08/2025",
             "notes": [
-                "Corrigidas habilidades perfurantes que podiam acertar o mesmo alvo mais de uma vez",
+                "Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez",
                 "Corrigida a exibição do registro de derrota no modo escuro",
                 "Atualizada a fórmula do nível de combate",
                 "Ajustados os espinhos do Golem de Estalactite",
@@ -384,7 +384,7 @@
             "title": "16/08/2025",
             "notes": [
                 "Novo botão Parar Simulação, por BKN46",
-                "Novos botões para reordenar habilidades, por BKN46",
+                "Novos botões para reordenar técnicas, por BKN46",
                 "Novo registro de derrota, por TruthLight",
                 "Atualização dos atributos dos monstros",
                 "Reflexo Arcano renomeado para Retribuição",
@@ -411,12 +411,12 @@
             "title": "14/08/2025",
             "notes": [
                 "Atualização dos atributos dos monstros",
-                "Ajuste dos atributos de equipamentos de longo alcance e de magia",
+                "Ajuste dos atributos de equipamentos à distância e de magia",
                 "Ajuste do limite do dano de retaliação",
-                "Corrigidas habilidades lançadas entre batalhas",
-                "Corrigida a lógica de decisão de lançamento de habilidades",
+                "Corrigidas técnicas conjuradas entre batalhas",
+                "Corrigida a lógica de decisão de conjuração de técnicas",
                 "Proporção de falta de mana mais precisa",
-                "15% da XP de Longo Alcance e 12% da XP de Magia agora vão para a XP de Ataque",
+                "15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque",
                 "Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"
             ]
         }
@@ -437,9 +437,9 @@
             "title": "11/08/2025",
             "notes": [
                 "Atualização dos atributos dos monstros",
-                "Atualização dos tempos de lançamento das habilidades corpo a corpo e físicas",
+                "Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas",
                 "Ajuste dos valores de Golpe de Escudo e Golpe Atordoante",
-                "Ajuste do bônus de XP de Defesa dos baluartes",
+                "Ajuste do bônus de EXP de Defesa dos baluartes",
                 "Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"
             ]
         }
@@ -460,8 +460,8 @@
         "pt": {
             "title": "08/08/2025",
             "notes": [
-                "Implementada a penalidade de drops e de XP quando os níveis dos membros do grupo diferem demais",
-                "Implementado o aumento da XP dos monstros com a porcentagem de progresso do Frenesi",
+                "Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais",
+                "Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria",
                 "Ajuste dos valores da Aura Crítica",
                 "Exibição do nível de combate",
                 "Exibição da penalidade por diferença de nível",
@@ -481,7 +481,7 @@
         "pt": {
             "title": "07/08/2025",
             "notes": [
-                "Corrigidas quantidades anormais de alguns drops de itens duplicados em combate em grupo, por contr4l",
+                "Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l",
                 "Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"
             ]
         }
@@ -501,11 +501,11 @@
         "pt": {
             "title": "03/08/2025",
             "notes": [
-                "A mecânica de Frenesi dos monstros e seu gatilho agora fazem efeito",
+                "A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito",
                 "Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão",
                 "Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json",
                 "Máximo de acúmulos da Fúria corrigido para 5",
-                "Ajuste de como o aparo é resolvido"
+                "Ajuste de como Aparar é resolvido"
             ]
         }
     },
@@ -531,16 +531,16 @@
             "title": "31/07/2025",
             "notes": [
                 "Atualização dos dados de itens e dos atributos dos monstros",
-                "Reformulação de Casco Espinhoso e Reflexo Arcano",
+                "Reformulação de Carapaça de Espinhos e Reflexo Arcano",
                 "Atualização dos valores de aprimoramento",
                 "Remoção de gatilhos quebrados",
                 "Reformulação do Enfraquecer do Baluarte de Grifo",
-                "O aparo da Espada Real agora se aplica aos colegas de equipe",
+                "O Aparar da Espada Régia agora se aplica aos colegas de equipe",
                 "Máximo de acúmulos do efeito Fúria corrigido para 6",
                 "O efeito Ondulante agora restaura 10 MP",
                 "A retaliação agora mostra sua taxa de acerto corretamente",
                 "Ajuste da mecânica de retaliação",
-                "Sincronizadas as mudanças nos atributos dos baluartes e nos valores das habilidades de retaliação e espinhos"
+                "Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"
             ]
         }
     },
@@ -556,7 +556,7 @@
         "pt": {
             "title": "22/07/2025",
             "notes": [
-                "A Aura Crítica agora escala com o nível de Longo Alcance",
+                "A Aura Crítica agora escala com o nível de À Distância",
                 "Ajuste dos valores base das auras e de como escalam com o nível"
             ]
         }
@@ -577,8 +577,8 @@
             "title": "17/07/2025",
             "notes": [
                 "A simulação em lote permite escolher planetas",
-                "Divisão de XP ajustada para 30% + 70%",
-                "Auras e seus gatilhos, escalados por uma porcentagem do nível da habilidade correspondente",
+                "Divisão de EXP ajustada para 30% + 70%",
+                "Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente",
                 "Água, fogo e natureza agora usam a Aura Mística por padrão",
                 "Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"
             ]
@@ -598,7 +598,7 @@
         "pt": {
             "title": "11/07/2025",
             "notes": [
-                "Atualização das fórmulas de XP dos monstros e de nível das habilidades",
+                "Atualização das fórmulas de EXP dos monstros e de nível das técnicas",
                 "Atualização das fórmulas de evasão e de resistência",
                 "Poder substituído por Corpo a Corpo, com a compatibilidade correspondente",
                 "Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"
@@ -616,7 +616,7 @@
         "pt": {
             "title": "10/07/2025",
             "notes": [
-                "Corrigidas habilidades perfurantes que podiam acertar o mesmo alvo várias vezes quando lançadas por inimigos"
+                "Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"
             ]
         }
     },
@@ -636,9 +636,9 @@
         "pt": {
             "title": "09/07/2025",
             "notes": [
-                "Ajustes de drops e de taxas de drop",
-                "Ajustes de XP",
-                "Ajuste de Tiro Pestilento e Perfurar",
+                "Ajustes de loot e de taxas de loot",
+                "Ajustes de EXP",
+                "Ajuste de Tiro Pestilento e Perfuração",
                 "Remoção da regeneração automática dos monstros",
                 "Ajuste do gatilho do Tiro Pestilento",
                 "Uso da API oficial para buscar preços"
@@ -663,12 +663,12 @@
             "title": "07/07/2025",
             "notes": [
                 "Escala dos atributos dos monstros e várias dificuldades de mapa",
-                "Ajustes das habilidades de magia; o atributo 'dano de habilidade' dos equipamentos agora faz efeito",
-                "O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de lançamento",
+                "Ajustes das técnicas de magia; o atributo 'dano de técnica' dos equipamentos agora faz efeito",
+                "O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração",
                 "Ajustes de itens",
                 "Precisão reformulada para usar o nível de Ataque",
-                "TESTE: 10% da XP de Longo Alcance e de Magia agora vão para a XP de Ataque!",
-                "Reformulação da XP e equipamento de amuleto"
+                "TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!",
+                "Reformulação da EXP e equipamento de amuleto"
             ]
         }
     },
@@ -680,7 +680,8 @@
                 "结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值",
                 "右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住",
                 "黑暗模式开关移到右上角，位于语言按钮旁边",
-                "模拟器现已支持葡萄牙语，使用游戏官方的葡萄牙语名称"
+                "模拟器现已支持葡萄牙语，使用游戏官方的葡萄牙语名称",
+                "葡萄牙语文本使用游戏官方的葡萄牙语术语，页面中更多内容已翻译"
             ]
         },
         "pt": {
@@ -688,8 +689,9 @@
             "notes": [
                 "Os números nos resultados aparecem com 4 algarismos significativos, com k, M, B e T a partir de 10,000 (123.5k, 1.235M); passe o mouse sobre um número para ver o valor exato",
                 "Nova chave Números ISO no canto superior direito: porcentagens como 1.79 % e milhares como 1 234; vem desligada e é lembrada",
-                "A chave do Modo Escuro foi para o canto superior direito, ao lado dos botões de idioma",
-                "O simulador agora está disponível em português, com os nomes oficiais do jogo em português"
+                "A chave do modo escuro foi para o canto superior direito, ao lado dos botões de idioma",
+                "O simulador agora está disponível em português, com os nomes oficiais do jogo em português",
+                "O texto em português usa os termos oficiais do jogo em português, e mais partes da página foram traduzidas"
             ]
         }
     },
@@ -721,9 +723,9 @@
         "pt": {
             "title": "04/11/2026",
             "notes": [
-                "Os bônus de guilda agora são lidos dos dois formatos de exportação",
-                "O painel de Atributos de Combate mostra os atributos que a simulação usa (cômodos da casa, conquistas, guilda, comunidade e outros bônus), com os níveis efetivos de habilidade e Descoberta Rara",
-                "Os bônus comunitários de XP e de drop de combate vêm ligados por padrão no nível 20 e podem ser editados"
+                "Os buffs de guilda agora são lidos dos dois formatos de exportação",
+                "O painel de Atributos de Combate mostra os atributos que a simulação usa (cômodos da casa, conquistas, guilda, comunidade e outros buffs), com os níveis efetivos de habilidade e Loot Raro",
+                "Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"
             ]
         }
     }
