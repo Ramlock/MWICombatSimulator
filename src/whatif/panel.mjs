@@ -260,17 +260,23 @@ const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
 const confirmedPayback = (v) => (typeof v === 'number' && v > 0 ? v : null);
 const paybackCell = (row) => (row.payback === null || row.payback === undefined ? '—' : (upper(row) ? '≤ ' : '') + num(row.payback));
 
-// The split of a row (shared loot gain per user, the changing player's own supplies change, the buyer's payback). A result
-// saved before the split has none of the fields: its two new columns read "—" and Payback keeps the saved party payback.
+// The split of a row: the party's gain per user and its error, then the buyer's gain per day and its error (profit goal; "—" on the EXP
+// goal and on a result saved before the buyer's net). hasSplit: the row carries the buyer's split, so Payback is the buyer's.
 const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
-function splitCells(row, goalExp) {
+function gainCells(row, goalExp) {
     const cell = (v) => `<td class="num">${v}</td>`;
-    if (goalExp) return cell(num(row.gainPerUser)) + cell('± ' + num(row.sePerUser)) + cell('—');
-    if (!hasSplit(row)) return cell('—') + cell('—') + cell('—');
-    return cell(num(row.sharedGainPerUser)) + cell('± ' + num(row.sharedSePerUser)) + cell(num(row.ownSuppliesPerDay));
+    const buyer = !goalExp && Number.isFinite(row.buyerNet);
+    return cell(num(row.gainPerUser)) + cell('± ' + num(row.sePerUser)) + cell(buyer ? num(row.buyerNet) : '—') + cell(buyer ? '± ' + num(row.buyerNetSe) : '—');
 }
+// How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
+const pathCell = (s) => {
+    const note = String(s.note || '').replace('; upper bound (XP inside the level unknown)', '');
+    return `<td class="wrap">${esc(s.costPath)}${note ? ' (' + esc(note) + ')' : ''}</td>`;
+};
 const buyerPayback = (row, goalExp) => (goalExp || !hasSplit(row) ? paybackCell(row) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound }));
-const colHead = (t) => [`<th class="num">${esc(t('col.gain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`, `<th class="num" title="${esc(t('col.ownSuppliesTip'))}">${esc(t('col.ownSupplies'))}</th>`].join('');
+const colHead = (t) => [
+    `<th class="num" title="${esc(t('col.partyGainTip'))}">${esc(t('col.partyGain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`,
+    `<th class="num" title="${esc(t('col.buyerGainTip'))}">${esc(t('col.buyerGain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`].join('');
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
@@ -286,72 +292,46 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
-    const players = Object.keys(result.budgets || {});
     const goalExp = result.goal === 'exp';
-    // Running spend per player: a step's own figure; "≤" from the first upper-bound cost of that player on.
-    const upperFrom = {};
-    (result.steps || []).forEach((s, i) => { if (upper(s) && upperFrom[s.player] === undefined) upperFrom[s.player] = i; });
-    const spendCell = (s, i, p) => {
-        const v = s.runningSpend?.[p];
-        if (v === undefined) return '—';
-        return (upperFrom[p] !== undefined && upperFrom[p] <= i ? '≤ ' : '') + num(v);
-    };
     L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}</div>`);
     if (!result.steps?.length) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
-            players.map((p) => `<th class="num">${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
+            `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-                splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
-                players.map((p) => `<td class="num">${spendCell(s, i, p)}</td>`).join('') +
+                gainCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` + pathCell(s) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
     }
     const c = result.confirmation;
     if (c) {
-        const shared = goalExp ? { g: c.gainPerUser, se: c.sePerUser } : Number.isFinite(c.sharedGainPerUser) ? { g: c.sharedGainPerUser, se: c.sharedSePerUser } : null;
-        // With the per-player lines the party payback is dropped (the buyer's view is the one payback shown); an older result keeps it.
-        const perPlayer = !goalExp && !!c.ownSuppliesByPlayer;
-        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${shared ? num(shared.g) + ' ± ' + num(shared.se) : '—'}</b> ${esc(t('result.perUserDay'))}, ` +
-            `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}` +
-            (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}`) + '</div>');
-        if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: confirmedPayback(c.paybackOwnByPlayer?.[p]), costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
+        // With the per-player lines the party payback is dropped (each line has its own buyer's payback); an older result keeps it.
+        const perPlayer = !goalExp && !!c.buyerByPlayer;
+        const bound = (result.steps || []).some(upper) ? 'upper' : undefined;
+        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${num(c.gainPerUser)} ± ${num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+            `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}` +
+            (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: bound })}`) + '</div>');
+        if (perPlayer) for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`<div class="mb-1">${t('result.playerLine', { player: esc(p), gain: num(b.gain), se: num(b.se), payback: paybackCell({ payback: confirmedPayback(b.payback), costBound: bound }) })}</div>`);
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
-    }
-    if (players.length) {
-        const last = result.steps?.length ? result.steps[result.steps.length - 1] : null;
-        L.push(`<div class="mb-2">${esc(t('result.budgets'))}: ` + players.map((p) =>
-            `${esc(p)} ${last ? spendCell(last, result.steps.length - 1, p) : num(0)} / ${num(result.budgets[p])}`).join(' · ') + '</div>');
     }
     L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
     if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table whatif-each"><thead><tr>' +
-            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
+            [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
-        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
-            splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
-            `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
+        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
+            gainCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` + pathCell(s) +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
-        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.helpsParty && !s.hiddenFood); // those rows have their own group below; hiddenFood: a food row the search left out (one food row per player)
+        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.hiddenFood); // hiddenFood: a food row the search left out (one food row per player)
         const weak = rows.filter(([s]) => !s.accepted);
         L.push('<tbody>' + rows.filter(([s]) => s.accepted).map(([s, i]) => row(s, i)).join('') + '</tbody>');
         if (weak.length) L.push('<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
         L.push('</table>');
         if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
-    }
-    // 'Helps the party, costs its buyer': the party gains, the buyer's own net is not above 0 by 2 errors. A list, no Apply.
-    // A result saved before this field has none: no group, no hint.
-    const helpsShown = (result.helpsParty || []).filter((s) => !s.hiddenFood);
-    if (helpsShown.length) {
-        L.push(`<div class="fw-bold mt-3">${esc(t('result.helpsParty'))}</div><div class="small text-secondary mb-1">${esc(t('result.helpsPartyHint'))}</div>`);
-        L.push('<table class="table table-sm whatif-table"><thead><tr>' +
-            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '</tr></thead><tbody>' +
-            helpsShown.map((s) => `<tr><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
-                `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td></tr>`).join('') + '</tbody></table>');
     }
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
@@ -381,7 +361,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
             result.apart.map((a) => `<li>${shown(a)}: ${esc(a.note)}</li>`).join('') + '</ul>');
     }
-    if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.helpsParty || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
     return L.join('');
 }
 

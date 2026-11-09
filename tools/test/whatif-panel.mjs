@@ -99,17 +99,17 @@ const result = {
 
 {
     const html = panel.renderResult(result, t);
-    check('result: the party figures are never shown, and an older result shows no per-user gain (its first column is a dash)', !html.includes('data-num="3000"') && !html.includes('data-num="1500"'));
+    check('result: the party gain per user and its error show in the first two gain columns (an older result: the buyer\'s two are dashes)', html.includes('data-num="1500"') && html.includes('data-num="300"') && !html.includes('data-num="3000"'));
     check('result: "≤" on an upper-bound cost and its payback', /≤ <span data-num="400000"/.test(html) && /≤ <span data-num="200"/.test(html));
-    check('result: "≤" on that player\'s running spend from that step on, not before or for others', /≤ <span data-num="600000"/.test(html) && !/≤ <span data-num="1000000"/.test(html));
+    check('result: no running spend per player, no Spent columns', !html.includes('Spent') && !html.includes('data-num="600000"'));
     check('result: Apply on each step, "Apply 1 to n" from step 2', html.includes('data-whatif-apply="steps:1"') && html.includes('Apply 1 to 3') && html.includes('data-whatif-apply="steps:3"'));
     check('result: a single below 2 errors is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html));
     check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" id="whatIfMoreSingles" hidden><tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html) &&
         !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more="whatIfMoreSingles"/g) || []).length === 1);
     check('result: the cost path cell wraps', /<td class="wrap">market<\/td>/.test(html));
     check('result: unknown costs listed apart', html.includes('Some token item: no seller'));
-    check('result: an older confirmation shows a dash and the saved cost and payback', !html.includes('data-num="2900"') && html.includes('data-num="275.9"'));
-    check('result: each player spent of budget', html.includes('data-num="50000000"') && html.includes('data-num="20000000"'));
+    check('result: an older confirmation shows the party gain, the saved cost and payback', html.includes('data-num="2900"') && html.includes('data-num="450"') && html.includes('data-num="275.9"'));
+    check('result: no spent-of-budget line', !html.includes('Spent of budget') && !html.includes('data-num="50000000"'));
     check('result: text is escaped', html.includes('&lt;books&gt;') && !html.includes('<books>'));
     check('result: no payback shows a dash, never NaN', !html.includes('NaN') && !html.includes('undefined'));
     check('result: the upper-bound note is shown', html.includes(locales.en.result.upperNote.slice(0, 20)));
@@ -125,34 +125,53 @@ const result = {
 }
 
 {
-    // The gain/cost split: shared loot gain per user, the changing player's own supplies change, the buyer's payback.
-    const split = JSON.parse(JSON.stringify(result));
-    Object.assign(split.steps[0], { sharedGainPerUser: 11111, sharedSePerUser: 2222, ownSuppliesPerDay: -33333, ownSuppliesSe: 444, paybackOwn: 22.5 }); // a one-player saving: spends less
-    Object.assign(split.steps[1], { sharedGainPerUser: 7777, sharedSePerUser: 888, ownSuppliesPerDay: 0, ownSuppliesSe: 0, paybackOwn: 51.4 }); // a shared gain only
-    Object.assign(split.steps[2], { sharedGainPerUser: 100, sharedSePerUser: 50, ownSuppliesPerDay: 900, ownSuppliesSe: 10, paybackOwn: null }); // net 0 or below: no payback
-    Object.assign(split.confirmation, { sharedGainPerUser: 9999, sharedSePerUser: 999, ownSuppliesByPlayer: { Alpha: -5551, Beta: 6662 }, paybackOwnByPlayer: { Alpha: 12.5, Beta: null } });
-    const html = panel.renderResult(split, t);
-    const head = html.slice(html.indexOf('<thead>'), html.indexOf('</thead>'));
-    check('split: the table header reads shared gain, error, own supplies (with its tip), cost, payback in that order', ['Shared gain per user/day', '± error', 'Own supplies per day', 'Cost', 'Payback days'].map((h) => head.indexOf(h)).every((x, i, a) => x > 0 && (i === 0 || x > a[i - 1])) && head.includes("title=\"Change in this player's own food and drink spend per day; minus means they spend less\"") && !head.includes('>Gain per user/day<'));
-    check('split: a step shows its shared gain, error and own supplies (a minus when it spends less)', html.includes('data-num="11111"') && html.includes('data-num="2222"') && html.includes('data-num="-33333"') && !html.includes('data-num="1500"'));
-    check("split: the Payback column is the buyer's view; a net of 0 or below shows a dash", html.includes('data-num="22.5"') && /Gym 0[^]*?data-num="200000"[^]*?<\/span><\/td><td class="num">—<\/td>/.test(html));
-    check('split: the confirmation shows the shared gain per user and a line per player; no party payback beside them', html.includes('data-num="9999"') && html.includes('Alpha: own supplies <span data-num="-5551"') && /Beta: own supplies <span data-num="6662"[^]*?payback —? ?days|Beta: own supplies <span data-num="6662"/.test(html) && html.includes('data-num="12.5"') && !/Confirmed on fresh runs[^]*?Payback days[^]*?Alpha: own/.test(html) && !html.includes('data-num="275.9"'));
-    check('split: an upper-bound cost marks the buyer payback "≤"', /≤ <span data-num="51.4"/.test(html));
-    // A saved payback of 0 means nothing was bought: the confirmation lines show a dash, as the table does; above 0 shows the number.
-    const zero = JSON.parse(JSON.stringify(split));
-    Object.assign(zero.confirmation, { cost: 0, payback: 0, paybackOwnByPlayer: { Alpha: 0, Beta: 31.5 } });
-    const zeroHtml = panel.renderResult(zero, t);
-    check('confirmation: a payback of 0 shows a dash in the per-player line, a payback above 0 shows the number', /Alpha: own supplies <span data-num="-5551"[^<]*<\/span> per day, payback — days/.test(zeroHtml) && /Beta: own supplies <span data-num="6662"[^<]*<\/span> per day, payback (≤ )?<span data-num="31.5"/.test(zeroHtml));
+    // The two gains (the party's per user, the buyer's per day), each with its error; the buyer's payback; How it is bought; the confirmation lines.
+    const full = JSON.parse(JSON.stringify(result));
+    const books = { costPath: 'books', note: '25 x berserk; upper bound (XP inside the level unknown)' };
+    Object.assign(full.steps[0], { buyerNet: 1234, buyerNetSe: 77, sharedGainPerUser: 1500, paybackOwn: 22.5, ...books });
+    Object.assign(full.steps[1], { buyerNet: 555, buyerNetSe: 66, sharedGainPerUser: 1000, paybackOwn: 51.4, costPath: 'house upgrade', note: '' });
+    Object.assign(full.steps[2], { buyerNet: -40, buyerNetSe: 20, sharedGainPerUser: 500, paybackOwn: null, costPath: 'market', note: 'a; b' }); // a net of 0 or below: no payback
+    Object.assign(full.singles[0], { buyerNet: 1234, buyerNetSe: 77, sharedGainPerUser: 1500, paybackOwn: 22.5, ...books });
+    Object.assign(full.confirmation, { buyerByPlayer: { Alpha: { gain: 1100, se: 80, payback: 12.5 }, Beta: { gain: 600, se: 90, payback: null } } });
+    const html = panel.renderResult(full, t);
+    const tablesOf = (h) => [...h.matchAll(/<table[^>]*>([^]*?)<\/table>/g)].map((m) => m[1]);
+    const heads = (tb) => [...tb.slice(tb.indexOf('<thead>'), tb.indexOf('</thead>')).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const rowsOf = (tb) => [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr[^>]*>([^]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => plain(c[1])));
+    const [stepsTb, eachTb] = tablesOf(html);
+    const tail = ['Cost', 'Payback days', 'How it is bought', ''], pair = ['Party gain per player/day', '± error', "Buyer's gain per day", '± error'];
+    check('columns: Chosen changes reads #, Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(stepsTb)) === JSON.stringify(['#', 'Player', 'Change', ...pair, ...tail]), heads(stepsTb).join('|'));
+    check('columns: Each change alone reads Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(eachTb)) === JSON.stringify(['Player', 'Change', ...pair, ...tail]), heads(eachTb).join('|'));
+    check('columns: the two gain headings carry their help text, exact English', html.includes("title=\"How much more the average player makes per day with this change, after everyone's food and drink are paid.\"") &&
+        html.includes("title=\"How much more the player who pays for this change makes per day, after their own food and drink are paid. Payback is the cost divided by this.\""));
+    const sr = rowsOf(stepsTb);
+    check('cells: both gain pairs show with their errors (party first, then the buyer\'s), the buyer payback and How it is bought', JSON.stringify(sr[0]) === JSON.stringify(['1', 'Alpha', 'Ring +5 → +6', '1500', '± 300', '1234', '± 77', '1000000', '22.5', 'books (25 x berserk)', 'Apply']), JSON.stringify(sr[0]));
+    check('cells: a negative buyer gain shows as it is; a net of 0 or below shows a dash payback; a note keeps its other text', sr[2][5] === '-40' && sr[2][6] === '± 20' && sr[2][8] === '—' && sr[2][9] === 'market (a; b)', JSON.stringify(sr[2]));
+    check('cells: an upper-bound cost marks its payback "≤"; a path with no note shows the path alone', sr[1][7] === '≤ 400000' && sr[1][8] === '≤ 51.4' && sr[1][9] === 'house upgrade', JSON.stringify(sr[1]));
+    check('cells: the four gain cells have class num, and so do their headings', [stepsTb, eachTb].every((tb) => /<th class="num"[^>]*>Party gain per player\/day<\/th><th class="num">± error<\/th><th class="num"[^>]*>Buyer's gain per day<\/th><th class="num">± error<\/th>/.test(tb)) && /<td class="chg">Ring[^<]*<\/td>(<td class="num">[^]*?<\/td>){4}<td class="num">/.test(stepsTb));
+    const er = rowsOf(eachTb);
+    check('Each change alone: the same cells (Player first, no Stage), How it is bought without the caveat text', JSON.stringify(er[0]) === JSON.stringify(['Alpha', 'Ring +5 → +6', '1500', '± 300', '1234', '± 77', '1000000', '22.5', 'books (25 x berserk)', 'Apply']), JSON.stringify(er[0]));
+    check('How it is bought: the caveat text is in no cell; the footnote under the table stays', !html.includes('XP inside the level unknown') && html.includes(locales.en.result.upperNote.slice(0, 20)));
+    check('gone: no Spent, no Stage, no Shared gain, no Own supplies, no budgets line', !/Spent|Stage|Shared gain|Own supplies/.test(html) && !html.includes('data-num="50000000"') && !html.includes('data-num="20000000"'), html.match(/Spent|Stage|Shared gain|Own supplies/)?.[0]);
+    check('gone: no helps table, also for an old result that still carries helpsParty (rows flagged or not)', !html.includes('Helps the party') && tablesOf(html).length === 2 && (() => { const o = panel.renderResult({ ...full, helpsParty: [{ ...full.singles[1], helpsParty: true }] }, t); return !o.includes('Helps the party') && !o.includes('Not bought') && tablesOf(o).length === 2; })());
+    const old = panel.renderResult(result, t), oldRows = [rowsOf(tablesOf(old)[0])[0], rowsOf(tablesOf(old)[1])[0]];
+    check('cells: a result with no buyerNet shows the party gain and a dash in both buyer cells (both tables), How it is bought in both', oldRows[0][3] === '1500' && oldRows[0][4] === '± 300' && oldRows[0][5] === '—' && oldRows[0][6] === '—' && oldRows[1][2] === '1500' && oldRows[1][4] === '—' && oldRows[1][5] === '—' && oldRows[1][7] === '333.3' && oldRows[1][8] === 'market', JSON.stringify(oldRows));
+    const exp = panel.renderResult({ ...full, goal: 'exp' }, t), expRow = rowsOf(tablesOf(exp)[0])[0];
+    check('cells: on the EXP goal the buyer cells are dashes and the party pair shows', expRow[3] === '1500' && expRow[4] === '± 300' && expRow[5] === '—' && expRow[6] === '—' && expRow[7] === '1000000' && expRow[8] === '333.3', JSON.stringify(expRow));
+    const conf = html.slice(html.indexOf('Confirmed on fresh runs'), html.indexOf(locales.en.result.singles));
+    check('confirmation: the first line shows the party gain ± error per user per day and the cost, no party payback beside the player lines', plain(conf.split('</div>')[0]) === 'Confirmed on fresh runs: 2900 ± 450 per user per day, Cost ≤ 1600000', plain(conf.split('</div>')[0]));
+    check('confirmation: one line per player with gain ± error and payback, a dash for none, same font size as the line above', plain(conf.split('</div>')[1]) === 'Alpha: gain 1100 ± 80 per day, pays back in ≤ 12.5 days' && plain(conf.split('</div>')[2]) === 'Beta: gain 600 ± 90 per day, pays back in — days' && conf.split('</div>').slice(1, 3).every((d) => d.startsWith('<div class="mb-1">')) && !/\bsmall\b/.test(conf), conf);
+    const zero = JSON.parse(JSON.stringify(full));
+    Object.assign(zero.confirmation, { cost: 0, buyerByPlayer: { Alpha: { gain: 5, se: 1, payback: 0 }, Beta: { gain: 6, se: 1, payback: 31.5 } } });
+    const zl = panel.renderResult(zero, t).split('</div>').map(plain);
+    check('confirmation: a saved payback of 0 shows a dash, above 0 shows the number', zl.some((l) => l.endsWith('Alpha: gain 5 ± 1 per day, pays back in — days')) && zl.some((l) => l.endsWith('Beta: gain 6 ± 1 per day, pays back in ≤ 31.5 days')), zl.join('|'));
     const zeroOld = JSON.parse(JSON.stringify(result));
     zeroOld.confirmation = { ...zeroOld.confirmation, cost: 0, payback: 0 };
-    const zeroOldHtml = panel.renderResult(zeroOld, t);
-    check('confirmation: a party payback of 0 (older result) shows "Payback days —", a payback above 0 shows the number', /Payback days —<\/div>/.test(zeroOldHtml) && !/Payback days <span data-num="0"/.test(zeroOldHtml));
-    const old = panel.renderResult(result, t);
-    check('split: an older result shows a dash in the new columns, keeps the saved party payback (cell and confirmation) and the run-again hint', !old.includes('data-num="1500"') && old.includes('data-num="333.3"') && old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && /<td class="chg">Ring[^<]*<\/td><td class="num">—<\/td><td class="num">—<\/td><td class="num">—<\/td>/.test(old));
-    check('split: the other two locales carry the new strings', ['pt', 'zh'].every((l) => locales[l].col.ownSupplies && locales[l].col.ownSuppliesTip && locales[l].result.ownLine && locales[l].result.oldSplit && locales[l].col.gain !== locales.en.col.gain));
-    check('split: an EXP result keeps its per-user figure in the first column', panel.renderResult({ ...result, goal: 'exp' }, t).includes('data-num="1500"'));
+    check('confirmation: a party payback of 0 (older result) shows "Payback days —", a payback above 0 shows the number', /Payback days —<\/div>/.test(panel.renderResult(zeroOld, t)) && !/Payback days <span data-num="0"/.test(panel.renderResult(zeroOld, t)));
+    check('confirmation: an older result (no buyerByPlayer) keeps its party payback and shows the run-again line, small', old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && old.includes('<div class="mb-1 small whatif-dim">') && !old.includes('pays back in'));
+    check('strings: the new keys exist in en, pt, zh; the removed ones are gone from all three', ['partyGain', 'partyGainTip', 'buyerGain', 'buyerGainTip'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].col[k] === 'string' && locales[l].col[k] !== '')) && ['en', 'pt', 'zh'].every((l) => typeof locales[l].result.playerLine === 'string' && ['{{player}}', '{{gain}}', '{{se}}', '{{payback}}'].every((p) => locales[l].result.playerLine.includes(p)) &&
+        ['gain', 'ownSupplies', 'ownSuppliesTip', 'spent', 'stage'].every((k) => !(k in locales[l].col)) && ['ownLine', 'budgets', 'helpsParty', 'helpsPartyHint'].every((k) => !(k in locales[l].result))) && locales.pt.col.partyGain !== locales.en.col.partyGain && locales.pt.result.playerLine !== locales.en.result.playerLine);
 }
-
 {
     check('opsFor: steps 1..n in order', JSON.stringify(panel.opsFor(result, 'steps:2')) === JSON.stringify([...result.steps[0].ops, ...result.steps[1].ops]));
     check('opsFor: one single', panel.opsFor(result, 'single:1')[0].op === 'food');
@@ -341,29 +360,11 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('over budget: the strings exist in en, pt and zh', ['overBudgetShow', 'overBudgetHide'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k].includes('{{n}}'))));
 }
 
-// Helps the party, costs its buyer (result.helpsParty): its own group, no Apply, not also in Each change alone.
+// Window polish: a heading sits over its numbers (th class num exactly where the first body row's td has it).
 {
-    const split = (extra) => ({ lastStage: '8x300', sharedSePerUser: 100, ownSuppliesPerDay: 0, costPath: 'market', ...extra });
-    const helps = split({ id: 'h1', player: 'Beta', desc: 'Food 1 → steak', gain: 800, se: 100, gainPerUser: 400, sePerUser: 50, sharedGainPerUser: 400, ownSuppliesPerDay: 700, cost: 0, payback: null, paybackOwn: null, accepted: false, acceptedParty: true, helpsParty: true, ops: [{ op: 'food', player: 'Beta', index: 0, item: '/items/steak' }] });
-    const helps2 = split({ id: 'h2', player: 'Alpha', desc: 'Drink 1 → tea', gain: 300, se: 100, gainPerUser: 150, sePerUser: 50, sharedGainPerUser: 150, ownSuppliesPerDay: 300, cost: 0, payback: null, paybackOwn: null, accepted: false, acceptedParty: true, helpsParty: true, ops: [{ op: 'drink', player: 'Alpha', index: 0, item: '/items/tea' }] });
-    const withGroup = { ...result, singles: [...result.singles, helps, helps2], helpsParty: [helps, helps2] };
-    const html = panel.renderResult(withGroup, t);
-    const at = html.indexOf('Helps the party, costs its buyer'), group = html.slice(at, html.indexOf('</table>', at)), alone = html.slice(html.indexOf(locales.en.result.singles), at);
-    check('helps the party: the heading and the hint, exact English', html.includes('<div class="fw-bold mt-3">Helps the party, costs its buyer</div>') && html.includes('Not bought: the party gains, but the player who pays does not earn it back (their share of the loot minus their own extra supplies is not above 0 by 2 errors).'));
-    check('helps the party: the group lists its rows in the order given, once each', group.indexOf('Food 1 → steak') > 0 && group.indexOf('Food 1 → steak') < group.indexOf('Drink 1 → tea') && (html.match(/Food 1 → steak/g) || []).length === 1 && (html.match(/Drink 1 → tea/g) || []).length === 1);
-    check('helps the party: the rows are not in Each change alone (the table and the grey body), which keeps its own rows', alone.includes('Food 2') && !alone.includes('Food 1 → steak') && !alone.includes('Drink 1 → tea') && /Show 1 more below 2 errors/.test(html));
-    check('helps the party: no Apply in the group, the other tables keep theirs', !group.includes('data-whatif-apply') && !group.includes('<button') && html.includes('data-whatif-apply="single:0"') && html.includes('data-whatif-apply="steps:1"'));
-    check('helps the party: the group has the columns of Each change alone, not the Apply column', (group.match(/<th[ >]/g) || []).length === 9 && group.includes(locales.en.col.ownSupplies) && group.includes(locales.en.col.costPath));
-    check('helps the party: the buyer\'s figures show (the share, his own supplies)', group.includes('data-num="400"') && group.includes('data-num="700"'));
-    check('helps the party: a result saved before this change has no group and no hint', !panel.renderResult(result, t).includes('Helps the party') && !panel.renderResult(result, t).includes('Not bought:') && !panel.renderResult({ ...result, helpsParty: [] }, t).includes('Helps the party'));
-    check('helps the party: the strings exist in en, pt, zh; the hint takes no placeholder', ['helpsParty', 'helpsPartyHint'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '' && !/\{\{/.test(locales[l].result[k]))) && locales.pt.result.helpsParty !== locales.en.result.helpsParty);
-    check('helps the party: the apply keys still open their rows (indexes kept)', JSON.stringify(panel.opsFor(withGroup, 'single:0')) === JSON.stringify(result.singles[0].ops) && panel.opsFor(withGroup, 'single:2')[0].item === '/items/steak');
-
-    // Window polish: a heading sits over its numbers (th class num exactly where the first body row's td has it), and the
-    // per-player confirmation lines use the size of the lines around them.
-    const full = JSON.parse(JSON.stringify(withGroup));
-    Object.assign(full.steps[0], { sharedGainPerUser: 11111, sharedSePerUser: 2222, ownSuppliesPerDay: -33333, paybackOwn: 22.5 });
-    Object.assign(full.confirmation, { sharedGainPerUser: 9999, sharedSePerUser: 999, ownSuppliesByPlayer: { Alpha: -5551, Beta: 6662 }, paybackOwnByPlayer: { Alpha: 12.5, Beta: null } });
+    const full = JSON.parse(JSON.stringify(result));
+    Object.assign(full.steps[0], { buyerNet: 1234, buyerNetSe: 77, sharedGainPerUser: 1500, paybackOwn: 22.5, costPath: 'books' });
+    Object.assign(full.confirmation, { buyerByPlayer: { Alpha: { gain: 1100, se: 80, payback: 12.5 }, Beta: { gain: 600, se: 90, payback: null } } });
     const fullHtml = panel.renderResult(full, t);
     const tables = [...fullHtml.matchAll(/<table[^>]*>([^]*?)<\/table>/g)].map((m) => m[1]);
     const classesOf = (src, tag) => [...src.matchAll(new RegExp(`<${tag}( [^>]*)?>`, 'g'))].map((m) => /class="[^"]*\bnum\b/.test(m[1] || ''));
@@ -374,29 +375,27 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
         const tds = classesOf(row, 'td');
         return ths.length > 0 && ths.length === tds.length && ths.every((v, i) => v === tds[i]) && ths.some(Boolean);
     };
-    check('headings: three tables are rendered', tables.length === 3);
+    check('headings: two tables are rendered', tables.length === 2);
     check('headings: in every table the th at each column has class num exactly when the first body row\'s td does', tables.every(alignOk));
-    check('confirmation: the per-player line has no small class, the old-result hint keeps its own', /<div class="mb-1">Alpha: own supplies/.test(fullHtml) && !/<div class="[^"]*\bsmall\b[^"]*">Alpha: own supplies/.test(fullHtml) && panel.renderResult(result, t).includes('<div class="mb-1 small whatif-dim">'));
 }
 
-
-// One food row per player (hiddenFood): the other food rows stay in the file but are left out of Each change alone and of the helps group.
+// One food row per player (hiddenFood): the other food rows stay in the file but are left out of Each change alone.
 {
     const row = (extra) => ({ lastStage: '8x300', sharedSePerUser: 100, ownSuppliesPerDay: 0, costPath: 'loadout tweak', cost: 0, payback: null, paybackOwn: null, sePerUser: 50, sharedGainPerUser: 100, ops: [{ op: 'food', player: 'Alpha', index: 0, item: '/items/steak' }], ...extra });
-    const shownFood = row({ id: 'ff1', player: 'Alpha', desc: 'Alpha food: shown-row', gain: 500, se: 100, gainPerUser: 250, accepted: true, acceptedParty: true });
-    const hiddenFood = row({ id: 'ff2', player: 'Alpha', desc: 'Alpha food: hidden-row', gain: 400, se: 100, gainPerUser: 200, accepted: true, acceptedParty: true, hiddenFood: true });
-    const hiddenWeak = row({ id: 'ff3', player: 'Beta', desc: 'Beta food: hidden-weak', gain: 10, se: 100, gainPerUser: 5, accepted: false, acceptedParty: false, hiddenFood: true });
-    const helpsKept = row({ id: 'ff4', player: 'Beta', desc: 'Beta food: helps-kept', gain: 800, se: 100, gainPerUser: 400, accepted: false, acceptedParty: true, helpsParty: true });
-    const helpsHidden = row({ id: 'ff5', player: 'Beta', desc: 'Beta food: helps-hidden', gain: 600, se: 100, gainPerUser: 300, accepted: false, acceptedParty: true, helpsParty: true, hiddenFood: true });
-    const singles = [...result.singles, shownFood, hiddenFood, hiddenWeak, helpsKept, helpsHidden];
-    const html = panel.renderResult({ ...result, singles, helpsParty: [helpsKept] }, t);
+    const shownFood = row({ id: 'ff1', player: 'Alpha', desc: 'Alpha food: shown-row', gain: 500, se: 100, gainPerUser: 250, accepted: true });
+    const hiddenFood = row({ id: 'ff2', player: 'Alpha', desc: 'Alpha food: hidden-row', gain: 400, se: 100, gainPerUser: 200, accepted: true, hiddenFood: true });
+    const hiddenWeak = row({ id: 'ff3', player: 'Beta', desc: 'Beta food: hidden-weak', gain: 10, se: 100, gainPerUser: 5, accepted: false, hiddenFood: true });
+
+
+    const singles = [...result.singles, shownFood, hiddenFood, hiddenWeak];
+    const html = panel.renderResult({ ...result, singles }, t);
     check('one food row: the best food row is in Each change alone', html.includes('shown-row'));
     check('one food row: the other food rows (accepted or not) are in neither Each change alone nor the grey body', !html.includes('hidden-row') && !html.includes('hidden-weak'));
-    check('one food row: of the helps group only the row left in result.helpsParty shows; the hidden helps row is not in the page', html.includes('helps-kept') && !html.includes('helps-hidden'));
-    const both = panel.renderResult({ ...result, singles, helpsParty: [helpsKept, helpsHidden] }, t);
-    check('one food row: a hidden row is left out of the helps group even if the file lists it there', both.includes('helps-kept') && !both.includes('helps-hidden'));
+
+
+
     const none = panel.renderResult({ ...result, singles: [...result.singles, hiddenWeak, hiddenFood] }, t);
-    check('one food row: no accepted food row for a player: none shown, the other kinds keep theirs', !none.includes('hidden-weak') && !none.includes('hidden-row') && none.includes('Food 2'));
+    check('one food row: a hidden row is not shown, the other kinds keep theirs', !none.includes('hidden-weak') && !none.includes('hidden-row') && none.includes('Food 2'));
     const older = panel.renderResult({ ...result, singles: [...result.singles, { ...hiddenFood }, { ...hiddenWeak }].map((s) => { const { hiddenFood: h, ...rest } = s; return rest; }) }, t);
     check('one food row: a result without the field shows every row as before', older.includes('hidden-row') && older.includes('hidden-weak'));
     check('one food row: the apply keys keep their indexes (a hidden row is skipped, not renumbered)', panel.opsFor({ ...result, singles }, 'single:' + (result.singles.length)).length === 1 && html.includes('data-whatif-apply="single:' + result.singles.length + '"'));
