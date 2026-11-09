@@ -15,7 +15,7 @@ import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
-import { cellValue, formatNumber, formatUnit, percentSign, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
+import { cellValue, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -2945,7 +2945,7 @@ function triggerHoldRows(simResult, playerToDisplay) {
     body.innerHTML = heldPopupHtml(holds, {
         abilityName: (hrid) => `<span data-i18n="abilityNames.${hrid}">${abilityDetailMap[hrid]?.name ?? hrid}</span>`,
         conditionHtml: triggerConditionHtml,
-        percentHtml,
+        percentHtml: percentFixedHtml,
     });
     const row = createRow(["col-md-12"], [`<button type="button" id="heldByTriggerButton" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#heldByTriggerModal" data-i18n="common:simulationResults.heldByTriggerDetails">Held by trigger: details</button>`]);
     return [row];

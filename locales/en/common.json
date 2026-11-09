@@ -57,7 +57,7 @@
         "Yes": "Yes",
         "No": "No",
         "ranOutOfManaRatio": "Mana Run Out Ratio",
-        "heldByTrigger": "Held By Trigger",
+        "heldByTrigger": "Held by trigger",
         "previousSkillOutOfMana": "A previous skill was out of mana",
         "heldByTriggerDetails": "Held by trigger: details",
         "heldByTriggerOverlap": "Share of the whole simulation time each reason kept the skill from casting while it was ready; reasons can overlap, so they do not add up.",

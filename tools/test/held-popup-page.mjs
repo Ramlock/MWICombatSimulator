@@ -48,7 +48,7 @@ try {
     const shot = async (name, selector) => {
         if (!shots) return;
         await new Promise((r) => setTimeout(r, 600));
-        const [x, y, width, height] = await js(`(() => { const b = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
+        const [x, y, width, height] = await js(`(() => { const b = (${JSON.stringify(selector)} === 'RESULTS' ? document.getElementById('simulationResultKills').closest('.col-md-5').parentElement.closest('.col-md-5') : document.querySelector(${JSON.stringify(selector)})).getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
         const s = await page.send('Page.captureScreenshot', { format: 'png', clip: { x, y, width, height, scale: 1 }, captureBeyondViewport: true });
         fs.mkdirSync(shots, { recursive: true });
         fs.writeFileSync(path.join(shots, name), Buffer.from(s.data, 'base64'));
@@ -68,18 +68,22 @@ try {
     await until(`!!document.getElementById('heldByTriggerButton')`);
     check('the results panel shows the details button when the player had a hold', await until(`!!document.getElementById('heldByTriggerButton')`));
     const panel = await js(`(() => { const d = document.getElementById('simulationResultManaRestored'); const rows = [...d.querySelectorAll(':scope > .row')].map((r) => r.textContent.trim()); return { rows, text: d.textContent }; })()`);
-    check('the panel has no Held By Trigger rows, no condition share and no skill rows', !/Held By Trigger|toxic|Pollen|previous skill/i.test(panel.text.replace('Held by trigger: details', '')), JSON.stringify(panel.rows));
+    check('the panel has no Held By Trigger rows, no condition share and no skill rows', !/Held by trigger|toxic|Pollen|previous skill/i.test(panel.text.replace('Held by trigger: details', '')), JSON.stringify(panel.rows));
     check('Mana Run Out Ratio is on one line', await js(`(() => { const r = [...document.querySelectorAll('#simulationResultManaRestored .row')].find((x) => /Run Out Ratio/.test(x.textContent)); return r.firstElementChild.getBoundingClientRect().height < 30; })()`));
     check('the page is dark', await js(`document.body.classList.contains('dark-mode')`));
     await js(`document.getElementById('heldByTriggerButton').scrollIntoView({ block: 'center' }), true`);
-    await shot('held-panel.png', '#simulationResultManaRestored');
+    await shot('held-panel.png', 'RESULTS');
     await js(`document.getElementById('heldByTriggerButton').click(), true`);
     check('the pop-up opens', await until(`document.getElementById('heldByTriggerModal').classList.contains('show') && document.getElementById('heldByTriggerBody').getBoundingClientRect().width > 0`, 10000));
     const body = await js(`document.getElementById('heldByTriggerBody').innerText`);
     check('the pop-up lists the skill, its conditions with shares, the separate previous-skill group and the overlap line', /Toxic Pollen/.test(body) && /\d+(\.\d+)?%/.test(body) && /A previous skill was out of mana/.test(body) && /Share of the whole simulation time each reason kept the skill from casting while it was ready; reasons can overlap, so they do not add up\./.test(body), body);
     check('the pop-up is dark', await js(`getComputedStyle(document.querySelector('#heldByTriggerModal .modal-content')).backgroundColor !== 'rgb(255, 255, 255)'`));
     check('the modal title is the button text', await js(`document.querySelector('#heldByTriggerModal .modal-title').textContent.trim() === document.getElementById('heldByTriggerButton').textContent.trim()`));
-    check('a previous-skill row has name and share on one line, with the same indent and height as a condition row', await js(`(() => { const rows = [...document.querySelectorAll('#heldSkipGroup .held-line')]; const cond = document.querySelector('#heldTriggerGroup .held-line'); if (!rows.length || !cond) return false; const r = rows[0], a = r.children[0].getBoundingClientRect(), b = r.children[1].getBoundingClientRect(), c = cond.children[0].getBoundingClientRect(); return Math.abs(a.top - b.top) < 2 && Math.abs(r.getBoundingClientRect().height - cond.getBoundingClientRect().height) < 2 && Math.abs(a.left - c.left) < 1; })()`));
+    check('a previous-skill row has name and share on one line, with the same height as a condition row', await js(`(() => { const r = document.querySelector('#heldSkipGroup .held-line'), cond = document.querySelector('#heldTriggerGroup .held-line'); if (!r || !cond) return false; const a = r.children[0].getBoundingClientRect(), b = r.children[1].getBoundingClientRect(); return Math.abs(a.top - b.top) < 2 && Math.abs(r.getBoundingClientRect().height - cond.getBoundingClientRect().height) < 2; })()`));
+    check('both group headings read "Held by trigger" / "A previous skill was out of mana", same style and indent', await js(`(() => { const h = [...document.querySelectorAll('#heldByTriggerBody .held-group')]; if (h.length !== 2 || h[0].textContent.trim() !== 'Held by trigger') return false; const a = h[0].getBoundingClientRect(), b = h[1].getBoundingClientRect(), sa = getComputedStyle(h[0]), sb = getComputedStyle(h[1]); return Math.abs(a.left - b.left) < 1 && sa.fontSize === sb.fontSize && sa.fontWeight === sb.fontWeight; })()`));
+    check('skill names sit at one indent in both groups, conditions deeper, headings shallowest', await js(`(() => { const x = (s) => { const r = document.createRange(); r.selectNodeContents(document.querySelector(s)); return r.getBoundingClientRect().left; }; const t = x('#heldTriggerGroup .held-ability span'), k = x('#heldSkipGroup .held-skill .col-9 span'), c = x('#heldTriggerGroup .held-condition .col-9'), g = x('#heldTriggerGroup .held-group'); return Math.abs(t - k) < 1 && c > t + 10 && t > g + 10; })()`));
+    const sh = await js(`[...document.querySelectorAll('#heldByTriggerBody .held-line .text-end')].map((e) => e.textContent.trim())`);
+    check('every share has two decimals', sh.length > 0 && sh.every((x) => /^[0-9]+[.][0-9]{2}%$/.test(x)), JSON.stringify(sh));
     await shot('held-popup.png', '#heldByTriggerModal .modal-content');
     page.close();
 } finally {

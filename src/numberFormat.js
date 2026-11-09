@@ -126,6 +126,12 @@ export function numberHtml(value, unit = "") {
         escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
 }
 
+// A percentage with exactly two decimals ("94.10%"), for rows that must line up; the raw value rides along (data-pct2).
+export function percentFixedHtml(value) {
+    return '<span data-pct2="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
+        Number(value).toFixed(2) + percentSign() + "</span>";
+}
+
 export function percentHtml(value) {
     return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
         formatPercent(value) + "</span>";
@@ -152,6 +158,10 @@ export function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
         element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
         element.title = exactUnit(element.dataset.num, element.dataset.unit ?? "");
+    });
+    root.querySelectorAll("[data-pct2]").forEach((element) => {
+        element.textContent = Number(element.dataset.pct2).toFixed(2) + percentSign();
+        element.title = exactNumber(element.dataset.pct2) + percentSign();
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
         element.textContent = formatPercent(element.dataset.pct);
