@@ -175,12 +175,14 @@ const swap = (text, tables, names) => text.replace(SLUG, (id) => {
 // A desc with every game id replaced by its name; an id with no name stays. `players` are the names the result
 // holds: the player name leads the desc and is never touched. Trigger descs ("<owner> trigger: <terms>") read the
 // owner as an item or ability and the terms as trigger dependency and condition (a condition can share an id with an ability).
-export function localizeDesc(desc, names, players = []) {
+// `dropPlayer`: when the desc leads with that player (the row's own, which has its own column), the lead is left off the shown desc.
+export function localizeDesc(desc, names, players = [], dropPlayer = null) {
     const text = String(desc ?? '');
-    if (!names) return text;
     const lead = [...players].sort((a, b) => b.length - a.length).find((p) => p && text.startsWith(p + ' '));
-    const head = lead ? lead + ' ' : '';
-    const rest = text.slice(head.length);
+    const head = lead && lead !== dropPlayer ? lead + ' ' : '';
+    const skip = lead ? lead.length + 1 : 0;
+    if (!names) return head + text.slice(skip);
+    const rest = text.slice(skip);
     const room = names.rooms.find(([en]) => rest.startsWith(en + ' '));
     if (room) return head + room[1] + rest.slice(room[0].length);
     const at = rest.indexOf(' trigger: ');
@@ -198,7 +200,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     if (!result) return '';
     const L = [];
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
-    const shown = (row) => esc(localizeDesc(row.desc, names, known));
+    const shown = (row) => esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player));
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
     L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
     const prices = pricesLine(result, t, now);

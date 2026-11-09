@@ -227,6 +227,18 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('names: the apply buttons and the ops do not depend on the shown text', shownEn.includes('data-whatif-apply="steps:1"') && JSON.stringify(panel.opsFor(withIds, 'steps:1')) === JSON.stringify(result.steps[0].ops));
     check('names: without names the descs show as they came (the existing output)', panel.renderResult(withIds, t).includes('pathseeker_boots_refined'));
 
+    // The row's own player leads the desc and has its own column: the shown desc leaves the lead off.
+    check('player lead: a desc that starts with the row\'s player shows without it, with and without names',
+        panel.localizeDesc(boots, N.en, players, 'Alpha') === 'Feet Pathseeker Boots ★ +12 -> Cotton Boots +0' && panel.localizeDesc(boots, null, players, 'Alpha') === 'feet pathseeker_boots_refined +12 -> cotton_boots +0');
+    check('player lead: a desc without the prefix is unchanged, and another player\'s lead stays',
+        panel.localizeDesc('feet pathseeker_boots_refined +12 -> +13', N.en, players, 'Alpha') === 'Feet Pathseeker Boots ★ +12 -> +13' && panel.localizeDesc('Beta feet cotton_boots +0 -> +1', N.en, players, 'Alpha') === 'Beta Feet Cotton Boots +0 -> +1');
+    const lead = { ...withIds, steps: [{ ...withIds.steps[0], player: 'Alpha' }], singles: [{ ...withIds.singles[0], player: 'Alpha' }], overBudget: [{ id: 'o', player: 'Alpha', desc: boots, cost: 7e9, costPath: 'market' }, { id: 'p', player: 'Beta', desc: 'poke 5 -> 6', cost: 8e9, costPath: 'market' }] };
+    const leadHtml = h('en', lead);
+    check('player lead: steps and singles show the player once (its column), the over-budget row once before the comma, a desc without a prefix as it is',
+        leadHtml.includes('<td>Alpha</td><td>Feet Pathseeker Boots ★ +12') && !leadHtml.includes('Alpha Feet') && leadHtml.includes('<li>Alpha, Feet Pathseeker Boots ★ +12') && leadHtml.includes('<li>Beta, Poke 5 -&gt; 6'), leadHtml.slice(0, 300));
+    check('player lead: the unknown-cost list has no player column, so its lead stays', leadHtml.includes('Beta ability 2 empty -&gt; learn Fireball 30: no seller'));
+    check('player lead: without names the lead is dropped too, and the ops are untouched', panel.renderResult(lead, t).includes('<td>Alpha</td><td>feet pathseeker_boots_refined') && JSON.stringify(lead.steps[0].ops) === JSON.stringify(result.steps[0].ops));
+
     // The over-budget list folds.
     const ob = h('en');
     check('over budget: the heading keeps its count, the list is closed behind one toggle', ob.includes(locales.en.result.overBudget) && ob.includes('(2, not ranked') &&
