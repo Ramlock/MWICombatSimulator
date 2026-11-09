@@ -219,6 +219,12 @@ await test('the snapshot carries selected and fight, kept live by party_updated,
     assert.equal(game.reqs.length, 0, 'nothing is sent');
 
     game.send({ type: 'actions_updated', endCharacterActions: [A({ actionHrid: '/actions/combat/zone_a', difficultyTier: 2 })] });
+    game.commands['Copy group export (party, for Group Combat import)']();
+    const copied = JSON.parse(game.clip[game.clip.length - 1]);
+    assert.deepEqual(Object.keys(copied), ['1', 'selected', 'fight'], 'Copy group carries selected and fight beside the slots');
+    assert.deepEqual(copied.selected, [1]);
+    assert.equal(copied.fight.zone, '/actions/combat/zone_a');
+    assert.equal(copied['1'].selected, undefined, 'never inside a slot');
     const els = { player1: { checked: false }, player2: { checked: true }, selectZone: { value: 'a', options: [{ value: '/actions/combat/zone_a' }] }, selectDifficulty: { value: '0', options: [{ value: '0' }, { value: '2' }] }, selectDungeon: { value: '', options: [] }, simDungeonToggle: { checked: false, dispatchEvent() {} } };
     const input = { value: '' }, clicks = [];
     const dom = { ...els, buttonImportExport: { closest: () => ({ insertAdjacentElement() {} }) }, inputSetGroupCombatAll: input, buttonImportSet: { click() { clicks.push('import'); } }, 'group-combat-tab': { click() {} } };
@@ -247,7 +253,8 @@ await test('Copy group export: reads the battle start and a shared profile from 
     b.send({ type: 'profile_shared', profile: { sharableCharacter: { id: 2, name: 'Ann' }, characterSkills: [{ characterID: 2, skillHrid: '/skills/attack', level: 33 }], wearableItemMap: {} } });
     b.commands[NAME]();
     const g = JSON.parse(b.clip[0]);
-    assert.deepEqual(Object.keys(g), ['1', '2']);
+    assert.deepEqual(Object.keys(g), ['1', '2', 'selected'], 'the slots, then the selection beside them (no fight known here)');
+    assert.deepEqual(g.selected, [1, 2]);
     assert.equal(g['1'].player.attackLevel, 33);
     assert.equal(g['1'].abilities[1].abilityHrid, '/abilities/a1');
     assert.equal(g['2'].name, 'Zed');

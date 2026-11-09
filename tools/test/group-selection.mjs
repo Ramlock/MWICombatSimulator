@@ -28,6 +28,15 @@ const odd = splitGroupImport({ 1: slot, selected: [1, 1, 7, 'x', '2'], fight: [1
 check('split: duplicates, out-of-range and junk are dropped; a non-object fight is ignored', same(odd.selected, [1, 2]) && odd.fight === null);
 check('split: selected that is not a list is ignored', splitGroupImport({ selected: 'all' }).selected === null);
 
+// The userscript's Copy group output goes back through the page's paste
+import { createRequire } from 'node:module';
+const { groupWithSelection } = createRequire(import.meta.url)('../../userscript/mwics-exporter.user.js');
+const copy = JSON.parse(JSON.stringify(groupWithSelection({ group: { 1: slot, 2: slot, 4: slot }, slots: [{ slot: 1 }, { slot: 2 }, { slot: 4 }] }, { zone: '/actions/combat/zone_a', tier: 1, kind: 'combat' })));
+const back = splitGroupImport(copy);
+check('the userscript copy pastes back: the slots stay slots, selected and fight come out', same(Object.keys(back.slots), ['1', '2', '4']) && same(back.selected, [1, 2, 4]) && back.fight.tier === 1);
+const copyNoFight = splitGroupImport(JSON.parse(JSON.stringify(groupWithSelection({ group: { 1: slot }, slots: [{ slot: 1 }] }, null))));
+check('a copy without a fight pastes back with selected only', same(copyNoFight.selected, [1]) && copyNoFight.fight === null);
+
 // applyGroupSelection
 let p = fakePage(); p.els.player5.checked = true;
 let r = applyGroupSelection(p, both);

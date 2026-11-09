@@ -504,6 +504,8 @@ The snapshot in storage (`mwicsGroupSnapshot`) is `{ t, group, slots, selected?,
 
 Where it comes from: `init_character_data` (`characterActions`, `partyInfo`), then kept live from `actions_updated`, `action_completed` and `party_updated`. Field names for the last two and for `init_character_data` come from the game's client code and are not backed by a captured sample.
 
+"Copy group export" copies the same: the slots plus `selected` and (when known) `fight` as top-level keys beside them (`groupWithSelection`), so the page's paste takes the copy back. The original simulator ignores the extra keys; an older build of our page would create two players named `selected` and `fight`.
+
 The userscript's import button ticks and sets after the page's import (`applySelectionDom`, order: dungeon toggle, ticks, zone, tier). The page's own group paste does the same when the pasted object carries `selected` and `fight` (`src/groupSelection.mjs`, called from `doGroupImport`); without them it imports as before.
 
 ## Button behavior (proposed)

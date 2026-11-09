@@ -241,4 +241,17 @@ test('applySelectionDom: only one key, neither key, or a zone the page lacks', (
     assert.equal(idle.els.selectDifficulty.value, '0');
 });
 
+test('groupWithSelection: the slots plus selected and fight beside them, never inside a slot; no fight, no key', () => {
+    const { groupWithSelection } = require('../mwics-exporter.user.js');
+    const r = { group: { 1: { name: 'A' }, 3: { name: 'C' } }, slots: [{ slot: 1 }, { slot: 3 }] };
+    const fight = { zone: '/actions/combat/zone_a', tier: 2, kind: 'combat', status: 'battling', source: 'party', t: 1 };
+    const w = J(groupWithSelection(r, fight));
+    assert.deepEqual(Object.keys(w), ['1', '3', 'selected', 'fight']);
+    assert.deepEqual(w.selected, [1, 3]);
+    assert.deepEqual(Object.keys(w['1']), ['name'], 'a slot is untouched');
+    assert.deepEqual(Object.keys(J(groupWithSelection(r, null))), ['1', '3', 'selected']);
+    assert.equal(groupWithSelection(null, fight), null);
+    assert.deepEqual(Object.keys(r.group), ['1', '3'], 'the input group is not changed');
+});
+
 console.log(n + ' tests passed');

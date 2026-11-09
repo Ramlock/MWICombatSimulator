@@ -340,6 +340,13 @@
         return { zone: hrid, tier: num(tier), kind: dungeon ? 'dungeon' : 'combat', status, source, t: ctx.now };
     }
 
+    // The group as the simulator's paste box takes it: the slots, plus `selected` and `fight` as top-level keys beside them (never inside a
+    // slot). Without a fight the key is left out; without slots there is nothing to copy.
+    function groupWithSelection(r, fight) {
+        if (!r || !r.group) return null;
+        return { ...r.group, selected: r.slots.map((x) => x.slot), ...(fight ? { fight } : {}) };
+    }
+
     // Applies a snapshot's selection to the simulator page (the older page has no paste support for it). `doc` is the page's document.
     // Order: the dungeon toggle (its change handler ticks all and limits the tiers), the player ticks, the zone, the tier.
     // A zone or tier the page does not offer is left as it is; it is listed in `skipped`, never an error.
@@ -1051,7 +1058,7 @@
 
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -1146,12 +1153,13 @@
         if (!latest) return null;
         return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles });
     }
+    function liveFight(now) { return currentFight({ actions: liveActions, partyInfo: livePartyInfo, clientObj: clientData(), now }); }
     function publishSnapshot() {
         try {
             const r = buildGroup();
             if (r) {
                 const now = Date.now();
-                const fight = currentFight({ actions: liveActions, partyInfo: livePartyInfo, clientObj: clientData(), now });
+                const fight = liveFight(now);
                 GM_setValue(SNAP_KEY, JSON.stringify({ t: now, group: r.group, slots: r.slots, selected: r.slots.map((x) => x.slot), ...(fight ? { fight } : {}) }));
             }
         } catch (err) { console.error('[MWI Combat Tracker] could not publish the party for the simulator', err); }
@@ -1231,7 +1239,7 @@
     function copyGroup() {
         const r = groupResult();
         if (!r) return;
-        GM_setClipboard(JSON.stringify(r.group), 'text');
+        GM_setClipboard(JSON.stringify(groupWithSelection(r, liveFight(Date.now()))), 'text');
         reportGroup('group copied', r.slots, ', then copy again');
     }
     function reportGroup(what, slots, again) {
