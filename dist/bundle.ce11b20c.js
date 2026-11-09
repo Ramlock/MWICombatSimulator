@@ -1379,24 +1379,25 @@ function hasHold(summary) {
 }
 
 function heldPopupHtml(summary, fmt) {
-    const line = (left, share, extraClass = "") =>
-        `<div class="row held-line ${extraClass}"><div class="col-9">${left}</div><div class="col-3 text-end">${fmt.percentHtml(share * 100)}</div></div>`;
-    const name = (a) => `<div class="held-ability fw-bold" data-ability="${a.abilityHrid}">${fmt.abilityName(a.abilityHrid)}</div>`;
+    // Levels: a group heading (no indent), a skill under it (ps-3), a condition under a skill (ps-5).
+    const line = (left, share, level) =>
+        `<div class="row held-line ${level}"><div class="col-9">${left}</div><div class="col-3 text-end">${fmt.percentHtml(share * 100)}</div></div>`;
+    const skillName = (a) => `<span data-ability="${a.abilityHrid}">${fmt.abilityName(a.abilityHrid)}</span>`;
     const triggers = summary.abilities.filter((a) => a.conditions.length > 0);
     const skips = summary.abilities.filter((a) => a.skip !== null);
     let html = "";
     if (triggers.length > 0) {
-        html += `<div id="heldTriggerGroup" class="mb-3"><h6 data-i18n="common:simulationResults.heldByTrigger">Held By Trigger</h6>`;
+        html += `<div id="heldTriggerGroup" class="mb-3"><h6 class="held-group" data-i18n="common:simulationResults.heldByTrigger">Held by trigger</h6>`;
         for (const a of triggers) {
-            html += `<div class="held-block mb-2">${name(a)}`;
-            for (const c of a.conditions) html += line(fmt.conditionHtml(c), c.share, "ps-3");
+            html += `<div class="held-block mb-2"><div class="held-ability ps-3 fw-bold">${skillName(a)}</div>`;
+            for (const c of a.conditions) html += line(fmt.conditionHtml(c), c.share, "held-condition ps-5");
             html += `</div>`;
         }
         html += `</div>`;
     }
     if (skips.length > 0) {
-        html += `<div id="heldSkipGroup" class="mb-3"><h6 data-i18n="common:simulationResults.previousSkillOutOfMana">A previous skill was out of mana</h6>`;
-        for (const a of skips) html += line(`<span data-ability="${a.abilityHrid}">${fmt.abilityName(a.abilityHrid)}</span>`, a.skip, "ps-3");
+        html += `<div id="heldSkipGroup" class="mb-3"><h6 class="held-group" data-i18n="common:simulationResults.previousSkillOutOfMana">A previous skill was out of mana</h6>`;
+        for (const a of skips) html += line(skillName(a), a.skip, "held-skill ps-3");
         html += `</div>`;
     }
     html += `<p id="heldOverlapLine" class="text-muted mb-0" data-i18n="common:simulationResults.heldByTriggerOverlap">${HELD_OVERLAP_LINE}</p>`;
@@ -2371,6 +2372,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   formatUnit: () => (/* binding */ formatUnit),
 /* harmony export */   numberFormatSettings: () => (/* binding */ numberFormatSettings),
 /* harmony export */   numberHtml: () => (/* binding */ numberHtml),
+/* harmony export */   percentFixedHtml: () => (/* binding */ percentFixedHtml),
 /* harmony export */   percentHtml: () => (/* binding */ percentHtml),
 /* harmony export */   percentSign: () => (/* binding */ percentSign),
 /* harmony export */   refreshFormattedNumbers: () => (/* binding */ refreshFormattedNumbers),
@@ -2505,6 +2507,12 @@ function numberHtml(value, unit = "") {
         escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
 }
 
+// A percentage with exactly two decimals ("94.10%"), for rows that must line up; the raw value rides along (data-pct2).
+function percentFixedHtml(value) {
+    return '<span data-pct2="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
+        Number(value).toFixed(2) + percentSign() + "</span>";
+}
+
 function percentHtml(value) {
     return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
         formatPercent(value) + "</span>";
@@ -2531,6 +2539,10 @@ function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
         element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
         element.title = exactUnit(element.dataset.num, element.dataset.unit ?? "");
+    });
+    root.querySelectorAll("[data-pct2]").forEach((element) => {
+        element.textContent = Number(element.dataset.pct2).toFixed(2) + percentSign();
+        element.title = exactNumber(element.dataset.pct2) + percentSign();
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
         element.textContent = formatPercent(element.dataset.pct);
@@ -3153,23 +3165,27 @@ function renderParts(status, t) {
     const rowsHtml = parts.map((r) => {
         const label = r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
+            : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
             : r.kind === 'step' ? t('progress.partStep', { n: r.index })
-            : t('progress.partConfirmation');
+            : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
+            : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
         const left = r.kind === 'halving' && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
-        let text, mark, cls;
-        if (r.state === 'waiting') { text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); mark = '·'; cls = 'waiting'; }
-        else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); mark = '✓'; cls = 'done'; }
+        let text = '', cls;
+        if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); cls = 'waiting'; }
+        else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); cls = 'done'; }
         else {
             text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) });
             if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
-            mark = '▶'; cls = 'running';
+            cls = 'running';
         }
+        // One icon column of equal width: a plain text glyph (︎ asks for the text form, never a colour emoji).
+        const mark = { done: '✓', running: '▶︎', waiting: '○' }[cls];
         const pct = r.state === 'done' ? 100 : r.state === 'running' && r.runsPlanned > 0 ? Math.min(100, Math.max(0, (r.runsDone / r.runsPlanned) * 100)) : 0;
-        return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-label"><span class="whatif-part-mark">${mark}</span> <b>${esc(label)}</b>${left}</span><div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div><span class="whatif-part-text">${text}</span></div>`;
+        return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}</span><div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div><span class="whatif-part-text">${text}</span></div>`;
     }).join('');
-    const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.stageN', { n: running + 1 })) : esc(t('state.' + status.state));
+    const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
-    if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) small.push(esc(t('progress.secondsPerRunCap')) + ' ' + num(p.secondsPerRun));
+    if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) small.push(esc(t('progress.secondsPerRunCap')) + ' ' + `<span title="${esc(p.secondsPerRun)}">${esc(Number(p.secondsPerRun).toFixed(2))}</span>`);
     if (p.elapsedSeconds !== undefined && p.elapsedSeconds !== null) small.push(esc(t('progress.elapsed')) + ' ' + esc(duration(p.elapsedSeconds)));
     let html = `<div class="whatif-parts"><div class="mb-1"><b>${title}</b></div>${rowsHtml}${small.length ? `<div class="small mt-1">${small.join(' · ')}</div>` : ''}</div>`;
     if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
@@ -6727,7 +6743,7 @@ function triggerHoldRows(simResult, playerToDisplay) {
     body.innerHTML = (0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__.heldPopupHtml)(holds, {
         abilityName: (hrid) => `<span data-i18n="abilityNames.${hrid}">${_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[hrid]?.name ?? hrid}</span>`,
         conditionHtml: triggerConditionHtml,
-        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml,
+        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentFixedHtml,
     });
     const row = createRow(["col-md-12"], [`<button type="button" id="heldByTriggerButton" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#heldByTriggerModal" data-i18n="common:simulationResults.heldByTriggerDetails">Held by trigger: details</button>`]);
     return [row];
@@ -9274,4 +9290,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.7c60fa54.js.map
+//# sourceMappingURL=bundle.ce11b20c.js.map

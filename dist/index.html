@@ -54,8 +54,10 @@
         body.dark-mode .whatif-warn { color: #f0c060; }
         body.dark-mode .whatif-progress { background-color: #1e2125; border: 1px solid #6c757d; }
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
-        .whatif-part { display: grid; grid-template-columns: minmax(10em, 16em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
+        .whatif-part { display: grid; grid-template-columns: 1.5em minmax(10em, 24em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
         .whatif-part-waiting { opacity: 0.6; }
+        .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
+        .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .whatif-part-text { text-align: right; white-space: nowrap; }
         .whatif-part-done .progress-bar { background-color: #198754; }
         body.dark-mode .whatif-part-done .progress-bar { background-color: #2e9e5e; }
@@ -1758,7 +1760,7 @@
                     <div class="row">
                         <div class="col-md-5 whatif-col">
                             <div class="row g-1">
-                                <label for="selectWhatIfGoal" class="col-3 col-form-label col-form-label-sm fw-bold" data-i18n="common:whatIf.goalLabel">Goal</label>
+                                <label for="selectWhatIfGoal" class="col-3 col-form-label col-form-label-sm" data-i18n="common:whatIf.goalLabel">Goal</label>
                                 <div class="col-9">
                                     <select id="selectWhatIfGoal" class="form-select form-select-sm">
                                         <option value="profit" data-i18n="common:whatIf.goal.profit">Party profit per day, after tax</option>
@@ -2174,10 +2176,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=7c60fa54"></script>
+    <script src="js/i18n.js?v=ce11b20c"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.7c60fa54.js" type="module"></script>
+    <script src="bundle.ce11b20c.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">
