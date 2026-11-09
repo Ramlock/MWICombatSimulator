@@ -1,6 +1,6 @@
 // Test: the built page (dist/) shows the "Held by trigger: details" button in the results panel and opens the pop-up, in our own headless Chrome,
 // served by a what-if runner this test launches itself. Generic fixture (a mage with a two-condition skill). Needs a built dist/ (npx webpack) and network for the CDN scripts.
-// Usage: node tools/test/held-popup-page.mjs [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves two dark pictures (1500x900, cropped to the box).
+// Usage: node tools/test/held-popup-page.mjs [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves two dark pictures (1400x900, cropped to the box).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -45,15 +45,26 @@ try {
         return r.result.value;
     };
     const until = async (expression, ms = 180000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await js(expression)) return true; await new Promise((r) => setTimeout(r, 300)); } return false; };
-    const shot = async (name, selector) => {
-        if (!shots) return;
-        await new Promise((r) => setTimeout(r, 600));
-        const [x, y, width, height] = await js(`(() => { const b = (${JSON.stringify(selector)} === 'RESULTS' ? document.getElementById('simulationResultKills').closest('.col-md-5').parentElement.closest('.col-md-5') : document.querySelector(${JSON.stringify(selector)})).getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
-        const s = await page.send('Page.captureScreenshot', { format: 'png', clip: { x, y, width, height, scale: 1 }, captureBeyondViewport: true });
+    const save = async (name, clip) => {
+        const s = await page.send('Page.captureScreenshot', { format: 'png', clip: { ...clip, scale: 1 }, captureBeyondViewport: true });
         fs.mkdirSync(shots, { recursive: true });
         fs.writeFileSync(path.join(shots, name), Buffer.from(s.data, 'base64'));
     };
-    await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
+    const shot = async (name, selector) => {
+        if (!shots) return;
+        await new Promise((r) => setTimeout(r, 600));
+        if (selector === 'RESULTS') {
+            // A viewport crop of the real window: the Results column's full width, from the rows above the mana rows to the end of them, no blank below; the page's fixed top-right toggles are hidden for the picture, they would cover the rows.
+            const c = await js(`(() => { for (const e of document.querySelectorAll('body *')) { if (getComputedStyle(e).position === 'fixed') e.style.visibility = 'hidden'; } const rows = document.getElementById('simulationResultManaRestored'); rows.scrollIntoView({ block: 'end' }); const col = document.getElementById('simulationResultKills').closest('.col-md-5').parentElement.closest('.col-md-5'); const a = col.getBoundingClientRect(), b = rows.getBoundingClientRect(); const x = Math.max(0, a.left - 8), y = Math.max(0, b.top - 330); return [x + scrollX, y + scrollY, Math.min(innerWidth - x, a.width + 16), b.bottom - y + 8]; })()`);
+            await new Promise((r) => setTimeout(r, 300));
+            await save(name, { x: c[0], y: c[1], width: c[2], height: c[3] });
+            await js(`(() => { for (const e of document.querySelectorAll('body *')) { if (e.style.visibility === 'hidden') e.style.visibility = ''; } return true; })()`);
+            return;
+        }
+        const [x, y, width, height] = await js(`(() => { const b = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
+        await save(name, { x, y, width, height });
+    };
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
     await page.send('Page.navigate', { url: base });
     check('the page loads with its zones', await until(`document.getElementById('selectZone')?.options.length > 3`, 30000));
     await js(`window.alert = () => {}, true`);
