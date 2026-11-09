@@ -29,3 +29,8 @@ export const scoreOf = (net, cost, monotone) => { const used = monotone ? Math.m
 // The order: the larger score first (the smaller buyer payback), a tie by the larger buyer net, then the larger party gain.
 // `est` carries score, net (none on a goal that is not profit: read as 0) and gain.
 export const rankEst = (a, b) => (b.score - a.score) || ((b.net ?? 0) - (a.net ?? 0)) || (b.gain - a.gain);
+
+// The profit goal's acceptance: the party's gain and the buyer's net must both be above 0 by at least z/2 errors, and at
+// least one of the two by z errors (so neither can be a net loss, and one is clearly real). `gain`/`se` are the party's
+// (totals; only the ratio matters), `net`/`netSe` the buyer's. At z = 0 it is both above 0.
+export const acceptBoth = (gain, se, net, netSe, z) => gain > 0 && net > 0 && gain >= (z / 2) * se && net >= (z / 2) * netSe && (gain >= z * se || net >= z * netSe);

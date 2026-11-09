@@ -65,6 +65,12 @@ check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c,
     check(worse.net < 0 && !worse.accepted, 'buyer net: a party gain whose buyer supplies cost more than his share of it is refused (net below 0)');
     const edge = [3, 7, 3, 7].map((d) => cp(1000 + d, 100, 50));
     const e = Bm.buyerNet(edge, base, 'B', 1, 'paired', 2);
+    { const ab = Bm.acceptBoth;
+    check(ab(10, 5, 10, 5, 2) && ab(10, 5, 4, 4, 2) && ab(10, 5, 5, 5, 2), 'acceptBoth: both at 2 errors accepted; one at 2 and the other at 1 accepted');
+    check(!ab(10, 5, 2, 4, 2) && !ab(2, 4, 10, 5, 2), 'acceptBoth: one at 2 errors and the other at 0.5 rejected');
+    check(!ab(10, 5, -1, 5, 2) && !ab(-1, 5, 10, 5, 2) && !ab(10, 5, 0, 5, 2), 'acceptBoth: one negative (or zero) rejected');
+    check(!ab(7.5, 5, 6, 4, 2) && ab(7.5, 5, 6, 4, 0) , 'acceptBoth: both at 1.5 errors rejected at z 2');
+    check(ab(0.1, 5, 0.1, 5, 0) && !ab(0.1, 5, 0, 5, 0), 'acceptBoth: z 0 with both positive accepted, a zero refused'); }
     check(e.net > 0 && e.accepted === (e.net >= 2 * e.se) && Bm.buyerNet(edge, base, 'B', 1, 'paired', 1e6).accepted === false, 'buyer net: accepted only when the net is above z errors (--z follows)');
     check(Bm.scoreOf(5, 0, false) === Infinity && Bm.scoreOf(5, 0, true) === Infinity && Bm.scoreOf(-5, 0, false) === -5 && Bm.scoreOf(-5, 0, true) === 0, 'score: price 0 with a net above 0 is Infinity; a monotone lever is floored at 0');
     check(paired.accepted && Bm.scoreOf(paired.net, 0, false) === Infinity, 'price 0: accepted by the buyer test with a net above 0, score Infinity');
@@ -240,14 +246,12 @@ if (res) {
     }
     check(res.singles.every((s) => [s.sharedGainPerUser, s.sharedSePerUser, s.ownSuppliesPerDay, s.ownSuppliesSe].every(Number.isFinite) && s.sharedSePerUser >= 0 && s.ownSuppliesSe >= 0 && (s.paybackOwn === null || Math.abs(s.paybackOwn - s.cost / (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * s.paybackOwn)) && res.singles.every((s) => (s.paybackOwn === null) === !(s.cost > 0 && s.sharedGainPerUser - s.ownSuppliesPerDay > 0)), 'rows: shared gain per user, own supplies and the buyer payback (cost / (shared - supplies), null unless both above 0)');
     check(res.steps.every((s) => Number.isFinite(s.sharedGainPerUser) && Number.isFinite(s.ownSuppliesPerDay) && 'paybackOwn' in s), 'steps: the split fields are present');
-    check(res.singles.every((s) => typeof s.acceptedParty === 'boolean' && Number.isFinite(s.buyerNet) && s.buyerNetSe >= 0 && Math.abs(s.buyerNet - (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * Math.max(1, Math.abs(s.buyerNet)) && s.accepted === (s.buyerNet > 0 && s.buyerNet >= res.z * s.buyerNetSe)), 'buyer test: every row carries acceptedParty, the buyer net (his share of the loot gain minus his supplies change) and its error, and accepted is the net test at z errors');
-    const helpIds = res.singles.filter((s) => s.acceptedParty && !s.accepted).map((s) => s.id);
-    check(Array.isArray(res.helpsParty) && res.helpsParty.length === helpIds.length && res.helpsParty.every((s) => helpIds.includes(s.id) && s.helpsParty === true && s.acceptedParty && !s.accepted) && res.helpsParty.every((s, i, a) => i === 0 || a[i - 1].gainPerUser >= s.gainPerUser) && res.singles.filter((s) => s.helpsParty).length === helpIds.length, 'helps the party: result.helpsParty holds exactly the rows the party test passes and the buyer test refuses, largest party gain first, flagged in singles too');
-    check(res.steps.every((s) => s.accepted && !s.helpsParty), 'helps the party: no step is such a row');
-    check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('## Helps the party, costs its buyer') === (res.helpsParty.length > 0), 'result.md: the group is a section when there are such rows, and only then');
-    console.log(`     (${res.helpsParty.length} rows help the party and cost their buyer)`);
-    check(!res.confirmation || (Number.isFinite(res.confirmation.sharedGainPerUser) && Object.keys(res.confirmation.ownSuppliesByPlayer).join() === Object.keys(res.budgets).join() && Object.keys(res.confirmation.paybackOwnByPlayer).join() === Object.keys(res.budgets).join() && res.confirmation.paybackOwnByPlayer.Beta === null), 'confirmation: shared gain per user, supplies change and buyer payback per player (Beta bought nothing: no payback)');
-    check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Own supplies per day') && readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Payback days (buyer)'), 'result.md: the split columns');
+    const { acceptBoth } = await mod('tools/whatif/buyer.mjs');
+    check(res.singles.every((s) => Number.isFinite(s.buyerNet) && s.buyerNetSe >= 0 && Math.abs(s.buyerNet - (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * Math.max(1, Math.abs(s.buyerNet)) && s.accepted === (acceptBoth(s.gain, s.se, s.buyerNet, s.buyerNetSe, res.z) && !s.judged)), 'accept rule: every row carries the buyer net (his share of the loot gain minus his supplies change) and its error, and accepted is acceptBoth of the party gain and the buyer net at z');
+    check(res.singles.every((s) => !('acceptedParty' in s) && !('helpsParty' in s)) && !('helpsParty' in res) && res.steps.every((s) => s.accepted && !('acceptedParty' in s)), 'no acceptedParty or helpsParty field in the rows, the steps or the result');
+    check(!readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Helps the party'), 'result.md: no helps-the-party section');
+    check(!res.confirmation || (Object.keys(res.confirmation.buyerByPlayer).join() === Object.keys(res.budgets).join() && Object.entries(res.confirmation.buyerByPlayer).every(([p, b]) => Number.isFinite(b.gain) && b.se >= 0 && (b.payback === null || (b.payback > 0 && Math.abs(b.payback - res.confirmation.runningSpend[p] / b.gain) < 1e-6 * b.payback))) && res.confirmation.buyerByPlayer.Beta.payback === null && Number.isFinite(res.confirmation.sharedGainPerUser) && Object.keys(res.confirmation.ownSuppliesByPlayer).join() === Object.keys(res.budgets).join() && Object.keys(res.confirmation.paybackOwnByPlayer).join() === Object.keys(res.budgets).join() && res.confirmation.paybackOwnByPlayer.Beta === null), 'confirmation: buyerByPlayer (gain, error, payback = spent / gain, none for Beta who bought nothing), shared gain per user, supplies change and buyer payback per player');
+    { const md = readFileSync(path.join(dir, 'result.md'), 'utf8'); check(md.includes('Party gain per user') && md.includes("Buyer's gain per day") && md.includes('Cost path') && !md.includes('Own supplies per day') && !md.includes('| Stage |') && !md.includes('Shared gain'), 'result.md: the party and buyer columns, no Stage, Shared gain or Own supplies'); }
     check(!res.confirmation || (res.confirmation.gainPerUser * 2 - res.confirmation.gain < 1e-6 && res.confirmation.runningSpend), 'confirmation: per-user figures and spend');
     console.log(`     (${res.steps.length} steps, ${res.singles.length} singles, ${res.timing.runsThisCall} runs after the resume)`);
 }
@@ -274,10 +278,10 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
     const fills = (fr?.singles || []).filter((s) => s.id.startsWith('Alpha:foodfill='));
     check(fills.length > 0 && fills.every((s) => 'judged' in s && [null, 'deaths', 'kills'].includes(s.judged) && s.ops.length > 0 && s.ops.every((o) => ['food', 'trigger'].includes(o.op))), 'food: every food filling row carries the judge field (null, deaths or kills) and food ops');
     check((fr?.singles || []).filter((s) => !s.id.startsWith('Alpha:foodfill=')).every((s) => s.judged == null), 'judge: no other row is judged');
-    check(fills.filter((s) => !s.hiddenFood).length <= 1 && fills.filter((s) => !s.hiddenFood).every((s) => s.accepted || s.helpsParty) && fills.every((s) => !s.judged || (!s.accepted && !s.acceptedParty)), 'food: at most one food row stays visible per player; a judged row is refused both ways');
+    check(fills.filter((s) => !s.hiddenFood).length <= 1 && fills.every((s) => !s.judged || !s.accepted), 'food: at most one food row stays visible per player; a judged row is refused');
     check(existsSync(path.join(tmp, 'real', f1.json.id, 'need.json')), 'need.json is kept in the search folder');
     const md = readFileSync(path.join(tmp, 'real', f1.json.id, 'result.md'), 'utf8');
-    check(fills.filter((s) => s.hiddenFood).every((s) => !md.includes(s.desc)) && (fr?.helpsParty || []).every((s) => !s.hiddenFood), 'food: the hidden rows are not in result.md, nor in result.helpsParty');
+    check(fills.filter((s) => s.hiddenFood).every((s) => !md.includes(s.desc)), 'food: the hidden rows are not in result.md');
     console.log(`     (${ids.length} candidates, ${fills.length} food fillings, ${fills.filter((s) => !s.hiddenFood).length} visible)`);
 }
 await real.close();

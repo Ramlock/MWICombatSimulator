@@ -149,18 +149,18 @@ check(r.stats.foods === 8 && r.stats.dominated === 0 && r.stats.qualify === 32 &
     const rr = (id, player, extra) => ({ id, player, score: 1, buyerNet: 0, gain: 0, gainPerUser: 0, accepted: false, ...extra });
     const isFood = (r) => r.id.startsWith('f');
     const rows = [rr('f1', 'A', { accepted: true, score: 2 }), rr('f2', 'A', { accepted: true, score: 5 }), rr('f3', 'A', { accepted: false, score: 9 }), rr('d1', 'A', { accepted: true }),
-        rr('f4', 'B', { accepted: false }), rr('f5', 'B', { accepted: false }),
+        rr('f4', 'B', { accepted: false }), rr('f5', 'B', { accepted: false, score: 4 }),
         rr('f6', 'C', { accepted: true, score: 3, buyerNet: 1 }), rr('f7', 'C', { accepted: true, score: 3, buyerNet: 7 }),
-        rr('f8', 'D', { accepted: false, helpsParty: true, gainPerUser: 10 }), rr('f9', 'D', { accepted: false, helpsParty: true, gainPerUser: 30 }), rr('f10', 'D', { accepted: false }),
-        rr('f11', 'E', { accepted: true, score: 2 }), rr('f12', 'E', { accepted: false, helpsParty: true, gainPerUser: 50 })];
+        rr('f8', 'D', { score: 0.5, buyerNet: 3 }), rr('f9', 'D', { score: 0.5, buyerNet: 8 }), rr('f10', 'D', { score: 0.1 }),
+        rr('f11', 'E', { accepted: true, score: 2 }), rr('f12', 'E', { score: 9 })];
     F.hideFoodRows(rows, isFood);
     const hidden = (id) => rows.find((r) => r.id === id).hiddenFood === true;
     check(!hidden('f2') && hidden('f1') && hidden('f3'), 'one food row: of a player\'s accepted food rows the best by score stays; the rest, accepted or not, are hidden');
     check(rows.find((r) => r.id === 'd1').hiddenFood === undefined, 'one food row: a row that is not a food filling is not touched');
-    check(hidden('f4') && hidden('f5'), 'one food row: no accepted food row: every food row of that player is hidden');
+    check(!hidden('f5') && hidden('f4'), 'one food row: no accepted food row: the first in rank order stays, the other is hidden');
     check(!hidden('f7') && hidden('f6'), 'one food row: a tie on score goes to the larger buyer net (the greedy\'s order)');
-    check(!hidden('f9') && hidden('f8') && hidden('f10'), 'one food row: of the helps rows the largest gainPerUser stays, the other helps row and the weak row are hidden');
-    check(!hidden('f11') && hidden('f12'), 'one food row: a player with an accepted food row keeps only that one; his helps-the-party row is hidden too');
+    check(!hidden('f9') && hidden('f8') && hidden('f10'), 'one food row: no accepted food row: the first in rank order over all the rows of that player (rejected ones included) stays: best score, a tie to the larger buyer net');
+    check(!hidden('f11') && hidden('f12'), 'one food row: a player with an accepted food row keeps only that one, even when a rejected row ranks higher');
     check(rows.every((r) => r.hiddenFood === undefined || r.hiddenFood === true), 'one food row: hiddenFood is true or absent');
 }
 
