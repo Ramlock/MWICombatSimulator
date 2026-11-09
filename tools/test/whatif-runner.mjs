@@ -257,6 +257,29 @@ const p1 = await call(rb, 'POST', '/api/search', plainReq);
 const pf = (await wait(p1.json.id, (r) => r.state !== 'running')).r;
 if (pf.state !== 'done') console.log(JSON.stringify(pf).slice(0, 600));
 check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && pf.result.options.pricesTimestamp === big.timestamp && pf.result.options.prices === 'tools/calibration/marketplace-2026-11-03.json', 'result: no snapshot in the request: the committed file, its name and its timestamp', JSON.stringify(pf.error || pf.result?.options));
+// Foods and drinks: the consumables and pairs levers on a party with a giant pouch (3 food and 3 drink slots). Foods give
+// food fillings only (no single swap, no "empty this slot", no food pair); drinks keep singles and pairs; every food filling
+// row carries the judge field; one food row per player stays visible.
+{
+    const eater = { ...party[0], name: 'Alpha', player: { ...party[0].player, equipment: [...party[0].player.equipment, { itemLocationHrid: '/item_locations/pouch', itemHrid: '/items/giant_pouch', enhancementLevel: 0 }] },
+        food: { '/action_types/combat': ['/items/donut', '/items/yogurt', '/items/apple_gummy'].map((itemHrid) => ({ itemHrid })) }, drinks: { '/action_types/combat': ['/items/attack_coffee', '/items/defense_coffee'].map((itemHrid) => ({ itemHrid })) } };
+    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'pairs'], stages: ['4x1'], keep: [1], maxSteps: 0, z: 0, jobs: 2 };
+    const f1 = await call(rb, 'POST', '/api/search', reqF);
+    const ff = (await wait(f1.json.id, (r) => r.state !== 'running', 900000)).r;
+    if (ff.state !== 'done') console.log(JSON.stringify(ff).slice(0, 600));
+    const fr = ff.result, ids = fr?.candidateList.map((c) => c.id) || [];
+    check(ff.state === 'done' && ids.some((i) => i.startsWith('Alpha:foodfill=')), 'food: the consumables lever lists food fillings in candidateList', String(ids.length));
+    check(!ids.some((i) => /^Alpha:food\d=/.test(i)) && !ids.some((i) => /^Alpha:food\d\+food\d=/.test(i)), 'food: no single food swap, no "empty this slot", no food pair');
+    check(ids.some((i) => /^Alpha:drink\d=/.test(i)) && ids.some((i) => /^Alpha:drink\d\+drink\d=/.test(i)), 'drinks: singles and pairs are still produced');
+    const fills = (fr?.singles || []).filter((s) => s.id.startsWith('Alpha:foodfill='));
+    check(fills.length > 0 && fills.every((s) => 'judged' in s && [null, 'deaths', 'kills'].includes(s.judged) && s.ops.length > 0 && s.ops.every((o) => ['food', 'trigger'].includes(o.op))), 'food: every food filling row carries the judge field (null, deaths or kills) and food ops');
+    check((fr?.singles || []).filter((s) => !s.id.startsWith('Alpha:foodfill=')).every((s) => s.judged == null), 'judge: no other row is judged');
+    check(fills.filter((s) => !s.hiddenFood).length <= 1 && fills.filter((s) => !s.hiddenFood).every((s) => s.accepted || s.helpsParty) && fills.every((s) => !s.judged || (!s.accepted && !s.acceptedParty)), 'food: at most one food row stays visible per player; a judged row is refused both ways');
+    check(existsSync(path.join(tmp, 'real', f1.json.id, 'need.json')), 'need.json is kept in the search folder');
+    const md = readFileSync(path.join(tmp, 'real', f1.json.id, 'result.md'), 'utf8');
+    check(fills.filter((s) => s.hiddenFood).every((s) => !md.includes(s.desc)) && (fr?.helpsParty || []).every((s) => !s.hiddenFood), 'food: the hidden rows are not in result.md, nor in result.helpsParty');
+    console.log(`     (${ids.length} candidates, ${fills.length} food fillings, ${fills.filter((s) => !s.hiddenFood).length} visible)`);
+}
 await real.close();
 
 // ---- (5) The runner's own page reaches its interface; a page of another origin does not (design section 7 item 1) ----

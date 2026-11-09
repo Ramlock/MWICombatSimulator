@@ -334,7 +334,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
             `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
-        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.helpsParty); // those rows have their own group below
+        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.helpsParty && !s.hiddenFood); // those rows have their own group below; hiddenFood: a food row the search left out (one food row per player)
         const weak = rows.filter(([s]) => !s.accepted);
         L.push('<tbody>' + rows.filter(([s]) => s.accepted).map(([s, i]) => row(s, i)).join('') + '</tbody>');
         if (weak.length) L.push('<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
@@ -343,11 +343,12 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     }
     // 'Helps the party, costs its buyer': the party gains, the buyer's own net is not above 0 by 2 errors. A list, no Apply.
     // A result saved before this field has none: no group, no hint.
-    if (result.helpsParty?.length) {
+    const helpsShown = (result.helpsParty || []).filter((s) => !s.hiddenFood);
+    if (helpsShown.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.helpsParty'))}</div><div class="small text-secondary mb-1">${esc(t('result.helpsPartyHint'))}</div>`);
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
-            result.helpsParty.map((s) => `<tr><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
+            helpsShown.map((s) => `<tr><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
                 `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td></tr>`).join('') + '</tbody></table>');
     }
     if (result.overBudget?.length) {

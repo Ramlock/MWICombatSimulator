@@ -351,5 +351,27 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('helps the party: the apply keys still open their rows (indexes kept)', JSON.stringify(panel.opsFor(withGroup, 'single:0')) === JSON.stringify(result.singles[0].ops) && panel.opsFor(withGroup, 'single:2')[0].item === '/items/steak');
 }
 
+
+// One food row per player (hiddenFood): the other food rows stay in the file but are left out of Each change alone and of the helps group.
+{
+    const row = (extra) => ({ lastStage: '8x300', sharedSePerUser: 100, ownSuppliesPerDay: 0, costPath: 'loadout tweak', cost: 0, payback: null, paybackOwn: null, sePerUser: 50, sharedGainPerUser: 100, ops: [{ op: 'food', player: 'Alpha', index: 0, item: '/items/steak' }], ...extra });
+    const shownFood = row({ id: 'ff1', player: 'Alpha', desc: 'Alpha food: shown-row', gain: 500, se: 100, gainPerUser: 250, accepted: true, acceptedParty: true });
+    const hiddenFood = row({ id: 'ff2', player: 'Alpha', desc: 'Alpha food: hidden-row', gain: 400, se: 100, gainPerUser: 200, accepted: true, acceptedParty: true, hiddenFood: true });
+    const hiddenWeak = row({ id: 'ff3', player: 'Beta', desc: 'Beta food: hidden-weak', gain: 10, se: 100, gainPerUser: 5, accepted: false, acceptedParty: false, hiddenFood: true });
+    const helpsKept = row({ id: 'ff4', player: 'Beta', desc: 'Beta food: helps-kept', gain: 800, se: 100, gainPerUser: 400, accepted: false, acceptedParty: true, helpsParty: true });
+    const helpsHidden = row({ id: 'ff5', player: 'Beta', desc: 'Beta food: helps-hidden', gain: 600, se: 100, gainPerUser: 300, accepted: false, acceptedParty: true, helpsParty: true, hiddenFood: true });
+    const singles = [...result.singles, shownFood, hiddenFood, hiddenWeak, helpsKept, helpsHidden];
+    const html = panel.renderResult({ ...result, singles, helpsParty: [helpsKept] }, t);
+    check('one food row: the best food row is in Each change alone', html.includes('shown-row'));
+    check('one food row: the other food rows (accepted or not) are in neither Each change alone nor the grey body', !html.includes('hidden-row') && !html.includes('hidden-weak'));
+    check('one food row: of the helps group only the row left in result.helpsParty shows; the hidden helps row is not in the page', html.includes('helps-kept') && !html.includes('helps-hidden'));
+    const both = panel.renderResult({ ...result, singles, helpsParty: [helpsKept, helpsHidden] }, t);
+    check('one food row: a hidden row is left out of the helps group even if the file lists it there', both.includes('helps-kept') && !both.includes('helps-hidden'));
+    const none = panel.renderResult({ ...result, singles: [...result.singles, hiddenWeak, hiddenFood] }, t);
+    check('one food row: no accepted food row for a player: none shown, the other kinds keep theirs', !none.includes('hidden-weak') && !none.includes('hidden-row') && none.includes('Food 2'));
+    const older = panel.renderResult({ ...result, singles: [...result.singles, { ...hiddenFood }, { ...hiddenWeak }].map((s) => { const { hiddenFood: h, ...rest } = s; return rest; }) }, t);
+    check('one food row: a result without the field shows every row as before', older.includes('hidden-row') && older.includes('hidden-weak'));
+    check('one food row: the apply keys keep their indexes (a hidden row is skipped, not renumbered)', panel.opsFor({ ...result, singles }, 'single:' + (result.singles.length)).length === 1 && html.includes('data-whatif-apply="single:' + result.singles.length + '"'));
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

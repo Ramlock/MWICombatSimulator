@@ -269,3 +269,28 @@ export async function runParty(opts) {
     }
     return { wallSeconds: (Date.now() - t0) / 1000, checkpoints: out };
 }
+
+// The HP and MP per sim hour each player really gets from combat foods in the base party: the mean over `seeds` of runs of
+// `hours` sim hours, read from the run's own hitpointsGained / manapointsGained (source -> amount) after the run through the
+// onPlayers hook, counting only the sources that are foods. It changes no cached run and no checkpoint.
+// opts: runParty's options (setups, names, tier, zone, comdrop, comexp, moopass, prices ...) plus { seeds, hours }.
+// Returns { hours, seeds, perSeed: [{ <name>: { hp, mp } }], mean: { <name>: { hp, mp } }, sources: { hp: [...], mp: [...] } }
+// (sources: every source key seen, foods or not, so a log can show what was left out).
+export async function measureNeed(opts) {
+    const { seeds, hours = 20 } = opts;
+    const names = opts.names || opts.setups.map((s) => s.name);
+    const isFood = (k) => itemDetailMap[k]?.categoryHrid === '/item_categories/food';
+    const perSeed = [], seen = { hp: new Set(), mp: new Set() };
+    for (const seed of seeds) {
+        let sim;
+        await runParty({ ...opts, seed, checkpoints: [hours], onPlayers: (pls, nm, s) => { sim = s; } });
+        const r = sim.simResult, hrs = sim.simulationTime / ONE_HOUR, row = {};
+        names.forEach((name, i) => {
+            const ph = 'player' + (i + 1), one = (gained, set) => Object.entries(gained[ph] || {}).reduce((a, [k, v]) => { set.add(k); return a + (isFood(k) ? v : 0); }, 0) / hrs;
+            row[name] = { hp: one(r.hitpointsGained, seen.hp), mp: one(r.manapointsGained, seen.mp) };
+        });
+        perSeed.push(row);
+    }
+    const mean = Object.fromEntries(names.map((n) => [n, { hp: perSeed.reduce((a, r) => a + r[n].hp, 0) / perSeed.length, mp: perSeed.reduce((a, r) => a + r[n].mp, 0) / perSeed.length }]));
+    return { hours, seeds, perSeed, mean, sources: { hp: [...seen.hp], mp: [...seen.mp] } };
+}

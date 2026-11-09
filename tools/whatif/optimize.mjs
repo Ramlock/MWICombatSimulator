@@ -58,8 +58,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { readParty, applyOps } from './variants.mjs';
 import { loadMarket, makePricer, TAX_LABEL } from './prices.mjs';
-import { DEFAULT_PRICES, buildDtos, root } from './engine.mjs';
+import { DEFAULT_PRICES, buildDtos, root, measureNeed } from './engine.mjs';
 import { consumableType, swapCands, tierPairCands } from './consumables.mjs';
+import { foodFillCands, hideFoodRows } from './foodfill.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands } from './triggers.mjs';
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
@@ -130,6 +131,7 @@ const [probeK, probeH] = String(arg('probe', '1x50')).split('x').map(Number);
 const trigOpts = { owners: list(arg('trigger-owners', null)), fixed: list(arg('trigger-fixed', null)) };
 const userTrig = arg('trigger-cands', null) ? JSON.parse(readFileSync(arg('trigger-cands'), 'utf8')) : {};
 let probeStore = null; // set by probeBase() before candidates are built
+let needStore = null; // set by needBase() before candidates are built: the party's food need per player (foodfill.mjs)
 const metric = (cp) => (goal === 'exp' ? cp.party.expPerHour : cp.party.profitAfterTaxPerDay);
 const setups0 = readParty(setupsDir);
 const pricer = makePricer(loadMarket(pricesFile));
@@ -315,17 +317,40 @@ function consumableSlots(setups, p) {
     const d = buildDtos(t)[i];
     return { food: d.food.filter(Boolean).length, drink: d.drinks.filter(Boolean).length };
 }
-// One food and one drink of each type at a time (consumables.mjs); --levers pairs adds both slots of a kind
-// changed together, each to another tier of its own type.
+// Drinks: one drink of each type at a time (consumables.mjs); --levers pairs adds both slots changed together, each to
+// another tier of its own type. Foods: every food slot refilled at once (foodfill.mjs, from the party's measured need) and
+// the single food swaps, "empty this slot" and the food tier pairs are not produced for foods.
 const typeOf = (h) => consumableType(itemDetailMap[h]);
 function consumableCands(setups, p, withSingles, withPairs) {
     const s = setups.find((x) => x.name === p), n = consumableSlots(setups, p), out = [];
     for (const [kind, key, pool] of [['food', 'food', FOODS], ['drink', 'drinks', DRINKS]]) {
         const list = Array.from({ length: n[kind] }, (_, i) => s[key]['/action_types/combat']?.[i]?.itemHrid || null);
+        if (kind === 'food') { out.push(...foodCands(s, p, list)); continue; }
         if (withSingles) out.push(...swapCands(p, kind, list, n[kind], pool, typeOf));
         if (withPairs) out.push(...tierPairCands(p, kind, list, n[kind], pool, typeOf));
     }
     return out;
+}
+function foodCands(s, p, baseline) {
+    const need = needStore?.mean[p];
+    if (!need) return [];
+    const { cands, stats: st } = foodFillCands(p, { items: itemDetailMap, market, baseline, triggerMap: s.triggerMap, need });
+    const f = (x) => Math.round(x);
+    console.log(st.qualify ? `${p} food: need ${f(need.hp)} HP and ${f(need.mp)} MP per hour; ${st.dominated} of ${st.foods} foods dominated; ${st.qualify} fillings qualify; ${st.left} left after the cheapest 3 per type (current foods kept, the current filling left out)`
+        : `${p} food: need ${f(need.hp)} HP and ${f(need.mp)} MP per hour; no filling qualifies, no food-fill candidates`);
+    return cands;
+}
+// The need: HP and MP per hour the base party gets from its foods (engine.mjs measureNeed), kept in <out>/need.json for
+// this base and these seeds, like probe.json.
+const NEED_SEEDS = seedsFor(3), NEED_HOURS = 20;
+async function needBase() {
+    const file = path.join(OUT, 'need.json'), key = keyOf([]);
+    if (existsSync(file)) { const n = JSON.parse(readFileSync(file, 'utf8')); if (n.key === key && n.hours === NEED_HOURS && JSON.stringify(n.seeds) === JSON.stringify(NEED_SEEDS)) return n; }
+    const t1 = Date.now(), m = await measureNeed({ ...options, setups: setups0, seeds: NEED_SEEDS, hours: NEED_HOURS });
+    console.log(`need: ${NEED_SEEDS.length} seeds x ${NEED_HOURS} h, ${((Date.now() - t1) / 1000).toFixed(0)} s`);
+    const n = { key, ...m };
+    writeFileSync(file, JSON.stringify(n));
+    return n;
 }
 // Swaps to an item in the exporter's inventory: no gold cost; selling it instead is its only price (after tax).
 function ownedCands(setups, p, slots) {
@@ -440,7 +465,16 @@ function estimate(baseOps, c, st, baseSeeds) {
         ({ net, se: netSe, accepted } = buyerNet(vcp, bcp, c.player, setups0.length, errorRule, z));
         score = scoreOf(net, cost, c.monotone); // 1 / the buyer's payback
     } else score = cost <= 0 ? (g > 0 ? Infinity : g) : g / cost;
-    return { stage: `${st.k}x${st.h}`, seeds: vSeeds, baseSeeds: bSeeds, gain, se, shared, own, ...(goal === 'profit' ? { net, netSe } : {}), base: mean(bs), score, payback, accepted, acceptedParty };
+    const judged = judgeFood(c, vcp, bcp);
+    return { judged, stage: `${st.k}x${st.h}`, seeds: vSeeds, baseSeeds: bSeeds, gain, se, shared, own, ...(goal === 'profit' ? { net, netSe } : {}), base: mean(bs), score, payback, accepted: accepted && !judged, acceptedParty: acceptedParty && !judged };
+}
+// The sim as judge for a food filling: refused when, on the same series and error rule as the gain, the party's deaths per
+// hour are higher than the base's by more than z x the error, or its encounters per hour (the kills) are lower by that much.
+// Other candidate kinds are never judged here. Returns 'deaths', 'kills' or null.
+function judgeFood(c, vcp, bcp) {
+    if (c.kind !== 'food-fill') return null;
+    const d = diffStat(vcp.map((cp) => cp.party.deathsPerHour), bcp.map((cp) => cp.party.deathsPerHour)), k = diffStat(vcp.map((cp) => cp.encountersPerHour), bcp.map((cp) => cp.encountersPerHour));
+    return d.gain > z * d.se ? 'deaths' : -k.gain > z * k.se ? 'kills' : null;
 }
 // Order: the buyer's score (1 / his payback), a tie by the larger buyer net, then the larger party gain.
 const rank = (a, b) => rankEst(a.est, b.est);
@@ -451,6 +485,7 @@ async function main() {
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
     if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(); }
+    if (levers.has('consumables') || levers.has('pairs')) { report({ stage: 'need' }); needStore = await needBase(); }
     let cands = players.flatMap((p) => allCandidates(setups0, p));
     if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
     result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
@@ -482,7 +517,9 @@ async function main() {
     { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
     result.singles = cands.map((c) => row(c)).sort((a, b) => (a.lastStage === b.lastStage ? (b.score - a.score) : (b.stageIndex - a.stageIndex)));
     // 'Helps the party, costs its buyer': the party test passes, the buyer's does not. Listed, never bought.
-    result.helpsParty = result.singles.filter((r) => r.helpsParty).sort((a, b) => b.gainPerUser - a.gainPerUser);
+    // One food row per player (foodfill.mjs hideFoodRows): the others stay in singles with hiddenFood and are left out of the report.
+    { const food = new Set(cands.filter((c) => c.kind === 'food-fill').map((c) => c.id)); hideFoodRows(result.singles, (r) => food.has(r.id)); }
+    result.helpsParty = result.singles.filter((r) => r.helpsParty && !r.hiddenFood).sort((a, b) => b.gainPerUser - a.gainPerUser);
 
     // Greedy stacking on the finalists.
     let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
@@ -505,7 +542,7 @@ async function main() {
         finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && affordable(c, budgets, spent) && (
             c.groups.some((g) => touched.has(g)) && c.kind === 'equip' && (best.kind === 'equip' || best.kind === 'owned')
                 ? (c.monotone || !onlyCands || onlyCands.includes(c.id))
-                : c.groups.some((g) => touched.has(g)) && c.kind === 'trigger' ? false // stale: built on the owner's old list
+                : c.groups.some((g) => touched.has(g)) && (c.kind === 'trigger' || c.kind === 'food-fill') ? false // stale: built on the owner's old list / old foods
                     : (survivors.has(c.id) && c.id !== best.id)));
         // Coordinate-wise rounds (3.5 item 3): the changed owner's terms get local candidates around the new values.
         if (best.kind === 'trigger') finalists.push(...localCands(setupsNow.find((x) => x.name === best.player), best.player, probeStore, best.owner));
@@ -539,7 +576,7 @@ const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: 
 function row(c) {
     const est = c.est, n = setups0.length;
     const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
-    return { ...split, id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, acceptedParty: c.est.acceptedParty, ...(c.est.acceptedParty && !c.est.accepted ? { helpsParty: true } : {}), ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+    return { ...split, id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, acceptedParty: c.est.acceptedParty, judged: c.est.judged ?? null, ...(c.est.acceptedParty && !c.est.accepted ? { helpsParty: true } : {}), ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -576,7 +613,7 @@ function done(result) {
     if (result.confirmation) { const c = result.confirmation; L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): gain ${fmt(c.gain)} ± ${fmt(c.se)} ${unit()}, cost ${fmt(c.cost)}, payback ${c.payback?.toFixed(1) ?? '-'} days.`); }
     L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Stage | Gain | ± se | Shared gain per user | ± se | Own supplies per day | Cost | Payback days | Payback days (buyer) | Cost path |', '|---|---|---|---|---|---|---|---|---|---|---|');
     const rowMd = (s) => `| ${s.desc} | ${s.lastStage} | ${fmt(s.gain)} | ${fmt(s.se)} | ${fmt(s.sharedGainPerUser)} | ${fmt(s.sharedSePerUser)} | ${fmt(s.ownSuppliesPerDay)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.paybackOwn?.toFixed(1) ?? '-'} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`;
-    for (const s of result.singles) if (!s.helpsParty) L.push(rowMd(s));
+    for (const s of result.singles) if (!s.helpsParty && !s.hiddenFood) L.push(rowMd(s));
     if (result.helpsParty?.length) {
         L.push('', '## Helps the party, costs its buyer', '', 'Not bought: the party gains, but the player who pays does not earn it back (their share of the loot minus their own extra supplies is not above 0 by 2 errors).', '', '| Change | Stage | Gain | ± se | Shared gain per user | ± se | Own supplies per day | Cost | Payback days | Payback days (buyer) | Cost path |', '|---|---|---|---|---|---|---|---|---|---|---|');
         for (const s of result.helpsParty) L.push(rowMd(s));
