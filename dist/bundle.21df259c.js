@@ -3270,7 +3270,7 @@ function splitCells(row, goalExp) {
     return cell(num(row.sharedGainPerUser)) + cell('± ' + num(row.sharedSePerUser)) + cell(num(row.ownSuppliesPerDay));
 }
 const buyerPayback = (row, goalExp) => (goalExp || !hasSplit(row) ? paybackCell(row) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound }));
-const colHead = (t) => [`<th>${esc(t('col.gain'))}</th>`, `<th>${esc(t('col.se'))}</th>`, `<th title="${esc(t('col.ownSuppliesTip'))}">${esc(t('col.ownSupplies'))}</th>`].join('');
+const colHead = (t) => [`<th class="num">${esc(t('col.gain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`, `<th class="num" title="${esc(t('col.ownSuppliesTip'))}">${esc(t('col.ownSupplies'))}</th>`].join('');
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
@@ -3300,8 +3300,8 @@ function renderResult(result, t, now = Date.now(), names = null) {
     if (!result.steps?.length) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
-            ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
-            players.map((p) => `<th>${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
+            ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
+            players.map((p) => `<th class="num">${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
                 splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
@@ -3318,7 +3318,7 @@ function renderResult(result, t, now = Date.now(), names = null) {
         L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${shared ? num(shared.g) + ' ± ' + num(shared.se) : '—'}</b> ${esc(t('result.perUserDay'))}, ` +
             `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}` +
             (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}`) + '</div>');
-        if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1 small">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: confirmedPayback(c.paybackOwnByPlayer?.[p]), costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
+        if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: confirmedPayback(c.paybackOwnByPlayer?.[p]), costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
     if (players.length) {
@@ -3330,7 +3330,7 @@ function renderResult(result, t, now = Date.now(), names = null) {
     if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table whatif-each"><thead><tr>' +
-            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
+            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
             splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
@@ -3349,7 +3349,7 @@ function renderResult(result, t, now = Date.now(), names = null) {
     if (helpsShown.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.helpsParty'))}</div><div class="small text-secondary mb-1">${esc(t('result.helpsPartyHint'))}</div>`);
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
-            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
+            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '</tr></thead><tbody>' +
             helpsShown.map((s) => `<tr><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
                 `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td></tr>`).join('') + '</tbody></table>');
     }
@@ -9320,4 +9320,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.b447b937.js.map
+//# sourceMappingURL=bundle.21df259c.js.map
