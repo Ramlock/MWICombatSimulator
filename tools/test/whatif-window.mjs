@@ -131,7 +131,7 @@ try {
     check('the window lists the levers, equipment ticked', await js(`document.querySelectorAll('#whatIfLevers input').length === 11 && document.getElementById('whatIfLever_equip').checked && !document.getElementById('whatIfLever_houses').checked`));
     check('the runner version is shown', await js(`document.getElementById('whatIfVersion').textContent.includes('test-runner')`));
     // The character export per player: a paste box and a status line under each ticked player.
-    const exportOf = (name) => ({ name, coin: 5, inventory: [{ itemHrid: '/items/cheese_sword', enhancementLevel: 1, count: 1 }], learnedAbilities: [] });
+    const exportOf = (name, coin = 5) => ({ name, coin, inventory: [{ itemHrid: '/items/cheese_sword', enhancementLevel: 1, count: 1 }], learnedAbilities: [] });
     const paste = (player, text) => js(`(() => { const b = document.querySelector('#whatIfBudgets textarea[data-player="${player}"]'); b.value = ${JSON.stringify(text)}; b.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     const statusOf = (player) => js(`document.querySelector('#whatIfBudgets [data-export-status="${player}"]').textContent`);
     const stored = (player) => js(`localStorage.getItem('whatIfExport:${player}')`);
@@ -141,14 +141,14 @@ try {
     await js(`document.getElementById('whatIfLever_owned').click(), true`);
     await paste('Player 1', 'this is not json');
     check('a bad paste is not kept and the status says so', (await statusOf('Player 1')) === 'not a character export: not kept' && (await stored('Player 1')) === null);
-    await paste('Player 1', JSON.stringify(exportOf('First')));
-    check('a valid paste is kept in storage under the player\'s name, the box is emptied, the status names the export', (await stored('Player 1')) === JSON.stringify(exportOf('First')) && (await statusOf('Player 1')) === 'kept (First)' && (await js(`document.querySelector('#whatIfBudgets textarea').value`)) === '');
-    await paste('Player 1', JSON.stringify(exportOf('Second')));
-    check('a new paste replaces the kept one', (await stored('Player 1')) === JSON.stringify(exportOf('Second')) && (await statusOf('Player 1')) === 'kept (Second)');
+    await paste('Player 1', JSON.stringify(exportOf('Player 1', 5)));
+    check('a valid paste is kept in storage under the player\'s name, the box is emptied, the status names the export', (await stored('Player 1')) === JSON.stringify(exportOf('Player 1', 5)) && (await statusOf('Player 1')) === 'kept (Player 1)' && (await js(`document.querySelector('#whatIfBudgets textarea').value`)) === '');
+    await paste('Player 1', JSON.stringify(exportOf('Player 1', 6)));
+    check('a new paste replaces the kept one', (await stored('Player 1')) === JSON.stringify(exportOf('Player 1', 6)) && (await statusOf('Player 1')) === 'kept (Player 1)');
     await paste('Player 1', '{"name":"x"}');
-    check('a bad paste over a kept one leaves the kept export in storage', (await stored('Player 1')) === JSON.stringify(exportOf('Second')) && (await statusOf('Player 1')) === 'not a character export: not kept');
+    check('a bad paste over a kept one leaves the kept export in storage', (await stored('Player 1')) === JSON.stringify(exportOf('Player 1', 6)) && (await statusOf('Player 1')) === 'not a character export: not kept');
     await js(`(document.querySelector('#whatIfBudgets textarea').value = '', document.getElementById('whatIfPlayer_2').click(), true)`);
-    check('a player ticked later has a paste box of their own and no export', (await statusOf('Player 2')) === 'no export' && (await statusOf('Player 1')) === 'kept (Second)');
+    check('a player ticked later has a paste box of their own and no export', (await statusOf('Player 2')) === 'no export' && (await statusOf('Player 1')) === 'kept (Player 1)');
     await js(`document.getElementById('whatIfPlayer_2').click(), true`);
     // Layout: five, three and one players at 1500x900 and 1100x900; one row per player with one pitch, equal columns and
     // section gaps, Goal inline like Zone and Tier, the button row and both columns inside the window.
@@ -167,7 +167,9 @@ try {
         gaps.push(r(btn).top - Math.max(kids[kids.length - 1].bottom, rightBottom));
         const g = r(document.getElementById('selectWhatIfGoal')), z = r(document.getElementById('selectWhatIfZone')), t = r(document.getElementById('selectWhatIfTier'));
         const gl = r(document.querySelector('label[for="selectWhatIfGoal"]')), zl = r(document.querySelector('label[for="selectWhatIfZone"]'));
-        return { rows: rows.length, cols, pitch, heights, oneLine,
+        const hintFits = rows.every((x) => { const t = x.children[2], cs = getComputedStyle(t), c = document.createElement('canvas').getContext('2d'); c.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; return c.measureText(t.placeholder).width <= t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); });
+        const goalPlain = getComputedStyle(document.querySelector('label[for="selectWhatIfGoal"]')).fontWeight === getComputedStyle(document.querySelector('label[for="selectWhatIfZone"]')).fontWeight;
+        return { hintFits, goalPlain, rows: rows.length, cols, pitch, heights, oneLine,
             statusTitles: rows.every((x) => x.children[3].title === x.children[3].textContent),
             inside: r(btn).bottom <= win.bottom && r(btn).bottom <= r(body).bottom && body.scrollHeight <= body.clientHeight + 1 && win.bottom <= innerHeight,
             btnBottom: Math.round(r(btn).bottom), winBottom: Math.round(win.bottom),
@@ -185,6 +187,8 @@ try {
             check(`${tag}: the Start search row is inside the window, no scrolling`, L.inside, JSON.stringify(L));
             check(`${tag}: every section gap is equal`, L.gaps.length >= 4 && Math.max(...L.gaps) - Math.min(...L.gaps) < 1, JSON.stringify(L.gaps));
             check(`${tag}: the column bottoms are within 120 px`, Math.abs(L.leftBottom - L.rightBottom) <= 120, `${L.leftBottom} vs ${L.rightBottom}`);
+            check(`${tag}: the whole paste hint fits inside the field`, L.hintFits, JSON.stringify(L));
+            check(`${tag}: the Goal label has the weight of Zone and Tier`, L.goalPlain);
             check(`${tag}: Goal sits inline with its label like Zone and Tier`, L.goalInline, JSON.stringify(L));
             if (n === 5 && shotsLayout) await shot('whatIfModal', `layout2/layout2-${w}x${h}.png`);
         }
@@ -206,7 +210,7 @@ try {
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
         received.budgets['Player 1'] === 1000000 && received.levers.join() === 'equip,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
     check('the request follows the window\'s zone, tier and players, not the page\'s', received.options.zone === windowZone && windowZone !== pageChoices.zone && received.options.tier === 1 && received.players.join() === 'Player 1', JSON.stringify(received.options.zone) + ' ' + JSON.stringify(received.players));
-    check('the request carries the export map for the ticked players that have one, nobody else', !!received.export && Object.keys(received.export).join() === 'Player 1' && received.export['Player 1'].name === 'Second', JSON.stringify(received.export)?.slice(0, 200));
+    check('the request carries the export map for the ticked players that have one, nobody else', !!received.export && Object.keys(received.export).join() === 'Player 1' && received.export['Player 1'].coin === 6, JSON.stringify(received.export)?.slice(0, 200));
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
     check('the progress bar has a dark track and a fill of its own in dark mode', await js(`(() => { const p = document.querySelector('#whatIfProgress .whatif-progress'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const t = getComputedStyle(p).backgroundColor, b = getComputedStyle(p.querySelector('.progress-bar')).backgroundColor; return lum(t) < 150 && t !== b && getComputedStyle(p).borderTopWidth !== '0px'; })()`));
     await shot('whatIfModal', 'whatif-progress.png');
@@ -270,7 +274,7 @@ try {
     await page.send('Page.navigate', { url: base });
     await until(`document.getElementById('buttonWhatIf')?.style.display === ''`);
     await js(`(() => { document.getElementById('player1').checked = true; document.getElementById('buttonWhatIf').click(); return true; })()`);
-    check('after a page reload the kept export is still there', await until(`document.querySelector('#whatIfBudgets [data-export-status="Player 1"]')?.textContent === 'kept (Second)'`));
+    check('after a page reload the kept export is still there', await until(`document.querySelector('#whatIfBudgets [data-export-status="Player 1"]')?.textContent === 'kept (Player 1)'`));
     page.close();
 } finally {
     await chrome.close();
