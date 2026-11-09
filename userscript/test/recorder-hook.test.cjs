@@ -132,7 +132,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0\.7\.3/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.8.0/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -196,9 +196,42 @@ await test('cross-tab link: the game tab leaves the party in storage; the simula
     assert.ok(c.sim.toasts.some((t) => /no party data from the game/.test(t)));
 });
 
+await test('the snapshot carries selected and fight, kept live by party_updated, actions_updated and action_completed; the page button applies them', () => {
+    const store = {};
+    const game = boot(store);
+    const A = (o) => ({ id: 7, partyID: 0, ordinal: 0, isDone: false, ...o });
+    game.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [], characterActions: [A({ actionHrid: '/actions/combat/zone_a', difficultyTier: 1 })], partyInfo: null });
+    let snap = JSON.parse(store.mwicsGroupSnapshot);
+    assert.deepEqual(snap.selected, [1]);
+    assert.equal(snap.fight.zone, '/actions/combat/zone_a');
+    assert.equal(snap.fight.tier, 1);
+    assert.equal(snap.fight.source, 'action');
+    game.send({ type: 'party_updated', partyInfo: { party: { status: 'battling', actionHrid: '/actions/combat/zone_b', difficultyTier: 3 }, partySlotMap: {} } });
+    snap = JSON.parse(store.mwicsGroupSnapshot);
+    assert.deepEqual([snap.fight.zone, snap.fight.tier, snap.fight.source], ['/actions/combat/zone_b', 3, 'party']);
+    game.send({ type: 'party_updated', partyInfo: { party: { status: 'disbanded' }, partySlotMap: {} } });
+    game.send({ type: 'actions_updated', endCharacterActions: [A({ actionHrid: '/actions/combat/zone_a', difficultyTier: 2, isDone: false })] });
+    snap = JSON.parse(store.mwicsGroupSnapshot);
+    assert.deepEqual([snap.fight.zone, snap.fight.tier], ['/actions/combat/zone_a', 2]);
+    game.send({ type: 'actions_updated', endCharacterActions: [A({ isDone: true })] });
+    snap = JSON.parse(store.mwicsGroupSnapshot);
+    assert.equal(snap.fight.kind, 'idle');
+    assert.equal(game.reqs.length, 0, 'nothing is sent');
+
+    game.send({ type: 'actions_updated', endCharacterActions: [A({ actionHrid: '/actions/combat/zone_a', difficultyTier: 2 })] });
+    const els = { player1: { checked: false }, player2: { checked: true }, selectZone: { value: 'a', options: [{ value: '/actions/combat/zone_a' }] }, selectDifficulty: { value: '0', options: [{ value: '0' }, { value: '2' }] }, selectDungeon: { value: '', options: [] }, simDungeonToggle: { checked: false, dispatchEvent() {} } };
+    const input = { value: '' }, clicks = [];
+    const dom = { ...els, buttonImportExport: { closest: () => ({ insertAdjacentElement() {} }) }, inputSetGroupCombatAll: input, buttonImportSet: { click() { clicks.push('import'); } }, 'group-combat-tab': { click() {} } };
+    const sim = boot({ ...store }, { location: { hostname: 'ramlock.github.io' }, dom });
+    sim.intervals[0]();
+    sim.created.find((e) => e.id === 'mwicsImportParty').on();
+    assert.deepEqual(Object.keys(JSON.parse(input.value)), ['1'], 'the pasted text carries only the slots');
+    assert.deepEqual([els.player1.checked, els.player2.checked, els.selectZone.value, els.selectDifficulty.value], [true, false, '/actions/combat/zone_a', '2']);
+});
+
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0\.7\.3/);
-    assert.ok(SRC.includes("const VERSION = '0.7.3'"));
+    assert.match(SRC, /@version\s+0.8.0/);
+    assert.ok(SRC.includes("const VERSION = '0.8.0'"));
 });
 
 await test('Copy group export: reads the battle start and a shared profile from the socket, keeps profiles across a reload, never sends', async () => {

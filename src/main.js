@@ -28,6 +28,7 @@ import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
 import { fetchMarketplace } from "./marketplace.mjs";
+import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
@@ -4652,12 +4653,15 @@ function doGroupImport() {
             }
         }
     } else {
-        const importMap = JSON.parse(value);
+        // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
+        const { slots: importMap, selected, fight } = splitGroupImport(JSON.parse(value));
         for (const id of Object.keys(importMap)) {
             const slotJson = typeof importMap[id] === "string" ? importMap[id] : JSON.stringify(importMap[id]);
             playerDataMap[id] = mergePlayerImport(playerDataMap[id], slotJson);
         }
         needUpdateCurrentTab = true;
+        const applied = applyGroupSelection(document, { selected, fight });
+        if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
     }
 
     if (needUpdateCurrentTab) {

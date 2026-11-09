@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.8.0 (2026-11-09)
+
+- The party snapshot the simulator page reads now also says which players to tick (the slots of the party) and which zone and tier the group is fighting, and the "Import party from game" button ticks those players and sets that zone and tier (a dungeon switches the dungeon option on first). The zone and tier come from the game's own party and action messages, which the script now also reads (read-only, like the others). Idle, or in the Labyrinth, there is no zone or tier and the page keeps what it has; a zone or tier the page does not offer is left as it is. An older snapshot, or an older simulator page, imports exactly as before.
+
 ### 0.7.3 (2026-11-08)
 
 - The combat recording now keeps every damage hit you and your party deal, not only the totals: when it happened, who dealt it, which ability, which enemy, how much, and whether it hit, missed or crit. Each fight stores them as one short packed text, about 70 KB per hour of fighting (the totals stay as they were). The "own character only" export keeps only your hits. A fight stores at most 20000 hits; any beyond that are counted, not kept. Damage you take is not stored hit by hit yet.

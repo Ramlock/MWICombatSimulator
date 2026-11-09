@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.7.3
+// @version      0.8.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -299,7 +299,74 @@
         if (!s || !s.group || !Object.keys(s.group).length) return { ok: false, message: 'MWI Combat Tracker: no party data from the game yet. Open the game in another tab with the exporter on, start a battle, then try again.' };
         const ageMin = Math.max(0, Math.round((now - (s.t || 0)) / 60000));
         if (now - (s.t || 0) > SNAP_MAX_AGE_MS) return { ok: false, message: 'MWI Combat Tracker: the party data from the game is ' + ageMin + ' min old (limit ' + SNAP_MAX_AGE_MS / 60000 + '). Open or refresh the game tab, then try again.' };
-        return { ok: true, group: s.group, slots: s.slots || [], ageMin };
+        // `selected` and `fight` are optional (a snapshot written before 0.8.0 has neither); a malformed one is dropped, never an error.
+        const selected = Array.isArray(s.selected) ? s.selected.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 5) : null;
+        const fight = s.fight && typeof s.fight === 'object' && !Array.isArray(s.fight) ? s.fight : null;
+        return { ok: true, group: s.group, slots: s.slots || [], ageMin, ...(selected ? { selected } : {}), ...(fight ? { fight } : {}) };
+    }
+
+    // ---- The fight the group is in (zone, tier) and who to tick; read-only from the game's own messages ----
+    // actions: the game's characterActions list (the current action is the first). applyActionsUpdate mirrors how the game's client
+    // keeps it for actions_updated.endCharacterActions: a finished action leaves, a known id is replaced, a new one is added;
+    // party actions sort first, then by ordinal.
+    function applyActionsUpdate(actions, updates) {
+        let list = Array.isArray(actions) ? actions.slice() : [];
+        let resort = false;
+        for (const u of Array.isArray(updates) ? updates : []) {
+            if (!u) continue;
+            if (u.isDone) { list = list.filter((a) => a.id !== u.id); continue; }
+            const i = list.findIndex((a) => a.id === u.id);
+            if (i >= 0) { if (list[i].ordinal !== u.ordinal) resort = true; list[i] = u; } else { list.push(u); resort = true; }
+        }
+        if (resort) list.sort((a, b) => (a.partyID !== 0 && b.partyID === 0 ? -1 : a.partyID === 0 && b.partyID !== 0 ? 1 : a.ordinal - b.ordinal));
+        return list;
+    }
+    // ctx: { actions (characterActions), partyInfo, clientObj, now }. Returns { zone, tier, kind, status, source, t }, or null when
+    // nothing is known. A battling party names the fight (source 'party'); otherwise the character's current action does ('action').
+    // Idle (no action) is kind 'idle'; the Labyrinth has no zone or tier. A dungeon is told by the client data's category.
+    function currentFight(ctx) {
+        const party = ctx.partyInfo && ctx.partyInfo.party || null;
+        const status = party && typeof party.status === 'string' ? party.status : null;
+        const first = Array.isArray(ctx.actions) && ctx.actions.length ? ctx.actions[0] : null;
+        let hrid = null, tier = null, source = null;
+        if (party && status === 'battling' && party.actionHrid) { hrid = party.actionHrid; tier = party.difficultyTier; source = 'party'; }
+        else if (first && first.actionHrid) { hrid = first.actionHrid; tier = first.difficultyTier; source = 'action'; }
+        else if (Array.isArray(ctx.actions) || party) return { zone: null, tier: null, kind: 'idle', status, source: party ? 'party' : 'action', t: ctx.now };
+        else return null;
+        const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+        if (String(hrid).startsWith('/actions/labyrinth')) return { zone: null, tier: null, kind: 'labyrinth', status, source, t: ctx.now };
+        if (!String(hrid).startsWith('/actions/combat/')) return { zone: null, tier: null, kind: 'idle', status, source, t: ctx.now };
+        const dungeon = ctx.clientObj?.actionDetailMap?.[hrid]?.category === '/action_categories/combat/dungeons';
+        return { zone: hrid, tier: num(tier), kind: dungeon ? 'dungeon' : 'combat', status, source, t: ctx.now };
+    }
+
+    // Applies a snapshot's selection to the simulator page (the older page has no paste support for it). `doc` is the page's document.
+    // Order: the dungeon toggle (its change handler ticks all and limits the tiers), the player ticks, the zone, the tier.
+    // A zone or tier the page does not offer is left as it is; it is listed in `skipped`, never an error.
+    function applySelectionDom(doc, snap) {
+        const out = { ticked: null, dungeon: null, zone: null, tier: null, skipped: [] };
+        const selected = snap && snap.selected, fight = snap && snap.fight;
+        if (!selected && !fight) return out;
+        const get = (id) => doc.getElementById(id);
+        const offers = (sel, v) => !!sel && Array.from(sel.options || []).some((o) => o.value === v && !o.disabled);
+        const toggle = get('simDungeonToggle'), zoneSel = get('selectZone'), dungeonSel = get('selectDungeon'), tierSel = get('selectDifficulty');
+        const zone = fight && typeof fight.zone === 'string' && fight.zone ? fight.zone : null;
+        const tier = fight && fight.tier !== null && fight.tier !== undefined && fight.tier !== '' && Number.isInteger(Number(fight.tier)) ? String(Number(fight.tier)) : null;
+        const kind = fight && (fight.kind === 'dungeon' || fight.kind === 'combat') ? fight.kind : (zone && offers(dungeonSel, zone) ? 'dungeon' : (zone && offers(zoneSel, zone) ? 'combat' : null));
+        if (toggle && kind && toggle.checked !== (kind === 'dungeon')) { toggle.checked = kind === 'dungeon'; const E = (doc.defaultView && doc.defaultView.Event) || (typeof Event === 'function' ? Event : null); toggle.dispatchEvent(E ? new E('change') : { type: 'change' }); }
+        if (toggle) out.dungeon = !!toggle.checked;
+        if (selected) {
+            out.ticked = [];
+            for (let n = 1; n <= 5; n++) { const box = get('player' + n); if (!box) continue; box.checked = selected.includes(n); if (box.checked) out.ticked.push(n); }
+        }
+        if (zone) {
+            const target = toggle && toggle.checked ? dungeonSel : zoneSel;
+            if (offers(target, zone)) { target.value = zone; out.zone = zone; } else out.skipped.push('zone ' + zone);
+        }
+        if (tier !== null) {
+            if (offers(tierSel, tier)) { tierSel.value = tier; out.tier = Number(tier); } else out.skipped.push('tier ' + tier);
+        }
+        return out;
     }
 
     // ================= Bonus attribution (pure; no DOM, no game access) =================
@@ -984,7 +1051,7 @@
 
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -1000,7 +1067,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.7.3'; // keep equal to @version (a test checks it)
+    const VERSION = '0.8.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1056,6 +1123,14 @@
     let grp = { members: [], profiles: [] };
     try { const g = JSON.parse(GM_getValue(GROUP_KEY, 'null')); if (g && Array.isArray(g.members) && Array.isArray(g.profiles)) grp = g; } catch { /* start empty */ }
     function saveGroup() { try { GM_setValue(GROUP_KEY, JSON.stringify(grp)); } catch (err) { console.error('[MWI Combat Tracker] could not save the party data', err); } }
+    // The game's own current actions and party, kept live from init_character_data, actions_updated, action_completed and party_updated.
+    let liveActions = null, livePartyInfo = null;
+    function noteAction(obj) { const ea = obj && obj.endCharacterAction; if (ea && Array.isArray(liveActions)) liveActions = liveActions.map((a) => (a && a.id === ea.id ? ea : a)); }
+    function noteFightMsg(type, obj) {
+        if (type === 'party_updated') livePartyInfo = (obj && obj.partyInfo) || null;
+        else if (type === 'actions_updated') liveActions = applyActionsUpdate(liveActions, obj && obj.endCharacterActions);
+        publishSnapshot();
+    }
     function noteBattle(obj) { const m = trimBattle(obj); if (m.length) { grp.members = m; saveGroup(); publishSnapshot(); } }
     function noteProfile(obj) {
         const p = trimProfile(obj);
@@ -1074,7 +1149,11 @@
     function publishSnapshot() {
         try {
             const r = buildGroup();
-            if (r) GM_setValue(SNAP_KEY, JSON.stringify({ t: Date.now(), group: r.group, slots: r.slots }));
+            if (r) {
+                const now = Date.now();
+                const fight = currentFight({ actions: liveActions, partyInfo: livePartyInfo, clientObj: clientData(), now });
+                GM_setValue(SNAP_KEY, JSON.stringify({ t: now, group: r.group, slots: r.slots, selected: r.slots.map((x) => x.slot), ...(fight ? { fight } : {}) }));
+            }
         } catch (err) { console.error('[MWI Combat Tracker] could not publish the party for the simulator', err); }
     }
 
@@ -1099,12 +1178,15 @@
                     const type = m ? m[1] : null;
                     if (type === 'init_character_data' || message.includes('"init_character_data"')) {
                         const obj = JSON.parse(message);
-                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
+                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; liveActions = Array.isArray(obj.characterActions) ? obj.characterActions.slice() : null; livePartyInfo = obj.partyInfo || null; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
                     } else if (type === 'profile_shared') {
                         noteProfile(JSON.parse(message));
+                    } else if (type === 'party_updated' || type === 'actions_updated') {
+                        noteFightMsg(type, JSON.parse(message));
                     } else if (type && REC_TYPES.includes(type)) {
                         const obj = JSON.parse(message);
                         if (type === 'new_battle') noteBattle(obj);
+                        if (type === 'action_completed') noteAction(obj);
                         if (recToggles.recorder) {
                             recorder.handle(obj, Date.now());
                             if (recorder.state.dirty >= 20) saveRecorded();
@@ -1186,6 +1268,8 @@
         tab.click();
         input.value = JSON.stringify(c.group);
         go.click();
+        const applied = applySelectionDom(document, c);
+        if (applied.skipped.length) console.info('[MWI Combat Tracker] left as it is (the page does not offer it): ' + applied.skipped.join(', '));
         reportGroup('party imported from the game tab (' + c.ageMin + ' min old)', c.slots, ', then press this button again');
     }
     function startSim() {

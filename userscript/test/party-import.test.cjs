@@ -92,7 +92,9 @@ function makePage(map, { screenSave } = {}) {
         achievementDetailMap: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, { hrid: '/achievements/a' + n }])),
         triggerMap: {}, playerDataMap: { ...map }, currentPlayerTabId: '1', saved: [], guildSeen: undefined,
         fixTriggerMap: () => {}, applyLabyrinthUpgradesToState: () => {}, refreshAchievementStatics: () => {}, applyGuildBuffsToState: () => {},
-        JSON, Object, Array, String, Boolean,
+        JSON, Object, Array, String, Boolean, console,
+        // src/groupSelection.mjs is covered by tools/test/group-selection.mjs; here the pasted object has slots only.
+        splitGroupImport: (m) => ({ slots: m, selected: null, fight: null }), applyGroupSelection: () => ({ skipped: [] }),
     };
     ctx.getImportedGuildBuffs = (s) => { ctx.guildSeen = s.guildCombatBuffLevels ?? s.guildBuffs; return {}; };
     ctx.savePreviousPlayer = (id) => { ctx.saved.push(id); if (screenSave) ctx.playerDataMap[id] = screenSave; };

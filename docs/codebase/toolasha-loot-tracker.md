@@ -498,6 +498,14 @@ Menu entry `Copy group export (party, for Group Combat import)` copies the text 
 - Cross-tab link: the same script matches the fork's Pages site and local pages (`@match`), and there only adds an `Import party from game (MWI Combat Tracker)` button (the script's name since 0.5.0) beside Import/Export (no hook, no menu). The game tab rewrites the same group export into script storage (`mwicsGroupSnapshot`: time, group, slots) when the character data, the battle start, a shared profile or the toggles change. The button reads it, refuses when there is none or it is older than 30 minutes (`SNAP_MAX_AGE_MS`), else opens the Group Combat tab, fills `#inputSetGroupCombatAll` and presses `#buttonImportSet`, so the page needs no change. Never imports an empty party.
 - The toast and the console name what is missing per slot. Inventory, Coin and learned abilities are never part of the group export. Read-only toward the game; nothing is sent.
 
+## Players to tick, zone and tier in the group snapshot (userscript 0.8.0)
+
+The snapshot in storage (`mwicsGroupSnapshot`) is `{ t, group, slots, selected?, fight? }`. `selected` is the slot numbers in `group` (a member with no data has no slot, so it cannot be ticked). `fight` is `{ zone, tier, kind, status, source, t }`: `kind` is `combat`, `dungeon` (client data category `/action_categories/combat/dungeons`), `labyrinth` or `idle`; `source` is `party` (a `battling` party's `actionHrid` and `difficultyTier`) or `action` (the first of `characterActions`). Idle and the Labyrinth have no zone or tier. Both keys sit beside `group`, never inside it (the page's group import treats every key of the object as a slot).
+
+Where it comes from: `init_character_data` (`characterActions`, `partyInfo`), then kept live from `actions_updated`, `action_completed` and `party_updated`. Field names for the last two and for `init_character_data` come from the game's client code and are not backed by a captured sample.
+
+The userscript's import button ticks and sets after the page's import (`applySelectionDom`, order: dungeon toggle, ticks, zone, tier). The page's own group paste does the same when the pasted object carries `selected` and `fight` (`src/groupSelection.mjs`, called from `doGroupImport`); without them it imports as before.
+
 ## Button behavior (proposed)
 
 - First slice: a menu command **Copy combat session** (the latest `new_battle` reduced and anonymized, see "The smallest useful button"). Then the recorder: **Copy loot export** beside **Copy export** and **Settings** (`GM_registerMenuCommand`, `mwics-exporter.user.js:257-258`), copying the recorder JSON to the clipboard with the same toast, and **Clear recorded loot**.

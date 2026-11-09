@@ -152,4 +152,93 @@ test('the notice names the teammates whose guild buffs came from their profile, 
     assert.equal(groupNotice('group copied', [{ slot: 1, self: true, missing: [] }], ', then copy again').text, 'MWI Combat Tracker: group copied (1 players). slot 1 (you): complete.');
 });
 
+// ---- the fight (zone, tier) and who to tick ----
+const { currentFight, applyActionsUpdate, checkGroupSnapshot, applySelectionDom } = require('../mwics-exporter.user.js');
+const cdm = { actionDetailMap: { '/actions/combat/zone_a': { category: '/action_categories/combat/zones' }, '/actions/combat/dun_a': { category: '/action_categories/combat/dungeons' } } };
+const act = (o) => ({ id: 1, partyID: 0, ordinal: 0, isDone: false, ...o });
+const J = (x) => JSON.parse(JSON.stringify(x));
+
+test('currentFight: a battling party names the fight; otherwise the first action; idle and the Labyrinth have no zone or tier', () => {
+    const party = { status: 'battling', actionHrid: '/actions/combat/zone_a', difficultyTier: 3 };
+    assert.deepEqual(J(currentFight({ actions: [act({ actionHrid: '/actions/combat/dun_a', difficultyTier: 1 })], partyInfo: { party }, clientObj: cdm, now: 5 })), { zone: '/actions/combat/zone_a', tier: 3, kind: 'combat', status: 'battling', source: 'party', t: 5 });
+    assert.deepEqual(J(currentFight({ actions: [act({ actionHrid: '/actions/combat/dun_a', difficultyTier: 1 })], partyInfo: null, clientObj: cdm, now: 5 })), { zone: '/actions/combat/dun_a', tier: 1, kind: 'dungeon', status: null, source: 'action', t: 5 });
+    assert.equal(currentFight({ actions: [], partyInfo: { party: { status: 'recruiting', actionHrid: '/actions/combat/zone_a' } }, clientObj: cdm, now: 5 }).kind, 'idle');
+    assert.deepEqual(J(currentFight({ actions: [act({ actionHrid: '/actions/labyrinth/explore' })], now: 5 })), { zone: null, tier: null, kind: 'labyrinth', status: null, source: 'action', t: 5 });
+    assert.equal(currentFight({ now: 5 }), null, 'nothing known: no fight');
+    assert.equal(currentFight({ actions: [act({ actionHrid: '/actions/combat/zone_a' })], now: 5 }).tier, null, 'a missing tier stays unknown');
+});
+
+test('applyActionsUpdate follows the game: done leaves, a known id is replaced, a new one is added, party actions sort first', () => {
+    const a = [act({ id: 1, actionHrid: 'x', ordinal: 1 })];
+    const b = applyActionsUpdate(a, [act({ id: 2, actionHrid: 'y', partyID: 9, ordinal: 2 })]);
+    assert.deepEqual(b.map((x) => x.id), [2, 1]);
+    assert.deepEqual(applyActionsUpdate(b, [act({ id: 2, isDone: true })]).map((x) => x.id), [1]);
+    assert.equal(applyActionsUpdate(null, [act({ id: 3 })]).length, 1);
+    assert.equal(a.length, 1, 'the input list is not changed');
+});
+
+test('checkGroupSnapshot passes selected and fight when present and valid; an older snapshot gives neither', () => {
+    const base = { t: 1000, group: { 1: {} }, slots: [] };
+    const old = checkGroupSnapshot(JSON.stringify(base), 1000);
+    assert.ok(old.ok && !('selected' in old) && !('fight' in old));
+    const neu = checkGroupSnapshot(JSON.stringify({ ...base, selected: [1, 3, 9, 'x'], fight: { zone: 'z', tier: 2, kind: 'combat' } }), 1000);
+    assert.deepEqual(J(neu.selected), [1, 3]);
+    assert.equal(neu.fight.zone, 'z');
+    const bad = checkGroupSnapshot(JSON.stringify({ ...base, selected: 'all', fight: [1] }), 1000);
+    assert.ok(bad.ok && !('selected' in bad) && !('fight' in bad));
+});
+
+// A fake page: selects with options, checkboxes, the dungeon toggle (its change handler ticks all and limits the tiers, like the page's).
+function fakePage() {
+    const sel = (vals, extra) => ({ value: vals[0], options: vals.map((v, i) => ({ value: v, disabled: !!(extra && extra.disabled && extra.disabled.includes(v)) })) });
+    const els = { selectZone: sel(['/actions/combat/zone_a', '/actions/combat/zone_b']), selectDungeon: sel(['/actions/combat/dun_a']), selectDifficulty: sel(['0', '1', '2', '3', '4']) };
+    for (let i = 1; i <= 5; i++) els['player' + i] = { checked: false };
+    els.simDungeonToggle = { checked: false, events: 0, dispatchEvent() { this.events++; for (let i = 1; i <= 5; i++) els['player' + i].checked = this.checked; els.selectDifficulty.options.forEach((o, i) => { o.disabled = this.checked && i >= 3; }); } };
+    return { getElementById: (id) => els[id] || null, els };
+}
+const ticks = (p) => [1, 2, 3, 4, 5].filter((i) => p.els['player' + i].checked);
+
+test('applySelectionDom: a three-player group ticks three boxes, sets zone and tier; the others are unticked', () => {
+    const p = fakePage();
+    p.els.player5.checked = true;
+    const r = applySelectionDom(p, { selected: [1, 2, 3], fight: { zone: '/actions/combat/zone_b', tier: 2, kind: 'combat' } });
+    assert.deepEqual(ticks(p), [1, 2, 3]);
+    assert.equal(p.els.selectZone.value, '/actions/combat/zone_b');
+    assert.equal(p.els.selectDifficulty.value, '2');
+    assert.deepEqual(J(r), { ticked: [1, 2, 3], dungeon: false, zone: '/actions/combat/zone_b', tier: 2, skipped: [] });
+    assert.equal(p.els.simDungeonToggle.events, 0, 'the toggle is left alone when it already matches');
+});
+
+test('applySelectionDom: a dungeon turns the toggle on first, then ticks, zone from the dungeon list, tier', () => {
+    const p = fakePage();
+    const r = applySelectionDom(p, { selected: [1, 2], fight: { zone: '/actions/combat/dun_a', tier: 1, kind: 'dungeon' } });
+    assert.equal(p.els.simDungeonToggle.checked, true);
+    assert.deepEqual(ticks(p), [1, 2], 'the toggle ticked all five, then the selection unticked the rest');
+    assert.equal(p.els.selectDungeon.value, '/actions/combat/dun_a');
+    assert.equal(r.tier, 1);
+    const q = fakePage();
+    applySelectionDom(q, { fight: { zone: '/actions/combat/dun_a', tier: 4, kind: 'dungeon' } });
+    assert.equal(q.els.selectDifficulty.value, '0', 'a tier the dungeon mode does not offer is left as it is');
+});
+
+test('applySelectionDom: only one key, neither key, or a zone the page lacks', () => {
+    const p = fakePage();
+    assert.deepEqual(J(applySelectionDom(p, { selected: [4] })).ticked, [4]);
+    assert.equal(p.els.selectZone.value, '/actions/combat/zone_a');
+    const q = fakePage();
+    applySelectionDom(q, { fight: { zone: '/actions/combat/zone_b', tier: 3, kind: 'combat' } });
+    assert.deepEqual(ticks(q), [], 'no selected: the ticks are not touched');
+    assert.equal(q.els.selectDifficulty.value, '3');
+    const n0 = fakePage();
+    assert.deepEqual(J(applySelectionDom(n0, {})), { ticked: null, dungeon: null, zone: null, tier: null, skipped: [] });
+    const lack = fakePage();
+    const r = applySelectionDom(lack, { selected: [1], fight: { zone: '/actions/combat/new_zone', tier: 9, kind: 'combat' } });
+    assert.deepEqual(r.skipped, ['zone /actions/combat/new_zone', 'tier 9']);
+    assert.deepEqual(ticks(lack), [1], 'the rest of the import still applies');
+    assert.equal(lack.els.selectZone.value, '/actions/combat/zone_a');
+    const idle = fakePage();
+    applySelectionDom(idle, { selected: [1], fight: { zone: null, tier: null, kind: 'idle' } });
+    assert.equal(idle.els.selectDifficulty.value, '0');
+});
+
 console.log(n + ' tests passed');
