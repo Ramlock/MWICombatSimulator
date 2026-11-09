@@ -270,6 +270,13 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             '<ul class="small whatif-more" id="whatIfOverBudget" hidden>' +
             result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`).join('') + '</ul>');
     }
+    if (result.dominated?.length) {
+        // One line with the count and its toggle; the swaps the search skipped (no better on any stat) sit closed behind it.
+        L.push(`<div class="mt-3"><span class="fw-bold">${esc(t('result.dominated', { n: result.dominated.length }))}</span> ` +
+            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfDominated" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
+            '<ul class="small whatif-more" id="whatIfDominated" hidden>' +
+            result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
+    }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
             result.apart.map((a) => `<li>${shown(a)}: ${esc(a.note)}</li>`).join('') + '</ul>');

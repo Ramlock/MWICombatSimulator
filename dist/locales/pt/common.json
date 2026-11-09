@@ -242,6 +242,9 @@
             "overBudgetNote": "({{n}}, sem ranking: cada um custa mais que o orçamento do seu jogador)",
             "overBudgetShow": "Mostrar os {{n}} acima do orçamento",
             "overBudgetHide": "Ocultar os {{n}} acima do orçamento",
+            "dominated": "{{n}} trocas ignoradas (nenhuma melhor em qualquer atributo)",
+            "dominatedShow": "Mostrar",
+            "dominatedHide": "Ocultar",
             "pricesSnapshot": "Preços: retrato do mercado de {{when}} ({{elapsed}} atrás, ao mostrar).",
             "pricesCommitted": "Preços: o retrato salvo do próprio simulador, de {{when}} ({{elapsed}} atrás), não o mercado de agora.",
             "upperNote": "≤: o custo é só um limite superior (livros de técnica sem a experiência já dentro do nível)."

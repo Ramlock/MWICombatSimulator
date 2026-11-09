@@ -289,6 +289,20 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('zone line: a zone with no tier, and a result with a zone but no base figure, show what they have', h('en', { ...zoned(), options: { zone: '/actions/combat/fly' } }).includes('Zone: Fly<') && !h('en', zoned()).includes(locales.en.result.baseProfit));
     check('zone line: the strings exist in en, pt and zh', ['zone', 'zoneNoTier', 'baseProfit', 'baseLoses'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && ['zone', 'zoneNoTier'].every((k) => ['en', 'pt', 'zh'].every((l) => locales[l].result[k].includes('{{zone}}'))));
 
+    // The skipped swaps (result.dominated): one line with the count, the list closed behind a toggle, names like the other lists.
+    const skipped = [{ id: 's1', player: 'Alpha', slot: 'feet', desc: boots, from: { item: '/items/pathseeker_boots_refined', level: 12 }, to: { item: '/items/cotton_boots', level: 0 } },
+        { id: 's2', player: 'Beta', slot: 'ring', desc: 'Beta ring not_a_real_item_x +1 -> ring_of_rare_find +1', from: { item: '/items/not_a_real_item_x', level: 1 }, to: { item: '/items/ring_of_rare_find', level: 1 } }];
+    const domEn = h('en', { ...result, dominated: skipped }), domPt = panel.renderResult({ ...result, dominated: skipped }, tPt, undefined, N.pt);
+    check('skipped swaps: one line with the count, the list closed behind one toggle that opens it (Show / Hide)',
+        domEn.includes('<span class="fw-bold">2 swaps skipped (no better on any stat)</span>') && /<ul class="small whatif-more" id="whatIfDominated" hidden>/.test(domEn) && (domEn.match(/data-whatif-more="whatIfDominated"/g) || []).length === 1 &&
+        domEn.includes('data-show="Show" data-hide="Hide">Show</button>'), domEn.slice(domEn.indexOf('swaps skipped') - 80, domEn.indexOf('swaps skipped') + 400));
+    check('skipped swaps: rows show the player and the game names, an id with no name stays, like the over-budget list',
+        domEn.includes('<li>Alpha, Feet Pathseeker Boots ★ +12 -&gt; Cotton Boots +0</li>') && domEn.includes(`<li>Beta, ${en.equipmentTypeNames['/equipment_types/ring']} not_a_real_item_x +1 -&gt; ${en.itemNames['/items/ring_of_rare_find']} +1</li>`) && !domEn.includes('pathseeker_boots_refined'), domEn);
+    check('skipped swaps: in pt the line and the names follow the language', domPt.includes(locales.pt.result.dominated.replace('{{n}}', '2')) && domPt.includes(pt.itemNames['/items/cotton_boots'] + ' +0') && locales.pt.result.dominated !== locales.en.result.dominated);
+    check('skipped swaps: an absent or empty group shows nothing', !h('en', result).includes('swaps skipped') && !h('en', { ...result, dominated: [] }).includes('swaps skipped') && !h('en', { ...result, dominated: [] }).includes('whatIfDominated'));
+    check('skipped swaps: the strings exist in en, pt, zh, the line takes the count', ['dominated', 'dominatedShow', 'dominatedHide'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && ['en', 'pt', 'zh'].every((l) => locales[l].result.dominated.includes('{{n}}')));
+    check('skipped swaps: the group sits after the over-budget list and before the unknown-cost list', domEn.indexOf(locales.en.result.overBudget) < domEn.indexOf('swaps skipped') && domEn.indexOf('swaps skipped') < domEn.indexOf(locales.en.result.apart));
+
     // The over-budget list folds.
     const ob = h('en');
     check('over budget: the heading keeps its count, the list is closed behind one toggle', ob.includes(locales.en.result.overBudget) && ob.includes('(2, not ranked') &&

@@ -241,6 +241,9 @@
             "overBudgetNote": "（{{n}} 项，不参与排名：每项成本都超过其玩家的预算）",
             "overBudgetShow": "显示这 {{n}} 项超出预算",
             "overBudgetHide": "隐藏这 {{n}} 项超出预算",
+            "dominated": "已跳过 {{n}} 项更换（各项属性均无提升）",
+            "dominatedShow": "显示",
+            "dominatedHide": "隐藏",
             "pricesSnapshot": "价格：{{when}} 的市场快照（显示时已过 {{elapsed}}）。",
             "pricesCommitted": "价格：模拟器自带的 {{when}} 保存快照（已过 {{elapsed}}），不是当前市场。",
             "upperNote": "≤：成本仅为上限（技能书未计入当前等级内已有的经验）。"
