@@ -260,9 +260,9 @@ try {
     const after = await js(`[document.getElementById('inputLevel_magic').value, document.getElementById('inputLevel_stamina').value]`);
     check('Apply 1 to 2 writes both steps into the setup', Number(after[0]) === Number(before[0]) + 1 && Number(after[1]) === Number(before[1]) + 1, JSON.stringify({ before, after }));
     check('the window now lists where the page differs from the search, with the skill\'s name, not the field key', await js(`(() => { const t = document.getElementById('whatIfDiff').textContent; return t.includes('Magic level:') && !t.includes('magicLevel'); })()`));
-    check('grey singles are collapsed behind "Show 1 more below 2 errors"', await js(`document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Show 1 more below 2 errors'`));
+    check('grey singles are collapsed behind "Show 1 more not accepted"', await js(`document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Show 1 more not accepted'`));
     await js(`document.querySelector('[data-whatif-more]').click(), true`);
-    check('the toggle opens the grey rows', await js(`!document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Hide the 1 below 2 errors'`));
+    check('the toggle opens the grey rows', await js(`!document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Hide the 1 not accepted'`));
     check('there is no helps-the-party group: two tables, no heading, no hint, no steak row', await js(`(() => { const r = document.getElementById('whatIfResult'), t = r.textContent; return r.querySelectorAll('table').length === 2 && !t.includes('Helps the party') && !t.includes('Not bought:') && !/steak/i.test(t); })()`));
 
     check('the finished result shows the zone line and the loss warning under the goal line', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('Zone: Fly, tier 0 · base party profit') && t.includes('At this zone the party loses money at base, so a gain here means losing less.'); })()`));

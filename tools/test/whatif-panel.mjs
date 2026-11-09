@@ -103,7 +103,7 @@ const result = {
     check('result: "≤" on an upper-bound cost and its payback', /≤ <span data-num="400000"/.test(html) && /≤ <span data-num="200"/.test(html));
     check('result: no running spend per player, no Spent columns', !html.includes('Spent') && !html.includes('data-num="600000"'));
     check('result: Apply on each step, "Apply 1 to n" from step 2', html.includes('data-whatif-apply="steps:1"') && html.includes('Apply 1 to 3') && html.includes('data-whatif-apply="steps:3"'));
-    check('result: a single below 2 errors is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html));
+    check('result: a single the rule does not accept is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html));
     check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" id="whatIfMoreSingles" hidden><tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html) &&
         !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more="whatIfMoreSingles"/g) || []).length === 1);
     check('result: the cost path cell wraps', /<td class="wrap">market<\/td>/.test(html));
