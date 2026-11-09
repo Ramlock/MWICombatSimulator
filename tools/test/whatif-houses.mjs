@@ -84,5 +84,17 @@ check(all.filter((c) => c.kind === 'house').map((c) => c.id).join() === 'P:house
 check(H.LEVER_NAMES.join() === 'houses,abilitylevels,books', 'registered lever names');
 check(H.upgradeCands(setup, 'P', new Set(['equip']), { arg: fakeArg, pricer: { buy: () => ({ cost: 10 }) }, ex: null }).length === 0, 'upgradeCands: nothing when none of its levers is open');
 
+// Warnings: books with no learned list, ability levels on upper bounds; once per player and lever.
+const said = [], warn = (l) => said.push(l), pr = { buy: () => ({ cost: 10 }) };
+H.upgradeCands({ ...setup, name: 'W' }, 'W', new Set(['books', 'abilitylevels']), { arg: () => null, pricer: pr, ex: null, warn });
+H.upgradeCands({ ...setup, name: 'W' }, 'W', new Set(['books', 'abilitylevels']), { arg: () => null, pricer: pr, ex: null, warn });
+check(said.length === 2 && said.some((l) => /W: no book candidates generated; books need the exporter's learned-ability list for W/.test(l)) && said.some((l) => /W: 4 of 4 ability-level rows cost an upper bound/.test(l)), 'warnings: books without the learned list, the count of upper-bound rows, each once');
+const quiet = [];
+H.upgradeCands({ ...setup, name: 'Q' }, 'Q', new Set(['books', 'abilitylevels']), { arg: () => '1', pricer: pr, ex: { learnedAbilities: [{ abilityHrid: '/abilities/entangle', level: 10, experience: 0 }, { abilityHrid: '/abilities/toxic_pollen', level: 199, experience: 0 }] }, warn: (l) => quiet.push(l) });
+check(quiet.length === 0, 'no warning when the export covers every equipped ability at its level');
+const part = [];
+H.upgradeCands({ ...setup, name: 'R' }, 'R', new Set(['abilitylevels']), { arg: () => '1', pricer: pr, ex: { learnedAbilities: [{ abilityHrid: '/abilities/entangle', level: 10, experience: 0 }] }, warn: (l) => part.push(l) });
+check(part.length === 1 && /R: 1 of 2 ability-level rows/.test(part[0]), 'warning counts only the bounded rows');
+
 console.log(fails ? `${fails} failed` : 'all passed');
 process.exit(fails ? 1 : 0);

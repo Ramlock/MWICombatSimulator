@@ -124,14 +124,22 @@ export function bookCands(setup, p, { levels = [1], buy, learned }) {
     return out;
 }
 
-// The optimizer's entry: every open lever of this file for one player. arg(name, def) reads a command-line flag.
-export function upgradeCands(setup, p, levers, { arg, pricer, ex }) {
+// The optimizer's entry: every open lever of this file for one player. arg(name, def) reads a command-line flag;
+// ex is the exporter JSON when it is this player's, else null. warn(line) prints a warning, once per player and
+// lever for the run (the optimizer rebuilds candidates after each greedy step).
+const warned = new Set();
+export function upgradeCands(setup, p, levers, { arg, pricer, ex, warn = (l) => console.log(l) }) {
     const buy = (h) => pricer.buy(h, 0).cost;
     const nums = (v, d) => (v && v !== true ? String(v).split(',').map(Number) : d);
     const learned = ex?.learnedAbilities || null;
+    const once = (key, line) => { if (!warned.has(key)) { warned.add(key); warn(line); } };
+    const levels = levers.has('abilitylevels') ? abilityLevelCands(setup, p, { steps: nums(arg('ability-steps', null), [1, 3, 5]), buy, learned }) : [];
+    const bounds = levels.filter((c) => c.cost.costBound === 'upper').length;
+    if (bounds) once(p + ':abilitylevels', `warning: ${p}: ${bounds} of ${levels.length} ability-level rows cost an upper bound (no exporter experience for ${p} at that level; pass --export with ${p}'s export)`);
+    if (levers.has('books') && !learned) once(p + ':books', `warning: ${p}: no book candidates generated; books need the exporter's learned-ability list for ${p} (--export with ${p}'s export)`);
     return [
         ...(levers.has('houses') ? houseCands(setup, p, { rooms: roomsFor(arg('house-rooms', 'combat')), maxUp: Number(arg('house-up', 2)), buy }) : []),
-        ...(levers.has('abilitylevels') ? abilityLevelCands(setup, p, { steps: nums(arg('ability-steps', null), [1, 3, 5]), buy, learned }) : []),
+        ...levels,
         ...(levers.has('books') ? bookCands(setup, p, { levels: nums(arg('book-levels', null), [1]), buy, learned }) : []),
     ];
 }
