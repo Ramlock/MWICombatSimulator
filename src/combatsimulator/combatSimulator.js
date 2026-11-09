@@ -774,6 +774,14 @@ class CombatSimulator extends EventTarget {
         return encounterEnded;
     }
 
+    // "A previous skill was out of mana" stat: an ability the action loop did not reach because an earlier ability's
+    // conditions passed but it lacked mana. Evaluates the ability's own readiness and conditions only to observe;
+    // feeds neither the condition holds nor anything combat reads.
+    observeSkippedAbility(source, ability, target, friendlies, enemies) {
+        const ready = ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies);
+        this.simResult.updateSkipHold(source, ability, ready, this.simulationTime);
+    }
+
     addNextAttackEvent(source) {
         if (this.eventQueue.getMatching((event) => (event.type == AbilityCastEndEvent.type || event.type == AutoAttackEvent.type)&& event.source == source)) {
             return;
@@ -799,12 +807,19 @@ class CombatSimulator extends EventTarget {
         source.abilities
             .filter((ability) => ability != null)
             .forEach((ability) => {
-                if (usedAbility || skipNextAbility) {
+                if (usedAbility) {
+                    return;
+                }
+                if (skipNextAbility) {
+                    if (failedTriggers) this.observeSkippedAbility(source, ability, target, friendlies, enemies);
                     return;
                 }
                 if (failedTriggers) failedTriggers.length = 0;
                 const triggered = ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies, failedTriggers);
-                if (failedTriggers) this.simResult.updateTriggerHolds(source, ability, failedTriggers, this.simulationTime);
+                if (failedTriggers) {
+                    this.simResult.updateTriggerHolds(source, ability, failedTriggers, this.simulationTime);
+                    this.simResult.updateSkipHold(source, ability, false, this.simulationTime);
+                }
                 if (triggered) {
                     if (!this.canUseAbility(source, ability, true)) {
                         skipNextAbility = true;

@@ -2940,10 +2940,10 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
 }
 
 // English fallbacks of the definitions shown as tooltips (the locale files hold the same text).
-const HELD_BY_TRIGGER_TIP = "Per skill and trigger condition: the share of sim time the condition held the skill while it was ready (cooldown over, the player not Stunned or Silenced), and holds per hour. A hold starts at the first check the condition fails and ends at the next check it passes, at death or at the encounter's end. When several conditions fail, each one counts.";
-const HELD_FOR_MANA_TIP = "The share of sim time the player is out of mana or has a skill held by a condition on their own MP (My Current Mp, My Missing Mp), counted once when both happen; per hour: how often the player enters that state.";
+const HELD_BY_TRIGGER_TIP = "Per skill and trigger condition: the share of sim time the condition held the skill while it was ready (cooldown over, the player not Stunned or Silenced). A hold starts at the first check the condition fails and ends at the next check it passes, at death or at the encounter's end. When several conditions fail, each one counts.";
+const PREVIOUS_SKILL_OUT_OF_MANA_TIP = "The share of sim time the skill was ready and every one of its trigger conditions passed, but was not reached because an earlier skill's conditions passed and it lacked mana (a skill short of mana stops every skill after it). A hold starts at the first such check and ends at the next check where it is not so, at death or at the encounter's end.";
 
-// A tooltip on the row's label and its value, localized by key.
+// A tooltip on every cell of the row, localized by key.
 function withTip(row, key, fallback) {
     for (const cell of row.children) {
         cell.title = typeof i18next !== "undefined" ? i18next.t(key) : fallback;
@@ -2952,33 +2952,30 @@ function withTip(row, key, fallback) {
     }
 }
 
-// "Held for mana" and "Held by trigger" rows under "Ran out of mana": share of sim time and holds per hour, read from
-// the result object (summarizeTriggerHolds), never from the page.
+// "Held by trigger" rows under "Ran out of mana": per ability (a heading row), one row per reason that held it, the
+// reason on the left and the share of sim time on the right; read from the result object (summarizeTriggerHolds),
+// never from the page. A long reason wraps; the share stays on its first line.
 function triggerHoldRows(simResult, playerToDisplay) {
     const holds = summarizeTriggerHolds(simResult, playerToDisplay);
-    // The numbers go on their own right-aligned line under each label: the results column is narrow.
-    const valueRow = (h, indent = "") => createRow(["col-md-12 text-end" + indent], [percentHtml(h.share * 100) + ' <span data-i18n="common:simulationResults.ofTheTime">of the time</span> &middot; ' + numberHtml(h.perHour) + ' <span data-i18n="common:simulationResults.holdsPerHour">holds/h</span>']);
-    const rows = [];
-    if (holds.mana) {
-        const row = createRow(["col-md-12"], ["Held for mana"]);
-        row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldForMana");
-        const values = valueRow(holds.mana);
-        withTip(row, "common:simulationResults.heldForManaTip", HELD_FOR_MANA_TIP);
-        withTip(values, "common:simulationResults.heldForManaTip", HELD_FOR_MANA_TIP);
-        rows.push(row, values);
-    }
-    if (holds.abilities.length > 0) {
-        const header = createRow(["col-md-12"], ["Held by trigger"]);
-        header.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldByTrigger");
-        withTip(header, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
-        rows.push(header);
-        for (const { abilityHrid, conditions } of holds.abilities) {
-            const abilityRow = createRow(["col-md-12 ps-3"], [abilityDetailMap[abilityHrid]?.name ?? abilityHrid]);
-            abilityRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + abilityHrid);
-            rows.push(abilityRow);
-            for (const c of conditions) {
-                rows.push(createRow(["col-md-12 ps-4"], [triggerConditionHtml(c)]), valueRow(c, " ps-4"));
-            }
+    if (holds.abilities.length == 0) return [];
+    const header = createRow(["col-md-12"], ["Held By Trigger"]);
+    header.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldByTrigger");
+    withTip(header, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
+    const rows = [header];
+    for (const { abilityHrid, conditions, skip } of holds.abilities) {
+        const abilityRow = createRow(["col-md-12 ps-3"], [abilityDetailMap[abilityHrid]?.name ?? abilityHrid]);
+        abilityRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + abilityHrid);
+        rows.push(abilityRow);
+        for (const c of conditions) {
+            const row = createRow(["col-9 ps-4", "col-3 text-end"], [triggerConditionHtml(c), percentHtml(c.share * 100)]);
+            withTip(row, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
+            rows.push(row);
+        }
+        if (skip !== null) {
+            const row = createRow(["col-9 ps-4", "col-3 text-end"], ["A previous skill was out of mana", percentHtml(skip * 100)]);
+            row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.previousSkillOutOfMana");
+            withTip(row, "common:simulationResults.previousSkillOutOfManaTip", PREVIOUS_SKILL_OUT_OF_MANA_TIP);
+            rows.push(row);
         }
     }
     return rows;
