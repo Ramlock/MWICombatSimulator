@@ -104,7 +104,7 @@ const body = { setups: party, goal: 'profit', budgets: { Alpha: 5, Beta: 0 }, le
 const s1 = await call(base, 'POST', '/api/search', body);
 check(s1.status === 200 && s1.json.id === R.searchId(body) && fakes.length === 1 && fakes[0].args.includes('--budgets'), 'search: starts, the id is the request\'s hash');
 const s2 = await call(base, 'POST', '/api/search', { ...body, goal: 'exp' });
-check(s2.status === 409 && s2.json.running === s1.json.id && fakes.length === 1, 'one search at a time: a second is refused with the running id');
+check(s2.status === 409 && s2.json.running === s1.json.id && s2.json.id === s1.json.id && fakes.length === 1, 'one search at a time: a second is refused with the running id');
 fakes[0].onProgress({ stage: 'screen', candidatesLeft: 7, runsDone: 3, runsPlanned: 10, secondsPerRun: 2.5, etaSeconds: 9 });
 const g1 = await call(base, 'GET', '/api/search/' + s1.json.id);
 check(g1.json.state === 'running' && g1.json.progress.runsDone === 3 && g1.json.progress.candidatesLeft === 7, 'progress: the optimizer\'s report is served while it runs');
@@ -112,9 +112,13 @@ const st = await call(base, 'POST', `/api/search/${s1.json.id}/stop`);
 await sleep(50);
 const g2 = await call(base, 'GET', '/api/search/' + s1.json.id);
 check(st.status === 200 && fakes[0].stopped && g2.json.state === 'stopped' && fake.running === null, 'stop: the search is told to stop and reads stopped');
-check((await call(base, 'POST', `/api/search/${s1.json.id}/stop`)).status === 409, 'stop: a search not running answers 409');
 const s3 = await call(base, 'POST', '/api/search', body);
 check(s3.json.id === s1.json.id && fakes.length === 2 && fakes[1].dir === fakes[0].dir, 'resume: the same request again runs in the same folder (its run store)');
+await call(base, 'POST', `/api/search/${s1.json.id}/stop`);
+await sleep(50);
+const rs = await call(base, 'POST', `/api/search/${s1.json.id}/stop`);
+check(rs.status === 200 && rs.json.resumed && fakes.length === 3 && fakes[2].dir === fakes[0].dir && JSON.stringify(fakes[2].args) === JSON.stringify(fakes[0].args), 'resume: stop on a stopped search resumes it from its own request (the window\'s Resume)');
+fakes.splice(1, 1); // keep fakes[1] as the running one below
 writeFileSync(path.join(fakes[1].dir, 'result.json'), JSON.stringify({ goal: 'profit', players: ['Alpha', 'Beta'], steps: [] }));
 fakes[1].onExit(0, '');
 const g3 = await call(base, 'GET', '/api/search/' + s1.json.id);

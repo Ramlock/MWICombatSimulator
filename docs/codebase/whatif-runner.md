@@ -18,9 +18,9 @@ JSON over HTTP, under `/api/`. Everything else is a static file from `dist/` (`/
 | Request | Answer |
 |---|---|
 | `GET /api/version` | `{ runner, engine }`: the runner's version (with the commit when run from a checkout) and the `bundle.<hash>.js` hash named in `dist/index.html` |
-| `POST /api/search` (body JSON, `Content-Type: application/json`) | `{ id }`; `409 { error, running }` while another search runs; `400 { error }` for a malformed request |
+| `POST /api/search` (body JSON, `Content-Type: application/json`) | `{ id }`; `409 { error, id, running }` (both the running search's id) while another search runs; `400 { error }` for a malformed request |
 | `GET /api/search/<id>` | `{ state, progress, error?, result? }`, `state` one of `running`, `stopped`, `done`, `error`; `result` is the search's `result.json` |
-| `POST /api/search/<id>/stop` | `{ id, stopping: true }`; `409` when it is not running |
+| `POST /api/search/<id>/stop` | `{ id, stopping: true }`; on a stopped search it resumes it from its `request.json`: `{ id, resumed: true }` (the window's Resume); `409` otherwise |
 | `GET /api/results` | finished searches, newest first: `[{ id, finished, goal, players }]` |
 | `GET /api/results/<id>` | one `result.json` |
 

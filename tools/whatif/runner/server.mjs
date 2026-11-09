@@ -12,7 +12,7 @@
 //                                  dashes }; answer { id }. One search at a time: 409 { error, running } otherwise.
 //                                  The id is a hash of the request, so the same request again resumes its run store.
 //   GET  /api/search/<id>          { state: running|stopped|done|error, progress, error?, result? }
-//   POST /api/search/<id>/stop     stops it (exit code 3, run store kept)
+//   POST /api/search/<id>/stop     stops it (exit code 3, run store kept); on a stopped search, resumes it
 //   GET  /api/results              finished searches, newest first: [{ id, finished, goal, players }]
 //   GET  /api/results/<id>         one result.json
 // Requests come only from the runner's own page: a Host that is not the loopback address and port, or an Origin
@@ -140,7 +140,7 @@ export function createRunner(opts = {}) {
         return null;
     }
     function start(body) {
-        if (running) return { status: 409, body: { error: 'a search is running', running } };
+        if (running) return { status: 409, body: { error: 'a search is running', id: running, running } }; // the window reads id
         const id = searchId(body), dir = dirOf(id);
         if (existsSync(path.join(dir, 'result.json'))) return { status: 200, body: { id } }; // finished already
         mkdirSync(dir, { recursive: true });
@@ -207,6 +207,12 @@ export function createRunner(opts = {}) {
             if (req.method === 'GET' && (m = /^\/api\/search\/([^/]+)$/.exec(p))) { const s = status(m[1]); return s ? send(res, 200, s) : send(res, 404, { error: 'no such search' }); }
             if (req.method === 'POST' && (m = /^\/api\/search\/([^/]+)\/stop$/.exec(p))) {
                 const s = searches.get(m[1]);
+                // Stop on a stopped search resumes it from its own request (the window's Resume button); the same
+                // request posted to /api/search again does the same.
+                if ((!s || s.state !== 'running') && status(m[1])?.state === 'stopped') {
+                    const r = start(readJson(path.join(dirOf(m[1]), 'request.json')));
+                    return send(res, r.status, r.status === 200 ? { id: m[1], resumed: true } : r.body);
+                }
                 if (!s || s.state !== 'running') return send(res, 409, { error: 'not running', state: status(m[1])?.state ?? null });
                 s.handle.stop();
                 return send(res, 200, { id: m[1], stopping: true });
