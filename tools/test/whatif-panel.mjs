@@ -358,6 +358,25 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('helps the party: a result saved before this change has no group and no hint', !panel.renderResult(result, t).includes('Helps the party') && !panel.renderResult(result, t).includes('Not bought:') && !panel.renderResult({ ...result, helpsParty: [] }, t).includes('Helps the party'));
     check('helps the party: the strings exist in en, pt, zh; the hint takes no placeholder', ['helpsParty', 'helpsPartyHint'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '' && !/\{\{/.test(locales[l].result[k]))) && locales.pt.result.helpsParty !== locales.en.result.helpsParty);
     check('helps the party: the apply keys still open their rows (indexes kept)', JSON.stringify(panel.opsFor(withGroup, 'single:0')) === JSON.stringify(result.singles[0].ops) && panel.opsFor(withGroup, 'single:2')[0].item === '/items/steak');
+
+    // Window polish: a heading sits over its numbers (th class num exactly where the first body row's td has it), and the
+    // per-player confirmation lines use the size of the lines around them.
+    const full = JSON.parse(JSON.stringify(withGroup));
+    Object.assign(full.steps[0], { sharedGainPerUser: 11111, sharedSePerUser: 2222, ownSuppliesPerDay: -33333, paybackOwn: 22.5 });
+    Object.assign(full.confirmation, { sharedGainPerUser: 9999, sharedSePerUser: 999, ownSuppliesByPlayer: { Alpha: -5551, Beta: 6662 }, paybackOwnByPlayer: { Alpha: 12.5, Beta: null } });
+    const fullHtml = panel.renderResult(full, t);
+    const tables = [...fullHtml.matchAll(/<table[^>]*>([^]*?)<\/table>/g)].map((m) => m[1]);
+    const classesOf = (src, tag) => [...src.matchAll(new RegExp(`<${tag}( [^>]*)?>`, 'g'))].map((m) => /class="[^"]*\bnum\b/.test(m[1] || ''));
+    const alignOk = (tb) => {
+        const ths = classesOf(tb.slice(tb.indexOf('<thead>'), tb.indexOf('</thead>')), 'th');
+        const body = tb.slice(tb.indexOf('<tbody'));
+        const row = body.slice(body.indexOf('<tr'), body.indexOf('</tr>'));
+        const tds = classesOf(row, 'td');
+        return ths.length > 0 && ths.length === tds.length && ths.every((v, i) => v === tds[i]) && ths.some(Boolean);
+    };
+    check('headings: three tables are rendered', tables.length === 3);
+    check('headings: in every table the th at each column has class num exactly when the first body row\'s td does', tables.every(alignOk));
+    check('confirmation: the per-player line has no small class, the old-result hint keeps its own', /<div class="mb-1">Alpha: own supplies/.test(fullHtml) && !/<div class="[^"]*\bsmall\b[^"]*">Alpha: own supplies/.test(fullHtml) && panel.renderResult(result, t).includes('<div class="mb-1 small whatif-dim">'));
 }
 
 
