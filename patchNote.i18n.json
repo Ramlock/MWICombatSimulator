@@ -672,6 +672,21 @@
             ]
         }
     },
+    "2026-11-09": {
+        "from": "en",
+        "zh": {
+            "title": "2026年11月9日",
+            "notes": [
+                "为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮"
+            ]
+        },
+        "pt": {
+            "title": "09/11/2026",
+            "notes": [
+                "Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se"
+            ]
+        }
+    },
     "2026-11-08": {
         "from": "en",
         "zh": {

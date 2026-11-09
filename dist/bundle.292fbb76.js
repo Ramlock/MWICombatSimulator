@@ -2666,13 +2666,326 @@ function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra, withDrinks
 
 /***/ }),
 
+/***/ "./src/whatif/applyOps.mjs":
+/*!*********************************!*\
+  !*** ./src/whatif/applyOps.mjs ***!
+  \*********************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   applyOps: () => (/* binding */ applyOps)
+/* harmony export */ });
+// The what-if ops: a list of edits applied to clones of the party's setup JSON (the simulator's solo export format plus
+// a "name"), shared by the Node tools (tools/whatif/variants.mjs re-exports it) and the What-if window in the page.
+// Browser-safe: no Node imports. Each op names its player. Ops:
+//   { "op": "enhance", "player": "<player>", "slot": "ring", "delta": 1 }        slot = item location without prefix
+//   { "op": "equip", "player": "<player>", "slot": "ring", "item": "/items/x", "level": 5 }
+//   { "op": "food", "player": "<player>", "index": 0, "item": "/items/spaceberry_cake" }   item null empties the slot;
+//       "replace": "/items/x" instead of "index" picks the slot holding that item
+//   { "op": "drink", "player": "<player>", "index": 0, "item": "/items/x" }
+//   { "op": "ability", "player": "<player>", "index": 3, "ability": "/abilities/life_drain", "level": 51 }
+//       "replace": "/abilities/x" instead of "index" picks the slot holding it; no "level" keeps the slot's level
+//   { "op": "abilityLevel", "player": "<player>", "index": 3, "delta": 1 }
+//   { "op": "abilityOrder", "player": "<player>", "order": [0, 2, 1, 3, 4] }   new slot i holds old slot order[i]
+//   { "op": "unequip", "player": "<player>", "slot": "off_hand" }                empties the slot (a two-hand swap)
+//   { "op": "level", "player": "<player>", "skill": "magic", "delta": 1 }        a combat skill level (player.<skill>Level)
+//   { "op": "house", "player": "<player>", "room": "/house_rooms/dojo", "delta": 1 }
+//   { "op": "trigger", "player": "<player>", "hrid": "/abilities/x", "triggers": [ ... ] }
+
+function slotOf(setup, slot) {
+    const it = setup.player.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + slot);
+    if (!it) throw new Error(`${setup.name} has nothing in slot ${slot}`);
+    return it;
+}
+
+function applyOps(setups, ops = []) {
+    const out = structuredClone(setups);
+    for (const o of ops) {
+        const s = out.find((x) => x.name === o.player);
+        if (!s) throw new Error('No player ' + o.player);
+        switch (o.op) {
+            case 'enhance': slotOf(s, o.slot).enhancementLevel += o.delta; break;
+            case 'equip': {
+                const it = s.player.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + o.slot);
+                if (it) { it.itemHrid = o.item; it.enhancementLevel = o.level ?? 0; }
+                else s.player.equipment.push({ itemLocationHrid: '/item_locations/' + o.slot, itemHrid: o.item, enhancementLevel: o.level ?? 0 });
+                break;
+            }
+            case 'food':
+            case 'drink': {
+                const key = o.op === 'food' ? 'food' : 'drinks';
+                const list = s[key]['/action_types/combat'];
+                const i = o.replace ? list.findIndex((x) => x?.itemHrid === o.replace) : o.index;
+                if (i < 0) throw new Error(`${s.name} has no ${o.replace}`);
+                list[i] = o.item ? { itemHrid: o.item } : null;
+                break;
+            }
+            case 'ability': {
+                const i = o.replace ? s.abilities.findIndex((x) => x?.abilityHrid === o.replace) : o.index;
+                if (i < 0) throw new Error(`${s.name} has no ${o.replace}`);
+                s.abilities[i] = { abilityHrid: o.ability, level: o.level ?? s.abilities[i].level };
+                break;
+            }
+            case 'abilityLevel': s.abilities[o.index].level = Number(s.abilities[o.index].level) + o.delta; break;
+            case 'abilityOrder': { const old = s.abilities; s.abilities = o.order.map((j) => old[j]); break; }
+            case 'unequip': s.player.equipment = s.player.equipment.filter((e) => e.itemLocationHrid !== '/item_locations/' + o.slot); break;
+            case 'level': { const k = o.skill + 'Level'; if (!(k in s.player)) throw new Error(`${s.name} has no ${k}`); s.player[k] = Number(s.player[k]) + o.delta; break; }
+            case 'house': s.houseRooms[o.room] = (s.houseRooms[o.room] || 0) + o.delta; break;
+            case 'trigger': s.triggerMap = { ...(s.triggerMap || {}), [o.hrid]: o.triggers }; break;
+            default: throw new Error('Unknown op ' + o.op);
+        }
+    }
+    return out;
+}
+
+
+/***/ }),
+
+/***/ "./src/whatif/panel.mjs":
+/*!******************************!*\
+  !*** ./src/whatif/panel.mjs ***!
+  \******************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   API: () => (/* binding */ API),
+/* harmony export */   LEVERS: () => (/* binding */ LEVERS),
+/* harmony export */   applyToSlots: () => (/* binding */ applyToSlots),
+/* harmony export */   diffSetups: () => (/* binding */ diffSetups),
+/* harmony export */   duration: () => (/* binding */ duration),
+/* harmony export */   opsFor: () => (/* binding */ opsFor),
+/* harmony export */   pageSetups: () => (/* binding */ pageSetups),
+/* harmony export */   renderDiff: () => (/* binding */ renderDiff),
+/* harmony export */   renderProgress: () => (/* binding */ renderProgress),
+/* harmony export */   renderResult: () => (/* binding */ renderResult),
+/* harmony export */   searchBody: () => (/* binding */ searchBody),
+/* harmony export */   stepsOps: () => (/* binding */ stepsOps)
+/* harmony export */ });
+/* harmony import */ var _applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./applyOps.mjs */ "./src/whatif/applyOps.mjs");
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../numberFormat.js */ "./src/numberFormat.js");
+// The What-if window's logic, DOM-free so it is tested in Node (tools/test/whatif-panel.mjs). The window talks to the
+// local runner (docs/codebase/whatif-window.md): it sends the page's setup and the search settings, shows the runner's
+// progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
+// result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
+// and where the page's setup differs from the one the search ran on.
+
+
+
+// The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
+// Labyrinth are not levers. `def` = checked by default (the optimizer's own default is equip only).
+const LEVERS = [
+    { id: 'equip', def: true },
+    { id: 'consumables' },
+    { id: 'pairs' },
+    { id: 'owned' },
+    { id: 'abilities' },
+    { id: 'order' },
+    { id: 'triggers' },
+    { id: 'houses' },
+    { id: 'abilitylevels' },
+    { id: 'books' },
+    { id: 'skills' },
+];
+
+const API = {
+    version: '/api/version',
+    search: '/api/search',
+    status: (id) => '/api/search/' + encodeURIComponent(id),
+    stop: (id) => '/api/search/' + encodeURIComponent(id) + '/stop',
+    results: '/api/results',
+    result: (id) => '/api/results/' + encodeURIComponent(id),
+};
+
+const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.numberHtml)(v) : '—');
+const upper = (row) => row?.costBound === 'upper';
+
+// slots: [{ id: "1", name: "<tab name>", json: "<the slot's setup JSON>" }] for the players in the search.
+// The setups the runner gets: each slot's JSON with its name, in the optimizer's setup format.
+function pageSetups(slots) {
+    return slots.map((s) => ({ ...JSON.parse(s.json), name: s.name }));
+}
+
+// The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
+function searchBody({ slots, goal, budgets, levers, zone, tier }) {
+    const setups = pageSetups(slots);
+    const options = {};
+    if (zone) options.zone = zone;
+    if (tier !== undefined && tier !== null && tier !== '') options.tier = Number(tier);
+    return { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+}
+
+// Apply ops to the page's slots. Returns { missing: [player names no slot holds] } and applies nothing when any op
+// names a player the page does not hold; else { slots: { "<slot id>": "<new slot JSON>" } } for every slot an op touched.
+function applyToSlots(slots, ops) {
+    const names = new Set(slots.map((s) => s.name));
+    const missing = [...new Set(ops.map((o) => o.player).filter((p) => !names.has(p)))];
+    if (missing.length) return { missing };
+    const touched = new Set(ops.map((o) => o.player));
+    const after = (0,_applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__.applyOps)(pageSetups(slots), ops);
+    const out = {};
+    slots.forEach((s, i) => {
+        if (!touched.has(s.name)) return;
+        const { name, ...rest } = after[i];
+        out[s.id] = JSON.stringify(rest);
+    });
+    return { slots: out };
+}
+
+// The ops of the first n chosen steps, in order ("Apply 1 to n").
+const stepsOps = (result, n) => result.steps.slice(0, n).flatMap((s) => s.ops || []);
+
+// Where the page's setup differs from the result's base setups, on what the levers touch. Each difference:
+// { player, field, page, result } with raw values (hrids, levels); a player missing on either side has field "player".
+function diffSetups(page, base) {
+    const out = [];
+    const byName = (list) => new Map((list || []).map((s) => [s.name, s]));
+    const P = byName(page), B = byName(base);
+    for (const name of new Set([...P.keys(), ...B.keys()])) {
+        const p = P.get(name), b = B.get(name);
+        if (!p || !b) { out.push({ player: name, field: 'player', page: p ? 'present' : 'absent', result: b ? 'present' : 'absent' }); continue; }
+        const add = (field, x, y) => { if (JSON.stringify(x ?? null) !== JSON.stringify(y ?? null)) out.push({ player: name, field, page: x ?? null, result: y ?? null }); };
+        for (const k of ['stamina', 'intelligence', 'attack', 'melee', 'defense', 'ranged', 'magic']) add(k + 'Level', Number(p.player?.[k + 'Level']), Number(b.player?.[k + 'Level']));
+        const eq = (s) => Object.fromEntries((s.player?.equipment || []).map((e) => [e.itemLocationHrid.replace('/item_locations/', ''), e.itemHrid + ' +' + Number(e.enhancementLevel)]));
+        const pe = eq(p), be = eq(b);
+        for (const slot of new Set([...Object.keys(pe), ...Object.keys(be)])) add(slot, pe[slot], be[slot]);
+        const items = (s, k) => (s[k]?.['/action_types/combat'] || []).map((x) => x?.itemHrid || null);
+        const pf = items(p, 'food'), bf = items(b, 'food'), pd = items(p, 'drinks'), bd = items(b, 'drinks');
+        for (let i = 0; i < Math.max(pf.length, bf.length); i++) add('food ' + (i + 1), pf[i] || null, bf[i] || null);
+        for (let i = 0; i < Math.max(pd.length, bd.length); i++) add('drink ' + (i + 1), pd[i] || null, bd[i] || null);
+        const ab = (s) => (s.abilities || []).map((a) => (a?.abilityHrid ? a.abilityHrid + ' ' + Number(a.level) : null));
+        const pa = ab(p), ba = ab(b);
+        for (let i = 0; i < Math.max(pa.length, ba.length); i++) add('ability ' + (i + 1), pa[i] || null, ba[i] || null);
+        const rooms = (s) => Object.fromEntries(Object.entries(s.houseRooms || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)]));
+        const pr = rooms(p), br = rooms(b);
+        for (const r of new Set([...Object.keys(pr), ...Object.keys(br)])) add(r, pr[r] ?? 0, br[r] ?? 0);
+        const pt = p.triggerMap || {}, bt = b.triggerMap || {};
+        for (const h of new Set([...Object.keys(pt), ...Object.keys(bt)])) add('triggers ' + h, pt[h], bt[h]);
+    }
+    return out;
+}
+
+// Progress line from GET /api/search/<id>: the runner's own fields, shown as they come.
+function renderProgress(status, t) {
+    if (!status) return '';
+    const p = status.progress || {};
+    const parts = [`<b>${esc(t('state.' + status.state))}</b>`];
+    if (p.stage) parts.push(esc(t('progress.stage')) + ' ' + esc(p.stage));
+    if (p.candidatesLeft !== undefined) parts.push(esc(t('progress.candidatesLeft')) + ' ' + num(p.candidatesLeft));
+    if (p.runsPlanned !== undefined) parts.push(esc(t('progress.runs')) + ' ' + num(p.runsDone) + ' / ' + num(p.runsPlanned));
+    if (p.secondsPerRun !== undefined) parts.push(esc(t('progress.secondsPerRun')) + ' ' + num(p.secondsPerRun));
+    if (p.etaSeconds !== undefined && p.etaSeconds !== null) parts.push(esc(t('progress.eta')) + ' ' + esc(duration(p.etaSeconds)));
+    let html = parts.join(' · ');
+    if (p.runsPlanned > 0) {
+        const pct = Math.min(100, Math.max(0, (p.runsDone / p.runsPlanned) * 100));
+        html += `<div class="progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
+    }
+    if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
+    return html;
+}
+
+// Seconds as h:mm:ss (a clock reading of the runner's figure, not a new figure).
+function duration(s) {
+    const x = Math.max(0, Math.round(Number(s)));
+    const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), sec = x % 60;
+    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+// A cost cell: "≤" when the cost is only an upper bound.
+const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
+const paybackCell = (row) => (row.payback === null || row.payback === undefined ? '—' : (upper(row) ? '≤ ' : '') + num(row.payback));
+
+// The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
+// data-whatif-apply="steps:<n>" or "single:<index>".
+function renderResult(result, t) {
+    if (!result) return '';
+    const L = [];
+    const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
+    L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
+    const players = Object.keys(result.budgets || {});
+    // Running spend per player: a step's own figure; "≤" from the first upper-bound cost of that player on.
+    const upperFrom = {};
+    (result.steps || []).forEach((s, i) => { if (upper(s) && upperFrom[s.player] === undefined) upperFrom[s.player] = i; });
+    const spendCell = (s, i, p) => {
+        const v = s.runningSpend?.[p];
+        if (v === undefined) return '—';
+        return (upperFrom[p] !== undefined && upperFrom[p] <= i ? '≤ ' : '') + num(v);
+    };
+    L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}</div>`);
+    if (!result.steps?.length) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`);
+    else {
+        L.push('<table class="table table-sm whatif-table"><thead><tr>' +
+            ['#', t('col.player'), t('col.change'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
+            players.map((p) => `<th>${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
+        result.steps.forEach((s, i) => {
+            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td>${esc(s.desc)}</td>` +
+                `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+                players.map((p) => `<td class="num">${spendCell(s, i, p)}</td>`).join('') +
+                `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
+        });
+        L.push('</tbody></table>');
+    }
+    const c = result.confirmation;
+    if (c) {
+        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${num(c.gainPerUser)} ± ${num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+            `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}, ` +
+            `${esc(t('col.payback'))} ${paybackCell({ payback: c.payback, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}</div>`);
+    }
+    if (players.length) {
+        const last = result.steps?.length ? result.steps[result.steps.length - 1] : null;
+        L.push(`<div class="mb-2">${esc(t('result.budgets'))}: ` + players.map((p) =>
+            `${esc(p)} ${last ? spendCell(last, result.steps.length - 1, p) : num(0)} / ${num(result.budgets[p])}`).join(' · ') + '</div>');
+    }
+    L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
+    if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
+    else {
+        L.push('<table class="table table-sm whatif-table"><thead><tr>' +
+            [t('col.player'), t('col.change'), t('col.stage'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead><tbody>');
+        result.singles.forEach((s, i) => {
+            L.push(`<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${esc(s.desc)}</td><td>${esc(s.lastStage)}</td>` +
+                `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+                `<td>${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
+                `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`);
+        });
+        L.push('</tbody></table>');
+    }
+    if (result.apart?.length) {
+        L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
+            result.apart.map((a) => `<li>${esc(a.desc)}: ${esc(a.note)}</li>`).join('') + '</ul>');
+    }
+    if ((result.steps || []).some(upper) || (result.singles || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    return L.join('');
+}
+
+// The ops behind a button's data-whatif-apply value.
+function opsFor(result, key) {
+    const [kind, n] = String(key).split(':');
+    if (kind === 'steps') return stepsOps(result, Number(n));
+    if (kind === 'single') return result.singles[Number(n)]?.ops || [];
+    throw new Error('unknown apply key ' + key);
+}
+
+// The differences as one line each, for the warning.
+function renderDiff(diff, t) {
+    if (!diff.length) return '';
+    const shown = diff.slice(0, 8).map((d) => `<li>${esc(d.player)}, ${esc(d.field)}: ${esc(t('diff.page'))} ${esc(fmtRaw(d.page))}, ${esc(t('diff.result'))} ${esc(fmtRaw(d.result))}</li>`).join('');
+    const more = diff.length > 8 ? `<li>${esc(t('diff.more', { n: diff.length - 8 }))}</li>` : '';
+    return `<div class="whatif-warn">${esc(t('diff.title'))}<ul class="mb-0">${shown}${more}</ul></div>`;
+}
+const fmtRaw = (v) => (v === null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+
+/***/ }),
+
 /***/ "./patchNote.i18n.json":
 /*!*****************************!*\
   !*** ./patchNote.i18n.json ***!
   \*****************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）","pt":"Tradução automática por Ramlock"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]},"pt":{"title":"30/09/2026","notes":["Suporte a melhorias do Labirinto","Suporte a buffs de santuário"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]},"pt":{"title":"05/05/2026","notes":["Atualização dos dados de equipamento e dos nomes traduzidos"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]},"pt":{"title":"07/04/2026","notes":["Novos campos com as tentativas do Labirinto e a taxa de sucesso no Labirinto"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]},"pt":{"title":"05/03/2026","notes":["Otimização do desempenho da simulação relacionada à Fúria"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]},"pt":{"title":"03/03/2026","notes":["Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]},"pt":{"title":"24/02/2026","notes":["Atualização dos dados para o patch do Labirinto","Nova simulação do Labirinto, individual e em lote"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]},"pt":{"title":"01/02/2026","notes":["Corrigida a precisão do cálculo do nível de combate","Corrigido o intervalo antes de voltar ao combate depois de concluir ou falhar uma masmorra, por wangchyan","Corrigidas as durações de Maldição e Enfraquecer, por wangchyan","Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan","Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan","Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan","Corrigido Invencível não afetando direito a Tenacidade, por wangchyan","Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan","As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]},"pt":{"title":"11/01/2026","notes":["Corrigidos gatilhos que contavam por engano unidades já mortas, por wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]},"pt":{"title":"31/12/2025","notes":["Recurso experimental: gráficos de HP/MP, por wangchyan","Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan","Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan","Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]},"pt":{"title":"30/12/2025","notes":["As masmorras agora registram o tempo de conclusão mais rápido"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]},"pt":{"title":"24/12/2025","notes":["Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]},"pt":{"title":"18/12/2025","notes":["Suporte ao sistema de conquistas e seus buffs","O loot de monstros de masmorra não se aplicam mais"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]},"pt":{"title":"06/12/2025","notes":["Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]},"pt":{"title":"07/11/2025","notes":["Suporte à busca de preços pela API do site espelho chinês"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]},"pt":{"title":"14/10/2025","notes":["Corrigido o intervalo de ataque dos monstros que não escalava com o nível de Ataque"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]},"pt":{"title":"17/09/2025","notes":["Corrigida uma falha de ativação da Aura Crítica"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]},"pt":{"title":"09/09/2025","notes":["Reviver não limpa mais todos os buffs por engano","O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]},"pt":{"title":"21/08/2025","notes":["Nova simulação em lote de combate solo e as opções de monstro correspondentes","Novas opções de MooPass e de buffs comunitários, com seus efeitos","Melhoria dos atributos de equipamentos refinados","Redução dos atributos do Bispo Encantado","Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]},"pt":{"title":"20/08/2025","notes":["Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]},"pt":{"title":"19/08/2025","notes":["Incorporada a reformulação dos ramos Test e Temp","Atualização dos dados do jogo: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]},"pt":{"title":"18/08/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez","Corrigida a exibição do registro de derrota no modo escuro","Atualizada a fórmula do nível de combate","Ajustados os espinhos do Golem de Estalactite","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]},"pt":{"title":"16/08/2025","notes":["Novo botão Parar Simulação, por BKN46","Novos botões para reordenar técnicas, por BKN46","Novo registro de derrota, por TruthLight","Atualização dos atributos dos monstros","Reflexo Arcano renomeado para Retribuição","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]},"pt":{"title":"14/08/2025","notes":["Atualização dos atributos dos monstros","Ajuste dos atributos de equipamentos à distância e de magia","Ajuste do limite do dano de retaliação","Corrigidas técnicas conjuradas entre batalhas","Corrigida a lógica de decisão de conjuração de técnicas","Proporção de falta de mana mais precisa","15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]},"pt":{"title":"11/08/2025","notes":["Atualização dos atributos dos monstros","Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas","Ajuste dos valores de Golpe de Escudo e Golpe Atordoante","Ajuste do bônus de EXP de Defesa dos baluartes","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]},"pt":{"title":"08/08/2025","notes":["Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais","Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria","Ajuste dos valores da Aura Crítica","Exibição do nível de combate","Exibição da penalidade por diferença de nível","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]},"pt":{"title":"07/08/2025","notes":["Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]},"pt":{"title":"03/08/2025","notes":["A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito","Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json","Máximo de acúmulos da Fúria corrigido para 5","Ajuste de como Aparar é resolvido"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]},"pt":{"title":"31/07/2025","notes":["Atualização dos dados de itens e dos atributos dos monstros","Reformulação de Carapaça de Espinhos e Reflexo Arcano","Atualização dos valores de aprimoramento","Remoção de gatilhos quebrados","Reformulação do Enfraquecer do Baluarte de Grifo","O Aparar da Espada Régia agora se aplica aos colegas de equipe","Máximo de acúmulos do efeito Fúria corrigido para 6","O efeito Ondulante agora restaura 10 MP","A retaliação agora mostra sua taxa de acerto corretamente","Ajuste da mecânica de retaliação","Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]},"pt":{"title":"22/07/2025","notes":["A Aura Crítica agora escala com o nível de À Distância","Ajuste dos valores base das auras e de como escalam com o nível"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]},"pt":{"title":"17/07/2025","notes":["A simulação em lote permite escolher planetas","Divisão de EXP ajustada para 30% + 70%","Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente","Água, fogo e natureza agora usam a Aura Mística por padrão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]},"pt":{"title":"11/07/2025","notes":["Atualização das fórmulas de EXP dos monstros e de nível das técnicas","Atualização das fórmulas de evasão e de resistência","Poder substituído por Corpo a Corpo, com a compatibilidade correspondente","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]},"pt":{"title":"10/07/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]},"pt":{"title":"09/07/2025","notes":["Ajustes de loot e de taxas de loot","Ajustes de EXP","Ajuste de Tiro Pestilento e Perfuração","Remoção da regeneração automática dos monstros","Ajuste do gatilho do Tiro Pestilento","Uso da API oficial para buscar preços"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]},"pt":{"title":"07/07/2025","notes":["Escala dos atributos dos monstros e várias dificuldades de mapa","Ajustes das técnicas de magia; o atributo \'dano de técnica\' dos equipamentos agora faz efeito","O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração","Ajustes de itens","Precisão reformulada para usar o nível de Ataque","TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!","Reformulação da EXP e equipamento de amuleto"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值","右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住","页面默认以黑暗模式打开，关闭后会被记住；黑暗模式开关位于右上角，语言按钮旁边","模拟器现已支持葡萄牙语，整个页面使用游戏官方的葡萄牙语名称和术语","模拟速度提升约五倍，结果不变"]},"pt":{"title":"08/11/2026","notes":["Os números nos resultados aparecem com 4 algarismos significativos, com k, M, B e T a partir de 10,000 (123.5k, 1.235M); passe o mouse sobre um número para ver o valor exato","Nova chave Números ISO no canto superior direito: porcentagens como 1.79 % e milhares como 1 234; vem desligada e é lembrada","A página abre no modo escuro por padrão, e desligá-lo fica lembrado; a chave do modo escuro fica no canto superior direito, ao lado dos botões de idioma","O simulador agora está disponível em português, com os nomes e termos oficiais do jogo em toda a página","As simulações rodam cerca de cinco vezes mais rápido; os resultados não mudam"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致"]},"pt":{"title":"07/11/2026","notes":["O painel de Atributos de Combate agora também conta as bebidas equipadas e as auras equipadas do próprio jogador, sem nenhuma opção para ligar; os atributos mostrados batem com os que o mesmo jogador tem em combate"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["现在可从两种导出格式读取公会增益","战斗属性面板显示模拟所用的属性（房屋、成就、公会、社区及其他增益），包括有效技能等级和稀有发现","社区经验和战斗掉落增益默认开启（20级），并可编辑"]},"pt":{"title":"04/11/2026","notes":["Os buffs de guilda agora são lidos dos dois formatos de exportação","O painel de Atributos de Combate mostra os atributos que a simulação usa (cômodos da casa, conquistas, guilda, comunidade e outros buffs), com os níveis efetivos de habilidade e Loot Raro","Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"]}}}');
+module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）","pt":"Tradução automática por Ramlock"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]},"pt":{"title":"30/09/2026","notes":["Suporte a melhorias do Labirinto","Suporte a buffs de santuário"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]},"pt":{"title":"05/05/2026","notes":["Atualização dos dados de equipamento e dos nomes traduzidos"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]},"pt":{"title":"07/04/2026","notes":["Novos campos com as tentativas do Labirinto e a taxa de sucesso no Labirinto"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]},"pt":{"title":"05/03/2026","notes":["Otimização do desempenho da simulação relacionada à Fúria"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]},"pt":{"title":"03/03/2026","notes":["Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]},"pt":{"title":"24/02/2026","notes":["Atualização dos dados para o patch do Labirinto","Nova simulação do Labirinto, individual e em lote"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]},"pt":{"title":"01/02/2026","notes":["Corrigida a precisão do cálculo do nível de combate","Corrigido o intervalo antes de voltar ao combate depois de concluir ou falhar uma masmorra, por wangchyan","Corrigidas as durações de Maldição e Enfraquecer, por wangchyan","Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan","Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan","Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan","Corrigido Invencível não afetando direito a Tenacidade, por wangchyan","Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan","As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]},"pt":{"title":"11/01/2026","notes":["Corrigidos gatilhos que contavam por engano unidades já mortas, por wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]},"pt":{"title":"31/12/2025","notes":["Recurso experimental: gráficos de HP/MP, por wangchyan","Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan","Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan","Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]},"pt":{"title":"30/12/2025","notes":["As masmorras agora registram o tempo de conclusão mais rápido"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]},"pt":{"title":"24/12/2025","notes":["Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]},"pt":{"title":"18/12/2025","notes":["Suporte ao sistema de conquistas e seus buffs","O loot de monstros de masmorra não se aplicam mais"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]},"pt":{"title":"06/12/2025","notes":["Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]},"pt":{"title":"07/11/2025","notes":["Suporte à busca de preços pela API do site espelho chinês"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]},"pt":{"title":"14/10/2025","notes":["Corrigido o intervalo de ataque dos monstros que não escalava com o nível de Ataque"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]},"pt":{"title":"17/09/2025","notes":["Corrigida uma falha de ativação da Aura Crítica"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]},"pt":{"title":"09/09/2025","notes":["Reviver não limpa mais todos os buffs por engano","O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]},"pt":{"title":"21/08/2025","notes":["Nova simulação em lote de combate solo e as opções de monstro correspondentes","Novas opções de MooPass e de buffs comunitários, com seus efeitos","Melhoria dos atributos de equipamentos refinados","Redução dos atributos do Bispo Encantado","Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]},"pt":{"title":"20/08/2025","notes":["Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]},"pt":{"title":"19/08/2025","notes":["Incorporada a reformulação dos ramos Test e Temp","Atualização dos dados do jogo: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]},"pt":{"title":"18/08/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez","Corrigida a exibição do registro de derrota no modo escuro","Atualizada a fórmula do nível de combate","Ajustados os espinhos do Golem de Estalactite","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]},"pt":{"title":"16/08/2025","notes":["Novo botão Parar Simulação, por BKN46","Novos botões para reordenar técnicas, por BKN46","Novo registro de derrota, por TruthLight","Atualização dos atributos dos monstros","Reflexo Arcano renomeado para Retribuição","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]},"pt":{"title":"14/08/2025","notes":["Atualização dos atributos dos monstros","Ajuste dos atributos de equipamentos à distância e de magia","Ajuste do limite do dano de retaliação","Corrigidas técnicas conjuradas entre batalhas","Corrigida a lógica de decisão de conjuração de técnicas","Proporção de falta de mana mais precisa","15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]},"pt":{"title":"11/08/2025","notes":["Atualização dos atributos dos monstros","Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas","Ajuste dos valores de Golpe de Escudo e Golpe Atordoante","Ajuste do bônus de EXP de Defesa dos baluartes","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]},"pt":{"title":"08/08/2025","notes":["Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais","Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria","Ajuste dos valores da Aura Crítica","Exibição do nível de combate","Exibição da penalidade por diferença de nível","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]},"pt":{"title":"07/08/2025","notes":["Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]},"pt":{"title":"03/08/2025","notes":["A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito","Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json","Máximo de acúmulos da Fúria corrigido para 5","Ajuste de como Aparar é resolvido"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]},"pt":{"title":"31/07/2025","notes":["Atualização dos dados de itens e dos atributos dos monstros","Reformulação de Carapaça de Espinhos e Reflexo Arcano","Atualização dos valores de aprimoramento","Remoção de gatilhos quebrados","Reformulação do Enfraquecer do Baluarte de Grifo","O Aparar da Espada Régia agora se aplica aos colegas de equipe","Máximo de acúmulos do efeito Fúria corrigido para 6","O efeito Ondulante agora restaura 10 MP","A retaliação agora mostra sua taxa de acerto corretamente","Ajuste da mecânica de retaliação","Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]},"pt":{"title":"22/07/2025","notes":["A Aura Crítica agora escala com o nível de À Distância","Ajuste dos valores base das auras e de como escalam com o nível"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]},"pt":{"title":"17/07/2025","notes":["A simulação em lote permite escolher planetas","Divisão de EXP ajustada para 30% + 70%","Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente","Água, fogo e natureza agora usam a Aura Mística por padrão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]},"pt":{"title":"11/07/2025","notes":["Atualização das fórmulas de EXP dos monstros e de nível das técnicas","Atualização das fórmulas de evasão e de resistência","Poder substituído por Corpo a Corpo, com a compatibilidade correspondente","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]},"pt":{"title":"10/07/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]},"pt":{"title":"09/07/2025","notes":["Ajustes de loot e de taxas de loot","Ajustes de EXP","Ajuste de Tiro Pestilento e Perfuração","Remoção da regeneração automática dos monstros","Ajuste do gatilho do Tiro Pestilento","Uso da API oficial para buscar preços"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]},"pt":{"title":"07/07/2025","notes":["Escala dos atributos dos monstros e várias dificuldades de mapa","Ajustes das técnicas de magia; o atributo \'dano de técnica\' dos equipamentos agora faz efeito","O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração","Ajustes de itens","Precisão reformulada para usar o nível de Ataque","TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!","Reformulação da EXP e equipamento de amuleto"]}},"2026-11-09":{"from":"en","zh":{"title":"2026年11月9日","notes":["为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮"]},"pt":{"title":"09/11/2026","notes":["Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值","右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住","页面默认以黑暗模式打开，关闭后会被记住；黑暗模式开关位于右上角，语言按钮旁边","模拟器现已支持葡萄牙语，整个页面使用游戏官方的葡萄牙语名称和术语","模拟速度提升约五倍，结果不变"]},"pt":{"title":"08/11/2026","notes":["Os números nos resultados aparecem com 4 algarismos significativos, com k, M, B e T a partir de 10,000 (123.5k, 1.235M); passe o mouse sobre um número para ver o valor exato","Nova chave Números ISO no canto superior direito: porcentagens como 1.79 % e milhares como 1 234; vem desligada e é lembrada","A página abre no modo escuro por padrão, e desligá-lo fica lembrado; a chave do modo escuro fica no canto superior direito, ao lado dos botões de idioma","O simulador agora está disponível em português, com os nomes e termos oficiais do jogo em toda a página","As simulações rodam cerca de cinco vezes mais rápido; os resultados não mudam"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致"]},"pt":{"title":"07/11/2026","notes":["O painel de Atributos de Combate agora também conta as bebidas equipadas e as auras equipadas do próprio jogador, sem nenhuma opção para ligar; os atributos mostrados batem com os que o mesmo jogador tem em combate"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["现在可从两种导出格式读取公会增益","战斗属性面板显示模拟所用的属性（房屋、成就、公会、社区及其他增益），包括有效技能等级和稀有发现","社区经验和战斗掉落增益默认开启（20级），并可编辑"]},"pt":{"title":"04/11/2026","notes":["Os buffs de guilda agora são lidos dos dois formatos de exportação","O painel de Atributos de Combate mostra os atributos que a simulação usa (cômodos da casa, conquistas, guilda, comunidade e outros buffs), com os níveis efetivos de habilidade e Loot Raro","Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"]}}}');
 
 /***/ }),
 
@@ -2682,7 +2995,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation b
   \************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show at 4 significant figures, with k, M, B and T from 10,000 up (123.5k, 1.235M); hover a number for its exact value","New ISO numbers toggle at the top right: percentages as 1.79 % and thousands as 1 234; it is off by default and remembered","The page opens in Dark Mode by default, and turning it off is remembered; the Dark Mode toggle sits at the top right, next to the language buttons","The simulator is now available in Portuguese, using the game\'s own Portuguese names and terms across the page","Simulations run about five times faster; results are unchanged"]},"2026-11-07":{"fork":"Ramlock","notes":["The Combat Stats panel now also counts the slotted drinks and the player\'s own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are now read from both export formats","The Combat Stats panel shows the stats the simulation uses (house rooms, achievements, guild, community and other buffs), with effective skill levels and Rare Find","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
+module.exports = /*#__PURE__*/JSON.parse('{"2026-11-09":{"fork":"Ramlock","notes":["A What-if window for the coming local What-if runner, which runs on your own PC and serves the simulator: set a budget per player and what to search, follow the search with a Stop button, and apply a suggested change to your setup in one click. The website itself shows no What-if button"]},"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show at 4 significant figures, with k, M, B and T from 10,000 up (123.5k, 1.235M); hover a number for its exact value","New ISO numbers toggle at the top right: percentages as 1.79 % and thousands as 1 234; it is off by default and remembered","The page opens in Dark Mode by default, and turning it off is remembered; the Dark Mode toggle sits at the top right, next to the language buttons","The simulator is now available in Portuguese, using the game\'s own Portuguese names and terms across the page","Simulations run about five times faster; results are unchanged"]},"2026-11-07":{"fork":"Ramlock","notes":["The Combat Stats panel now also counts the slotted drinks and the player\'s own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are now read from both export formats","The Combat Stats panel shows the stats the simulation uses (house rooms, achievements, guild, community and other buffs), with effective skill levels and Rare Find","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
 
 /***/ }),
 
@@ -3027,8 +3340,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
 /* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
 /* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
 
 
 
@@ -7138,6 +7453,217 @@ function initErrorHandling() {
     });
 }
 
+// #region What-if window. Shown only when the page is served by the local what-if runner (its /api/version answers);
+// the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
+// runner's or the result's own; the window computes none.
+const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
+const whatIf = { searchId: null, state: null, timer: null, result: null };
+
+// The page's player slots; the current tab is saved first, so the slots hold what the screen shows.
+function whatIfSlots(onlySelected) {
+    savePreviousPlayer(currentPlayerTabId);
+    const tabs = document.querySelectorAll('#playerTab .nav-link');
+    const selected = new Set([...document.querySelectorAll('.player-checkbox')].filter((c) => c.checked).map((c) => c.id.replace('player', '')));
+    const slots = [];
+    for (let i = 1; i <= 5; i++) {
+        if (onlySelected && !selected.has(String(i))) continue;
+        slots.push({ id: String(i), name: tabs[i - 1].textContent.trim(), json: playerDataMap[i] });
+    }
+    return slots;
+}
+
+async function whatIfRequest(url, options) {
+    const response = await fetch(url, options);
+    const body = await response.json().catch(() => ({}));
+    return { ok: response.ok, body };
+}
+
+function whatIfMessage(text) {
+    document.getElementById('whatIfMessage').textContent = text || '';
+}
+
+function whatIfRenderSetup() {
+    const budgets = document.getElementById('whatIfBudgets');
+    const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
+    budgets.replaceChildren();
+    for (const slot of whatIfSlots(true)) {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm mb-1';
+        const label = document.createElement('span');
+        label.className = 'input-group-text';
+        label.textContent = slot.name;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.className = 'form-control';
+        input.dataset.player = slot.name;
+        input.value = typed[slot.name] ?? '0';
+        group.append(label, input);
+        budgets.append(group);
+    }
+    const levers = document.getElementById('whatIfLevers');
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.LEVERS.filter((l) => l.def).map((l) => l.id));
+    levers.replaceChildren();
+    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.LEVERS) {
+        const row = document.createElement('div');
+        row.className = 'form-check';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-check-input';
+        input.id = 'whatIfLever_' + lever.id;
+        input.value = lever.id;
+        input.checked = checked.has(lever.id);
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.htmlFor = input.id;
+        const name = document.createElement('b');
+        name.textContent = whatIfT('lever.' + lever.id + '.name');
+        label.append(name, ': ' + whatIfT('lever.' + lever.id + '.desc'));
+        row.append(input, label);
+        levers.append(row);
+    }
+}
+
+function whatIfShowResult(result) {
+    whatIf.result = result;
+    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.renderResult)(result, whatIfT) : '';
+    whatIfShowDiff();
+}
+
+// Where the page's setup differs from the one the search ran on.
+function whatIfShowDiff() {
+    const result = whatIf.result;
+    const box = document.getElementById('whatIfDiff');
+    if (!result?.setups) { box.innerHTML = ''; return; }
+    const names = new Set(result.setups.map((s) => s.name));
+    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.diffSetups)(page, result.setups), whatIfT);
+}
+
+function whatIfShowStatus(status) {
+    whatIf.state = status.state;
+    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.renderProgress)(status, whatIfT);
+    const stop = document.getElementById('buttonWhatIfStop');
+    stop.disabled = !(status.state === 'running' || status.state === 'stopped');
+    stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
+    if (status.state === 'done' && status.result) whatIfShowResult(status.result);
+    if (status.state !== 'running') whatIfStopWatching();
+    if (status.state === 'done') whatIfLoadList();
+}
+
+function whatIfStopWatching() {
+    if (whatIf.timer) clearInterval(whatIf.timer);
+    whatIf.timer = null;
+}
+
+function whatIfWatch(id) {
+    whatIf.searchId = id;
+    whatIfStopWatching();
+    const poll = async () => {
+        try {
+            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.API.status(id));
+            if (ok) whatIfShowStatus(body);
+            else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
+        } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
+    };
+    poll();
+    whatIf.timer = setInterval(poll, 1000);
+}
+
+async function whatIfStart() {
+    whatIfMessage('');
+    const slots = whatIfSlots(true);
+    if (!slots.length) { whatIfMessage(whatIfT('noPlayers')); return; }
+    const budgets = {};
+    for (const input of document.querySelectorAll('#whatIfBudgets input')) {
+        const value = Number(input.value);
+        if (input.value === '' || !Number.isFinite(value) || value < 0) { whatIfMessage(whatIfT('badBudget', { player: input.dataset.player })); return; }
+        budgets[input.dataset.player] = value;
+    }
+    const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
+    if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
+    const names = slots.map((s) => s.name);
+    if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
+    const body = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.searchBody)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
+        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value });
+    try {
+        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (ok) whatIfWatch(answer.id);
+        else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
+        else whatIfMessage(answer.error || whatIfT('runnerError'));
+    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+}
+
+async function whatIfStopOrResume() {
+    if (!whatIf.searchId) return;
+    const resuming = whatIf.state === 'stopped';
+    try {
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.API.stop(whatIf.searchId), { method: 'POST' });
+        if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
+        if (resuming) whatIfWatch(whatIf.searchId);
+        else if (body.state) whatIfShowStatus(body);
+        else whatIfWatch(whatIf.searchId);
+    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+}
+
+async function whatIfLoadList() {
+    const select = document.getElementById('selectWhatIfResult');
+    try {
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.API.results);
+        if (!ok || !Array.isArray(body)) return;
+        select.replaceChildren(...body.map((r) => {
+            const option = document.createElement('option');
+            option.value = r.id;
+            option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit')].filter(Boolean).join(' · ');
+            return option;
+        }));
+    } catch (err) { /* the runner is gone; the Start button reports it */ }
+}
+
+async function whatIfLoadResult() {
+    const id = document.getElementById('selectWhatIfResult').value;
+    if (!id) return;
+    try {
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.API.result(id));
+        if (ok) { whatIfMessage(''); whatIfShowResult(body); }
+        else whatIfMessage(body.error || whatIfT('runnerError'));
+    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+}
+
+function whatIfApply(key) {
+    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.opsFor)(whatIf.result, key);
+    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.applyToSlots)(whatIfSlots(false), ops);
+    if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
+    for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
+    updateNextPlayer(currentPlayerTabId);
+    updateState();
+    updateUI();
+    whatIfMessage(whatIfT('applied'));
+    whatIfShowDiff();
+}
+
+async function initWhatIf() {
+    try {
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_27__.API.version);
+        if (!ok || !body || body.runner === undefined) return;
+        whatIf.version = body;
+    } catch (err) { return; } // not served by the runner (the public page): no What-if window
+    document.getElementById('buttonWhatIf').style.display = '';
+    // Strings are read when the window opens: i18next may not be ready when this runs.
+    document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
+        document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
+        whatIfRenderSetup(); whatIfLoadList(); whatIfShowDiff(); });
+    document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
+    document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
+    document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
+    document.getElementById('whatIfResult').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-whatif-apply]');
+        if (button) whatIfApply(button.dataset.whatifApply);
+    });
+    i18next.on('languageChanged', () => { whatIfRenderSetup(); if (whatIf.result) whatIfShowResult(whatIf.result); });
+}
+// #endregion
+
 function initImportExportModal() {
     let exportSetButton = document.getElementById("buttonExportSet");
     exportSetButton.addEventListener("click", (event) => {
@@ -7908,15 +8434,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_27__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_28__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_27__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_27__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_27__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_28__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_28__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_28__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_28__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_29__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -7927,7 +8453,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_28__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_29__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -8172,6 +8698,7 @@ initSimulationControls();
 initEquipmentSetsModal();
 initErrorHandling();
 initImportExportModal();
+initWhatIf();
 initDamageDoneTaken();
 initPatchNotes();
 initExtraBuffSection();
@@ -8183,4 +8710,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.17b363ca.js.map
+//# sourceMappingURL=bundle.292fbb76.js.map

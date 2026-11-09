@@ -67,6 +67,9 @@ const mostUsed = (en) => {
 };
 // Where the game's word does not fit the simulator's sense, with the reason.
 const notTheGameWord = {
+    'whatIf.apply': 'the game maps Apply to Candidatar-se (apply for a guild); here it writes a change into the setup (Aplicar)',
+    'whatIf.apply:apply': 'the same, word by word',
+    'whatIf.applyTo:apply': 'the game maps Apply to Candidatar-se (apply for a guild); here it writes changes into the setup (Aplicar)',
     'labyAttemptCount:count': 'the game maps "Count" to Quantidade; here it counts attempts (Tentativas)',
     'simulationResults.labyAttemptCount:count': 'the game maps "Count" to Quantidade; here it counts attempts (Tentativas)',
     'simulationResults.dungeonsCompleted:completed': 'Concluído agrees in gender: concluídas',
@@ -88,7 +91,7 @@ let termChecks = 0;
 for (const [key, enValue] of Object.entries(flat(JSON.parse(read('locales/en/common.json'))))) {
     const ptValue = flat(JSON.parse(read('locales/pt/common.json')))[key];
     const whole = mostUsed(norm(enValue));
-    if (whole !== undefined) {
+    if (whole !== undefined && !notTheGameWord[key]) {
         termChecks++;
         if (norm(ptValue) !== whole) failures.push(`${key}: the game says "${whole}" for "${norm(enValue)}", pt has "${norm(ptValue)}"`);
         continue;

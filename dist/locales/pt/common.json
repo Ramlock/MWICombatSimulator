@@ -127,5 +127,122 @@
     "configureTrigger": "Configurar gatilho",
     "error": "Erro",
     "copyToClipboard": "Copiar para a área de transferência",
-    "none": "Nenhum"
+    "none": "Nenhum",
+    "whatIf": {
+        "button": "E se",
+        "title": "E se",
+        "version": "Executor {{runner}}, motor {{engine}}",
+        "goalLabel": "Objetivo",
+        "goal": {
+            "profit": "Lucro do grupo por dia, após a taxa",
+            "exp": "EXP do grupo por hora"
+        },
+        "budgets": "Orçamento por jogador (moedas)",
+        "levers": "O que buscar",
+        "lever": {
+            "equip": {
+                "name": "Equipamento",
+                "desc": "aprimorar cada item usado, ou comprar outro item para o slot"
+            },
+            "consumables": {
+                "name": "Comidas e bebidas",
+                "desc": "trocar, tirar ou preencher cada slot de comida e bebida com um item vendido no mercado"
+            },
+            "pairs": {
+                "name": "Pares de comidas e bebidas",
+                "desc": "alterar dois espaços de comida ou bebida juntos, cada um para outro nível do seu tipo"
+            },
+            "owned": {
+                "name": "Itens que você tem",
+                "desc": "usar itens do seu inventário (precisa do inventário do exportador)"
+            },
+            "abilities": {
+                "name": "Técnicas",
+                "desc": "usar técnicas que você aprendeu (precisa das técnicas aprendidas do exportador)"
+            },
+            "order": {
+                "name": "Ordem das técnicas",
+                "desc": "testar todas as ordens dos espaços de técnica 2 a 5"
+            },
+            "triggers": {
+                "name": "Gatilhos",
+                "desc": "ajustar os números e as condições dos gatilhos de técnicas e consumíveis"
+            },
+            "houses": {
+                "name": "Salas da casa",
+                "desc": "subir uma sala de combate da casa, com o custo dos materiais e moedas"
+            },
+            "abilitylevels": {
+                "name": "Níveis de técnica",
+                "desc": "subir uma técnica equipada com livros; o custo pode ser um limite superior (≤)"
+            },
+            "books": {
+                "name": "Novas técnicas",
+                "desc": "aprender uma técnica que você não tem em um espaço livre (precisa das técnicas aprendidas do exportador)"
+            },
+            "skills": {
+                "name": "Níveis de habilidade de combate",
+                "desc": "subir um nível de habilidade de combate, com os dias até lá contados em moedas"
+            }
+        },
+        "start": "Iniciar busca",
+        "stop": "Parar",
+        "resume": "Retomar",
+        "earlier": "Buscas anteriores",
+        "load": "Mostrar",
+        "noPlayers": "Marque pelo menos um jogador para simular.",
+        "badBudget": "O orçamento de {{player}} não é um número de moedas.",
+        "noLevers": "Marque pelo menos uma coisa para buscar.",
+        "sameNames": "Dois jogadores têm o mesmo nome; renomeie uma aba antes.",
+        "alreadyRunning": "Uma busca já está rodando; mostrando ela.",
+        "runnerError": "O executor recusou o pedido.",
+        "runnerGone": "O executor não responde. Ele ainda está aberto?",
+        "missingPlayer": "Nada aplicado: nenhuma aba de jogador se chama {{names}}.",
+        "applied": "Aplicado ao setup. Rode uma simulação para ver.",
+        "state": {
+            "running": "Rodando",
+            "stopped": "Parada",
+            "done": "Concluída",
+            "error": "Erro"
+        },
+        "progress": {
+            "stage": "etapa",
+            "candidatesLeft": "candidatos restantes",
+            "runs": "execuções",
+            "secondsPerRun": "segundos por execução",
+            "eta": "Tempo restante"
+        },
+        "result": {
+            "goal": "Objetivo",
+            "steps": "Mudanças escolhidas, em ordem",
+            "noSteps": "Nenhuma alteração ganha além do seu erro dentro dos orçamentos.",
+            "confirmed": "Confirmado em execuções novas",
+            "perUserDay": "por usuário por dia",
+            "budgets": "Gasto do orçamento",
+            "singles": "Cada alteração sozinha",
+            "singlesNote": "(contra o setup de onde a busca partiu; cinza = ganho abaixo de 2 erros)",
+            "noSingles": "Nenhuma mudança foi medida.",
+            "apart": "Custo desconhecido, sem ranking",
+            "upperNote": "≤: o custo é só um limite superior (livros de técnica sem a experiência já dentro do nível)."
+        },
+        "col": {
+            "player": "Jogador",
+            "change": "Alterar",
+            "gain": "Ganho por usuário/dia",
+            "se": "± erro",
+            "cost": "Custo",
+            "payback": "Dias de retorno",
+            "spent": "Gasto",
+            "stage": "Etapa",
+            "costPath": "Como é comprado"
+        },
+        "apply": "Aplicar",
+        "applyTo": "Aplicar 1 a {{n}}",
+        "diff": {
+            "title": "O setup da página difere do usado na busca; os ganhos podem não valer:",
+            "page": "aqui",
+            "result": "na busca",
+            "more": "e mais {{n}}"
+        }
+    }
 }

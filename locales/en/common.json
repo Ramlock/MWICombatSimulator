@@ -127,5 +127,122 @@
     "configureTrigger": "Configure Trigger",
     "error": "Error",
     "copyToClipboard": "Copy to clipboard",
-    "none": "None"
+    "none": "None",
+    "whatIf": {
+        "button": "What-if",
+        "title": "What-if",
+        "version": "Runner {{runner}}, engine {{engine}}",
+        "goalLabel": "Goal",
+        "goal": {
+            "profit": "Party profit per day, after tax",
+            "exp": "Party EXP per hour"
+        },
+        "budgets": "Budget per player (coin)",
+        "levers": "What to search",
+        "lever": {
+            "equip": {
+                "name": "Equipment",
+                "desc": "enhance each worn item, or buy another item for its slot"
+            },
+            "consumables": {
+                "name": "Food and drinks",
+                "desc": "swap, drop or fill each food and drink slot with one sold on the market"
+            },
+            "pairs": {
+                "name": "Food and drink pairs",
+                "desc": "change two food or drink slots together, each to another tier of its type"
+            },
+            "owned": {
+                "name": "Items you own",
+                "desc": "swap in items from your inventory (needs the exporter's inventory)"
+            },
+            "abilities": {
+                "name": "Abilities",
+                "desc": "swap in abilities you have learned (needs the exporter's learned abilities)"
+            },
+            "order": {
+                "name": "Ability order",
+                "desc": "try every order of ability slots 2 to 5"
+            },
+            "triggers": {
+                "name": "Triggers",
+                "desc": "tune the numbers and conditions of ability and consumable triggers"
+            },
+            "houses": {
+                "name": "House rooms",
+                "desc": "raise a combat house room, costed in its materials and coin"
+            },
+            "abilitylevels": {
+                "name": "Ability levels",
+                "desc": "raise an equipped ability with books; the cost can be an upper bound (≤)"
+            },
+            "books": {
+                "name": "New abilities",
+                "desc": "learn an ability you do not have into an open slot (needs the exporter's learned abilities)"
+            },
+            "skills": {
+                "name": "Skill levels",
+                "desc": "raise a combat skill level, the days to reach it counted in coin"
+            }
+        },
+        "start": "Start search",
+        "stop": "Stop",
+        "resume": "Resume",
+        "earlier": "Earlier searches",
+        "load": "Show",
+        "noPlayers": "Tick at least one player to simulate.",
+        "badBudget": "The budget for {{player}} is not a number of coin.",
+        "noLevers": "Tick at least one thing to search.",
+        "sameNames": "Two players have the same name; rename one tab first.",
+        "alreadyRunning": "A search is already running; showing it.",
+        "runnerError": "The runner refused the request.",
+        "runnerGone": "The runner does not answer. Is it still running?",
+        "missingPlayer": "Nothing applied: no player tab is named {{names}}.",
+        "applied": "Applied to the setup. Run a simulation to see it.",
+        "state": {
+            "running": "Running",
+            "stopped": "Stopped",
+            "done": "Done",
+            "error": "Error"
+        },
+        "progress": {
+            "stage": "stage",
+            "candidatesLeft": "candidates left",
+            "runs": "runs",
+            "secondsPerRun": "seconds per run",
+            "eta": "time left"
+        },
+        "result": {
+            "goal": "Goal",
+            "steps": "Chosen changes, in order",
+            "noSteps": "No change gains beyond its error within the budgets.",
+            "confirmed": "Confirmed on fresh runs",
+            "perUserDay": "per user per day",
+            "budgets": "Spent of budget",
+            "singles": "Each change alone",
+            "singlesNote": "(against the setup the search started from; grey = gain below 2 errors)",
+            "noSingles": "No changes were measured.",
+            "apart": "Unknown cost, not ranked",
+            "upperNote": "≤: the cost is only an upper bound (ability books without the experience already inside the level)."
+        },
+        "col": {
+            "player": "Player",
+            "change": "Change",
+            "gain": "Gain per user/day",
+            "se": "± error",
+            "cost": "Cost",
+            "payback": "Payback days",
+            "spent": "Spent",
+            "stage": "Stage",
+            "costPath": "How it is bought"
+        },
+        "apply": "Apply",
+        "applyTo": "Apply 1 to {{n}}",
+        "diff": {
+            "title": "The page's setup differs from the one the search ran on; its gains may not hold:",
+            "page": "here",
+            "result": "in the search",
+            "more": "and {{n}} more"
+        }
+    }
 }

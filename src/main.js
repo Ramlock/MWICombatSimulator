@@ -26,6 +26,7 @@ import openableLootDropMap from "./combatsimulator/data/openableLootDropMap.json
 import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.json"
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchBody as whatIfSearchBody, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, renderDiff as whatIfRenderDiff } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4107,6 +4108,217 @@ function initErrorHandling() {
     });
 }
 
+// #region What-if window. Shown only when the page is served by the local what-if runner (its /api/version answers);
+// the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
+// runner's or the result's own; the window computes none.
+const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
+const whatIf = { searchId: null, state: null, timer: null, result: null };
+
+// The page's player slots; the current tab is saved first, so the slots hold what the screen shows.
+function whatIfSlots(onlySelected) {
+    savePreviousPlayer(currentPlayerTabId);
+    const tabs = document.querySelectorAll('#playerTab .nav-link');
+    const selected = new Set([...document.querySelectorAll('.player-checkbox')].filter((c) => c.checked).map((c) => c.id.replace('player', '')));
+    const slots = [];
+    for (let i = 1; i <= 5; i++) {
+        if (onlySelected && !selected.has(String(i))) continue;
+        slots.push({ id: String(i), name: tabs[i - 1].textContent.trim(), json: playerDataMap[i] });
+    }
+    return slots;
+}
+
+async function whatIfRequest(url, options) {
+    const response = await fetch(url, options);
+    const body = await response.json().catch(() => ({}));
+    return { ok: response.ok, body };
+}
+
+function whatIfMessage(text) {
+    document.getElementById('whatIfMessage').textContent = text || '';
+}
+
+function whatIfRenderSetup() {
+    const budgets = document.getElementById('whatIfBudgets');
+    const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
+    budgets.replaceChildren();
+    for (const slot of whatIfSlots(true)) {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm mb-1';
+        const label = document.createElement('span');
+        label.className = 'input-group-text';
+        label.textContent = slot.name;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.className = 'form-control';
+        input.dataset.player = slot.name;
+        input.value = typed[slot.name] ?? '0';
+        group.append(label, input);
+        budgets.append(group);
+    }
+    const levers = document.getElementById('whatIfLevers');
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(WHATIF_LEVERS.filter((l) => l.def).map((l) => l.id));
+    levers.replaceChildren();
+    for (const lever of WHATIF_LEVERS) {
+        const row = document.createElement('div');
+        row.className = 'form-check';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-check-input';
+        input.id = 'whatIfLever_' + lever.id;
+        input.value = lever.id;
+        input.checked = checked.has(lever.id);
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.htmlFor = input.id;
+        const name = document.createElement('b');
+        name.textContent = whatIfT('lever.' + lever.id + '.name');
+        label.append(name, ': ' + whatIfT('lever.' + lever.id + '.desc'));
+        row.append(input, label);
+        levers.append(row);
+    }
+}
+
+function whatIfShowResult(result) {
+    whatIf.result = result;
+    document.getElementById('whatIfResult').innerHTML = result ? whatIfRenderResult(result, whatIfT) : '';
+    whatIfShowDiff();
+}
+
+// Where the page's setup differs from the one the search ran on.
+function whatIfShowDiff() {
+    const result = whatIf.result;
+    const box = document.getElementById('whatIfDiff');
+    if (!result?.setups) { box.innerHTML = ''; return; }
+    const names = new Set(result.setups.map((s) => s.name));
+    const page = whatIfPageSetups(whatIfSlots(false).filter((s) => names.has(s.name)));
+    box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT);
+}
+
+function whatIfShowStatus(status) {
+    whatIf.state = status.state;
+    document.getElementById('whatIfProgress').innerHTML = whatIfRenderProgress(status, whatIfT);
+    const stop = document.getElementById('buttonWhatIfStop');
+    stop.disabled = !(status.state === 'running' || status.state === 'stopped');
+    stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
+    if (status.state === 'done' && status.result) whatIfShowResult(status.result);
+    if (status.state !== 'running') whatIfStopWatching();
+    if (status.state === 'done') whatIfLoadList();
+}
+
+function whatIfStopWatching() {
+    if (whatIf.timer) clearInterval(whatIf.timer);
+    whatIf.timer = null;
+}
+
+function whatIfWatch(id) {
+    whatIf.searchId = id;
+    whatIfStopWatching();
+    const poll = async () => {
+        try {
+            const { ok, body } = await whatIfRequest(WHATIF_API.status(id));
+            if (ok) whatIfShowStatus(body);
+            else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
+        } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
+    };
+    poll();
+    whatIf.timer = setInterval(poll, 1000);
+}
+
+async function whatIfStart() {
+    whatIfMessage('');
+    const slots = whatIfSlots(true);
+    if (!slots.length) { whatIfMessage(whatIfT('noPlayers')); return; }
+    const budgets = {};
+    for (const input of document.querySelectorAll('#whatIfBudgets input')) {
+        const value = Number(input.value);
+        if (input.value === '' || !Number.isFinite(value) || value < 0) { whatIfMessage(whatIfT('badBudget', { player: input.dataset.player })); return; }
+        budgets[input.dataset.player] = value;
+    }
+    const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
+    if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
+    const names = slots.map((s) => s.name);
+    if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
+    const body = whatIfSearchBody({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
+        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value });
+    try {
+        const { ok, body: answer } = await whatIfRequest(WHATIF_API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (ok) whatIfWatch(answer.id);
+        else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
+        else whatIfMessage(answer.error || whatIfT('runnerError'));
+    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+}
+
+async function whatIfStopOrResume() {
+    if (!whatIf.searchId) return;
+    const resuming = whatIf.state === 'stopped';
+    try {
+        const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
+        if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
+        if (resuming) whatIfWatch(whatIf.searchId);
+        else if (body.state) whatIfShowStatus(body);
+        else whatIfWatch(whatIf.searchId);
+    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+}
+
+async function whatIfLoadList() {
+    const select = document.getElementById('selectWhatIfResult');
+    try {
+        const { ok, body } = await whatIfRequest(WHATIF_API.results);
+        if (!ok || !Array.isArray(body)) return;
+        select.replaceChildren(...body.map((r) => {
+            const option = document.createElement('option');
+            option.value = r.id;
+            option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit')].filter(Boolean).join(' · ');
+            return option;
+        }));
+    } catch (err) { /* the runner is gone; the Start button reports it */ }
+}
+
+async function whatIfLoadResult() {
+    const id = document.getElementById('selectWhatIfResult').value;
+    if (!id) return;
+    try {
+        const { ok, body } = await whatIfRequest(WHATIF_API.result(id));
+        if (ok) { whatIfMessage(''); whatIfShowResult(body); }
+        else whatIfMessage(body.error || whatIfT('runnerError'));
+    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+}
+
+function whatIfApply(key) {
+    const ops = whatIfOpsFor(whatIf.result, key);
+    const out = whatIfApplyToSlots(whatIfSlots(false), ops);
+    if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
+    for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
+    updateNextPlayer(currentPlayerTabId);
+    updateState();
+    updateUI();
+    whatIfMessage(whatIfT('applied'));
+    whatIfShowDiff();
+}
+
+async function initWhatIf() {
+    try {
+        const { ok, body } = await whatIfRequest(WHATIF_API.version);
+        if (!ok || !body || body.runner === undefined) return;
+        whatIf.version = body;
+    } catch (err) { return; } // not served by the runner (the public page): no What-if window
+    document.getElementById('buttonWhatIf').style.display = '';
+    // Strings are read when the window opens: i18next may not be ready when this runs.
+    document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
+        document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
+        whatIfRenderSetup(); whatIfLoadList(); whatIfShowDiff(); });
+    document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
+    document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
+    document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
+    document.getElementById('whatIfResult').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-whatif-apply]');
+        if (button) whatIfApply(button.dataset.whatifApply);
+    });
+    i18next.on('languageChanged', () => { whatIfRenderSetup(); if (whatIf.result) whatIfShowResult(whatIf.result); });
+}
+// #endregion
+
 function initImportExportModal() {
     let exportSetButton = document.getElementById("buttonExportSet");
     exportSetButton.addEventListener("click", (event) => {
@@ -5141,6 +5353,7 @@ initSimulationControls();
 initEquipmentSetsModal();
 initErrorHandling();
 initImportExportModal();
+initWhatIf();
 initDamageDoneTaken();
 initPatchNotes();
 initExtraBuffSection();

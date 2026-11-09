@@ -1,4 +1,12 @@
 {
+    "2026-11-09":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "A What-if window for the coming local What-if runner, which runs on your own PC and serves the simulator: set a budget per player and what to search, follow the search with a Stop button, and apply a suggested change to your setup in one click. The website itself shows no What-if button"
+        ]
+    },
     "2026-11-08":
     {
         "fork": "Ramlock",

@@ -126,5 +126,122 @@
     "configureTrigger": "配置触发器",
     "error": "错误",
     "copyToClipboard": "复制到剪贴板",
-    "none": "无"
+    "none": "无",
+    "whatIf": {
+        "button": "假设分析",
+        "title": "假设分析",
+        "version": "运行器 {{runner}}，引擎 {{engine}}",
+        "goalLabel": "目标",
+        "goal": {
+            "profit": "队伍每日利润（税后）",
+            "exp": "队伍每小时经验"
+        },
+        "budgets": "每位玩家的预算（金币）",
+        "levers": "搜索范围",
+        "lever": {
+            "equip": {
+                "name": "装备",
+                "desc": "强化每件已穿戴装备，或为该部位购买其他装备"
+            },
+            "consumables": {
+                "name": "食物和饮料",
+                "desc": "用市场上出售的物品替换、移除或填充每个食物和饮料栏位"
+            },
+            "pairs": {
+                "name": "食物和饮料组合",
+                "desc": "同时更改两个食物或饮料栏位，各换为同类的其他等级"
+            },
+            "owned": {
+                "name": "已拥有的物品",
+                "desc": "换上背包中的物品（需要导出器的背包数据）"
+            },
+            "abilities": {
+                "name": "技能",
+                "desc": "换上已学会的技能（需要导出器的已学技能数据）"
+            },
+            "order": {
+                "name": "技能顺序",
+                "desc": "尝试技能栏位 2 到 5 的所有顺序"
+            },
+            "triggers": {
+                "name": "触发条件",
+                "desc": "调整技能和消耗品触发条件的数值与条件"
+            },
+            "houses": {
+                "name": "房屋房间",
+                "desc": "升级战斗相关的房屋房间，按材料和金币计算成本"
+            },
+            "abilitylevels": {
+                "name": "技能等级",
+                "desc": "用技能书提升已装备技能的等级；成本可能是上限（≤）"
+            },
+            "books": {
+                "name": "新技能",
+                "desc": "在空栏位学习尚未拥有的技能（需要导出器的已学技能数据）"
+            },
+            "skills": {
+                "name": "战斗技能等级",
+                "desc": "提升战斗技能等级，达到所需的天数折算为金币"
+            }
+        },
+        "start": "开始搜索",
+        "stop": "停止",
+        "resume": "继续",
+        "earlier": "以往的搜索",
+        "load": "显示",
+        "noPlayers": "请至少勾选一名要模拟的玩家。",
+        "badBudget": "{{player}} 的预算不是有效的金币数。",
+        "noLevers": "请至少勾选一项搜索范围。",
+        "sameNames": "有两名玩家同名；请先重命名其中一个标签页。",
+        "alreadyRunning": "已有搜索在运行；正在显示该搜索。",
+        "runnerError": "运行器拒绝了该请求。",
+        "runnerGone": "运行器没有响应。它还在运行吗？",
+        "missingPlayer": "未应用：没有名为 {{names}} 的玩家标签页。",
+        "applied": "已应用到配置。运行模拟即可查看。",
+        "state": {
+            "running": "运行中",
+            "stopped": "已停止",
+            "done": "已完成",
+            "error": "错误"
+        },
+        "progress": {
+            "stage": "阶段",
+            "candidatesLeft": "剩余候选",
+            "runs": "运行次数",
+            "secondsPerRun": "每次运行秒数",
+            "eta": "剩余时间"
+        },
+        "result": {
+            "goal": "目标",
+            "steps": "选定的改动（按顺序）",
+            "noSteps": "在预算内没有收益超过误差的改动。",
+            "confirmed": "在新的运行中确认",
+            "perUserDay": "每位用户每天",
+            "budgets": "已用预算",
+            "singles": "单项改动",
+            "singlesNote": "（相对于搜索起始配置；灰色 = 收益低于 2 个误差）",
+            "noSingles": "没有测量任何改动。",
+            "apart": "成本未知，不参与排名",
+            "upperNote": "≤：成本仅为上限（技能书未计入当前等级内已有的经验）。"
+        },
+        "col": {
+            "player": "玩家",
+            "change": "改动",
+            "gain": "每用户每日收益",
+            "se": "± 误差",
+            "cost": "成本",
+            "payback": "回本天数",
+            "spent": "已用",
+            "stage": "阶段",
+            "costPath": "购买方式"
+        },
+        "apply": "应用",
+        "applyTo": "应用 1 至 {{n}}",
+        "diff": {
+            "title": "页面上的配置与搜索时使用的不同；收益可能不成立：",
+            "page": "此处",
+            "result": "搜索中",
+            "more": "另有 {{n}} 处"
+        }
+    }
 }

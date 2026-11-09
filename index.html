@@ -29,6 +29,14 @@
             /* Add other relevant styles for form controls in dark mode */
         }
 
+        .whatif-table td, .whatif-table th { padding: 2px 8px; white-space: nowrap; vertical-align: middle; }
+        .whatif-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .whatif-weak td { color: #999 !important; }
+        .whatif-warn { color: #b07800; }
+        .whatif-dim { color: #888; }
+        body.dark-mode .whatif-warn { color: #f0c060; }
+        body.dark-mode .whatif-table { color: #f0f0f0; --bs-table-color: #f0f0f0; --bs-table-bg: transparent; border-color: #666; }
+
         body.dark-mode #expensesTable,
         body.dark-mode #revenueTable,
         body.dark-mode #noRngRevenueTable {
@@ -746,6 +754,12 @@
                                 <button id="buttonImportExport" class="btn btn-primary" type="button"
                                     data-bs-toggle="modal" data-bs-target="#importExportModal" data-i18n="common:controls.importExport">
                                     Import/Export
+                                </button>
+                            </div>
+                            <div class="col-md-auto">
+                                <button id="buttonWhatIf" class="btn btn-primary" type="button" style="display: none;"
+                                    data-bs-toggle="modal" data-bs-target="#whatIfModal" data-i18n="common:whatIf.button">
+                                    What-if
                                 </button>
                             </div>
                         </div>
@@ -1700,6 +1714,47 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-primary" id="buttonExportResults" data-bs-dismiss="modal" data-i18n="common:exportToCSV">Export To CSV</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common:controls.close">Close</button>
+                </div>
+            </div>
+        </div>
+        <!-- #endregion -->
+    </div>
+    <div class="modal" id="whatIfModal" tabindex="-1">
+        <!-- #region What-if Modal: shown only when the page is served by the local what-if runner (src/whatif/panel.mjs) -->
+        <div class="modal-dialog" style="width: 100%; max-width: 1500px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" data-i18n="common:whatIf.title">What-if</h5>
+                    <span id="whatIfVersion" class="small ms-3 me-auto whatif-dim"></span>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="selectWhatIfGoal" class="form-label fw-bold" data-i18n="common:whatIf.goalLabel">Goal</label>
+                            <select id="selectWhatIfGoal" class="form-select form-select-sm mb-2">
+                                <option value="profit" data-i18n="common:whatIf.goal.profit">Party profit per day, after tax</option>
+                                <option value="exp" data-i18n="common:whatIf.goal.exp">Party EXP per hour</option>
+                            </select>
+                            <div class="fw-bold" data-i18n="common:whatIf.budgets">Budget per player (coin)</div>
+                            <div id="whatIfBudgets"></div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="fw-bold" data-i18n="common:whatIf.levers">What to search</div>
+                            <div id="whatIfLevers"></div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="buttonWhatIfStart" data-i18n="common:whatIf.start">Start search</button>
+                        <button type="button" class="btn btn-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
+                        <span class="ms-3" data-i18n="common:whatIf.earlier">Earlier searches</span>
+                        <select id="selectWhatIfResult" class="form-select form-select-sm" style="width: auto;"></select>
+                        <button type="button" class="btn btn-secondary btn-sm" id="buttonWhatIfLoad" data-i18n="common:whatIf.load">Show</button>
+                    </div>
+                    <div id="whatIfProgress" class="mt-2"></div>
+                    <div id="whatIfMessage" class="mt-1 whatif-warn"></div>
+                    <div id="whatIfDiff" class="mt-1"></div>
+                    <div id="whatIfResult" class="mt-2"></div>
                 </div>
             </div>
         </div>

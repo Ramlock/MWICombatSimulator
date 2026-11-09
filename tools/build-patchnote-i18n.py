@@ -8,6 +8,9 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = json.load(open(os.path.join(root, 'patchNote.json'), encoding='utf-8'))
 
 ZH = {
+    "2026-11-09": [
+        "为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮",
+    ],
     "2026-11-08": [
         "结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值",
         "右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住",
@@ -166,6 +169,9 @@ EN = [
 ]
 
 PT = [
+    [
+        "Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se",
+    ],
     [
         "Os números nos resultados aparecem com 4 algarismos significativos, com k, M, B e T a partir de 10,000 (123.5k, 1.235M); passe o mouse sobre um número para ver o valor exato",
         "Nova chave Números ISO no canto superior direito: porcentagens como 1.79 % e milhares como 1 234; vem desligada e é lembrada",

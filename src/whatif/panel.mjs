@@ -1,0 +1,210 @@
+// The What-if window's logic, DOM-free so it is tested in Node (tools/test/whatif-panel.mjs). The window talks to the
+// local runner (docs/codebase/whatif-window.md): it sends the page's setup and the search settings, shows the runner's
+// progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
+// result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
+// and where the page's setup differs from the one the search ran on.
+import { applyOps } from './applyOps.mjs';
+import { numberHtml } from '../numberFormat.js';
+
+// The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
+// Labyrinth are not levers. `def` = checked by default (the optimizer's own default is equip only).
+export const LEVERS = [
+    { id: 'equip', def: true },
+    { id: 'consumables' },
+    { id: 'pairs' },
+    { id: 'owned' },
+    { id: 'abilities' },
+    { id: 'order' },
+    { id: 'triggers' },
+    { id: 'houses' },
+    { id: 'abilitylevels' },
+    { id: 'books' },
+    { id: 'skills' },
+];
+
+export const API = {
+    version: '/api/version',
+    search: '/api/search',
+    status: (id) => '/api/search/' + encodeURIComponent(id),
+    stop: (id) => '/api/search/' + encodeURIComponent(id) + '/stop',
+    results: '/api/results',
+    result: (id) => '/api/results/' + encodeURIComponent(id),
+};
+
+const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? numberHtml(v) : '—');
+const upper = (row) => row?.costBound === 'upper';
+
+// slots: [{ id: "1", name: "<tab name>", json: "<the slot's setup JSON>" }] for the players in the search.
+// The setups the runner gets: each slot's JSON with its name, in the optimizer's setup format.
+export function pageSetups(slots) {
+    return slots.map((s) => ({ ...JSON.parse(s.json), name: s.name }));
+}
+
+// The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
+export function searchBody({ slots, goal, budgets, levers, zone, tier }) {
+    const setups = pageSetups(slots);
+    const options = {};
+    if (zone) options.zone = zone;
+    if (tier !== undefined && tier !== null && tier !== '') options.tier = Number(tier);
+    return { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+}
+
+// Apply ops to the page's slots. Returns { missing: [player names no slot holds] } and applies nothing when any op
+// names a player the page does not hold; else { slots: { "<slot id>": "<new slot JSON>" } } for every slot an op touched.
+export function applyToSlots(slots, ops) {
+    const names = new Set(slots.map((s) => s.name));
+    const missing = [...new Set(ops.map((o) => o.player).filter((p) => !names.has(p)))];
+    if (missing.length) return { missing };
+    const touched = new Set(ops.map((o) => o.player));
+    const after = applyOps(pageSetups(slots), ops);
+    const out = {};
+    slots.forEach((s, i) => {
+        if (!touched.has(s.name)) return;
+        const { name, ...rest } = after[i];
+        out[s.id] = JSON.stringify(rest);
+    });
+    return { slots: out };
+}
+
+// The ops of the first n chosen steps, in order ("Apply 1 to n").
+export const stepsOps = (result, n) => result.steps.slice(0, n).flatMap((s) => s.ops || []);
+
+// Where the page's setup differs from the result's base setups, on what the levers touch. Each difference:
+// { player, field, page, result } with raw values (hrids, levels); a player missing on either side has field "player".
+export function diffSetups(page, base) {
+    const out = [];
+    const byName = (list) => new Map((list || []).map((s) => [s.name, s]));
+    const P = byName(page), B = byName(base);
+    for (const name of new Set([...P.keys(), ...B.keys()])) {
+        const p = P.get(name), b = B.get(name);
+        if (!p || !b) { out.push({ player: name, field: 'player', page: p ? 'present' : 'absent', result: b ? 'present' : 'absent' }); continue; }
+        const add = (field, x, y) => { if (JSON.stringify(x ?? null) !== JSON.stringify(y ?? null)) out.push({ player: name, field, page: x ?? null, result: y ?? null }); };
+        for (const k of ['stamina', 'intelligence', 'attack', 'melee', 'defense', 'ranged', 'magic']) add(k + 'Level', Number(p.player?.[k + 'Level']), Number(b.player?.[k + 'Level']));
+        const eq = (s) => Object.fromEntries((s.player?.equipment || []).map((e) => [e.itemLocationHrid.replace('/item_locations/', ''), e.itemHrid + ' +' + Number(e.enhancementLevel)]));
+        const pe = eq(p), be = eq(b);
+        for (const slot of new Set([...Object.keys(pe), ...Object.keys(be)])) add(slot, pe[slot], be[slot]);
+        const items = (s, k) => (s[k]?.['/action_types/combat'] || []).map((x) => x?.itemHrid || null);
+        const pf = items(p, 'food'), bf = items(b, 'food'), pd = items(p, 'drinks'), bd = items(b, 'drinks');
+        for (let i = 0; i < Math.max(pf.length, bf.length); i++) add('food ' + (i + 1), pf[i] || null, bf[i] || null);
+        for (let i = 0; i < Math.max(pd.length, bd.length); i++) add('drink ' + (i + 1), pd[i] || null, bd[i] || null);
+        const ab = (s) => (s.abilities || []).map((a) => (a?.abilityHrid ? a.abilityHrid + ' ' + Number(a.level) : null));
+        const pa = ab(p), ba = ab(b);
+        for (let i = 0; i < Math.max(pa.length, ba.length); i++) add('ability ' + (i + 1), pa[i] || null, ba[i] || null);
+        const rooms = (s) => Object.fromEntries(Object.entries(s.houseRooms || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)]));
+        const pr = rooms(p), br = rooms(b);
+        for (const r of new Set([...Object.keys(pr), ...Object.keys(br)])) add(r, pr[r] ?? 0, br[r] ?? 0);
+        const pt = p.triggerMap || {}, bt = b.triggerMap || {};
+        for (const h of new Set([...Object.keys(pt), ...Object.keys(bt)])) add('triggers ' + h, pt[h], bt[h]);
+    }
+    return out;
+}
+
+// Progress line from GET /api/search/<id>: the runner's own fields, shown as they come.
+export function renderProgress(status, t) {
+    if (!status) return '';
+    const p = status.progress || {};
+    const parts = [`<b>${esc(t('state.' + status.state))}</b>`];
+    if (p.stage) parts.push(esc(t('progress.stage')) + ' ' + esc(p.stage));
+    if (p.candidatesLeft !== undefined) parts.push(esc(t('progress.candidatesLeft')) + ' ' + num(p.candidatesLeft));
+    if (p.runsPlanned !== undefined) parts.push(esc(t('progress.runs')) + ' ' + num(p.runsDone) + ' / ' + num(p.runsPlanned));
+    if (p.secondsPerRun !== undefined) parts.push(esc(t('progress.secondsPerRun')) + ' ' + num(p.secondsPerRun));
+    if (p.etaSeconds !== undefined && p.etaSeconds !== null) parts.push(esc(t('progress.eta')) + ' ' + esc(duration(p.etaSeconds)));
+    let html = parts.join(' · ');
+    if (p.runsPlanned > 0) {
+        const pct = Math.min(100, Math.max(0, (p.runsDone / p.runsPlanned) * 100));
+        html += `<div class="progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
+    }
+    if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
+    return html;
+}
+
+// Seconds as h:mm:ss (a clock reading of the runner's figure, not a new figure).
+export function duration(s) {
+    const x = Math.max(0, Math.round(Number(s)));
+    const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), sec = x % 60;
+    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+// A cost cell: "≤" when the cost is only an upper bound.
+const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
+const paybackCell = (row) => (row.payback === null || row.payback === undefined ? '—' : (upper(row) ? '≤ ' : '') + num(row.payback));
+
+// The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
+// data-whatif-apply="steps:<n>" or "single:<index>".
+export function renderResult(result, t) {
+    if (!result) return '';
+    const L = [];
+    const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
+    L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
+    const players = Object.keys(result.budgets || {});
+    // Running spend per player: a step's own figure; "≤" from the first upper-bound cost of that player on.
+    const upperFrom = {};
+    (result.steps || []).forEach((s, i) => { if (upper(s) && upperFrom[s.player] === undefined) upperFrom[s.player] = i; });
+    const spendCell = (s, i, p) => {
+        const v = s.runningSpend?.[p];
+        if (v === undefined) return '—';
+        return (upperFrom[p] !== undefined && upperFrom[p] <= i ? '≤ ' : '') + num(v);
+    };
+    L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}</div>`);
+    if (!result.steps?.length) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`);
+    else {
+        L.push('<table class="table table-sm whatif-table"><thead><tr>' +
+            ['#', t('col.player'), t('col.change'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
+            players.map((p) => `<th>${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
+        result.steps.forEach((s, i) => {
+            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td>${esc(s.desc)}</td>` +
+                `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+                players.map((p) => `<td class="num">${spendCell(s, i, p)}</td>`).join('') +
+                `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
+        });
+        L.push('</tbody></table>');
+    }
+    const c = result.confirmation;
+    if (c) {
+        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${num(c.gainPerUser)} ± ${num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+            `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}, ` +
+            `${esc(t('col.payback'))} ${paybackCell({ payback: c.payback, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}</div>`);
+    }
+    if (players.length) {
+        const last = result.steps?.length ? result.steps[result.steps.length - 1] : null;
+        L.push(`<div class="mb-2">${esc(t('result.budgets'))}: ` + players.map((p) =>
+            `${esc(p)} ${last ? spendCell(last, result.steps.length - 1, p) : num(0)} / ${num(result.budgets[p])}`).join(' · ') + '</div>');
+    }
+    L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
+    if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
+    else {
+        L.push('<table class="table table-sm whatif-table"><thead><tr>' +
+            [t('col.player'), t('col.change'), t('col.stage'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead><tbody>');
+        result.singles.forEach((s, i) => {
+            L.push(`<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${esc(s.desc)}</td><td>${esc(s.lastStage)}</td>` +
+                `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+                `<td>${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
+                `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`);
+        });
+        L.push('</tbody></table>');
+    }
+    if (result.apart?.length) {
+        L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
+            result.apart.map((a) => `<li>${esc(a.desc)}: ${esc(a.note)}</li>`).join('') + '</ul>');
+    }
+    if ((result.steps || []).some(upper) || (result.singles || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    return L.join('');
+}
+
+// The ops behind a button's data-whatif-apply value.
+export function opsFor(result, key) {
+    const [kind, n] = String(key).split(':');
+    if (kind === 'steps') return stepsOps(result, Number(n));
+    if (kind === 'single') return result.singles[Number(n)]?.ops || [];
+    throw new Error('unknown apply key ' + key);
+}
+
+// The differences as one line each, for the warning.
+export function renderDiff(diff, t) {
+    if (!diff.length) return '';
+    const shown = diff.slice(0, 8).map((d) => `<li>${esc(d.player)}, ${esc(d.field)}: ${esc(t('diff.page'))} ${esc(fmtRaw(d.page))}, ${esc(t('diff.result'))} ${esc(fmtRaw(d.result))}</li>`).join('');
+    const more = diff.length > 8 ? `<li>${esc(t('diff.more', { n: diff.length - 8 }))}</li>` : '';
+    return `<div class="whatif-warn">${esc(t('diff.title'))}<ul class="mb-0">${shown}${more}</ul></div>`;
+}
+const fmtRaw = (v) => (v === null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
