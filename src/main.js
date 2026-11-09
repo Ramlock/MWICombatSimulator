@@ -2675,26 +2675,18 @@ function showManapointsGained(simResult, playerToDisplay) {
         newChildren.push(row);
     }
 
-    let ranOutOfManaText = simResult.playerRanOutOfMana[playerToDisplay] ? "Yes" : "No";
-    let ranOutOfManaRow = createRow(["col-md-6", "col-md-6 text-end"], ["Ran out of mana", ranOutOfManaText]);
-    ranOutOfManaRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfMana");
-    ranOutOfManaRow.lastElementChild.setAttribute("data-i18n", "common:simulationResults." + ranOutOfManaText);
-    newChildren.push(ranOutOfManaRow);
-
-    if (simResult.playerRanOutOfMana[playerToDisplay]) {
-        let ranOutOfManaStat = simResult.playerRanOutOfManaTime[playerToDisplay]; // {isOutOfMana: false, startTimeForOutOfMana:0, totalTimeForOutOfMana:0};
-        let totalTimeForOut = ranOutOfManaStat.totalTimeForOutOfMana + (ranOutOfManaStat.isOutOfMana ? (simResult.simulatedTime - ranOutOfManaStat.startTimeForOutOfMana) : 0);
-
-        let ranOutOfManaStatRow = createRow(
-            ["col-md-6", "col-md-6 text-end"],
-            [
-                "Run Out Ratio",
-                percentHtml(totalTimeForOut / simResult.simulatedTime * 100)
-            ]
-        );
-        ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
-        newChildren.push(ranOutOfManaStatRow);
-    }
+    // Mana Run Out Ratio, always shown (0% when the player never ran out); no separate Yes/No row.
+    let ranOutOfManaStat = simResult.playerRanOutOfManaTime[playerToDisplay]; // {isOutOfMana, startTimeForOutOfMana, totalTimeForOutOfMana}
+    let totalTimeForOut = ranOutOfManaStat ? ranOutOfManaStat.totalTimeForOutOfMana + (ranOutOfManaStat.isOutOfMana ? (simResult.simulatedTime - ranOutOfManaStat.startTimeForOutOfMana) : 0) : 0;
+    let ranOutOfManaStatRow = createRow(
+        ["col-md-6", "col-md-6 text-end"],
+        [
+            "Run Out Ratio",
+            percentHtml(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
+        ]
+    );
+    ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
+    newChildren.push(ranOutOfManaStatRow);
 
     newChildren.push(...triggerHoldRows(simResult, playerToDisplay));
 

@@ -1163,6 +1163,14 @@ class CombatSimulator extends EventTarget {
         return encounterEnded;
     }
 
+    // "A previous skill was out of mana" stat: an ability the action loop did not reach because an earlier ability's
+    // conditions passed but it lacked mana. Evaluates the ability's own readiness and conditions only to observe;
+    // feeds neither the condition holds nor anything combat reads.
+    observeSkippedAbility(source, ability, target, friendlies, enemies) {
+        const ready = ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies);
+        this.simResult.updateSkipHold(source, ability, ready, this.simulationTime);
+    }
+
     addNextAttackEvent(source) {
         if (this.eventQueue.getMatching((event) => (event.type == _events_abilityCastEndEvent__WEBPACK_IMPORTED_MODULE_19__["default"].type || event.type == _events_autoAttackEvent__WEBPACK_IMPORTED_MODULE_1__["default"].type)&& event.source == source)) {
             return;
@@ -1188,12 +1196,19 @@ class CombatSimulator extends EventTarget {
         source.abilities
             .filter((ability) => ability != null)
             .forEach((ability) => {
-                if (usedAbility || skipNextAbility) {
+                if (usedAbility) {
+                    return;
+                }
+                if (skipNextAbility) {
+                    if (failedTriggers) this.observeSkippedAbility(source, ability, target, friendlies, enemies);
                     return;
                 }
                 if (failedTriggers) failedTriggers.length = 0;
                 const triggered = ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies, failedTriggers);
-                if (failedTriggers) this.simResult.updateTriggerHolds(source, ability, failedTriggers, this.simulationTime);
+                if (failedTriggers) {
+                    this.simResult.updateTriggerHolds(source, ability, failedTriggers, this.simulationTime);
+                    this.simResult.updateSkipHold(source, ability, false, this.simulationTime);
+                }
                 if (triggered) {
                     if (!this.canUseAbility(source, ability, true)) {
                         skipNextAbility = true;
@@ -4503,8 +4518,6 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
 /* harmony import */ var _data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
-/* harmony import */ var _triggerHolds_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./triggerHolds.js */ "./src/combatsimulator/triggerHolds.js");
-
 
 
 class SimResult {
@@ -4531,8 +4544,10 @@ class SimResult {
         // "Held by trigger": per player hrid, per ability hrid, one record per trigger condition (index order).
         // A condition holds the ability while the ability is ready but the condition fails; see updateTriggerHolds.
         this.triggerHolds = {};
-        // "Held for mana": per player hrid, the time the player is out of mana or held by an own-MP condition.
-        this.manaHolds = {};
+        // "An earlier skill was out of mana": per player hrid, per ability hrid, one record; see updateSkipHold.
+        this.skipHolds = {};
+        // Per player hrid, the player's ability hrids in slot order, so the panel lists the holds in that order.
+        this.abilityOrder = {};
         this.manaUsed = {};
         this.timeSpentAlive = [];
         this.bossSpawns = [];
@@ -4784,7 +4799,6 @@ class SimResult {
                 this.playerRanOutOfManaTime[unit.hrid].totalTimeForOutOfMana += time - this.playerRanOutOfManaTime[unit.hrid].startTimeForOutOfMana;
             }
         }
-        this.syncManaHold(unit.hrid, time);
     }
 
     // One check of a ready-or-not ability: failed holds the indexes of the trigger conditions that failed while the
@@ -4793,62 +4807,61 @@ class SimResult {
     updateTriggerHolds(unit, ability, failed, time) {
         const triggers = ability.triggers;
         if (!triggers || triggers.length == 0) return;
+        this.noteAbilityOrder(unit);
         let byAbility = this.triggerHolds[unit.hrid];
         if (!byAbility) byAbility = this.triggerHolds[unit.hrid] = {};
         let records = byAbility[ability.hrid];
         if (!records) {
             records = byAbility[ability.hrid] = triggers.map((t) => ({
                 dependencyHrid: t.dependencyHrid, conditionHrid: t.conditionHrid, comparatorHrid: t.comparatorHrid, value: t.value,
-                ownMp: (0,_triggerHolds_js__WEBPACK_IMPORTED_MODULE_1__.isOwnMpTrigger)(t), held: false, start: 0, total: 0, count: 0,
+                held: false, start: 0, total: 0, count: 0,
             }));
         }
-        let mpChanged = false;
         for (let i = 0; i < records.length; i++) {
             const r = records[i];
             const fails = failed.includes(i);
             if (fails && !r.held) {
                 r.held = true; r.start = time; r.count++;
-                if (r.ownMp) mpChanged = true;
             } else if (!fails && r.held) {
                 r.held = false; r.total += time - r.start;
-                if (r.ownMp) mpChanged = true;
             }
         }
-        if (mpChanged) this.syncManaHold(unit.hrid, time);
     }
 
-    // Ends every open hold of the player (death, encounter end).
-    closeTriggerHolds(unit, time) {
-        const byAbility = this.triggerHolds[unit.hrid];
-        if (!byAbility) return;
-        let mpChanged = false;
-        for (const records of Object.values(byAbility)) {
-            for (const r of records) {
-                if (r.held) {
-                    r.held = false; r.total += time - r.start;
-                    if (r.ownMp) mpChanged = true;
-                }
-            }
-        }
-        if (mpChanged) this.syncManaHold(unit.hrid, time);
-    }
-
-    // "Held for mana" is the union of "ran out of mana" and every open own-MP hold of the player.
-    syncManaHold(hrid, time) {
-        let held = !!this.playerRanOutOfManaTime[hrid]?.isOutOfMana;
-        if (!held) {
-            const byAbility = this.triggerHolds[hrid];
-            if (byAbility) held = Object.values(byAbility).some((records) => records.some((r) => r.ownMp && r.held));
-        }
-        let m = this.manaHolds[hrid];
-        if (!m) {
+    // One check of an ability for "an earlier skill was out of mana": held is true when the action loop stopped before
+    // the ability (an earlier ability's conditions passed but it lacked mana) while the ability was ready (cooldown
+    // over, not stunned or silenced) and all its own trigger conditions passed. The hold starts at the first such
+    // check and ends at the next check where it is not so (the ability is reached, or it is checked after the stop but
+    // is not ready or a condition fails), or at death or the encounter's end. Separate from the condition holds.
+    updateSkipHold(unit, ability, held, time) {
+        let byAbility = this.skipHolds[unit.hrid];
+        let r = byAbility?.[ability.hrid];
+        if (!r) {
             if (!held) return;
-            m = this.manaHolds[hrid] = { held: false, start: 0, total: 0, count: 0 };
+            this.noteAbilityOrder(unit);
+            if (!byAbility) byAbility = this.skipHolds[unit.hrid] = {};
+            r = byAbility[ability.hrid] = { held: false, start: 0, total: 0, count: 0 };
         }
-        if (held && !m.held) {
-            m.held = true; m.start = time; m.count++;
-        } else if (!held && m.held) {
-            m.held = false; m.total += time - m.start;
+        if (held && !r.held) {
+            r.held = true; r.start = time; r.count++;
+        } else if (!held && r.held) {
+            r.held = false; r.total += time - r.start;
+        }
+    }
+
+    noteAbilityOrder(unit) {
+        if (!this.abilityOrder[unit.hrid] && unit.abilities) this.abilityOrder[unit.hrid] = unit.abilities.filter((a) => a != null).map((a) => a.hrid);
+    }
+
+    // Ends every open hold of the player, by condition and by an earlier skill's mana (death, encounter end).
+    closeTriggerHolds(unit, time) {
+        for (const records of Object.values(this.triggerHolds[unit.hrid] ?? {})) {
+            for (const r of records) {
+                if (r.held) { r.held = false; r.total += time - r.start; }
+            }
+        }
+        for (const r of Object.values(this.skipHolds[unit.hrid] ?? {})) {
+            if (r.held) { r.held = false; r.total += time - r.start; }
         }
     }
 
@@ -5079,57 +5092,6 @@ class Trigger {
 }
 
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (Trigger);
-
-
-/***/ }),
-
-/***/ "./src/combatsimulator/triggerHolds.js":
-/*!*********************************************!*\
-  !*** ./src/combatsimulator/triggerHolds.js ***!
-  \*********************************************/
-/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
-
-__webpack_require__.r(__webpack_exports__);
-/* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   isOwnMpTrigger: () => (/* binding */ isOwnMpTrigger),
-/* harmony export */   summarizeTriggerHolds: () => (/* binding */ summarizeTriggerHolds)
-/* harmony export */ });
-// "Held by trigger" and "Held for mana": the pure parts shared by SimResult (recording) and the results panel
-// (summary). A sim result crosses the worker boundary as plain data, so the summary reads plain fields only.
-
-const OWN_MP_CONDITIONS = new Set(["/combat_trigger_conditions/current_mp", "/combat_trigger_conditions/missing_mp"]);
-
-// A condition on the player's own MP: dependency "self" with "Current Mp" or "Missing Mp".
-function isOwnMpTrigger(trigger) {
-    return trigger.dependencyHrid == "/combat_trigger_dependencies/self" && OWN_MP_CONDITIONS.has(trigger.conditionHrid);
-}
-
-const ONE_HOUR = 3600 * 1e9;
-
-// Per ability of the player, per condition: share of sim time held (0..1, an open hold counted to the end of the
-// sim) and holds per hour. Plus "Held for mana" for the player. Abilities and conditions with no hold are left out.
-function summarizeTriggerHolds(simResult, hrid) {
-    const simulatedTime = simResult.simulatedTime;
-    const hours = simulatedTime / ONE_HOUR;
-    const closedTotal = (r) => r.total + (r.held ? simulatedTime - r.start : 0);
-    const abilities = [];
-    for (const [abilityHrid, records] of Object.entries(simResult.triggerHolds?.[hrid] ?? {})) {
-        const conditions = records
-            .filter((r) => r.count > 0)
-            .map((r) => ({
-                dependencyHrid: r.dependencyHrid, conditionHrid: r.conditionHrid, comparatorHrid: r.comparatorHrid, value: r.value, ownMp: r.ownMp,
-                share: simulatedTime > 0 ? closedTotal(r) / simulatedTime : 0,
-                perHour: hours > 0 ? r.count / hours : 0,
-                count: r.count,
-            }));
-        if (conditions.length > 0) abilities.push({ abilityHrid, conditions });
-    }
-    const m = simResult.manaHolds?.[hrid];
-    const mana = m && m.count > 0
-        ? { share: simulatedTime > 0 ? closedTotal(m) / simulatedTime : 0, perHour: hours > 0 ? m.count / hours : 0, count: m.count }
-        : null;
-    return { abilities, mana };
-}
 
 
 /***/ }),
@@ -5659,4 +5621,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"/buff_uniques/labyrinth_upgrade_atta
 /***/ })
 
 }]);
-//# sourceMappingURL=src_worker_js.a23ff818.js.map
+//# sourceMappingURL=src_worker_js.c1bda799.js.map

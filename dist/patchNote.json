@@ -5,7 +5,8 @@
         "notes":
         [
             "A What-if window for the coming local What-if runner, which runs on your own PC and serves the simulator: set a budget per player and what to search, follow the search with a Stop button, and apply a suggested change to your setup in one click. The website itself shows no What-if button",
-            "New in each player's results, under Ran out of mana: Held by trigger shows, for each skill and each of its trigger conditions, how much of the time the condition held the skill back while it was ready, and how often per hour; Held for mana adds running out of mana and every hold by a condition on your own MP. Results do not change"
+            "New in each player's results, under Ran out of mana: Held by trigger shows, for each skill, how much of the time each of its trigger conditions held it back while it was ready, and how much of the time a previous skill out of mana kept it from being reached (a skill short of mana stops the skills after it). Results do not change",
+            "Each player's results no longer show the Yes/No line for running out of mana; Mana Run Out Ratio always shows, 0% when the player never ran out"
         ]
     },
     "2026-11-08":

@@ -11,6 +11,7 @@ ZH = {
     "2026-11-09": [
         "为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮",
         "每位玩家的结果中新增内容（位于“法力值耗尽”下方）：“触发条件等待”显示每个技能在已就绪时被其各个触发条件阻止的时间占比，以及因前面的技能法力值耗尽而未轮到它的时间占比（法力值不足的技能会阻止其后的技能）。结果不变",
+        "每位玩家的结果不再显示法力值耗尽的“是/否”行；“法力值耗尽比例”始终显示，从未耗尽时为0%"
     ],
     "2026-11-08": [
         "结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值",
@@ -173,6 +174,7 @@ PT = [
     [
         "Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se",
         "Novo nos resultados de cada jogador, abaixo de Ficou sem mana: Retido por gatilho mostra, para cada técnica, quanto do tempo cada condição dos seus gatilhos de combate a segurou quando ela estava pronta, e quanto do tempo uma técnica anterior sem mana impediu que ela fosse alcançada (uma técnica sem mana impede as técnicas depois dela). Os resultados não mudam",
+        "Os resultados de cada jogador não mostram mais a linha Sim/Não de ficar sem mana; Proporção sem mana sempre aparece, 0% quando o jogador nunca ficou sem mana"
     ],
     [
         "Os números nos resultados aparecem com 4 algarismos significativos, com k, M, B e T a partir de 10,000 (123.5k, 1.235M); passe o mouse sobre um número para ver o valor exato",
