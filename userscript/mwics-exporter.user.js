@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.7.0
+// @version      0.7.1
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -300,6 +300,60 @@
         const ageMin = Math.max(0, Math.round((now - (s.t || 0)) / 60000));
         if (now - (s.t || 0) > SNAP_MAX_AGE_MS) return { ok: false, message: 'MWI Combat Tracker: the party data from the game is ' + ageMin + ' min old (limit ' + SNAP_MAX_AGE_MS / 60000 + '). Open or refresh the game tab, then try again.' };
         return { ok: true, group: s.group, slots: s.slots || [], ageMin };
+    }
+
+    // ================= Bonus attribution (pure; no DOM, no game access) =================
+    // attributeBonuses(formula, names, opts): formula(on) takes an array of booleans (one per name, true = that bonus applies) and returns the
+    // final damage with exactly those bonuses on. Two answers per bonus, both computed from the formula's output only:
+    //  - leaveOneOut[i] = f(all on) - f(all on except i): "what did my bonus add".
+    //  - shapley[i] = the even split: the average marginal of i over every order of adding the bonuses ("share of the total"). An interaction
+    //    term is split evenly among the bonuses in it; base + the sum of shapley equals f(all on) exactly (up to float rounding).
+    // base = f(none on), the part no bonus claims. Exact up to ATTR.EXACT_MAX bonuses (2^n evaluations, each subset evaluated once);
+    // above that, ATTR.SAMPLES random orders are averaged and the standard error of each share is reported.
+    const ATTR = { EXACT_MAX: 20, SAMPLES: 2000 };
+    function attributeBonuses(formula, names, opts) {
+        opts = opts || {};
+        const n = names.length, rand = opts.rand || Math.random;
+        const exactMax = opts.exactMax != null ? opts.exactMax : ATTR.EXACT_MAX;
+        const on = new Array(n).fill(false);
+        const full = formula(on.map(() => true));
+        const loo = new Array(n), sh = new Array(n).fill(0);
+        let method = 'exact', samples = 0, stderr = null, evals = 0;
+        if (n === 0) return { names, full, base: full, leaveOneOut: [], shapley: [], method, samples, stderr, evals: 1 };
+        if (n <= exactMax) {
+            const size = 1 << n, val = new Float64Array(size);
+            const cur = new Array(n);
+            for (let m = 0; m < size; m++) { for (let i = 0; i < n; i++) cur[i] = (m >> i & 1) === 1; val[m] = formula(cur); }
+            evals = size;
+            const w = new Float64Array(n); w[0] = 1 / n;
+            for (let k = 1; k < n; k++) w[k] = w[k - 1] * k / (n - k);
+            const pop = new Uint8Array(size);
+            for (let m = 1; m < size; m++) pop[m] = pop[m >> 1] + (m & 1);
+            const all = size - 1;
+            for (let i = 0; i < n; i++) {
+                const bit = 1 << i;
+                loo[i] = val[all] - val[all ^ bit];
+                let s = 0;
+                for (let m = 0; m < size; m++) if (!(m & bit)) s += w[pop[m]] * (val[m | bit] - val[m]);
+                sh[i] = s;
+            }
+            return { names, full: val[all], base: val[0], leaveOneOut: loo, shapley: sh, method, samples, stderr, evals };
+        }
+        // Sampled orders: every order is an exact efficient split, so the shares still sum to f(all) - f(none).
+        const K = opts.samples || ATTR.SAMPLES, sq = new Array(n).fill(0), perm = names.map((_, i) => i);
+        const base = formula(on);
+        evals = 2 + n;
+        for (let i = 0; i < n; i++) { const o = on.map(() => true); o[i] = false; loo[i] = full - formula(o); }
+        for (let k = 0; k < K; k++) {
+            for (let i = n - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); const t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+            on.fill(false);
+            let prev = base;
+            for (const i of perm) { on[i] = true; const v = formula(on); const d = v - prev; sh[i] += d; sq[i] += d * d; prev = v; evals++; }
+        }
+        samples = K; method = 'sampled';
+        stderr = sh.map((s, i) => { const mean = s / K; return Math.sqrt(Math.max(0, sq[i] / K - mean * mean) / K); });
+        for (let i = 0; i < n; i++) sh[i] /= K;
+        return { names, full, base, leaveOneOut: loo, shapley: sh, method, samples, stderr, evals };
     }
 
     // ================= Combat recorder (read-only) =================
@@ -862,7 +916,7 @@
 
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { attributeBonuses, ATTR, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -878,7 +932,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.7.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.7.1'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }

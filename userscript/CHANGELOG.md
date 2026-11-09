@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.7.1 (2026-11-08)
+
+- No change you can see. Adds two calculation functions for working out how much each damage bonus added to a hit (what the hit loses without that one bonus) and each bonus's even share of the total. Nothing calls them yet and nothing is shown; they will be used once the damage formula is fed from the recording.
+
 ### 0.7.0 (2026-11-08)
 
 - A teammate's guild buff levels now come from their shared profile: open the profile in the game, then import or copy the party. The notice names the teammates whose guild buffs came from their profile. This corrects 0.6.1, which said a profile does not carry them. A profile opened before this version holds no guild buffs: open it again.
