@@ -165,23 +165,27 @@ export function renderParts(status, t) {
     const rowsHtml = parts.map((r) => {
         const label = r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
+            : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
             : r.kind === 'step' ? t('progress.partStep', { n: r.index })
-            : t('progress.partConfirmation');
+            : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
+            : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
         const left = r.kind === 'halving' && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
-        let text, mark, cls;
-        if (r.state === 'waiting') { text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); mark = '·'; cls = 'waiting'; }
-        else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); mark = '✓'; cls = 'done'; }
+        let text = '', cls;
+        if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); cls = 'waiting'; }
+        else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); cls = 'done'; }
         else {
             text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) });
             if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
-            mark = '▶'; cls = 'running';
+            cls = 'running';
         }
+        // One icon column of equal width: a plain text glyph (︎ asks for the text form, never a colour emoji).
+        const mark = { done: '✓', running: '▶︎', waiting: '○' }[cls];
         const pct = r.state === 'done' ? 100 : r.state === 'running' && r.runsPlanned > 0 ? Math.min(100, Math.max(0, (r.runsDone / r.runsPlanned) * 100)) : 0;
-        return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-label"><span class="whatif-part-mark">${mark}</span> <b>${esc(label)}</b>${left}</span><div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div><span class="whatif-part-text">${text}</span></div>`;
+        return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}</span><div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div><span class="whatif-part-text">${text}</span></div>`;
     }).join('');
-    const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.stageN', { n: running + 1 })) : esc(t('state.' + status.state));
+    const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
-    if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) small.push(esc(t('progress.secondsPerRunCap')) + ' ' + num(p.secondsPerRun));
+    if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) small.push(esc(t('progress.secondsPerRunCap')) + ' ' + `<span title="${esc(p.secondsPerRun)}">${esc(Number(p.secondsPerRun).toFixed(2))}</span>`);
     if (p.elapsedSeconds !== undefined && p.elapsedSeconds !== null) small.push(esc(t('progress.elapsed')) + ' ' + esc(duration(p.elapsedSeconds)));
     let html = `<div class="whatif-parts"><div class="mb-1"><b>${title}</b></div>${rowsHtml}${small.length ? `<div class="small mt-1">${small.join(' · ')}</div>` : ''}</div>`;
     if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;

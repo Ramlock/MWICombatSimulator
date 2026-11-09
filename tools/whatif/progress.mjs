@@ -1,16 +1,19 @@
-// The what-if search's progress as stacked parts (one row per part of the search): the screen, each halving, each
-// greedy step and the confirmation. Pure: `createParts(plan)` returns a tracker; `sync(progress)` takes the optimizer's
-// progress object (its `stage` string, runs and eta) and returns the array of parts for progress.json and the runner.
+// The what-if search's progress as stacked parts (one row per part of the search). Pure: `createParts(plan)` returns a
+// tracker; `sync(progress)` takes the optimizer's progress object (its `stage` string, runs and eta) and returns the
+// array of parts for progress.json and the runner.
 //
-// plan: { stages: [{ k, h }], keep: [n, ...], candidates: n } (candidates = the pool entering the screen).
-// Known at the start: the screen and one halving per further stage, the waiting ones with `runsUpTo` (the pool they
-// would get times their seeds; a cached run is not counted, so the real count can be lower). Greedy steps and the
-// confirmation are added when they start. A part: { kind: 'screen'|'halving'|'step'|'confirmation', index,
-// state: 'waiting'|'running'|'done', runsPlanned, runsDone, runsUpTo (waiting only), candidatesLeft, etaSeconds }.
-// A stop leaves the running part running: the rows stay as they were.
+// plan: { stages: [{ k, h }], keep: [n, ...], candidates: n, maxSteps: n } (candidates = the pool entering the screen).
+// Every bar is there from the start: the screen, one halving per further stage, a grey 'steps' row (up to maxSteps
+// greedy steps) and a grey 'confirmation' row. The waiting halvings carry `runsUpTo` (the pool they would get times
+// their seeds; a cached run is not counted, so the real count can be lower). When greedy step k starts it takes the
+// 'steps' row's place; a grey 'moreSteps' row ({ stepsLeft: maxSteps - k }, hidden at 0 and once the confirmation has
+// started) follows the steps and stays above the grey confirmation. Rows are added as steps start, so the count grows.
+// A part: { kind: 'screen'|'halving'|'steps'|'step'|'moreSteps'|'confirmation', index, state: 'waiting'|'running'|
+// 'done', runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
+// stepsLeft ('moreSteps') }. A stop leaves the running part running: the rows stay as they were.
 
 export function createParts(plan) {
-    const { stages, keep = [], candidates } = plan;
+    const { stages, keep = [], candidates, maxSteps } = plan;
     // Pool entering each stage: the screen gets every candidate, each halving the survivors of the one before.
     const pools = [];
     let pool = candidates;
@@ -51,7 +54,12 @@ export function createParts(plan) {
                 const r = rows.find((x) => x.kind === kind && x.index === si);
                 out.push(r ? { ...r } : waiting(kind, si, pools[si], stages[si].k));
             }
-            for (const r of rows) if (r.kind === 'step' || r.kind === 'confirmation') out.push({ ...r });
+            const steps = rows.filter((r) => r.kind === 'step'), conf = rows.find((r) => r.kind === 'confirmation');
+            if (!steps.length) out.push({ kind: 'steps', index: 0, state: 'waiting', maxSteps });
+            for (const r of steps) out.push({ ...r });
+            const k = steps.length ? steps[steps.length - 1].index : 0, more = maxSteps - k;
+            if (steps.length && more > 0 && !conf) out.push({ kind: 'moreSteps', index: k, state: 'waiting', stepsLeft: more });
+            out.push(conf ? { ...conf } : { kind: 'confirmation', index: 0, state: 'waiting' });
             return out;
         },
     };

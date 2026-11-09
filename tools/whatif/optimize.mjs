@@ -448,7 +448,7 @@ async function main() {
     const baseReq = [];
     stages.forEach((st) => baseReq.push(...req([], st.h, st.k * baseMult, 'base')));
 
-    partsTracker = createParts({ stages, keep, candidates: cands.length });
+    partsTracker = createParts({ stages, keep, candidates: cands.length, maxSteps });
     let pool = cands;
     for (let si = 0; si < stages.length; si++) {
         const st = stages[si];
