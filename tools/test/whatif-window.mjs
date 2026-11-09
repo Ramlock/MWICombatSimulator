@@ -41,6 +41,21 @@ const result = {
 result.helpsParty = [result.singles.at(-1)];
 // An earlier result, saved before the buyer test: no helpsParty field, and its rows carry no acceptedParty.
 const olderResult = (() => { const { helpsParty, ...rest } = result; return { ...rest, singles: result.singles.slice(0, 2) }; })();
+// An invented result of real size: three budget players (a 12-column steps table), Change texts up to 119 characters, the split figures at their largest.
+const bigResult = (() => {
+    const names = ['Player 1', 'Player 2', 'Player 3'];
+    const longDesc = (p, n) => (p + ' ability trigger: game default (all_enemies number_of_active_units >= 1 AND all_enemies current_hp >= 1 AND ' + 'x'.repeat(200)).slice(0, n);
+    const big = { sharedGainPerUser: 1234.5e6, sharedSePerUser: 123.45e6, ownSuppliesPerDay: -1234.5e6, ownSuppliesSe: 12.3e6, paybackOwn: 138.2, cost: 191.2e6, payback: 138.2, gainPerUser: 1234.5e6, sePerUser: 123.45e6, accepted: true };
+    const op = (p) => [{ op: 'level', player: p, skill: 'magic', delta: 1 }];
+    const steps = names.map((p, i) => ({ id: 'b' + i, player: p, desc: longDesc(p, 119), ...big, runningSpend: Object.fromEntries(names.map((q) => [q, 191.2e6 * (i + 1)])), ops: op(p) }));
+    const singles = names.flatMap((p, i) => [0, 1].map((k) => ({ id: 'bs' + i + k, player: p, desc: longDesc(p, k ? 119 : 60), lastStage: '8x300', ...big, costPath: 'loadout tweak, used x buy price in expenses', ops: op(p) })));
+    return {
+        goal: 'profit', budgets: Object.fromEntries(names.map((p) => [p, 1e9])), setups: [], steps, singles, helpsParty: [{ ...singles[0], id: 'bh', helpsParty: true, accepted: false }], apart: [], overBudget: [], dominated: [],
+        confirmation: { sharedGainPerUser: 1234.5e6, sharedSePerUser: 123.45e6, ownSuppliesByPlayer: Object.fromEntries(names.map((p) => [p, -1234.5e6])), paybackOwnByPlayer: Object.fromEntries(names.map((p) => [p, 138.2])), cost: 191.2e6, payback: 138.2 },
+        options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot', zone: '/actions/combat/fly', tier: 0 }, basePerUser: 85.76e6,
+    };
+})();
+let serveBig = false;
 let serveOlder = false;
 let search = null, received = null, polls = 0;
 const send = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -68,7 +83,7 @@ const server = http.createServer((req, res) => {
         return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : {}) });
     }
     if (url.pathname === '/api/results') return send(res, 200, search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : []);
-    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveOlder ? olderResult : result);
+    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBig ? bigResult : serveOlder ? olderResult : result);
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     const file = path.join(dist, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
     if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
@@ -283,6 +298,17 @@ try {
     await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
     check('an older result (no helpsParty field) loads with no group and no hint', await until(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('Magic 1') && !t.includes('Helps the party') && !t.includes('Not bought:') && document.querySelectorAll('#whatIfResult table').length === 2; })()`));
     serveOlder = false;
+    // A result of real size fits the window at 1920x1080, 1600x900 and 1366x768: no horizontal scroll in the window's body, every Apply button inside its content edge.
+    serveBig = true;
+    for (const [w, h] of [[1920, 1080], [1600, 900], [1366, 768]]) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+        await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+        await until(`document.querySelectorAll('#whatIfResult table').length === 3 && document.querySelectorAll('#whatIfResult table')[0].querySelectorAll('thead th').length === 12`);
+        await new Promise((r) => setTimeout(r, 400));
+        const fit = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), br = body.getBoundingClientRect(), edge = br.right - parseFloat(getComputedStyle(body).paddingRight) - (body.offsetWidth - body.clientWidth); const apply = [...document.querySelectorAll('#whatIfResult [data-whatif-apply]')].filter((b) => b.getBoundingClientRect().width > 0); return { noBar: body.scrollWidth <= body.clientWidth, scrollW: body.scrollWidth, clientW: body.clientWidth, n: apply.length, inside: apply.every((b) => b.getBoundingClientRect().right <= edge + 0.5), tables: [...document.querySelectorAll('#whatIfResult table')].map((t) => t.getBoundingClientRect().right <= edge + 0.5), numberLines: Math.max(...[...document.querySelectorAll('#whatIfResult table')[0].querySelectorAll('tbody td.num')].map((c) => { const rg = document.createRange(); rg.selectNodeContents(c); return new Set([...rg.getClientRects()].map((x) => Math.round(x.top))).size; })) }; })()`);
+        check(`at ${w}x${h} a result of real size (3 players, 12 columns, 119-character changes) has no horizontal scroll, every Apply button is inside the window and every table fits${w === 1920 ? ', and no number cell of the steps table wraps' : ''}`, fit.noBar && fit.n >= 6 && fit.inside && fit.tables.every(Boolean) && (w !== 1920 || fit.numberLines === 1), JSON.stringify(fit));
+    }
+    serveBig = false;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
     await new Promise((r) => setTimeout(r, 400));
     check('at 1100 wide the five tick boxes still share one row and no name is cut', await js(`(() => { const b = [...document.querySelectorAll('#whatIfPlayers .form-check')].map((e) => e.getBoundingClientRect()); return b.length === 5 && new Set(b.map((r) => Math.round(r.top))).size === 1 && [...document.querySelectorAll('#whatIfPlayers label')].every((e) => e.scrollWidth <= e.clientWidth); })()`));

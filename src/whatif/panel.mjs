@@ -301,7 +301,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
             players.map((p) => `<th>${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
         result.steps.forEach((s, i) => {
-            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td>${shown(s)}</td>` +
+            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
                 splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
                 players.map((p) => `<td class="num">${spendCell(s, i, p)}</td>`).join('') +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
@@ -330,7 +330,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
-        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
+        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
             splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
             `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
@@ -348,7 +348,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.helpsParty'))}</div><div class="small text-secondary mb-1">${esc(t('result.helpsPartyHint'))}</div>`);
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
-            helpsShown.map((s) => `<tr><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
+            helpsShown.map((s) => `<tr><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
                 `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td></tr>`).join('') + '</tbody></table>');
     }
     if (result.overBudget?.length) {

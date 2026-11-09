@@ -103,8 +103,8 @@ const result = {
     check('result: "≤" on an upper-bound cost and its payback', /≤ <span data-num="400000"/.test(html) && /≤ <span data-num="200"/.test(html));
     check('result: "≤" on that player\'s running spend from that step on, not before or for others', /≤ <span data-num="600000"/.test(html) && !/≤ <span data-num="1000000"/.test(html));
     check('result: Apply on each step, "Apply 1 to n" from step 2', html.includes('data-whatif-apply="steps:1"') && html.includes('Apply 1 to 3') && html.includes('data-whatif-apply="steps:3"'));
-    check('result: a single below 2 errors is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html));
-    check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" id="whatIfMoreSingles" hidden><tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html) &&
+    check('result: a single below 2 errors is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html));
+    check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" id="whatIfMoreSingles" hidden><tr class="whatif-weak"><td>Alpha<\/td><td class="chg">Food 2/.test(html) &&
         !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more="whatIfMoreSingles"/g) || []).length === 1);
     check('result: the cost path cell wraps', /<td class="wrap">market<\/td>/.test(html));
     check('result: unknown costs listed apart', html.includes('Some token item: no seller'));
@@ -139,7 +139,7 @@ const result = {
     check('split: the confirmation shows the shared gain per user and a line per player; no party payback beside them', html.includes('data-num="9999"') && html.includes('Alpha: own supplies <span data-num="-5551"') && /Beta: own supplies <span data-num="6662"[^]*?payback —? ?days|Beta: own supplies <span data-num="6662"/.test(html) && html.includes('data-num="12.5"') && !/Confirmed on fresh runs[^]*?Payback days[^]*?Alpha: own/.test(html) && !html.includes('data-num="275.9"'));
     check('split: an upper-bound cost marks the buyer payback "≤"', /≤ <span data-num="51.4"/.test(html));
     const old = panel.renderResult(result, t);
-    check('split: an older result shows a dash in the new columns, keeps the saved party payback (cell and confirmation) and the run-again hint', !old.includes('data-num="1500"') && old.includes('data-num="333.3"') && old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && /<td>Ring[^<]*<\/td><td class="num">—<\/td><td class="num">—<\/td><td class="num">—<\/td>/.test(old));
+    check('split: an older result shows a dash in the new columns, keeps the saved party payback (cell and confirmation) and the run-again hint', !old.includes('data-num="1500"') && old.includes('data-num="333.3"') && old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && /<td class="chg">Ring[^<]*<\/td><td class="num">—<\/td><td class="num">—<\/td><td class="num">—<\/td>/.test(old));
     check('split: the other two locales carry the new strings', ['pt', 'zh'].every((l) => locales[l].col.ownSupplies && locales[l].col.ownSuppliesTip && locales[l].result.ownLine && locales[l].result.oldSplit && locales[l].col.gain !== locales.en.col.gain));
     check('split: an EXP result keeps its per-user figure in the first column', panel.renderResult({ ...result, goal: 'exp' }, t).includes('data-num="1500"'));
 }
@@ -255,9 +255,9 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const lead = { ...withIds, steps: [{ ...withIds.steps[0], player: 'Alpha' }], singles: [{ ...withIds.singles[0], player: 'Alpha' }], overBudget: [{ id: 'o', player: 'Alpha', desc: boots, cost: 7e9, costPath: 'market' }, { id: 'p', player: 'Beta', desc: 'poke 5 -> 6', cost: 8e9, costPath: 'market' }] };
     const leadHtml = h('en', lead);
     check('player lead: steps and singles show the player once (its column), the over-budget row once before the comma, a desc without a prefix as it is',
-        leadHtml.includes('<td>Alpha</td><td>Feet Pathseeker Boots ★ +12') && !leadHtml.includes('Alpha Feet') && leadHtml.includes('<li>Alpha, Feet Pathseeker Boots ★ +12') && leadHtml.includes('<li>Beta, Poke 5 -&gt; 6'), leadHtml.slice(0, 300));
+        leadHtml.includes('<td>Alpha</td><td class="chg">Feet Pathseeker Boots ★ +12') && !leadHtml.includes('Alpha Feet') && leadHtml.includes('<li>Alpha, Feet Pathseeker Boots ★ +12') && leadHtml.includes('<li>Beta, Poke 5 -&gt; 6'), leadHtml.slice(0, 300));
     check('player lead: the unknown-cost list has no player column, so its lead stays', leadHtml.includes('Beta ability 2 empty -&gt; learn Fireball 30: no seller'));
-    check('player lead: without names the lead is dropped too, and the ops are untouched', panel.renderResult(lead, t).includes('<td>Alpha</td><td>feet pathseeker_boots_refined') && JSON.stringify(lead.steps[0].ops) === JSON.stringify(result.steps[0].ops));
+    check('player lead: without names the lead is dropped too, and the ops are untouched', panel.renderResult(lead, t).includes('<td>Alpha</td><td class="chg">feet pathseeker_boots_refined') && JSON.stringify(lead.steps[0].ops) === JSON.stringify(result.steps[0].ops));
 
     // The "where the page differs" warning shows names for every id a difference holds (generic fixtures; diffSetups stays raw).
     const trigTerm = (cond, v) => [{ dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/' + cond, comparatorHrid: '/combat_trigger_comparators/greater_than_equal', value: v }];
