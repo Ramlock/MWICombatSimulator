@@ -89,7 +89,7 @@ try {
     const until = async (expression, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await js(expression)) return true; await new Promise((r) => setTimeout(r, 200)); } return false; };
     const shot = async (id, name) => {
         if (!shots) return;
-        fs.mkdirSync(shots, { recursive: true });
+        fs.mkdirSync(path.dirname(path.join(shots, name)), { recursive: true });
         const [x, y, width, height] = await js(`(() => { const b = document.querySelector('#${id} .modal-content').getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
         const s = await page.send('Page.captureScreenshot', { format: 'png', clip: { x, y, width, height, scale: 1 }, captureBeyondViewport: true });
         fs.writeFileSync(path.join(shots, name), Buffer.from(s.data, 'base64'));
@@ -150,6 +150,47 @@ try {
     await js(`(document.querySelector('#whatIfBudgets textarea').value = '', document.getElementById('whatIfPlayer_2').click(), true)`);
     check('a player ticked later has a paste box of their own and no export', (await statusOf('Player 2')) === 'no export' && (await statusOf('Player 1')) === 'kept (Second)');
     await js(`document.getElementById('whatIfPlayer_2').click(), true`);
+    // Layout: five, three and one players at 1500x900 and 1100x900; one row per player with one pitch, equal columns and
+    // section gaps, Goal inline like Zone and Tier, the button row and both columns inside the window.
+    const shotsLayout = shots ? path.join(shots, 'layout2') : null;
+    const tickOnly = (n) => js(`(() => { for (const b of document.querySelectorAll('#whatIfPlayers input')) { const want = Number(b.value) <= ${n}; if (b.checked !== want) b.click(); } return true; })()`);
+    const layout = () => js(`(() => {
+        const r = (e) => e.getBoundingClientRect();
+        const win = r(document.querySelector('#whatIfModal .modal-content')), body = document.querySelector('#whatIfModal .modal-body');
+        const rows = [...document.querySelectorAll('#whatIfBudgets .whatif-prow')];
+        const cols = [0, 1, 2, 3].map((i) => new Set(rows.map((x) => Math.round(r(x.children[i]).width))).size === 1 && new Set(rows.map((x) => Math.round(r(x.children[i]).left))).size === 1);
+        const tops = rows.map((x) => r(x).top), pitch = tops.slice(1).map((t, i) => Math.round((t - tops[i]) * 10) / 10), heights = rows.map((x) => Math.round(r(x).height));
+        const oneLine = rows.every((x) => [...x.children].every((c) => r(c).height <= 32) && r(x.children[3]).left >= r(x.children[2]).right - 0.5 && Math.abs(r(x.children[2]).top - r(x.children[3]).top) < 16);
+        const left = document.querySelector('#whatIfModal .col-md-5'), right = document.querySelector('#whatIfModal .col-md-7'), btn = document.getElementById('buttonWhatIfStart').parentElement;
+        const kids = [...left.children].map(r), gaps = kids.slice(1).map((k, i) => k.top - kids[i].bottom);
+        const colBottom = Math.max(r(left).bottom, 0), rightBottom = [...right.children].reduce((m, c) => Math.max(m, r(c).bottom), 0);
+        gaps.push(r(btn).top - Math.max(kids[kids.length - 1].bottom, rightBottom));
+        const g = r(document.getElementById('selectWhatIfGoal')), z = r(document.getElementById('selectWhatIfZone')), t = r(document.getElementById('selectWhatIfTier'));
+        const gl = r(document.querySelector('label[for="selectWhatIfGoal"]')), zl = r(document.querySelector('label[for="selectWhatIfZone"]'));
+        return { rows: rows.length, cols, pitch, heights, oneLine,
+            statusTitles: rows.every((x) => x.children[3].title === x.children[3].textContent),
+            inside: r(btn).bottom <= win.bottom && r(btn).bottom <= r(body).bottom && body.scrollHeight <= body.clientHeight + 1 && win.bottom <= innerHeight,
+            btnBottom: Math.round(r(btn).bottom), winBottom: Math.round(win.bottom),
+            gaps: gaps.map((x) => Math.round(x * 10) / 10), leftBottom: Math.round(kids[kids.length - 1].bottom), rightBottom: Math.round(rightBottom),
+            goalInline: Math.abs(g.left - z.left) < 1 && Math.abs(g.width - z.width) < 1 && Math.abs(g.width - t.width) < 1 && Math.abs(gl.left - zl.left) < 1 && Math.abs(gl.width - zl.width) < 1 && Math.abs(r(document.querySelector('label[for="selectWhatIfGoal"]')).top - g.top) < 12 };
+    })()`);
+    for (const [w, h] of [[1500, 900], [1100, 900]]) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+        for (const n of [5, 3, 1]) {
+            await tickOnly(n);
+            await new Promise((r) => setTimeout(r, 250));
+            const L = await layout(), tag = `${n} players at ${w}x${h}`;
+            console.log('     ', tag, JSON.stringify({ gaps: L.gaps, pitch: L.pitch, heights: L.heights, btnBottom: L.btnBottom, winBottom: L.winBottom, leftBottom: L.leftBottom, rightBottom: L.rightBottom }));
+            check(`${tag}: one row per player, one pitch, equal columns, status beside the field on one line`, L.rows === n && L.cols.every(Boolean) && new Set(L.pitch).size <= 1 && new Set(L.heights).size === 1 && L.oneLine && L.statusTitles, JSON.stringify(L));
+            check(`${tag}: the Start search row is inside the window, no scrolling`, L.inside, JSON.stringify(L));
+            check(`${tag}: every section gap is equal`, L.gaps.length >= 4 && Math.max(...L.gaps) - Math.min(...L.gaps) < 1, JSON.stringify(L.gaps));
+            check(`${tag}: the column bottoms are within 120 px`, Math.abs(L.leftBottom - L.rightBottom) <= 120, `${L.leftBottom} vs ${L.rightBottom}`);
+            check(`${tag}: Goal sits inline with its label like Zone and Tier`, L.goalInline, JSON.stringify(L));
+            if (n === 5 && shotsLayout) await shot('whatIfModal', `layout2/layout2-${w}x${h}.png`);
+        }
+    }
+    await page.send('Emulation.clearDeviceMetricsOverride');
+    await tickOnly(1);
     await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = 'abc'; return true; })()`);
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('a budget that is not a number is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('Player 1')`) && received === null);

@@ -7967,6 +7967,7 @@ function whatIfShowExportStatus() {
     for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
         const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
         status.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportStatus)({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
+        status.title = status.textContent;
     }
 }
 
@@ -7994,33 +7995,33 @@ function whatIfRenderSetup() {
     const pasted = Object.fromEntries([...budgets.querySelectorAll('textarea')].map((i) => [i.dataset.player, i.value]));
     budgets.replaceChildren();
     for (const slot of whatIfSlots(true)) {
+        // One row per player: name | budget | one-line paste field | status (one line, the whole text as its title).
         const player = document.createElement('div');
-        player.className = 'mb-2';
-        const group = document.createElement('div');
-        group.className = 'input-group input-group-sm mb-1';
+        player.className = 'whatif-prow';
         const label = document.createElement('span');
-        label.className = 'input-group-text';
+        label.className = 'whatif-pname';
         label.textContent = slot.name;
+        label.title = slot.name;
         const input = document.createElement('input');
         input.type = 'number';
         input.min = '0';
-        input.className = 'form-control';
+        input.className = 'form-control form-control-sm';
         input.dataset.player = slot.name;
         input.value = typed[slot.name] ?? '0';
-        group.append(label, input);
-        // The player's character export (optional): a paste box whose valid content is kept in the browser's storage
-        // under the player's name; the status line under it is rebuilt from the storage and the box.
+        // The player's character export (optional): a paste field whose valid content is kept in the browser's storage
+        // under the player's name; the status beside it is rebuilt from the storage and the field.
         const paste = document.createElement('textarea');
         paste.className = 'form-control form-control-sm whatif-export';
-        paste.rows = 2;
+        paste.rows = 1;
+        paste.wrap = 'off';
         paste.dataset.player = slot.name;
         paste.placeholder = whatIfT('exportLabel');
         paste.value = pasted[slot.name] ?? '';
         paste.addEventListener('input', () => whatIfKeepExport(paste));
         const status = document.createElement('div');
-        status.className = 'small whatif-dim';
+        status.className = 'small whatif-dim whatif-pstatus';
         status.dataset.exportStatus = slot.name;
-        player.append(group, paste, status);
+        player.append(label, input, paste, status);
         budgets.append(player);
     }
     whatIfShowExportStatus();
@@ -9239,4 +9240,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.f16d1c81.js.map
+//# sourceMappingURL=bundle.f2301e60.js.map
