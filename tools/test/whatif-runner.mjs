@@ -197,6 +197,13 @@ if (res) {
     check(res.steps.every((s) => s.runningSpend && s.runningSpend.Beta === 0 && s.runningSpend.Alpha <= 1e9 && s.player === 'Alpha'), 'steps: each carries every player\'s running spend; Beta spends nothing');
     let sum = 0;
     check(res.steps.every((s) => { sum += s.cost; return Math.abs(s.runningSpend.Alpha - sum) < 1e-6; }), 'steps: Alpha\'s running spend is the sum of Alpha\'s steps');
+    {   // basePerUser: the party base (mean over the last stage's base seeds, from the run store) over the party size.
+        const lines = readFileSync(path.join(dir, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+        const baseKey = lines.find((l) => l.tag === 'base')?.key, h = Number(res.stages.at(-1).split('x')[1]), k = Number(res.stages.at(-1).split('x')[0]) * res.baseMult;
+        const vals = lines.filter((l) => l.tag === 'base' && l.key === baseKey && l.checkpoints.some((c) => c.simHours === h)).sort((a, b) => a.seed - b.seed).slice(0, k).map((l) => l.checkpoints.find((c) => c.simHours === h).party.profitAfterTaxPerDay);
+        const party = vals.reduce((a, x) => a + x, 0) / vals.length;
+        check(vals.length === k && Number.isFinite(res.basePerUser) && Math.abs(res.basePerUser * res.partySize - party) < 1e-6 * Math.max(1, Math.abs(party)), 'result: basePerUser is the party base over the last stage base seeds divided by the party size', `${res.basePerUser} x ${res.partySize} vs ${party} (${vals.length} of ${k})`);
+    }
     check(!res.confirmation || (res.confirmation.gainPerUser * 2 - res.confirmation.gain < 1e-6 && res.confirmation.runningSpend), 'confirmation: per-user figures and spend');
     console.log(`     (${res.steps.length} steps, ${res.singles.length} singles, ${res.timing.runsThisCall} runs after the resume)`);
 }

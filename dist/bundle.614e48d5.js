@@ -2853,7 +2853,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   renderResult: () => (/* binding */ renderResult),
 /* harmony export */   searchBody: () => (/* binding */ searchBody),
 /* harmony export */   searchRequest: () => (/* binding */ searchRequest),
-/* harmony export */   stepsOps: () => (/* binding */ stepsOps)
+/* harmony export */   stepsOps: () => (/* binding */ stepsOps),
+/* harmony export */   zoneLine: () => (/* binding */ zoneLine)
 /* harmony export */ });
 /* harmony import */ var _applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./applyOps.mjs */ "./src/whatif/applyOps.mjs");
 /* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../numberFormat.js */ "./src/numberFormat.js");
@@ -3011,6 +3012,7 @@ const NAME_TABLES = {
     equipmentTypeNames: '/equipment_types/',
     combatTriggerDependencyNames: '/combat_trigger_dependencies/',
     combatTriggerConditionNames: '/combat_trigger_conditions/',
+    actionNames: '/actions/', // the zone: "combat/fly"
 };
 // The lookups `localizeDesc` takes, from the game bundle of the shown language (`current`) and of English (`english`,
 // the fallback i18next uses and the language the room names are written in). A bundle is { itemNames: { "/items/x": name }, ... }.
@@ -3063,6 +3065,9 @@ function renderResult(result, t, now = Date.now(), names = null) {
     const shown = (row) => esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player));
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
     L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
+    const zone = zoneLine(result, t, names);
+    if (zone) L.push(`<div class="mb-2">${zone}</div>`);
+    if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
     const players = Object.keys(result.budgets || {});
@@ -3130,6 +3135,20 @@ function renderResult(result, t, now = Date.now(), names = null) {
     }
     if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
     return L.join('');
+}
+
+// "Zone: <name>, tier <N> · base party profit <figure> per user per day": the request's zone and tier (result.options)
+// and the party base profit the search compared against (result.basePerUser, already per user). The
+// zone name is the page's own name for the zone in the shown language (the id's last part when there is none).
+// Returns '' when the result holds no zone (an older result), and omits what it lacks.
+function zoneLine(result, t, names) {
+    const hrid = result?.options?.zone;
+    if (typeof hrid !== 'string' || !hrid) return '';
+    const name = names?.get('actionNames', hrid.replace(/^\/actions\//, '')) ?? hrid.split('/').pop();
+    const tier = result.options.tier;
+    const parts = [esc(Number.isFinite(tier) ? t('result.zone', { zone: name, tier }) : t('result.zoneNoTier', { zone: name }))];
+    if (result.goal !== 'exp' && Number.isFinite(result.basePerUser)) parts.push(esc(t('result.baseProfit')) + ' ' + num(result.basePerUser) + ' ' + esc(t('result.perUserDay')));
+    return parts.join(' · ');
 }
 
 // The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`
@@ -8960,4 +8979,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.deb48264.js.map
+//# sourceMappingURL=bundle.614e48d5.js.map

@@ -222,6 +222,10 @@
         },
         "result": {
             "goal": "目标",
+            "zone": "区域：{{zone}}，难度 {{tier}}",
+            "zoneNoTier": "区域：{{zone}}",
+            "baseProfit": "队伍基础利润",
+            "baseLoses": "在此区域，队伍在基础状态下是亏损的，因此这里的收益只意味着少亏一些。",
             "steps": "选定的改动（按顺序）",
             "noSteps": "在预算内没有收益超过误差的改动。",
             "confirmed": "在新的运行中确认",

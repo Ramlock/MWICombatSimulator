@@ -223,6 +223,10 @@
         },
         "result": {
             "goal": "Objetivo",
+            "zone": "Zona: {{zone}}, nível {{tier}}",
+            "zoneNoTier": "Zona: {{zone}}",
+            "baseProfit": "lucro-base do grupo",
+            "baseLoses": "Nesta zona o grupo perde dinheiro na base, então um ganho aqui significa perder menos.",
             "steps": "Mudanças escolhidas, em ordem",
             "noSteps": "Nenhuma alteração ganha além do seu erro dentro dos orçamentos.",
             "confirmed": "Confirmado em execuções novas",

@@ -33,7 +33,8 @@ const result = {
     ],
     apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }],
     overBudget: [{ id: 'o', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 7000000000, costPath: 'market' }, { id: 'o2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 8000000000, costPath: 'market' }],
-    options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot' },
+    options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot', zone: '/actions/combat/fly', tier: 0 },
+    basePerUser: -9666666.67,
 };
 let search = null, received = null, polls = 0;
 const send = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -135,6 +136,7 @@ try {
     check('grey singles are collapsed behind "Show 1 more below 2 errors"', await js(`document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Show 1 more below 2 errors'`));
     await js(`document.querySelector('[data-whatif-more]').click(), true`);
     check('the toggle opens the grey rows', await js(`!document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Hide the 1 below 2 errors'`));
+    check('the finished result shows the zone line and the loss warning under the goal line', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('Zone: Fly, tier 0 · base party profit') && t.includes('At this zone the party loses money at base, so a gain here means losing less.'); })()`));
     check('the over-budget list is closed behind one toggle with its count, and shows game names, not ids', await js(`(() => { const ul = document.getElementById('whatIfOverBudget'); const b = document.querySelector('[data-whatif-more="whatIfOverBudget"]'); return ul.hidden && getComputedStyle(ul).display === 'none' && b.textContent === 'Show the 2 priced over budget' && ul.textContent.includes('Feet Pathseeker Boots ★ +12 -> Cotton Boots +0') && !ul.textContent.includes('pathseeker_boots_refined') && ul.textContent.includes('not_a_real_item_x') && ul.children[0].textContent.startsWith('Player 1, Feet Pathseeker') && ul.children[1].textContent.startsWith('Player 1, not_a_real_item_x'); })()`));
     await js(`document.querySelector('[data-whatif-more="whatIfOverBudget"]').click(), true`);
     check('the toggle opens the over-budget list without touching the grey rows', await js(`!document.getElementById('whatIfOverBudget').hidden && document.querySelector('[data-whatif-more="whatIfOverBudget"]').textContent === 'Hide the 2 priced over budget' && !document.getElementById('whatIfMoreSingles').hidden`));

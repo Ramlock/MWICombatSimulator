@@ -439,6 +439,8 @@ async function main() {
         pool.sort(rank);
         if (si < stages.length - 1) pool = pool.slice(0, keep[si] ?? pool.length);
     }
+    // The base the search compared against, per user, in the goal's unit: the mean over the base seeds of the last stage.
+    { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
     result.singles = cands.map((c) => row(c)).sort((a, b) => (a.lastStage === b.lastStage ? (b.score - a.score) : (b.stageIndex - a.stageIndex)));
 
     // Greedy stacking on the finalists.

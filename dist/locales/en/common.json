@@ -223,6 +223,10 @@
         },
         "result": {
             "goal": "Goal",
+            "zone": "Zone: {{zone}}, tier {{tier}}",
+            "zoneNoTier": "Zone: {{zone}}",
+            "baseProfit": "base party profit",
+            "baseLoses": "At this zone the party loses money at base, so a gain here means losing less.",
             "steps": "Chosen changes, in order",
             "noSteps": "No change gains beyond its error within the budgets.",
             "confirmed": "Confirmed on fresh runs",

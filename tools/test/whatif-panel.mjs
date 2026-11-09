@@ -239,6 +239,22 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('player lead: the unknown-cost list has no player column, so its lead stays', leadHtml.includes('Beta ability 2 empty -&gt; learn Fireball 30: no seller'));
     check('player lead: without names the lead is dropped too, and the ops are untouched', panel.renderResult(lead, t).includes('<td>Alpha</td><td>feet pathseeker_boots_refined') && JSON.stringify(lead.steps[0].ops) === JSON.stringify(result.steps[0].ops));
 
+    // The zone line and the loss warning (generic fixtures; the zone name follows the language).
+    const zoned = (extra) => ({ ...result, options: { ...result.options, zone: '/actions/combat/fly', tier: 0, ...(extra || {}) } });
+    const loss = { ...zoned(), basePerUser: -29000000 / 3 };
+    const lossEn = h('en', loss), lossPt = h('pt', loss);
+    check('zone line: zone name, tier and the base per user (the field as it is, "per user per day")', lossEn.includes('Zone: Fly, tier 0 · base party profit <span data-num="-9666666.666666666"') && /per user per day<\/div>/.test(lossEn), lossEn.slice(0, 500));
+    check('zone line: the zone name follows the language, the strings come from the locale', lossPt.includes(`Zone: ${pt.actionNames['/actions/combat/fly']}, tier 0`) && pt.actionNames['/actions/combat/fly'] !== 'Fly' && lossEn.includes('Zone: Fly, tier 0'));
+    check('zone line: it sits under the goal line, before the steps', lossEn.indexOf('Goal:') < lossEn.indexOf('Zone: Fly') && lossEn.indexOf('Zone: Fly') < lossEn.indexOf(locales.en.result.steps));
+    check('warning: a base below 0 shows the loss line, in every language', lossEn.includes(locales.en.result.baseLoses) && lossPt.includes(locales.en.result.baseLoses) && lossEn.indexOf('Zone: Fly') < lossEn.indexOf(locales.en.result.baseLoses));
+    const gain = h('en', { ...zoned(), basePerUser: 12345 });
+    check('warning: a base of 0 or above shows the zone line and no warning', gain.includes('Zone: Fly, tier 0 · base party profit <span data-num="12345"') && !gain.includes(locales.en.result.baseLoses) && !h('en', { ...zoned(), basePerUser: 0 }).includes(locales.en.result.baseLoses));
+    check('zone line: the loss compares the raw field, not a shown figure; an exp goal shows neither the base nor the warning', !h('en', { ...zoned(), goal: 'exp', basePerUser: -5 }).includes(locales.en.result.baseLoses) && !h('en', { ...zoned(), goal: 'exp', basePerUser: -5 }).includes(locales.en.result.baseProfit) && h('en', { ...zoned(), goal: 'exp', basePerUser: -5 }).includes('Zone: Fly, tier 0'));
+    const old = h('en', { ...result, options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot' } });
+    check('zone line: a result with no zone shows neither line nor warning and does not crash (also with no options)', !old.includes('Zone:') && !old.includes(locales.en.result.baseLoses) && !h('en', { ...result, options: undefined }).includes('Zone:') && panel.renderResult(zoned({ zone: '/actions/combat/not_a_zone' }), t).includes('Zone: not_a_zone, tier 0'));
+    check('zone line: a zone with no tier, and a result with a zone but no base figure, show what they have', h('en', { ...zoned(), options: { zone: '/actions/combat/fly' } }).includes('Zone: Fly<') && !h('en', zoned()).includes(locales.en.result.baseProfit));
+    check('zone line: the strings exist in en, pt and zh', ['zone', 'zoneNoTier', 'baseProfit', 'baseLoses'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && ['zone', 'zoneNoTier'].every((k) => ['en', 'pt', 'zh'].every((l) => locales[l].result[k].includes('{{zone}}'))));
+
     // The over-budget list folds.
     const ob = h('en');
     check('over budget: the heading keeps its count, the list is closed behind one toggle', ob.includes(locales.en.result.overBudget) && ob.includes('(2, not ranked') &&
