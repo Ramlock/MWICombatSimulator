@@ -236,6 +236,8 @@
             "apart": "Unknown cost, not ranked",
             "overBudget": "Priced, over budget",
             "overBudgetNote": "({{n}}, not ranked: each is priced above its player's budget)",
+            "overBudgetShow": "Show the {{n}} priced over budget",
+            "overBudgetHide": "Hide the {{n}} priced over budget",
             "pricesSnapshot": "Prices: market snapshot of {{when}} ({{elapsed}} old when shown).",
             "pricesCommitted": "Prices: the simulator's own saved snapshot of {{when}} ({{elapsed}} old), not the market of now.",
             "upperNote": "≤: the cost is only an upper bound (ability books without the experience already inside the level)."

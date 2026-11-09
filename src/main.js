@@ -28,7 +28,7 @@ import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
 import { fetchMarketplace } from "./marketplace.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, renderDiff as whatIfRenderDiff } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4238,9 +4238,15 @@ function whatIfRenderSetup() {
     }
 }
 
+// The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
+function whatIfNames() {
+    const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
+    return whatIfNamesFrom(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
+}
+
 function whatIfShowResult(result) {
     whatIf.result = result;
-    document.getElementById('whatIfResult').innerHTML = result ? whatIfRenderResult(result, whatIfT) : '';
+    document.getElementById('whatIfResult').innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames()) : '';
     whatIfShowDiff();
 }
 
@@ -4381,7 +4387,7 @@ async function initWhatIf() {
         if (button) whatIfApply(button.dataset.whatifApply);
         const more = event.target.closest('[data-whatif-more]');
         if (more) {
-            const body = document.querySelector('#whatIfResult .whatif-more');
+            const body = document.getElementById(more.dataset.whatifMore);
             body.hidden = !body.hidden;
             more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
         }

@@ -2843,6 +2843,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   applyToSlots: () => (/* binding */ applyToSlots),
 /* harmony export */   diffSetups: () => (/* binding */ diffSetups),
 /* harmony export */   duration: () => (/* binding */ duration),
+/* harmony export */   localizeDesc: () => (/* binding */ localizeDesc),
+/* harmony export */   namesFrom: () => (/* binding */ namesFrom),
 /* harmony export */   opsFor: () => (/* binding */ opsFor),
 /* harmony export */   pageSetups: () => (/* binding */ pageSetups),
 /* harmony export */   pricesLine: () => (/* binding */ pricesLine),
@@ -2996,15 +2998,67 @@ function duration(s) {
     return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
+// ---- Game names in the descriptions (output only: the ids stay in the result and the Apply buttons read the ops) ----
+// The runner writes each desc with the game's internal ids (the last part of a hrid: "pathseeker_boots_refined",
+// "feet", "berserk"). The window shows the names the page itself shows in its current language: the game bundle's
+// itemNames, abilityNames, skillNames, equipmentTypeNames (slots), combatTriggerDependencyNames and
+// combatTriggerConditionNames; a house room is written as its English name and is looked up by that name in
+// houseRoomNames. A refined item has its own itemNames entry (with the page's "★"), so it needs no rule here.
+const NAME_TABLES = {
+    itemNames: '/items/',
+    abilityNames: '/abilities/',
+    skillNames: '/skills/',
+    equipmentTypeNames: '/equipment_types/',
+    combatTriggerDependencyNames: '/combat_trigger_dependencies/',
+    combatTriggerConditionNames: '/combat_trigger_conditions/',
+};
+// The lookups `localizeDesc` takes, from the game bundle of the shown language (`current`) and of English (`english`,
+// the fallback i18next uses and the language the room names are written in). A bundle is { itemNames: { "/items/x": name }, ... }.
+function namesFrom(current, english = current) {
+    const get = (table, slug) => {
+        const hrid = NAME_TABLES[table] + slug;
+        const name = current?.[table]?.[hrid] ?? english?.[table]?.[hrid];
+        return typeof name === 'string' && name !== '' ? name : null;
+    };
+    const rooms = Object.entries(english?.houseRoomNames || {}).map(([hrid, en]) => [en, current?.houseRoomNames?.[hrid] || en])
+        .sort((a, b) => b[0].length - a[0].length);
+    return { get, rooms };
+}
+
+const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames'];
+const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames'];
+const SLUG = /(?<![A-Za-z0-9_])[a-z][a-z0-9_]*(?![A-Za-z0-9_])/g;
+const swap = (text, tables, names) => text.replace(SLUG, (id) => {
+    for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
+    return id;
+});
+// A desc with every game id replaced by its name; an id with no name stays. `players` are the names the result
+// holds: the player name leads the desc and is never touched. Trigger descs ("<owner> trigger: <terms>") read the
+// owner as an item or ability and the terms as trigger dependency and condition (a condition can share an id with an ability).
+function localizeDesc(desc, names, players = []) {
+    const text = String(desc ?? '');
+    if (!names) return text;
+    const lead = [...players].sort((a, b) => b.length - a.length).find((p) => p && text.startsWith(p + ' '));
+    const head = lead ? lead + ' ' : '';
+    const rest = text.slice(head.length);
+    const room = names.rooms.find(([en]) => rest.startsWith(en + ' '));
+    if (room) return head + room[1] + rest.slice(room[0].length);
+    const at = rest.indexOf(' trigger: ');
+    if (at >= 0) return head + swap(rest.slice(0, at), ITEMS_ETC, names) + ' trigger: ' + swap(rest.slice(at + ' trigger: '.length), TRIGGER_TERMS, names);
+    return head + swap(rest, ITEMS_ETC, names);
+}
+
 // A cost cell: "≤" when the cost is only an upper bound.
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
 const paybackCell = (row) => (row.payback === null || row.payback === undefined ? '—' : (upper(row) ? '≤ ' : '') + num(row.payback));
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
-function renderResult(result, t, now = Date.now()) {
+function renderResult(result, t, now = Date.now(), names = null) {
     if (!result) return '';
     const L = [];
+    const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
+    const shown = (row) => esc(localizeDesc(row.desc, names, known));
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
     L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
     const prices = pricesLine(result, t, now);
@@ -3025,7 +3079,7 @@ function renderResult(result, t, now = Date.now()) {
             ['#', t('col.player'), t('col.change'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
             players.map((p) => `<th>${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
         result.steps.forEach((s, i) => {
-            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td>${esc(s.desc)}</td>` +
+            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td>${shown(s)}</td>` +
                 `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
                 players.map((p) => `<td class="num">${spendCell(s, i, p)}</td>`).join('') +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
@@ -3049,24 +3103,28 @@ function renderResult(result, t, now = Date.now()) {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             [t('col.player'), t('col.change'), t('col.stage'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
-        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${esc(s.desc)}</td><td>${esc(s.lastStage)}</td>` +
+        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
             `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
             `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
         const rows = result.singles.map((s, i) => [s, i]);
         const weak = rows.filter(([s]) => !s.accepted);
         L.push('<tbody>' + rows.filter(([s]) => s.accepted).map(([s, i]) => row(s, i)).join('') + '</tbody>');
-        if (weak.length) L.push('<tbody class="whatif-more" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
+        if (weak.length) L.push('<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
         L.push('</table>');
-        if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
+        if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
     }
     if (result.overBudget?.length) {
-        L.push(`<div class="fw-bold mt-3">${esc(t('result.overBudget'))} <span class="text-secondary fw-normal small">${esc(t('result.overBudgetNote', { n: result.overBudget.length }))}</span></div><ul class="small">` +
-            result.overBudget.map((a) => `<li>${esc(a.player)}, ${esc(a.desc)}: ${costCell(a)}</li>`).join('') + '</ul>');
+        // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
+        const n = result.overBudget.length;
+        L.push(`<div class="fw-bold mt-3">${esc(t('result.overBudget'))} <span class="text-secondary fw-normal small">${esc(t('result.overBudgetNote', { n }))}</span></div>` +
+            `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="whatIfOverBudget" data-show="${esc(t('result.overBudgetShow', { n }))}" data-hide="${esc(t('result.overBudgetHide', { n }))}">${esc(t('result.overBudgetShow', { n }))}</button>` +
+            '<ul class="small whatif-more" id="whatIfOverBudget" hidden>' +
+            result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`).join('') + '</ul>');
     }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
-            result.apart.map((a) => `<li>${esc(a.desc)}: ${esc(a.note)}</li>`).join('') + '</ul>');
+            result.apart.map((a) => `<li>${shown(a)}: ${esc(a.note)}</li>`).join('') + '</ul>');
     }
     if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
     return L.join('');
@@ -3356,7 +3414,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"a2f3a0a9","2":"bac78d82","3":"f6d8b4f3","5":"210e62e9","src_multiWorker_js-_004d1":"affb033b","src_multiWorker_js-_004d2":"affb033b","src_multiWorker_js-_004d3":"affb033b","src_multiWorker_js-_004d0":"affb033b","src_multiWorker_js-_004d4":"affb033b"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"3d518bce","2":"76aa023b","3":"b452d0a3","5":"8d8ba0b3","src_multiWorker_js-_004d1":"881f8dd7","src_multiWorker_js-_004d2":"881f8dd7","src_multiWorker_js-_004d3":"881f8dd7","src_multiWorker_js-_004d0":"881f8dd7","src_multiWorker_js-_004d4":"881f8dd7"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -7715,9 +7773,15 @@ function whatIfRenderSetup() {
     }
 }
 
+// The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
+function whatIfNames() {
+    const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
+    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
+}
+
 function whatIfShowResult(result) {
     whatIf.result = result;
-    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderResult)(result, whatIfT) : '';
+    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderResult)(result, whatIfT, Date.now(), whatIfNames()) : '';
     whatIfShowDiff();
 }
 
@@ -7858,7 +7922,7 @@ async function initWhatIf() {
         if (button) whatIfApply(button.dataset.whatifApply);
         const more = event.target.closest('[data-whatif-more]');
         if (more) {
-            const body = document.querySelector('#whatIfResult .whatif-more');
+            const body = document.getElementById(more.dataset.whatifMore);
             body.hidden = !body.hidden;
             more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
         }
@@ -8894,4 +8958,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.d30ddd5e.js.map
+//# sourceMappingURL=bundle.a5fb7311.js.map

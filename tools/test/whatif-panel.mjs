@@ -5,6 +5,7 @@
 // Usage: node tools/test/whatif-panel.mjs        Exit code 0 on pass, 1 on fail.
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -103,8 +104,8 @@ const result = {
     check('result: "≤" on that player\'s running spend from that step on, not before or for others', /≤ <span data-num="600000"/.test(html) && !/≤ <span data-num="1000000"/.test(html));
     check('result: Apply on each step, "Apply 1 to n" from step 2', html.includes('data-whatif-apply="steps:1"') && html.includes('Apply 1 to 3') && html.includes('data-whatif-apply="steps:3"'));
     check('result: a single below 2 errors is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html));
-    check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" hidden><tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html) &&
-        !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more/g) || []).length === 1);
+    check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" id="whatIfMoreSingles" hidden><tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html) &&
+        !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more="whatIfMoreSingles"/g) || []).length === 1);
     check('result: the cost path cell wraps', /<td class="wrap">market<\/td>/.test(html));
     check('result: unknown costs listed apart', html.includes('Some token item: no seller'));
     check('result: confirmation per user', html.includes('data-num="2900"') && html.includes('data-num="450"'));
@@ -176,6 +177,63 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('page: main.js starts the window', /\ninitWhatIf\(\);/.test(main));
     check('page: Apply saves the current tab first', /function whatIfSlots[\s\S]*?savePreviousPlayer\(currentPlayerTabId\)/.test(main));
     check('levers: no seals or labyrinth', !panel.LEVERS.some((l) => /seal|labyrinth/i.test(l.id)));
+}
+
+// Game names in the descriptions (generic fixtures; the real game bundles of js/i18n.js, run as locale-coverage.mjs does).
+{
+    const context = { document: { addEventListener() {} } };
+    vm.runInNewContext(read('js/i18n.js') + '\n;globalThis.__bundles = { en: Wa.en.translation, pt: Pa };', context);
+    const { en, pt } = context.__bundles;
+    const N = { en: panel.namesFrom(en, en), pt: panel.namesFrom(pt, en) };
+    const players = ['Alpha', 'Beta'];
+    const L = (lng, desc, p = players) => panel.localizeDesc(desc, N[lng], p);
+    const boots = 'Alpha feet pathseeker_boots_refined +12 -> cotton_boots +0';
+    check('names: an equipment swap shows the slot and the item names, the refined one with the page\'s own mark (en)',
+        L('en', boots) === 'Alpha Feet Pathseeker Boots ★ +12 -> Cotton Boots +0', L('en', boots));
+    check('names: the same in pt', L('pt', boots) === `Alpha ${pt.equipmentTypeNames['/equipment_types/feet']} ${pt.itemNames['/items/pathseeker_boots_refined']} +12 -> ${pt.itemNames['/items/cotton_boots']} +0` &&
+        L('pt', boots) !== L('en', boots), L('pt', boots));
+    check('names: an ability level and a learned book',
+        L('en', 'Beta poke 5 -> 6') === 'Beta Poke 5 -> 6' && L('en', 'Beta ability 2 empty -> learn fireball 30') === 'Beta ability 2 empty -> learn Fireball 30', L('en', 'Beta ability 2 empty -> learn fireball 30'));
+    check('names: an owned item, a skill and the ability order',
+        L('en', 'Beta ring ring_of_rare_find +3 -> owned ring_of_rare_find +5') === `Beta ${en.equipmentTypeNames['/equipment_types/ring']} ${en.itemNames['/items/ring_of_rare_find']} +3 -> owned ${en.itemNames['/items/ring_of_rare_find']} +5` &&
+        L('en', 'Alpha magic 60 -> 61') === 'Alpha Magic 60 -> 61' && L('en', 'Alpha ability order poke, fireball') === 'Alpha ability order Poke, Fireball', L('en', 'Alpha ability order poke, fireball'));
+    check('names: a drink swap, "empty" stays', L('en', 'Alpha drink 1 stamina_coffee -> empty') === `Alpha drink 1 ${en.itemNames['/items/stamina_coffee']} -> empty`, L('en', 'Alpha drink 1 stamina_coffee -> empty'));
+    check('names: a house room is written as its English name and shown in the page\'s language',
+        L('en', 'Alpha Dairy Barn 3 -> 4') === 'Alpha Dairy Barn 3 -> 4' && L('pt', 'Alpha Dairy Barn 3 -> 4') === `Alpha ${pt.houseRoomNames['/house_rooms/dairy_barn']} 3 -> 4` && pt.houseRoomNames['/house_rooms/dairy_barn'] !== 'Dairy Barn');
+    const trig = 'Alpha poke trigger: self puncture >= 1 AND targeted_enemy current_hp <= 50';
+    check('names: a trigger desc reads its owner as an item or ability and its terms as dependency and condition (a condition id can also be an ability id)',
+        L('en', trig) === `Alpha Poke trigger: ${en.combatTriggerDependencyNames['/combat_trigger_dependencies/self']} ${en.combatTriggerConditionNames['/combat_trigger_conditions/puncture']} >= 1 AND ${en.combatTriggerDependencyNames['/combat_trigger_dependencies/targeted_enemy']} ${en.combatTriggerConditionNames['/combat_trigger_conditions/current_hp']} <= 50` &&
+        en.combatTriggerConditionNames['/combat_trigger_conditions/puncture'] !== en.abilityNames['/abilities/puncture'], L('en', trig));
+    check('names: the runner\'s own trigger words stay (drop, game default, always)', L('en', 'Alpha poke trigger: drop self puncture >= 1').includes('trigger: drop ') && L('en', 'Alpha poke trigger: game default (always)') === 'Alpha Poke trigger: game default (always)');
+    check('names: an id with no name stays as it is', L('en', 'Alpha feet not_a_real_item_x +1 -> +2') === `Alpha ${en.equipmentTypeNames['/equipment_types/feet']} not_a_real_item_x +1 -> +2`);
+    check('names: the player name is never touched, even when it is an id', L('en', 'poke poke 5 -> 6', ['poke']) === 'poke Poke 5 -> 6');
+    check('names: without a name source the desc stays as it came', panel.localizeDesc(boots, null, players) === boots && panel.localizeDesc(undefined, N.en) === '');
+    check('names: an id missing from the shown language falls back to English, as the page does', panel.localizeDesc('Alpha poke 1 -> 2', panel.namesFrom({ abilityNames: {} }, en), players) === 'Alpha Poke 1 -> 2');
+    // The runner's own words must never resolve to a name (a future game id that equals one would be caught here).
+    const words = 'ability order trigger learn owned empty always drop add game default and food drink drinks'.split(' ');
+    const tables = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames', 'combatTriggerDependencyNames', 'combatTriggerConditionNames'];
+    const resolves = words.filter((w) => tables.some((tb) => N.en.get(tb, w) !== null));
+    check('names: none of the runner\'s own words is a game id', resolves.length === 0, resolves.join(','));
+
+    const h = (lng, r = result) => panel.renderResult(r, t, undefined, N[lng]);
+    const withIds = { ...result,
+        steps: result.steps.map((x, i) => (i === 0 ? { ...x, desc: boots } : x)),
+        singles: result.singles.map((x, i) => (i === 0 ? { ...x, desc: boots } : x)),
+        overBudget: [{ id: 'o', player: 'Alpha', desc: boots, cost: 7e9, costPath: 'market' }],
+        apart: [{ id: 'u', desc: 'Beta ability 2 empty -> learn fireball 30', note: 'no seller' }] };
+    const shownEn = h('en', withIds), shownPt = h('pt', withIds);
+    check('names: steps, singles, the over-budget list and the unknown-cost list all show names', (shownEn.match(/Pathseeker Boots ★ \+12/g) || []).length === 3 && shownEn.includes('learn Fireball 30: no seller') && !shownEn.includes('pathseeker_boots_refined'), shownEn.slice(0, 200));
+    check('names: the same in pt', shownPt.split(pt.itemNames['/items/pathseeker_boots_refined'] + ' +12').length === 4 && !shownPt.includes('pathseeker_boots_refined'));
+    check('names: the apply buttons and the ops do not depend on the shown text', shownEn.includes('data-whatif-apply="steps:1"') && JSON.stringify(panel.opsFor(withIds, 'steps:1')) === JSON.stringify(result.steps[0].ops));
+    check('names: without names the descs show as they came (the existing output)', panel.renderResult(withIds, t).includes('pathseeker_boots_refined'));
+
+    // The over-budget list folds.
+    const ob = h('en');
+    check('over budget: the heading keeps its count, the list is closed behind one toggle', ob.includes(locales.en.result.overBudget) && ob.includes('(2, not ranked') &&
+        /<button[^>]*data-whatif-more="whatIfOverBudget"[^>]*>Show the 2 priced over budget<\/button>/.test(ob) && /<ul class="small whatif-more" id="whatIfOverBudget" hidden>/.test(ob));
+    check('over budget: the toggle carries its open and closed text and targets its own list, apart from the singles\' toggle',
+        ob.includes('data-show="Show the 2 priced over budget"') && ob.includes('data-hide="Hide the 2 priced over budget"') && ob.includes('data-whatif-more="whatIfMoreSingles"') && ob.includes('id="whatIfMoreSingles"'));
+    check('over budget: the strings exist in en, pt and zh', ['overBudgetShow', 'overBudgetHide'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k].includes('{{n}}'))));
 }
 
 console.log(failed ? `${failed} failed` : 'all passed');
