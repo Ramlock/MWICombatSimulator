@@ -1,6 +1,7 @@
 // Damage-bonus attribution for one recorded window: both answers per bonus unit (leave-one-out, even split), with validation.
 // Usage: node tools/attribution/run.mjs --export <group export.json> --combat <combat.jsonl> --out <dir>
-//          [--window <window key prefix, default: the last party window>] [--chance off|conditional] [--encounters N]
+//          [--window <window key prefix, default: the last party window>] [--chance off|conditional] [--levels base|unit] [--encounters N]
+//          --levels base (default): skill levels are part of the base (never off); unit: one unit per skill, off = level 1.
 // Reads private files given on the command line and writes results only to --out; commits nothing.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,13 +40,15 @@ for (const [slot, pi] of Object.entries(slotToParty)) {
 }
 const levelChanges = core.useRecordedAbilityLevels(W, party, slotToParty);
 const selfSlot = W.players.find((p) => p.self)?.slot;
-const results = [], report = { window: win.key, zone: W.zone, tier: W.difficultyTier, encounters: encounters.length, minutes: (W.endedAt - W.startedAt) / 60000, inferred, levelChanges, unmatchedSlots: W.players.map((p) => p.slot).filter((s) => slotToParty[s] == null), slots: slotToParty, targets: [] };
+const results = [], report = { chance: null, levels: null, window: win.key, zone: W.zone, tier: W.difficultyTier, encounters: encounters.length, minutes: (W.endedAt - W.startedAt) / 60000, inferred, levelChanges, unmatchedSlots: W.players.map((p) => p.slot).filter((s) => slotToParty[s] == null), slots: slotToParty, targets: [] };
 const chance = args.chance || 'off';
+const levels = args.levels === 'unit' ? 'unit' : 'base';
+report.chance = chance; report.levels = levels;
 
 for (const [slotStr, target] of Object.entries(slotToParty)) {
     const slot = Number(slotStr), tStart = Date.now();
     const tasks = new Set(slot === selfSlot ? (W.tasksAtStart || []).map((t) => t.monsterHrid).filter(Boolean) : []);
-    const ctx = { party, slotToParty, tier: W.difficultyTier, tasks, units: core.playerUnits(engine, party, target, { levelsAsUnits: args.levels !== 'off' }) };
+    const ctx = { party, slotToParty, tier: W.difficultyTier, tasks, units: core.playerUnits(engine, party, target, { levelsAsUnits: levels === 'unit' }) };
     const { keys, perEnc, skipped, unmapped } = core.buildKeys(engine, ctx, W, encounters, slot);
     const allNames = ctx.units.map((u) => u.id);
     const formulaFor = (names) => core.makeFormula(engine, ctx, target, keys, names, { chance });
@@ -83,6 +86,6 @@ for (const [slotStr, target] of Object.entries(slotToParty)) {
 report.ownership = core.ownershipTotals(results);
 report.seconds = (Date.now() - t0) / 1000;
 fs.mkdirSync(args.out, { recursive: true });
-const file = path.join(args.out, 'attribution-' + chance + '.json');
+const file = path.join(args.out, 'attribution-' + chance + '-levels-' + levels + '.json');
 fs.writeFileSync(file, JSON.stringify(report, null, 1));
 console.log(file, 'in', report.seconds, 's');

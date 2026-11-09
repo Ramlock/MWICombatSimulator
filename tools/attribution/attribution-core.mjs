@@ -83,7 +83,7 @@ export function inferShrineLevels(engine, recordedBuffs) {
 // ---------------- Units ----------------
 // Each unit: { id, kind, owner, label, ... }. Owner = party key of the player whose ability, drink, gear, house, shrine or
 // level produces it (shrine buffs belong to the player: the guild only caps the shrine). Base skill levels are units
-// (off = level 1) when opts.levelsAsUnits.
+// (off = level 1) only when opts.levelsAsUnits; by default they are part of the base (never off).
 export function playerUnits(engine, party, target, opts = {}) {
     const me = party[target], key = me.key, units = [];
     for (const [type, eq] of Object.entries(me.base.equipment)) units.push({ id: 'gear:' + type.split('/')[2], kind: 'gear', type, owner: key, label: eq.hrid + ' +' + eq.enhancementLevel });
@@ -91,7 +91,7 @@ export function playerUnits(engine, party, target, opts = {}) {
     units.push({ id: 'achievements', kind: 'achievements', owner: key, label: 'achievement tier buffs' });
     for (const [hrid, lvl] of Object.entries(me.base.guildBuffs)) if (lvl > 0) units.push({ id: 'shrine:' + hrid.split('/')[2], kind: 'shrine', hrid, owner: key, label: hrid + ' ' + lvl });
     for (const hrid of me.base.drinks) units.push({ id: 'drink:' + hrid.split('/')[2], kind: 'drink', hrid, owner: key, temp: true, buffs: buffUniques(engine.itemDetailMap[hrid]?.consumableDetail?.buffs) });
-    if (opts.levelsAsUnits !== false) for (const s of SKILLS) units.push({ id: 'level:' + s, kind: 'level', skill: s, owner: key, label: s + ' ' + me.base.levels[s] });
+    if (opts.levelsAsUnits === true) for (const s of SKILLS) units.push({ id: 'level:' + s, kind: 'level', skill: s, owner: key, label: s + ' ' + me.base.levels[s] });
     party.forEach((m, ci) => {
         for (const a of m.base.abilities) {
             const det = engine.abilityDetailMap[a.hrid];

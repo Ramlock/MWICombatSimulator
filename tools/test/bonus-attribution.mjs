@@ -83,6 +83,8 @@ ok(core.inferTaskBadge(engine, 0) === null, 'no badge from 0');
     const units = core.playerUnits(engine, party, 0, {});
     ok(units.some((u) => u.id === 'gear:two_hand') && units.some((u) => u.id === 'drink:super_ranged_coffee') && units.some((u) => u.id === 'house:archery_range'), 'units: gear, drink, house');
     ok(units.every((u) => u.owner === 'A'), 'every unit owned by the player');
+    ok(!units.some((u) => u.kind === 'level'), 'levels are part of the base by default');
+    ok(core.playerUnits(engine, party, 0, { levelsAsUnits: true }).some((u) => u.id === 'level:ranged'), 'levels as units on request');
     const drinkBuff = engine.itemDetailMap['/items/super_ranged_coffee'].consumableDetail.buffs[0].uniqueHrid;
     const t0 = 1_000_000, t1 = t0 + 20_000;
     const window = { startedAt: t0, endedAt: t1, players: [{ slot: 0, stats: { abilities: [{ abilityHrid: '/abilities/rain_of_arrows', level: 10 }], buffs: { [drinkBuff]: { uniqueHrid: drinkBuff, duration: 300e9, startTime: new Date(t0 - 1000).toISOString() } } } }], buffEvents: [] };
