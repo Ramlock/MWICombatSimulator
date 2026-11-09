@@ -14,6 +14,7 @@ import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
+import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
 import { cellValue, formatNumber, formatUnit, percentSign, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
@@ -2680,7 +2681,7 @@ function showManapointsGained(simResult, playerToDisplay) {
     let ranOutOfManaStat = simResult.playerRanOutOfManaTime[playerToDisplay]; // {isOutOfMana, startTimeForOutOfMana, totalTimeForOutOfMana}
     let totalTimeForOut = ranOutOfManaStat ? ranOutOfManaStat.totalTimeForOutOfMana + (ranOutOfManaStat.isOutOfMana ? (simResult.simulatedTime - ranOutOfManaStat.startTimeForOutOfMana) : 0) : 0;
     let ranOutOfManaStatRow = createRow(
-        ["col-md-6", "col-md-6 text-end"],
+        ["col-md-8 text-nowrap", "col-md-4 text-end"],
         [
             "Run Out Ratio",
             percentHtml(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
@@ -2932,46 +2933,22 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     resultDiv.replaceChildren(...newChildren);
 }
 
-// English fallbacks of the definitions shown as tooltips (the locale files hold the same text).
-const HELD_BY_TRIGGER_TIP = "Per skill and trigger condition: the share of sim time the condition held the skill while it was ready (cooldown over, the player not Stunned or Silenced). A hold starts at the first check the condition fails and ends at the next check it passes, at death or at the encounter's end. When several conditions fail, each one counts.";
-const PREVIOUS_SKILL_OUT_OF_MANA_TIP = "The share of sim time the skill was ready and every one of its trigger conditions passed, but was not reached because an earlier skill's conditions passed and it lacked mana (a skill short of mana stops every skill after it). A hold starts at the first such check and ends at the next check where it is not so, at death or at the encounter's end.";
-
-// A tooltip on every cell of the row, localized by key.
-function withTip(row, key, fallback) {
-    for (const cell of row.children) {
-        cell.title = typeof i18next !== "undefined" ? i18next.t(key) : fallback;
-        cell.setAttribute("data-i18n-title", key);
-        cell.style.cursor = "help";
-    }
-}
-
-// "Held by trigger" rows under "Ran out of mana": per ability (a heading row), one row per reason that held it, the
-// reason on the left and the share of sim time on the right; read from the result object (summarizeTriggerHolds),
-// never from the page. A long reason wraps; the share stays on its first line.
+// "Held by trigger": the panel keeps only a details button, shown when the summary has a hold; the pop-up body
+// (#heldByTriggerBody, in index.html) is built from the result object (summarizeTriggerHolds), never from the page.
 function triggerHoldRows(simResult, playerToDisplay) {
     const holds = summarizeTriggerHolds(simResult, playerToDisplay);
-    if (holds.abilities.length == 0) return [];
-    const header = createRow(["col-md-12"], ["Held By Trigger"]);
-    header.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldByTrigger");
-    withTip(header, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
-    const rows = [header];
-    for (const { abilityHrid, conditions, skip } of holds.abilities) {
-        const abilityRow = createRow(["col-md-12 ps-3"], [abilityDetailMap[abilityHrid]?.name ?? abilityHrid]);
-        abilityRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + abilityHrid);
-        rows.push(abilityRow);
-        for (const c of conditions) {
-            const row = createRow(["col-9 ps-4", "col-3 text-end"], [triggerConditionHtml(c), percentHtml(c.share * 100)]);
-            withTip(row, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
-            rows.push(row);
-        }
-        if (skip !== null) {
-            const row = createRow(["col-9 ps-4", "col-3 text-end"], ["A previous skill was out of mana", percentHtml(skip * 100)]);
-            row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.previousSkillOutOfMana");
-            withTip(row, "common:simulationResults.previousSkillOutOfManaTip", PREVIOUS_SKILL_OUT_OF_MANA_TIP);
-            rows.push(row);
-        }
+    const body = document.getElementById("heldByTriggerBody");
+    if (!hasHold(holds)) {
+        body.replaceChildren();
+        return [];
     }
-    return rows;
+    body.innerHTML = heldPopupHtml(holds, {
+        abilityName: (hrid) => `<span data-i18n="abilityNames.${hrid}">${abilityDetailMap[hrid]?.name ?? hrid}</span>`,
+        conditionHtml: triggerConditionHtml,
+        percentHtml,
+    });
+    const row = createRow(["col-md-12"], [`<button type="button" id="heldByTriggerButton" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#heldByTriggerModal" data-i18n="common:simulationResults.heldByTriggerDetails">Held by trigger: details</button>`]);
+    return [row];
 }
 
 // A trigger condition in the game's words ("My Current Mp >= 300"), each part localized by its game key.

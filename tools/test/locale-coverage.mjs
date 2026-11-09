@@ -86,6 +86,7 @@ const notTheGameWord = {
     'allZonesData:all': 'the game has several renderings of "All"',
     'simulateAllZonesResults:all': 'the game has several renderings of "All"',
     'simulationResults.damageDoneTotal:damage': 'Dano',
+    'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;
 for (const [key, enValue] of Object.entries(flat(JSON.parse(read('locales/en/common.json'))))) {

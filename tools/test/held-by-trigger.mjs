@@ -5,6 +5,7 @@
 // (2) Hold bookkeeping on hand-made checks. (3) A real run records holds for both conditions of a two-condition skill
 // and "a previous skill was out of mana" for a skill after one short of mana. Generic player, no private data.
 // Usage: node tools/test/held-by-trigger.mjs        Exit code 0 on pass, 1 on fail.
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -20,6 +21,7 @@ const { default: Consumable } = await import(src('combatsimulator/consumable.js'
 const { default: Ability } = await import(src('combatsimulator/ability.js'));
 const { default: Trigger } = await import(src('combatsimulator/trigger.js'));
 const { summarizeTriggerHolds } = await import(src('combatsimulator/triggerHolds.js'));
+const { hasHold, heldPopupHtml, HELD_OVERLAP_LINE } = await import(src('combatsimulator/heldPopup.js'));
 
 let fails = 0;
 const check = (ok, what) => { if (!ok) { fails++; console.log('FAIL', what); } else console.log('ok  ', what); };
@@ -127,6 +129,31 @@ for (const a of s.abilities) {
     if (a.skip !== null) console.log(`    a previous skill was out of mana: ${(a.skip * 100).toFixed(2)}%`);
 }
 console.log(`  mana run out ratio ${(oomShare * 100).toFixed(2)}%`);
+
+// ---- (4) The details button and the pop-up body (generic summary, no sim) ----
+{
+    const fmt = { abilityName: (h) => h.split('/').pop(), conditionHtml: (c) => `${c.dependencyHrid.split('/').pop()} ${c.value}`, percentHtml: (n) => `${n.toFixed(2)}%` };
+    const none = { abilities: [] };
+    const some = { abilities: [
+        { abilityHrid: '/abilities/alpha', conditions: [{ dependencyHrid: P + 'dependencies/self', conditionHrid: P + 'conditions/current_mp', comparatorHrid: P + 'comparators/greater_than_equal', value: 200, share: 0.25 }, { dependencyHrid: P + 'dependencies/all_enemies', conditionHrid: P + 'conditions/current_hp', comparatorHrid: P + 'comparators/greater_than_equal', value: 400, share: 0.5 }], skip: null },
+        { abilityHrid: '/abilities/beta', conditions: [], skip: 0.125 },
+    ] };
+    check(!hasHold(none) && hasHold(some) && hasHold({ abilities: [{ abilityHrid: '/abilities/x', conditions: [], skip: 0.1 }] }), 'the details button shows only when the summary has a hold (condition or previous-skill)');
+    const html = heldPopupHtml(some, fmt);
+    const [trigPart, skipPart] = [html.slice(html.indexOf('id="heldTriggerGroup"'), html.indexOf('id="heldSkipGroup"')), html.slice(html.indexOf('id="heldSkipGroup"'), html.indexOf('id="heldOverlapLine"'))];
+    check(trigPart.includes('alpha') && trigPart.includes('self 200') && trigPart.includes('25.00%') && trigPart.includes('all_enemies 400') && trigPart.includes('50.00%'), 'the pop-up lists the skill and each condition with its share');
+    check(!trigPart.includes('beta') && !trigPart.includes('12.50%'), 'the previous-skill share is not under the trigger heading');
+    check(skipPart.includes('A previous skill was out of mana') && skipPart.includes('beta') && skipPart.includes('12.50%') && !skipPart.includes('alpha'), 'the previous-skill group is separate, with its skill and share');
+    check(html.includes('>' + HELD_OVERLAP_LINE + '<') && HELD_OVERLAP_LINE === 'Share of the whole simulation time each reason kept the skill from casting while it was ready; reasons can overlap, so they do not add up.', 'the overlap line is present word for word');
+    check(!heldPopupHtml({ abilities: [{ abilityHrid: '/abilities/beta', conditions: [], skip: 0.1 }] }, fmt).includes('heldTriggerGroup'), 'no trigger group when only a previous-skill hold exists');
+    const main = fs.readFileSync(path.join(root, 'src/main.js'), 'utf8');
+    const fn = main.slice(main.indexOf('function triggerHoldRows'), main.indexOf("// A trigger condition in the game's words"));
+    check((fn.match(/createRow\(/g) || []).length === 1 && fn.includes('heldByTriggerButton'), 'the panel adds only the details button row (no condition or skill rows)');
+    const html2 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    check(/id="heldByTriggerModal"[\s\S]{0,80}modal-xl|id="heldByTriggerModal"[\s\S]{0,200}modal-xl/.test(html2) && html2.includes('id="heldByTriggerBody"'), 'index.html has the modal-xl pop-up with its body');
+    const sr = main.slice(main.indexOf('Mana Run Out Ratio, always shown'), main.indexOf('newChildren.push(...triggerHoldRows'));
+    check(sr.includes('col-md-8 text-nowrap'), 'Mana Run Out Ratio stays on one line');
+}
 
 console.log(fails ? `${fails} FAILED` : 'PASS');
 process.exit(fails ? 1 : 0);
