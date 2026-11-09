@@ -3334,7 +3334,7 @@ function renderResult(result, t, now = Date.now(), names = null) {
             splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
             `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
-        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.helpsParty); // those rows have their own group below
+        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.helpsParty && !s.hiddenFood); // those rows have their own group below; hiddenFood: a food row the search left out (one food row per player)
         const weak = rows.filter(([s]) => !s.accepted);
         L.push('<tbody>' + rows.filter(([s]) => s.accepted).map(([s, i]) => row(s, i)).join('') + '</tbody>');
         if (weak.length) L.push('<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
@@ -3343,11 +3343,12 @@ function renderResult(result, t, now = Date.now(), names = null) {
     }
     // 'Helps the party, costs its buyer': the party gains, the buyer's own net is not above 0 by 2 errors. A list, no Apply.
     // A result saved before this field has none: no group, no hint.
-    if (result.helpsParty?.length) {
+    const helpsShown = (result.helpsParty || []).filter((s) => !s.hiddenFood);
+    if (helpsShown.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.helpsParty'))}</div><div class="small text-secondary mb-1">${esc(t('result.helpsPartyHint'))}</div>`);
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' +
-            result.helpsParty.map((s) => `<tr><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
+            helpsShown.map((s) => `<tr><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` + splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
                 `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td></tr>`).join('') + '</tbody></table>');
     }
     if (result.overBudget?.length) {
@@ -3702,7 +3703,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"21bb04f1","2":"58d5d6e2","3":"ba68a5b6","5":"64afa335","src_multiWorker_js-_004d1":"08a70815","src_multiWorker_js-_004d2":"08a70815","src_multiWorker_js-_004d3":"08a70815","src_multiWorker_js-_004d0":"08a70815","src_multiWorker_js-_004d4":"08a70815"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"654baacb","2":"5a889c11","3":"e0598102","5":"89c6f340","src_multiWorker_js-_004d1":"0ebd25e7","src_multiWorker_js-_004d2":"0ebd25e7","src_multiWorker_js-_004d3":"0ebd25e7","src_multiWorker_js-_004d0":"0ebd25e7","src_multiWorker_js-_004d4":"0ebd25e7"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -9317,4 +9318,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.7557fd07.js.map
+//# sourceMappingURL=bundle.b164ca29.js.map
