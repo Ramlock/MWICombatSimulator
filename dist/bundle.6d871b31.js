@@ -1358,6 +1358,54 @@ class GuildBuff {
 
 /***/ }),
 
+/***/ "./src/combatsimulator/heldPopup.js":
+/*!******************************************!*\
+  !*** ./src/combatsimulator/heldPopup.js ***!
+  \******************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   HELD_OVERLAP_LINE: () => (/* binding */ HELD_OVERLAP_LINE),
+/* harmony export */   hasHold: () => (/* binding */ hasHold),
+/* harmony export */   heldPopupHtml: () => (/* binding */ heldPopupHtml)
+/* harmony export */ });
+// "Held by trigger" pop-up body: built only from the summary (summarizeTriggerHolds), never from the page.
+// `fmt` supplies the page's formatting: abilityName(hrid) and conditionHtml(condition) return HTML, percentHtml(n) formats a percentage.
+const HELD_OVERLAP_LINE = "Share of the whole simulation time each reason kept the skill from casting while it was ready; reasons can overlap, so they do not add up.";
+
+function hasHold(summary) {
+    return summary.abilities.some((a) => a.conditions.length > 0 || a.skip !== null);
+}
+
+function heldPopupHtml(summary, fmt) {
+    const line = (left, share, extraClass = "") =>
+        `<div class="row held-line ${extraClass}"><div class="col-9">${left}</div><div class="col-3 text-end">${fmt.percentHtml(share * 100)}</div></div>`;
+    const name = (a) => `<div class="held-ability fw-bold" data-ability="${a.abilityHrid}">${fmt.abilityName(a.abilityHrid)}</div>`;
+    const triggers = summary.abilities.filter((a) => a.conditions.length > 0);
+    const skips = summary.abilities.filter((a) => a.skip !== null);
+    let html = "";
+    if (triggers.length > 0) {
+        html += `<div id="heldTriggerGroup" class="mb-3"><h6 data-i18n="common:simulationResults.heldByTrigger">Held By Trigger</h6>`;
+        for (const a of triggers) {
+            html += `<div class="held-block mb-2">${name(a)}`;
+            for (const c of a.conditions) html += line(fmt.conditionHtml(c), c.share, "ps-3");
+            html += `</div>`;
+        }
+        html += `</div>`;
+    }
+    if (skips.length > 0) {
+        html += `<div id="heldSkipGroup" class="mb-3"><h6 data-i18n="common:simulationResults.previousSkillOutOfMana">A previous skill was out of mana</h6>`;
+        for (const a of skips) html += `<div class="held-block mb-2">${name(a)}${line("", a.skip, "ps-3")}</div>`;
+        html += `</div>`;
+    }
+    html += `<p id="heldOverlapLine" class="text-muted mb-0" data-i18n="common:simulationResults.heldByTriggerOverlap">${HELD_OVERLAP_LINE}</p>`;
+    return html;
+}
+
+
+/***/ }),
+
 /***/ "./src/combatsimulator/houseRoom.js":
 /*!******************************************!*\
   !*** ./src/combatsimulator/houseRoom.js ***!
@@ -3680,23 +3728,25 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _simSetup_js__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! ./simSetup.js */ "./src/simSetup.js");
 /* harmony import */ var _combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! ./combatStatsPanel.js */ "./src/combatStatsPanel.js");
 /* harmony import */ var _combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./combatsimulator/triggerHolds.js */ "./src/combatsimulator/triggerHolds.js");
-/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
-/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
-/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
-/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
-/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
-/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
-/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
-/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
-/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
-/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
-/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./combatsimulator/heldPopup.js */ "./src/combatsimulator/heldPopup.js");
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
+/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
+/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
+/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
+/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
+/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
+/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
+/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
+/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
+/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
+/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
 
 
 
@@ -3743,8 +3793,8 @@ let simStartTime = 0;
 // The progress bar text, "37% (1.2s)", with the exact elapsed time on hover, both in the number mode in force when drawn.
 function setProgressText(percent) {
     const elapsed = (Date.now() - simStartTime) / 1000;
-    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.formatUnit)(elapsed, "s") + ")";
-    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.exactUnit)(elapsed, "s") + ")";
+    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.formatUnit)(elapsed, "s") + ")";
+    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.exactUnit)(elapsed, "s") + ")";
 }
 
 let worker = new Worker(new URL(/* worker import */ __webpack_require__.p + __webpack_require__.u(2), __webpack_require__.b));
@@ -4076,7 +4126,7 @@ function applyGuildBuffsToState(importMap) {
 }
 
 function refreshAchievementStatics() {
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_26__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
         const checks = document.querySelectorAll(`input[data-achievement-hrid][data-tier="${tier.sortIndex}"]`);
         const done = Array.from(checks).filter(cb => cb.checked).length;
@@ -4101,9 +4151,9 @@ function initAchievementsModal(){
     let newChildren = [];
     player.achievements = {};
 
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_26__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
-        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_27__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
+        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
         let detailMapCount = detailMap.length;
         if (detailMapCount <= 0) continue;
 
@@ -4122,8 +4172,8 @@ function initAchievementsModal(){
         bufDesc.appendChild(buffName);
         let buffValue = createElement("i", "");
         const buffPercent = parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100;
-        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentSign)();
-        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentSign)();
+        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)();
+        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)();
         bufDesc.appendChild(buffValue);
         cardHeader.appendChild(bufDesc);
 
@@ -4338,10 +4388,10 @@ function updateCombatStatsUI() {
     let combatStyleElement = document.getElementById("combatStat_combatStyleHrid");
     let combatStyle = unit.combatDetails.combatStats.combatStyleHrid;
     combatStyleElement.setAttribute("data-i18n", "combatStyleNames." + combatStyle);
-    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[combatStyle].name;
+    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[combatStyle].name;
 
     let damageTypeElement = document.getElementById("combatStat_damageType");
-    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[unit.combatDetails.combatStats.damageType];
+    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[unit.combatDetails.combatStats.damageType];
     damageTypeElement.setAttribute("data-i18n", "damageTypeNames." + damageType.hrid);
     damageTypeElement.innerHTML = damageType.name;
 
@@ -4584,9 +4634,9 @@ function updateAbilityUI() {
         let inputElement = document.getElementById("inputAbilityLevel_" + i);
         let triggerButton = document.getElementById("buttonAbilityTrigger_" + i);
 
-        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_20__[i + 1];
-        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_20__[i + 1];
-        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_20__[i + 1] || !main_abilities[i];
+        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1];
+        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1];
+        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1] || !main_abilities[i];
         let moveUpButton = document.getElementById("selectAbilityMoveUp_" + i);
         moveUpButton.onclick = () => swapAbilityOrder(i, -1);
     }
@@ -4805,7 +4855,7 @@ function updateTriggerModal() {
 
         triggerComparatorSelect.value = modalTriggers[i].comparatorHrid;
 
-        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[modalTriggers[i].comparatorHrid].allowValue) {
+        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[modalTriggers[i].comparatorHrid].allowValue) {
             showElement(triggerValueInput);
             triggerValueInput.value = modalTriggers[i].value;
         } else {
@@ -4823,7 +4873,7 @@ function fillTriggerDependencySelect(element) {
     element.length = 0;
     element.add(new Option("", ""));
 
-    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_17__).sort(
+    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__).sort(
         (a, b) => a.sortIndex - b.sortIndex
     )) {
         let opt = new Option(dependency.name, dependency.hrid);
@@ -4833,13 +4883,13 @@ function fillTriggerDependencySelect(element) {
 }
 
 function fillTriggerConditionSelect(element, dependencyHrid) {
-    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_17__[dependencyHrid];
+    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__[dependencyHrid];
 
     let conditions;
     if (dependency.isSingleTarget) {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_18__).filter((condition) => condition.isSingleTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__).filter((condition) => condition.isSingleTarget);
     } else {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_18__).filter((condition) => condition.isMultiTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__).filter((condition) => condition.isMultiTarget);
     }
 
     element.length = 0;
@@ -4853,9 +4903,9 @@ function fillTriggerConditionSelect(element, dependencyHrid) {
 }
 
 function fillTriggerComparatorSelect(element, conditionHrid) {
-    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_18__[conditionHrid];
+    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[conditionHrid];
 
-    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[hrid]);
+    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[hrid]);
 
     element.length = 0;
     element.add(new Option("", ""));
@@ -4885,7 +4935,7 @@ function initZones() {
     let zoneSelect = document.getElementById("selectZone");
 
     // TOOD dungeon wave spawns
-    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -4910,7 +4960,7 @@ function initZones() {
         }
     });
 
-    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount > 1)
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -4953,7 +5003,7 @@ function initZones() {
         }
     });
 
-    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount == 1)
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -4985,7 +5035,7 @@ function initZones() {
 function initDungeons() {
     let dungeonSelect = document.getElementById("selectDungeon");
 
-    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
         .filter((action) => action.type == "/action_types/combat" && action.category == "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -5008,7 +5058,7 @@ let isLabyRinthSim = false;
 function initLabyrinth() {
     let labyrinthSelect = document.getElementById("selectLabyrinth");
 
-    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -5177,11 +5227,11 @@ function showSimulationResult(simResult) {
     showDamageTaken(simResult, playerToDisplay);
     renderWipeEvents(simResult);
     window.profit = window.revenue - window.expenses;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('profitSpan'), window.profit);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitPreview'), window.profit);
     window.noRngProfit = window.noRngRevenue - window.expenses;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     
     // 显示战斗图表
     if (document.getElementById('hpMpVisualizationToggle').checked) {
@@ -5201,7 +5251,7 @@ function showAllSimulationResults(simResults) {
 
         for (let row = 1; row < rows.length; row++) {
             const cell = rows[row].cells[col];
-            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.cellValue)(cell);
+            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(cell);
             if (value >= 30) {
                 cell.style.backgroundColor = 'green';
                 cell.style.color = 'white';
@@ -5220,7 +5270,7 @@ function showAllSimulationResults(simResults) {
             // 找到最大值及其单元格
             for (let row = 1; row < rows.length; row++) {
                 const cell = rows[row].cells[col];
-                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.cellValue)(cell);
+                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(cell);
                 if (value > max) {
                     max = value;
                     maxCell = cell;
@@ -5642,8 +5692,8 @@ function calcDropMaps(simResult, playerToDisplay) {
     for (const monster of monsters) {
         const dropMap = new Map();
         const rareDropMap = new Map();
-        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[monster].dropTable) {
-            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[monster].dropTable) {
+        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].dropTable) {
+            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].dropTable) {
                 if (drop.minDifficultyTier > simResult.difficultyTier) {
                     continue;
                 }
@@ -5654,8 +5704,8 @@ function calcDropMaps(simResult, playerToDisplay) {
 
                 dropMap.set(drop.itemHrid, { "dropRate": Math.min(1.0, dropRate * dropRateMultiplier), "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
             }
-            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[monster].rareDropTable)
-                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[monster].rareDropTable) {
+            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].rareDropTable)
+                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].rareDropTable) {
                     if (drop.minDifficultyTier > simResult.difficultyTier) {
                         continue;
                     }
@@ -5797,7 +5847,7 @@ function updateAllSimsModal(data) {
         Object.keys(item).forEach(key => {
             const cell = document.createElement('td');
             if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
-                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(cell, item[key]);
+                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(cell, item[key]);
                 cell.dataset.sortValue = item[key];
             } else {
                 cell.textContent = item[key];
@@ -5830,8 +5880,8 @@ function sortTable(tableId, columnIndex, direction) {
 
     const sortedRows = rows.sort((rowA, rowB) => {
         // The exact value the cell was built with (cellValue throws when a cell has none), never its display text.
-        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.cellValue)(rowA.children[columnIndex]);
-        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.cellValue)(rowB.children[columnIndex]);
+        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(rowA.children[columnIndex]);
+        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(rowB.children[columnIndex]);
 
         return direction === 'asc' ? valueA - valueB : valueB - valueA;
     });
@@ -5924,34 +5974,34 @@ function showKills(simResult, playerToDisplay) {
             failedDungeonsRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.dungeonsFailed");
             newChildren.push(failedDungeonsRow);
         }
-        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
-        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
+        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Average Time", averageTime]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.averageTime");
         if (simResult.minDungenonTime > 0) {
-            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
+            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
             let minimumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Minimum Time", minimumTime]);
             minimumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.minimumTime");
             newChildren.push(minimumTimeRow);
         }
         if (simResult.maxDungenonTime > 0) {
-            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
+            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
             let maximumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Maximum Time", maximumTime]);
             maximumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.maximumTime");
             newChildren.push(maximumTimeRow);
         }
     } else {
-        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.encounters / hoursSimulated);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.encounters / hoursSimulated);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Encounters", encountersPerHour]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.encounters");
     }
 
     if (simResult.labyAttemptCount > 0) {
-        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
+        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
         labyAttemptCountRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labyAttemptCount");
         newChildren.push(labyAttemptCountRow);
 
-        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
+        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
         labySuccessRateRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labySuccessRate");
         newChildren.push(labySuccessRateRow);
     }
@@ -5963,7 +6013,7 @@ function showKills(simResult, playerToDisplay) {
     }
 
     if (simResult.debuffOnLevelGap[playerToDisplay] != 0) {
-        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
+        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
         debuffOnLevelGapRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.debuffOnLevelGap");
         newChildren.push(debuffOnLevelGapRow);
     }
@@ -5974,10 +6024,10 @@ function showKills(simResult, playerToDisplay) {
         .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
         .sort()
         .forEach(monster => {
-            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
+            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
             let monsterRow = createRow(
                 ["col-md-6", "col-md-6 text-end"],
-                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[monster].name, killsPerHour]
+                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].name, killsPerHour]
             );
             monsterRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + monster);
             newChildren.push(monsterRow);
@@ -5990,7 +6040,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of totalDropMap.entries()) {
         let dropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(dropAmount)]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount)]
         );
         dropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newDropChildren.push(dropRow);
@@ -6023,9 +6073,9 @@ function showKills(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(price * dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
         total += price * dropAmount;
@@ -6038,7 +6088,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
         let noRngDropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(dropAmount)]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount)]
         );
         noRngDropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newNoRngDropChildren.push(noRngDropRow);
@@ -6071,17 +6121,17 @@ function showKills(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(price * dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
         noRngTotal += price * dropAmount;
     }
 
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('revenueSpan'), total);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('revenueSpan'), total);
     window.revenue = total;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
     window.noRngRevenue = noRngTotal;
 
     let resultAccordion = document.getElementById("noRngDropsAccordion");
@@ -6097,7 +6147,7 @@ function showDeaths(simResult, playerToDisplay) {
 
     let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
     let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(playerDeaths / hoursSimulated);
+    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(playerDeaths / hoursSimulated);
 
     let deathRow = createRow(["col-md-6", "col-md-6 text-end"], ["Player", deathsPerHour]);
     deathRow.firstElementChild.setAttribute("data-i18n", "common:player");
@@ -6114,7 +6164,7 @@ function showExperienceGained(simResult, playerToDisplay) {
     if (simResult.experienceGained[playerToDisplay]) {
         totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
     }
-    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(totalExperience / hoursSimulated);
+    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalExperience / hoursSimulated);
     let totalRow = createRow(["col-md-6", "col-md-6 text-end"], ["Total", totalExperiencePerHour]);
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -6124,7 +6174,7 @@ function showExperienceGained(simResult, playerToDisplay) {
         if (experience == 0) {
             return;
         }
-        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(experience / hoursSimulated);
+        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(experience / hoursSimulated);
         let experienceRow = createRow(["col-md-6", "col-md-6 text-end"], [skill, experiencePerHour]);
         experienceRow.firstElementChild.setAttribute("data-i18n", "leaderboardCategoryNames." + skill.toLowerCase());
         newChildren.push(experienceRow);
@@ -6143,7 +6193,7 @@ function showHpSpent(simResult, playerToDisplay) {
         let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
         let hpSpentSources = [];
         for (const source of Object.keys(simResult.hitpointsSpent[playerToDisplay])) {
-            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
+            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
             let hpSpentRow = createRow(["col-md-6", "col-md-6 text-end"], [_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[source].name, hpSpentPerHour]);
             hpSpentRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + source);
             hpSpentSources.push(hpSpentRow);
@@ -6171,7 +6221,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
     let expensesModalTable = document.querySelector("#expensesTable > tbody");
     let total = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(amount / hoursSimulated);
+        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount / hoursSimulated);
         let consumableRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
             [_combatsimulator_data_itemDetailMap_json__WEBPACK_IMPORTED_MODULE_3__[consumable].name, consumablesPerHour]
@@ -6207,15 +6257,15 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         }
         tableRow += price;
         tableRow += '</td><td data-amount="' + amount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(amount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount);
         tableRow += '</td><td data-total="' + price * amount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(price * amount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(price * amount);
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
         total += price * amount;
     }
 
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('expensesSpan'), total);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('expensesSpan'), total);
     window.expenses = total;
 
     resultDiv.replaceChildren(...newChildren);
@@ -6237,8 +6287,8 @@ function showManaUsed(simResult, playerToDisplay) {
     for (let ability in playerManaUsed) {
         let manaUsed = playerManaUsed[ability];
         let manaPerHourValue = Math.round(manaUsed / hoursSimulated);
-        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(manaPerHourValue);
-        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
+        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(manaPerHourValue);
+        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
 
         let manaRow = createRow(
             ["col-md-6", "col-md-2", "col-md-4 text-end"],
@@ -6265,10 +6315,10 @@ function showHitpointsGained(simResult, playerToDisplay) {
     let hitpointsGained = Object.entries(simResult.hitpointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalHitpointsGained = hitpointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(totalHitpointsGained / secondsSimulated);
+    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalHitpointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(100)]
+        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -6303,8 +6353,8 @@ function showHitpointsGained(simResult, playerToDisplay) {
                 }
                 break;
         }
-        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(amount / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)((100 * amount) / totalHitpointsGained);
+        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * amount) / totalHitpointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
@@ -6331,10 +6381,10 @@ function showManapointsGained(simResult, playerToDisplay) {
     let manapointsGained = Object.entries(simResult.manapointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalManapointsGained = manapointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(totalManapointsGained / secondsSimulated);
+    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalManapointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(100)]
+        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -6364,8 +6414,8 @@ function showManapointsGained(simResult, playerToDisplay) {
                 sourceFullHrid = "itemNames." + source;
                 break;
         }
-        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(amount / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)((100 * amount) / totalManapointsGained);
+        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * amount) / totalManapointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
@@ -6379,10 +6429,10 @@ function showManapointsGained(simResult, playerToDisplay) {
     let ranOutOfManaStat = simResult.playerRanOutOfManaTime[playerToDisplay]; // {isOutOfMana, startTimeForOutOfMana, totalTimeForOutOfMana}
     let totalTimeForOut = ranOutOfManaStat ? ranOutOfManaStat.totalTimeForOutOfMana + (ranOutOfManaStat.isOutOfMana ? (simResult.simulatedTime - ranOutOfManaStat.startTimeForOutOfMana) : 0) : 0;
     let ranOutOfManaStatRow = createRow(
-        ["col-md-6", "col-md-6 text-end"],
+        ["col-md-8 text-nowrap", "col-md-4 text-end"],
         [
             "Run Out Ratio",
-            (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
+            (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
         ]
     );
     ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
@@ -6453,12 +6503,12 @@ function showDamageDone(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageDoneAccordionEnemy" + enemyIndex
         );
-        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[target].name;
+        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[target].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageDone\">Damage Done</span> (" + "<span data-i18n=\"monsterNames." + target + "\">" + targetName + "</span>" + ")</b>";
 
         if (simResult.bossSpawns.includes(target)) {
-            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
-            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
+            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
+            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
 
             let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "(" + percentSpentOnBoss + ")"]);
             bossRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + target);
@@ -6481,7 +6531,7 @@ function showDamageDone(simResult, playerToDisplay) {
                 continue;
             }
             let aliveSecondsSimulated = simResult.timeSpentAlive[idx].timeSpentAlive / ONE_SECOND / simResult.timeSpentAlive[idx].count;
-            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(aliveSecondsSimulated, "s")]);
+            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(aliveSecondsSimulated, "s")]);
             newChildren.push(bossRow);
         }
         if (newChildren.length > 0) {
@@ -6550,7 +6600,7 @@ function showDamageTaken(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageTakenAccordionEnemy" + enemyIndex
         );
-        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[source].name;
+        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[source].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageTaken\">Damage Taken</span> (" + "<span data-i18n=\"monsterNames." + source + "\">" + sourceName + "</span>" + ")</b>";
 
         enemyIndex++;
@@ -6568,12 +6618,12 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     let totalCasts = sortedDamageDone.reduce((prev, cur) => prev + cur[1].casts, 0);
     let totalMisses = sortedDamageDone.reduce((prev, cur) => prev + cur[1].misses, 0);
     let totalDamage = sortedDamageDone.reduce((prev, cur) => prev + cur[1].damage, 0);
-    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
-    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(totalDamage / secondsSimulated);
+    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
+    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalDamage / secondsSimulated);
 
     let totalRow = createRow(
         ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(100)]
+        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -6616,9 +6666,9 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
                 break;
         }
 
-        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
-        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(damageInfo.damage / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)((100 * damageInfo.damage) / totalDamage);
+        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
+        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(damageInfo.damage / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * damageInfo.damage) / totalDamage);
 
         let row = createRow(
             ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
@@ -6631,55 +6681,31 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     resultDiv.replaceChildren(...newChildren);
 }
 
-// English fallbacks of the definitions shown as tooltips (the locale files hold the same text).
-const HELD_BY_TRIGGER_TIP = "Per skill and trigger condition: the share of sim time the condition held the skill while it was ready (cooldown over, the player not Stunned or Silenced). A hold starts at the first check the condition fails and ends at the next check it passes, at death or at the encounter's end. When several conditions fail, each one counts.";
-const PREVIOUS_SKILL_OUT_OF_MANA_TIP = "The share of sim time the skill was ready and every one of its trigger conditions passed, but was not reached because an earlier skill's conditions passed and it lacked mana (a skill short of mana stops every skill after it). A hold starts at the first such check and ends at the next check where it is not so, at death or at the encounter's end.";
-
-// A tooltip on every cell of the row, localized by key.
-function withTip(row, key, fallback) {
-    for (const cell of row.children) {
-        cell.title = typeof i18next !== "undefined" ? i18next.t(key) : fallback;
-        cell.setAttribute("data-i18n-title", key);
-        cell.style.cursor = "help";
-    }
-}
-
-// "Held by trigger" rows under "Ran out of mana": per ability (a heading row), one row per reason that held it, the
-// reason on the left and the share of sim time on the right; read from the result object (summarizeTriggerHolds),
-// never from the page. A long reason wraps; the share stays on its first line.
+// "Held by trigger": the panel keeps only a details button, shown when the summary has a hold; the pop-up body
+// (#heldByTriggerBody, in index.html) is built from the result object (summarizeTriggerHolds), never from the page.
 function triggerHoldRows(simResult, playerToDisplay) {
     const holds = (0,_combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_15__.summarizeTriggerHolds)(simResult, playerToDisplay);
-    if (holds.abilities.length == 0) return [];
-    const header = createRow(["col-md-12"], ["Held By Trigger"]);
-    header.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldByTrigger");
-    withTip(header, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
-    const rows = [header];
-    for (const { abilityHrid, conditions, skip } of holds.abilities) {
-        const abilityRow = createRow(["col-md-12 ps-3"], [_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[abilityHrid]?.name ?? abilityHrid]);
-        abilityRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + abilityHrid);
-        rows.push(abilityRow);
-        for (const c of conditions) {
-            const row = createRow(["col-9 ps-4", "col-3 text-end"], [triggerConditionHtml(c), (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(c.share * 100)]);
-            withTip(row, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
-            rows.push(row);
-        }
-        if (skip !== null) {
-            const row = createRow(["col-9 ps-4", "col-3 text-end"], ["A previous skill was out of mana", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(skip * 100)]);
-            row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.previousSkillOutOfMana");
-            withTip(row, "common:simulationResults.previousSkillOutOfManaTip", PREVIOUS_SKILL_OUT_OF_MANA_TIP);
-            rows.push(row);
-        }
+    const body = document.getElementById("heldByTriggerBody");
+    if (!(0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__.hasHold)(holds)) {
+        body.replaceChildren();
+        return [];
     }
-    return rows;
+    body.innerHTML = (0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__.heldPopupHtml)(holds, {
+        abilityName: (hrid) => `<span data-i18n="abilityNames.${hrid}">${_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[hrid]?.name ?? hrid}</span>`,
+        conditionHtml: triggerConditionHtml,
+        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml,
+    });
+    const row = createRow(["col-md-12"], [`<button type="button" id="heldByTriggerButton" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#heldByTriggerModal" data-i18n="common:simulationResults.heldByTriggerDetails">Held by trigger: details</button>`]);
+    return [row];
 }
 
 // A trigger condition in the game's words ("My Current Mp >= 300"), each part localized by its game key.
 function triggerConditionHtml(c) {
     const part = (key, map, hrid) => `<span data-i18n="${key}.${hrid}">${map[hrid]?.name ?? hrid}</span>`;
-    let html = part("combatTriggerDependencyNames", _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_17__, c.dependencyHrid) + " "
-        + part("combatTriggerConditionNames", _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_18__, c.conditionHrid) + " "
-        + part("combatTriggerComparatorNames", _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_19__, c.comparatorHrid);
-    if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[c.comparatorHrid]?.allowValue) html += " " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(c.value);
+    let html = part("combatTriggerDependencyNames", _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__, c.dependencyHrid) + " "
+        + part("combatTriggerConditionNames", _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__, c.conditionHrid) + " "
+        + part("combatTriggerComparatorNames", _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__, c.comparatorHrid);
+    if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[c.comparatorHrid]?.allowValue) html += " " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(c.value);
     return html;
 }
 
@@ -6864,7 +6890,7 @@ function buildSimPlayerDTO() {
     }
 
     for (let i = 0; i < 5; i++) {
-        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_20__[i + 1]) {
+        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1]) {
             let abilityLevelInput = document.getElementById("inputAbilityLevel_" + i);
             let ability = new _combatsimulator_ability_js__WEBPACK_IMPORTED_MODULE_7__["default"](main_abilities[i], Number(abilityLevelInput.value), triggerMap[main_abilities[i]]);
             player.abilities[i] = ability;
@@ -7011,7 +7037,7 @@ function startSimulation(selectedPlayers) {
         worker.onmessage = onWorkerMessage;
         worker.postMessage(workerMessage);
     } else if (simAllLabyrinthsToggle.checked) {
-        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -7044,7 +7070,7 @@ function startSimulation(selectedPlayers) {
         let targetHrids = {};
 
         if (simAllZonesToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -7055,7 +7081,7 @@ function startSimulation(selectedPlayers) {
         }
 
         if (simAllSoloToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -7209,7 +7235,7 @@ document.getElementById("buttonUploadJSONSimulate").addEventListener("click", (e
                     let targetHrids = {};
 
                     if (simAllZonesToggle.checked) {
-                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__)
+                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
                             .filter(a =>
                                 a.type === "/action_types/combat" &&
                                 a.category !== "/action_categories/combat/dungeons" &&
@@ -7714,7 +7740,7 @@ function fixTriggerMap(triggerMap) {
             triggerMap[key] = [];
         }
         for (const trigger of triggerMap[key]) {
-            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_18__[trigger.conditionHrid]) {
+            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[trigger.conditionHrid]) {
                 err = true;
                 break;
             }
@@ -7825,7 +7851,7 @@ function loadEquipmentSetIntoUI(equipmentSet) {
             player.achievements[achievement] = field.checked;
         }
     } else {
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_27__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -7923,15 +7949,15 @@ function whatIfRenderChoices(fromPage) {
 
 // The kept character export of a player (browser storage, one key per player name), or null.
 function whatIfKeptExport(name) {
-    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
+    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
 // A paste: a valid export replaces the kept one and the box is emptied; a bad one is not kept (it stays in the box,
 // and the status says so).
 function whatIfKeepExport(box) {
-    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.parseExport)(box.value);
+    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.parseExport)(box.value);
     if (parsed.ok) {
-        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.exportKey)(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportKey)(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
     }
     whatIfShowExportStatus();
 }
@@ -7940,7 +7966,7 @@ function whatIfShowExportStatus() {
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
         const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
-        status.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.exportStatus)({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
+        status.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportStatus)({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
     }
 }
 
@@ -7999,9 +8025,9 @@ function whatIfRenderSetup() {
     }
     whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
-    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.LEVERS.filter((l) => l.def).map((l) => l.id));
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
-    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.LEVERS) {
+    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.LEVERS) {
         const row = document.createElement('div');
         row.className = 'form-check';
         const input = document.createElement('input');
@@ -8024,12 +8050,12 @@ function whatIfRenderSetup() {
 // The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
 function whatIfNames() {
     const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
-    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
+    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
 }
 
 function whatIfShowResult(result) {
     whatIf.result = result;
-    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.renderResult)(result, whatIfT, Date.now(), whatIfNames()) : '';
+    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.renderResult)(result, whatIfT, Date.now(), whatIfNames()) : '';
     whatIfShowDiff();
 }
 
@@ -8039,13 +8065,13 @@ function whatIfShowDiff() {
     const box = document.getElementById('whatIfDiff');
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
-    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
-    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
+    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
 }
 
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
-    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.renderProgress)(status, whatIfT);
+    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.renderProgress)(status, whatIfT);
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
@@ -8064,7 +8090,7 @@ function whatIfWatch(id) {
     whatIfStopWatching();
     const poll = async () => {
         try {
-            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.API.status(id));
+            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.status(id));
             if (ok) whatIfShowStatus(body);
             else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
         } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
@@ -8092,13 +8118,13 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
-        zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__.fetchMarketplace)());
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
+        zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__.fetchMarketplace)());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
-        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (ok) whatIfWatch(answer.id);
         else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
         else whatIfMessage(answer.error || whatIfT('runnerError'));
@@ -8109,7 +8135,7 @@ async function whatIfStopOrResume() {
     if (!whatIf.searchId) return;
     const resuming = whatIf.state === 'stopped';
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.API.stop(whatIf.searchId), { method: 'POST' });
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
         if (resuming) whatIfWatch(whatIf.searchId);
         else if (body.state) whatIfShowStatus(body);
@@ -8120,7 +8146,7 @@ async function whatIfStopOrResume() {
 async function whatIfLoadList() {
     const select = document.getElementById('selectWhatIfResult');
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.API.results);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.results);
         if (!ok || !Array.isArray(body)) return;
         select.replaceChildren(...body.map((r) => {
             const option = document.createElement('option');
@@ -8135,15 +8161,15 @@ async function whatIfLoadResult() {
     const id = document.getElementById('selectWhatIfResult').value;
     if (!id) return;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.API.result(id));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.result(id));
         if (ok) { whatIfMessage(''); whatIfShowResult(body); }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
 
 function whatIfApply(key) {
-    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.opsFor)(whatIf.result, key);
-    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.applyToSlots)(whatIfSlots(false), ops);
+    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.opsFor)(whatIf.result, key);
+    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.applyToSlots)(whatIfSlots(false), ops);
     if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
     for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
     updateNextPlayer(currentPlayerTabId);
@@ -8155,7 +8181,7 @@ function whatIfApply(key) {
 
 async function initWhatIf() {
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_30__.API.version);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.version);
         if (!ok || !body || body.runner === undefined) return;
         whatIf.version = body;
     } catch (err) { return; } // not served by the runner (the public page): no What-if window
@@ -8356,13 +8382,13 @@ function doGroupImport() {
         }
     } else {
         // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
-        const { slots: importMap, selected, fight } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_29__.splitGroupImport)(JSON.parse(value));
+        const { slots: importMap, selected, fight } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_30__.splitGroupImport)(JSON.parse(value));
         for (const id of Object.keys(importMap)) {
             const slotJson = typeof importMap[id] === "string" ? importMap[id] : JSON.stringify(importMap[id]);
             playerDataMap[id] = mergePlayerImport(playerDataMap[id], slotJson);
         }
         needUpdateCurrentTab = true;
-        const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_29__.applyGroupSelection)(document, { selected, fight });
+        const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_30__.applyGroupSelection)(document, { selected, fight });
         if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
     }
 
@@ -8704,7 +8730,7 @@ function updateNextPlayer(currentPlayerNumber) {
     applyGuildBuffsToState((0,_importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__["default"])(importSet));
 
     { // reset all achievements
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_27__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -8760,7 +8786,7 @@ window.prices;
 async function fetchPrices() {
     let pricesJson;
     try {
-        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__.fetchMarketplace)();
+        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__.fetchMarketplace)();
     } catch (error) {
         console.error(error);
         console.log('Error fetching prices');
@@ -8788,37 +8814,37 @@ async function fetchPrices() {
         window.prices["/items/coin"] = { "ask": 1, "bid": 1, "vendor": 1 };
 
         window.prices["/items/small_treasure_chest"] = {
-            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/small_treasure_chest"].map((item) => {
+            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/small_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/small_treasure_chest"].map((item) => {
+            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/small_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/small_treasure_chest"].map((item) => {
+            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/small_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
             }).reduce((a, b) => a + b, 0),
         };
 
         window.prices["/items/medium_treasure_chest"] = {
-            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/medium_treasure_chest"].map((item) => {
+            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/medium_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/medium_treasure_chest"].map((item) => {
+            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/medium_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/medium_treasure_chest"].map((item) => {
+            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/medium_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
             }).reduce((a, b) => a + b, 0),
         };
 
         window.prices["/items/large_treasure_chest"] = {
-            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/large_treasure_chest"].map((item) => {
+            "ask": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/large_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/large_treasure_chest"].map((item) => {
+            "bid": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/large_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
             }).reduce((a, b) => a + b, 0),
-            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__["/items/large_treasure_chest"].map((item) => {
+            "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__["/items/large_treasure_chest"].map((item) => {
                 return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
             }).reduce((a, b) => a + b, 0),
         };
@@ -8878,18 +8904,18 @@ document.addEventListener("input", (e) => {
         }
 
         window.expenses += expensesDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
         window.revenue += revenueDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
         window.noRngRevenue += noRngRevenueDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
 
         window.profit = window.revenue - window.expenses;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('profitPreview'), window.profit);
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitSpan'), window.profit);
         window.noRngProfit = window.noRngRevenue - window.expenses;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     }
 });
 
@@ -8911,7 +8937,7 @@ function updateTable(tableId, item, price) {
         priceTd.innerText = price;
     }
     // The total shows formatted (numberHtml: exact value on hover, ISO toggle refreshes it); the exact value stays in data-total.
-    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(newTotal);
+    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(newTotal);
     totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;
@@ -8930,15 +8956,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_31__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_32__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_31__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_31__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_31__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_32__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_32__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_32__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_32__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_33__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -8949,7 +8975,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_32__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_33__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -9146,12 +9172,12 @@ darkModeToggle.addEventListener('change', () => {
 // ISO number display (1 234, 1.79 %): off by default, remembered like Dark Mode.
 const isoNumbersToggle = document.getElementById('isoNumbersToggle');
 isoNumbersToggle.checked = localStorage.getItem('isoNumbersEnabled') === 'true';
-(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
 
 isoNumbersToggle.addEventListener('change', () => {
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
     localStorage.setItem('isoNumbersEnabled', isoNumbersToggle.checked);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.refreshFormattedNumbers)(document);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.refreshFormattedNumbers)(document);
 });
 
 function updateContent() {
@@ -9213,4 +9239,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.acace13e.js.map
+//# sourceMappingURL=bundle.6d871b31.js.map
