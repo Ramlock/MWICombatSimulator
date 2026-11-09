@@ -237,6 +237,9 @@ export function castIntervals(engine, encounter, party, slotToParty) {
                 const ci = slotToParty[c.idx];
                 const level = party[ci]?.base.abilities.find((a) => a.hrid === c.ability)?.level ?? 1;
                 out.push({ side: 'enemy', ability: c.ability, caster: ci, uniqueHrid: b.uniqueHrid, buff: new engine.Buff(b, level), start: c.t, end: c.t + b.duration / 1e6 });
+            } else if (c.side === 'p' && eff.effectType === '/ability_effect_types/buff') {
+                // A party buff cast inside the encounter (seen in the cast log before the next buff snapshot).
+                out.push({ side: 'ally', ability: c.ability, caster: slotToParty[c.idx], self: eff.targetType === 'self', uniqueHrid: b.uniqueHrid, start: c.t, end: c.t + b.duration / 1e6 });
             } else if (c.side === 'm' && eff.targetType === 'self') {
                 out.push({ side: 'monster', monster: c.hrid, ability: c.ability, uniqueHrid: b.uniqueHrid, start: c.t, end: c.t + b.duration / 1e6, abilityLevel: null, buffData: b });
             }
@@ -270,7 +273,9 @@ export function buildKeys(engine, ctx, window, encounters, slot) {
         const t0 = enc.startedAt, t1 = enc.endedAt;
         const casts = castIntervals(engine, enc, party, slotToParty);
         const debuffUnitOf = (c) => units.find((u) => u.kind === 'debuff' && u.hrid === c.ability && u.caster === c.caster)?.id;
-        const evts = [...intervals.map((i) => ({ ...i, tag: 'u:' + i.unit })), ...casts.map((c) => ({ ...c, tag: c.side === 'enemy' ? 'u:' + (debuffUnitOf(c) || '?') : 'm:' + c.monster + '|' + c.ability }))]
+        const allyUnitOf = (c) => units.find((u) => u.kind === 'ability' && u.hrid === c.ability && u.caster === c.caster)?.id;
+        const allyCasts = casts.filter((c) => c.side === 'ally' && (!c.self || c.caster === target) && allyUnitOf(c)).map((c) => ({ ...c, tag: 'u:' + allyUnitOf(c) }));
+        const evts = [...intervals.map((i) => ({ ...i, tag: 'u:' + i.unit })), ...allyCasts, ...casts.filter((c) => c.side !== 'ally').map((c) => ({ ...c, tag: c.side === 'enemy' ? 'u:' + (debuffUnitOf(c) || '?') : 'm:' + c.monster + '|' + c.ability }))]
             .filter((i) => i.end > t0 && i.start < t1);
         const cuts = [...new Set([t0, t1, ...evts.flatMap((i) => [Math.max(t0, i.start), Math.min(t1, i.end)])])].sort((a, b) => a - b);
         const segs = [];
