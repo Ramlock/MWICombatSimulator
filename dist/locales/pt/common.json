@@ -146,6 +146,11 @@
         "zone": "Zona",
         "tier": "Nível",
         "choicesNote": "Copiado da página ao abrir esta janela (um jogador desmarcado na página fica desmarcado aqui); mudanças aqui afetam só esta busca.",
+        "exportLabel": "Exportação do personagem (opcional)",
+        "exportKept": "guardada ({{who}})",
+        "exportNone": "sem exportação: ignorado por {{levers}}",
+        "exportNoneBare": "sem exportação",
+        "exportBad": "não é uma exportação de personagem: não guardada",
         "levers": "O que buscar",
         "lever": {
             "equip": {
@@ -247,6 +252,7 @@
             "dominated": "{{n}} trocas ignoradas (nenhuma melhor em qualquer atributo)",
             "dominatedShow": "Mostrar",
             "dominatedHide": "Ocultar",
+            "skippedNoExport": "{{n}} jogadores ignorados por {{levers}}",
             "pricesSnapshot": "Preços: retrato do mercado de {{when}} ({{elapsed}} atrás, ao mostrar).",
             "pricesCommitted": "Preços: o retrato salvo do próprio simulador, de {{when}} ({{elapsed}} atrás), não o mercado de agora.",
             "upperNote": "≤: o custo é só um limite superior (livros de técnica sem a experiência já dentro do nível)."

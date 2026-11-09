@@ -146,6 +146,11 @@
         "zone": "Zone",
         "tier": "Tier",
         "choicesNote": "Copied from the page when this window opens (a player unchecked on the page is unchecked here); changes here affect only this search.",
+        "exportLabel": "Character export (optional)",
+        "exportKept": "kept ({{who}})",
+        "exportNone": "no export: skipped by {{levers}}",
+        "exportNoneBare": "no export",
+        "exportBad": "not a character export: not kept",
         "levers": "What to search",
         "lever": {
             "equip": {
@@ -247,6 +252,7 @@
             "dominated": "{{n}} swaps skipped (no better on any stat)",
             "dominatedShow": "Show",
             "dominatedHide": "Hide",
+            "skippedNoExport": "{{n}} players skipped by {{levers}}",
             "pricesSnapshot": "Prices: market snapshot of {{when}} ({{elapsed}} old when shown).",
             "pricesCommitted": "Prices: the simulator's own saved snapshot of {{when}} ({{elapsed}} old), not the market of now.",
             "upperNote": "≤: the cost is only an upper bound (ability books without the experience already inside the level)."

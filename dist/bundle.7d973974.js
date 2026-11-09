@@ -2824,16 +2824,20 @@ function applyOps(setups, ops = []) {
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   API: () => (/* binding */ API),
+/* harmony export */   EXPORT_LEVERS: () => (/* binding */ EXPORT_LEVERS),
 /* harmony export */   LEVERS: () => (/* binding */ LEVERS),
 /* harmony export */   age: () => (/* binding */ age),
 /* harmony export */   applyToSlots: () => (/* binding */ applyToSlots),
 /* harmony export */   diffLabel: () => (/* binding */ diffLabel),
 /* harmony export */   diffSetups: () => (/* binding */ diffSetups),
 /* harmony export */   duration: () => (/* binding */ duration),
+/* harmony export */   exportKey: () => (/* binding */ exportKey),
+/* harmony export */   exportStatus: () => (/* binding */ exportStatus),
 /* harmony export */   localizeDesc: () => (/* binding */ localizeDesc),
 /* harmony export */   namesFrom: () => (/* binding */ namesFrom),
 /* harmony export */   opsFor: () => (/* binding */ opsFor),
 /* harmony export */   pageSetups: () => (/* binding */ pageSetups),
+/* harmony export */   parseExport: () => (/* binding */ parseExport),
 /* harmony export */   pricesLine: () => (/* binding */ pricesLine),
 /* harmony export */   renderDiff: () => (/* binding */ renderDiff),
 /* harmony export */   renderProgress: () => (/* binding */ renderProgress),
@@ -2892,13 +2896,37 @@ function pageSetups(slots) {
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace }) {
+function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
     if (tier !== undefined && tier !== null && tier !== '') options.tier = Number(tier);
     if (marketplace) options.marketplace = marketplace;
-    return { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+    const body = { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+    // exports: { "<player name>": that player's character export }, only for players that have one.
+    if (exports && Object.keys(exports).length) body.export = exports;
+    return body;
+}
+
+// The character export (the userscript's "Copy character export"): a JSON object with an inventory or a learned-ability list.
+// The levers that skip a player with none (the optimizer's skippedNoExport). Ability levels are not among them: without
+// the export they keep their labelled upper-bound cost.
+const EXPORT_LEVERS = ['owned', 'abilities', 'books'];
+const exportKey = (name) => 'whatIfExport:' + name;
+function parseExport(text) {
+    try {
+        const d = JSON.parse(text);
+        if (d && typeof d === 'object' && !Array.isArray(d) && (Array.isArray(d.inventory) || Array.isArray(d.learnedAbilities))) return { ok: true, data: d };
+    } catch (e) { /* not JSON */ }
+    return { ok: false };
+}
+// The status line under a player's paste box. kept: the stored export or null; text: what the box holds now (a bad
+// paste stays in it); levers: the ticked lever ids.
+function exportStatus({ kept, text }, levers, t) {
+    if (text && text.trim() && !parseExport(text).ok) return t('exportBad');
+    if (kept) return t('exportKept', { who: kept.name ?? '' });
+    const names = EXPORT_LEVERS.filter((l) => levers.includes(l)).map((l) => t('lever.' + l + '.name'));
+    return names.length ? t('exportNone', { levers: names.join(', ') }) : t('exportNoneBare');
 }
 
 // The request with the market snapshot fetched now (delivery design section 3). Returns { body }, or { error } when
@@ -3124,6 +3152,15 @@ function renderResult(result, t, now = Date.now(), names = null) {
             `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfDominated" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
             '<ul class="small whatif-more" id="whatIfDominated" hidden>' +
             result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
+    }
+    if (result.skippedNoExport?.length) {
+        // One folded line: the players the levers that need a character export skipped; the list sits closed behind it.
+        const lever = (g) => t('lever.' + g.lever + '.name');
+        const n = new Set(result.skippedNoExport.flatMap((g) => g.players)).size;
+        L.push(`<div class="mt-3"><span class="fw-bold">${esc(t('result.skippedNoExport', { n, levers: result.skippedNoExport.map(lever).join(', ') }))}</span> ` +
+            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfSkippedNoExport" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
+            '<ul class="small whatif-more" id="whatIfSkippedNoExport" hidden>' +
+            result.skippedNoExport.map((g) => `<li>${esc(lever(g))}: ${esc(g.players.join(', '))}</li>`).join('') + '</ul>');
     }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
@@ -7792,6 +7829,29 @@ function whatIfRenderChoices(fromPage) {
     copySelect('selectWhatIfTier', 'selectDifficulty');
 }
 
+// The kept character export of a player (browser storage, one key per player name), or null.
+function whatIfKeptExport(name) {
+    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
+}
+
+// A paste: a valid export replaces the kept one and the box is emptied; a bad one is not kept (it stays in the box,
+// and the status says so).
+function whatIfKeepExport(box) {
+    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.parseExport)(box.value);
+    if (parsed.ok) {
+        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.exportKey)(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+    }
+    whatIfShowExportStatus();
+}
+
+function whatIfShowExportStatus() {
+    const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
+    for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
+        const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
+        status.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.exportStatus)({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
+    }
+}
+
 // Shown while no player is ticked in the window; cleared again once one is (only its own text).
 function whatIfCheckPlayers() {
     const none = !document.querySelector('#whatIfPlayers input:checked');
@@ -7813,8 +7873,11 @@ function whatIfMessage(text) {
 function whatIfRenderSetup() {
     const budgets = document.getElementById('whatIfBudgets');
     const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
+    const pasted = Object.fromEntries([...budgets.querySelectorAll('textarea')].map((i) => [i.dataset.player, i.value]));
     budgets.replaceChildren();
     for (const slot of whatIfSlots(true)) {
+        const player = document.createElement('div');
+        player.className = 'mb-2';
         const group = document.createElement('div');
         group.className = 'input-group input-group-sm mb-1';
         const label = document.createElement('span');
@@ -7827,8 +7890,22 @@ function whatIfRenderSetup() {
         input.dataset.player = slot.name;
         input.value = typed[slot.name] ?? '0';
         group.append(label, input);
-        budgets.append(group);
+        // The player's character export (optional): a paste box whose valid content is kept in the browser's storage
+        // under the player's name; the status line under it is rebuilt from the storage and the box.
+        const paste = document.createElement('textarea');
+        paste.className = 'form-control form-control-sm whatif-export';
+        paste.rows = 2;
+        paste.dataset.player = slot.name;
+        paste.placeholder = whatIfT('exportLabel');
+        paste.value = pasted[slot.name] ?? '';
+        paste.addEventListener('input', () => whatIfKeepExport(paste));
+        const status = document.createElement('div');
+        status.className = 'small whatif-dim';
+        status.dataset.exportStatus = slot.name;
+        player.append(group, paste, status);
+        budgets.append(player);
     }
+    whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
     const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
@@ -7916,12 +7993,14 @@ async function whatIfStart() {
     }
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
+    const exports = {};
+    for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__.fetchMarketplace)());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
@@ -7993,6 +8072,7 @@ async function initWhatIf() {
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
         whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
+    document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
@@ -9038,4 +9118,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.74ba1ec0.js.map
+//# sourceMappingURL=bundle.7d973974.js.map
