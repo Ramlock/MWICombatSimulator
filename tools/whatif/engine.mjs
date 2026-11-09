@@ -192,10 +192,11 @@ export function metrics(snap, names, prices) {
             profitPerDay: perDay(pre - cons),
             profitAfterTaxPerDay: perDay(post - cons),
             expPerHour: xp / simHours,
+            expPerHourBySkill: Object.fromEntries(Object.entries(snap.experienceGained[ph] || {}).map(([k, v]) => [k, v / simHours])),
             deathsPerHour: (snap.deaths[ph] || 0) / simHours,
         };
         players[name] = p;
-        for (const k of Object.keys(party)) party[k] += p[k];
+        for (const k of Object.keys(party)) party[k] += p[k]; // expPerHourBySkill stays per player
     });
     return { simHours, encounters: snap.encounters, encountersPerHour: snap.encounters / hoursForRates, players, party };
 }

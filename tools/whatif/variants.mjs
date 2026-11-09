@@ -10,6 +10,7 @@
 //   { "op": "abilityLevel", "player": "Ramlock", "index": 3, "delta": 1 }
 //   { "op": "abilityOrder", "player": "<player>", "order": [0, 2, 1, 3, 4] }   new slot i holds old slot order[i]
 //   { "op": "unequip", "player": "<player>", "slot": "off_hand" }                empties the slot (a two-hand swap)
+//   { "op": "level", "player": "Ramlock", "skill": "magic", "delta": 1 }        a combat skill level (player.<skill>Level)
 //   { "op": "house", "player": "Ramlock", "room": "/house_rooms/dojo", "delta": 1 }
 //   { "op": "trigger", "player": "Ramlock", "hrid": "/abilities/x", "triggers": [ ... ] }
 // Triggers of a swapped-in item or ability come from the player's own triggerMap when it has them, else the
@@ -63,6 +64,7 @@ export function applyOps(setups, ops = []) {
             case 'abilityLevel': s.abilities[o.index].level = Number(s.abilities[o.index].level) + o.delta; break;
             case 'abilityOrder': { const old = s.abilities; s.abilities = o.order.map((j) => old[j]); break; }
             case 'unequip': s.player.equipment = s.player.equipment.filter((e) => e.itemLocationHrid !== '/item_locations/' + o.slot); break;
+            case 'level': { const k = o.skill + 'Level'; if (!(k in s.player)) throw new Error(`${s.name} has no ${k}`); s.player[k] = Number(s.player[k]) + o.delta; break; }
             case 'house': s.houseRooms[o.room] = (s.houseRooms[o.room] || 0) + o.delta; break;
             case 'trigger': s.triggerMap = { ...(s.triggerMap || {}), [o.hrid]: o.triggers }; break;
             default: throw new Error('Unknown op ' + o.op);
