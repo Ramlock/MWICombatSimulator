@@ -263,6 +263,7 @@
             "title": "O setup da página difere do usado na busca; os ganhos podem não valer:",
             "page": "aqui",
             "result": "na busca",
+            "level": "nível de {{skill}}",
             "more": "e mais {{n}}"
         }
     }

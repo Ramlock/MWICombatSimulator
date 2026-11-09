@@ -263,6 +263,7 @@
             "title": "The page's setup differs from the one the search ran on; its gains may not hold:",
             "page": "here",
             "result": "in the search",
+            "level": "{{skill}} level",
             "more": "and {{n}} more"
         }
     }

@@ -2841,6 +2841,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   LEVERS: () => (/* binding */ LEVERS),
 /* harmony export */   age: () => (/* binding */ age),
 /* harmony export */   applyToSlots: () => (/* binding */ applyToSlots),
+/* harmony export */   diffLabel: () => (/* binding */ diffLabel),
 /* harmony export */   diffSetups: () => (/* binding */ diffSetups),
 /* harmony export */   duration: () => (/* binding */ duration),
 /* harmony export */   localizeDesc: () => (/* binding */ localizeDesc),
@@ -3013,6 +3014,8 @@ const NAME_TABLES = {
     combatTriggerDependencyNames: '/combat_trigger_dependencies/',
     combatTriggerConditionNames: '/combat_trigger_conditions/',
     actionNames: '/actions/', // the zone: "combat/fly"
+    houseRoomNames: '/house_rooms/', // the "where the page differs" warning holds room hrids
+    combatTriggerComparatorNames: '/combat_trigger_comparators/', // and trigger terms as JSON
 };
 // The lookups `localizeDesc` takes, from the game bundle of the shown language (`current`) and of English (`english`,
 // the fallback i18next uses and the language the room names are written in). A bundle is { itemNames: { "/items/x": name }, ... }.
@@ -3176,10 +3179,32 @@ function opsFor(result, key) {
     throw new Error('unknown apply key ' + key);
 }
 
-// The differences as one line each, for the warning.
-function renderDiff(diff, t) {
+// Every hrid in a text ("/items/x +12", a trigger term's JSON) replaced by its game name through the same lookup as the
+// descriptions; an hrid with no name (or of a kind no table covers) stays as it is.
+const PREFIX_TABLE = Object.fromEntries(Object.entries(NAME_TABLES).map(([table, prefix]) => [prefix, table]));
+const HRID = /\/[a-z_]+\/[a-z0-9_]+/g;
+const hridsToNames = (text, names) => text.replace(HRID, (hrid) => {
+    const cut = hrid.indexOf('/', 1) + 1;
+    const table = PREFIX_TABLE[hrid.slice(0, cut)];
+    return (table && names.get(table, hrid.slice(cut))) ?? hrid;
+});
+
+// A difference's field label as the warning shows it (output only; the difference keeps its raw field): a skill level
+// ("magicLevel") as "<skill name> level", a slot ("feet") as its slot name, a room or a "triggers <hrid>" field with the hrid
+// as a name. With no names, or no name for an id, the field stays as it is.
+function diffLabel(field, names, t) {
+    if (!names) return field;
+    const level = /^([a-z]+)Level$/.exec(field);
+    if (level) { const skill = names.get('skillNames', level[1]); return skill === null ? field : t('diff.level', { skill }); }
+    if (/^[a-z_]+$/.test(field)) return names.get('equipmentTypeNames', field) ?? field;
+    return hridsToNames(field, names);
+}
+
+// The differences as one line each, for the warning. `names`: see namesFrom; the ids in the fields and values show as names.
+function renderDiff(diff, t, names = null) {
     if (!diff.length) return '';
-    const shown = diff.slice(0, 8).map((d) => `<li>${esc(d.player)}, ${esc(d.field)}: ${esc(t('diff.page'))} ${esc(fmtRaw(d.page))}, ${esc(t('diff.result'))} ${esc(fmtRaw(d.result))}</li>`).join('');
+    const value = (v) => (names ? hridsToNames(fmtRaw(v), names) : fmtRaw(v));
+    const shown = diff.slice(0, 8).map((d) => `<li>${esc(d.player)}, ${esc(diffLabel(d.field, names, t))}: ${esc(t('diff.page'))} ${esc(value(d.page))}, ${esc(t('diff.result'))} ${esc(value(d.result))}</li>`).join('');
     const more = diff.length > 8 ? `<li>${esc(t('diff.more', { n: diff.length - 8 }))}</li>` : '';
     return `<div class="whatif-warn">${esc(t('diff.title'))}<ul class="mb-0">${shown}${more}</ul></div>`;
 }
@@ -7813,7 +7838,7 @@ function whatIfShowDiff() {
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
     const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
-    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.diffSetups)(page, result.setups), whatIfT);
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
 }
 
 function whatIfShowStatus(status) {
@@ -8979,4 +9004,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.614e48d5.js.map
+//# sourceMappingURL=bundle.259384b6.js.map

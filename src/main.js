@@ -4257,7 +4257,7 @@ function whatIfShowDiff() {
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
     const page = whatIfPageSetups(whatIfSlots(false).filter((s) => names.has(s.name)));
-    box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT);
+    box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT, whatIfNames());
 }
 
 function whatIfShowStatus(status) {

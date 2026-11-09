@@ -239,6 +239,40 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('player lead: the unknown-cost list has no player column, so its lead stays', leadHtml.includes('Beta ability 2 empty -&gt; learn Fireball 30: no seller'));
     check('player lead: without names the lead is dropped too, and the ops are untouched', panel.renderResult(lead, t).includes('<td>Alpha</td><td>feet pathseeker_boots_refined') && JSON.stringify(lead.steps[0].ops) === JSON.stringify(result.steps[0].ops));
 
+    // The "where the page differs" warning shows names for every id a difference holds (generic fixtures; diffSetups stays raw).
+    const trigTerm = (cond, v) => [{ dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/' + cond, comparatorHrid: '/combat_trigger_comparators/greater_than_equal', value: v }];
+    const sp = (extra) => ({ ...setup(5), triggerMap: {}, ...extra });
+    const pageD = [{ ...sp({ triggerMap: { '/abilities/heal': trigTerm('current_mp', 10) }, houseRooms: { '/house_rooms/dojo': 4 } }), name: 'Alpha',
+        player: { ...setup(5).player, magicLevel: 70, equipment: [{ itemLocationHrid: '/item_locations/ring', itemHrid: '/items/ring_of_rare_find', enhancementLevel: 7 }] },
+        food: { '/action_types/combat': [{ itemHrid: '/items/donut' }, { itemHrid: '' }] }, drinks: { '/action_types/combat': [{ itemHrid: '/items/not_a_real_drink_x' }] },
+        abilities: [{ abilityHrid: '/abilities/heal', level: '25' }, { abilityHrid: '/abilities/fireball', level: '30' }] }];
+    const diffRaw = panel.diffSetups(pageD, [result.setups[0]]);
+    const fields = diffRaw.map((d) => d.field);
+    const tPt = (key, params = {}) => lookup(locales.pt, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k]));
+    const diffOf = (lng) => panel.renderDiff(diffRaw, lng === 'pt' ? tPt : t, N[lng]);
+    const dEn = diffOf('en'), dPt = diffOf('pt');
+    check('diff names: the fixture holds every kind of id (slot, skill level, food, drink, ability, room, trigger)', ['ring', 'magicLevel', 'food 1', 'drink 1', 'ability 1', '/house_rooms/dojo', 'triggers /abilities/heal'].every((f) => fields.includes(f)), fields.join());
+    check('diff names: an item with its enhancement, a slot, a skill level, a food and an ability with its level show names (en)',
+        dEn.includes(`Alpha, ${en.equipmentTypeNames['/equipment_types/ring']}: here ${en.itemNames['/items/ring_of_rare_find']} +7, in the search ${en.itemNames['/items/ring_of_rare_find']} +5`) &&
+        dEn.includes(`${en.skillNames['/skills/magic']} level: here 70, in the search 60`) && dEn.includes(`food 1: here ${en.itemNames['/items/donut']}, in the search ${en.itemNames['/items/apple']}`) &&
+        dEn.includes(`ability 1: here ${en.abilityNames['/abilities/heal']} 25, in the search ${en.abilityNames['/abilities/heal']} 20`), dEn);
+    check('diff names: a room and a trigger field show names, the trigger terms\' dependency, condition and comparator too',
+        dEn.includes(`${en.houseRoomNames['/house_rooms/dojo']}: here 4, in the search 3`) && dEn.includes(`triggers ${en.abilityNames['/abilities/heal']}: here`) &&
+        dEn.includes(en.combatTriggerDependencyNames['/combat_trigger_dependencies/self']) && dEn.includes(en.combatTriggerConditionNames['/combat_trigger_conditions/current_mp']) &&
+        dEn.includes(en.combatTriggerComparatorNames['/combat_trigger_comparators/greater_than_equal'].replace('>', '&gt;')) && !dEn.includes('/combat_trigger_') && !dEn.includes('/abilities/') && !dEn.includes('/house_rooms/'), dEn);
+    check('diff names: the same in pt, with the page\'s language and the locale string for the level',
+        dPt.includes(pt.itemNames['/items/ring_of_rare_find']) && dPt.includes(pt.equipmentTypeNames['/equipment_types/ring']) && dPt.includes(`nível de ${pt.skillNames['/skills/magic']}: `) && dPt.includes(pt.houseRoomNames['/house_rooms/dojo']) &&
+        dPt.includes(pt.abilityNames['/abilities/heal']) && pt.itemNames['/items/ring_of_rare_find'] !== en.itemNames['/items/ring_of_rare_find']);
+    check('diff names: an id with no name stays as it is (the hrid, the level suffix kept)', dEn.includes(`drink 1: here /items/not_a_real_drink_x, in the search /items/coffee`), dEn);
+    check('diff names: the difference and its data stay raw; without names the warning shows them as they came',
+        diffRaw.find((d) => d.field === 'ring').page === '/items/ring_of_rare_find +7' && panel.renderDiff(diffRaw, t).includes('magicLevel: here 70') && panel.renderDiff(diffRaw, t).includes('/items/ring_of_rare_find +7') && panel.diffLabel('feet', null, t) === 'feet');
+    check('diff names: the player-missing difference and a dash stay', panel.renderDiff(panel.diffSetups([], result.setups), t, N.en).includes('player: here absent, in the search present') && panel.renderDiff([{ player: 'A', field: 'food 2', page: null, result: '/items/donut' }], t, N.en).includes(`here —, in the search ${en.itemNames['/items/donut']}`));
+    const slotIds = 'head body legs feet hands main_hand two_hand off_hand pouch back neck earrings ring trinket charm'.split(' ');
+    const unnamed = slotIds.filter((s) => N.en.get('equipmentTypeNames', s) === null);
+    check('diff names: every equipment slot the page holds has a slot name (unnamed: ' + (unnamed.join(',') || 'none') + ')', unnamed.length === 0, unnamed.join());
+    check('diff names: all seven skill levels have a skill name', 'stamina intelligence attack melee defense ranged magic'.split(' ').every((s) => N.en.get('skillNames', s) !== null && N.pt.get('skillNames', s) !== null));
+    check('diff names: the level string exists in en, pt, zh', ['en', 'pt', 'zh'].every((l) => /\{\{skill\}\}/.test(locales[l].diff.level)));
+
     // The zone line and the loss warning (generic fixtures; the zone name follows the language).
     const zoned = (extra) => ({ ...result, options: { ...result.options, zone: '/actions/combat/fly', tier: 0, ...(extra || {}) } });
     const loss = { ...zoned(), basePerUser: -29000000 / 3 };
