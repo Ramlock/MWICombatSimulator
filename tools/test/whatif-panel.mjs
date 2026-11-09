@@ -125,6 +125,26 @@ const result = {
 }
 
 {
+    // The gain/cost split: shared loot gain per user, the changing player's own supplies change, the buyer's payback.
+    const split = JSON.parse(JSON.stringify(result));
+    Object.assign(split.steps[0], { sharedGainPerUser: 11111, sharedSePerUser: 2222, ownSuppliesPerDay: -33333, ownSuppliesSe: 444, paybackOwn: 22.5 }); // a one-player saving: spends less
+    Object.assign(split.steps[1], { sharedGainPerUser: 7777, sharedSePerUser: 888, ownSuppliesPerDay: 0, ownSuppliesSe: 0, paybackOwn: 51.4 }); // a shared gain only
+    Object.assign(split.steps[2], { sharedGainPerUser: 100, sharedSePerUser: 50, ownSuppliesPerDay: 900, ownSuppliesSe: 10, paybackOwn: null }); // net 0 or below: no payback
+    Object.assign(split.confirmation, { sharedGainPerUser: 9999, sharedSePerUser: 999, ownSuppliesByPlayer: { Alpha: -5551, Beta: 6662 }, paybackOwnByPlayer: { Alpha: 12.5, Beta: null } });
+    const html = panel.renderResult(split, t);
+    const head = html.slice(html.indexOf('<thead>'), html.indexOf('</thead>'));
+    check('split: the table header reads shared gain, error, own supplies (with its tip), cost, payback in that order', ['Shared gain per user/day', '± error', 'Own supplies per day', 'Cost', 'Payback days'].map((h) => head.indexOf(h)).every((x, i, a) => x > 0 && (i === 0 || x > a[i - 1])) && head.includes("title=\"Change in this player's own food and drink spend per day; minus means they spend less\"") && !head.includes('>Gain per user/day<'));
+    check('split: a step shows its shared gain, error and own supplies (a minus when it spends less)', html.includes('data-num="11111"') && html.includes('data-num="2222"') && html.includes('data-num="-33333"') && !html.includes('data-num="1500"'));
+    check("split: the Payback column is the buyer's view; a net of 0 or below shows a dash", html.includes('data-num="22.5"') && /Gym 0[^]*?data-num="200000"[^]*?<\/span><\/td><td class="num">—<\/td>/.test(html));
+    check('split: the confirmation shows the shared gain per user and a line per player; no party payback beside them', html.includes('data-num="9999"') && html.includes('Alpha: own supplies <span data-num="-5551"') && /Beta: own supplies <span data-num="6662"[^]*?payback —? ?days|Beta: own supplies <span data-num="6662"/.test(html) && html.includes('data-num="12.5"') && !/Confirmed on fresh runs[^]*?Payback days[^]*?Alpha: own/.test(html) && !html.includes('data-num="275.9"'));
+    check('split: an upper-bound cost marks the buyer payback "≤"', /≤ <span data-num="51.4"/.test(html));
+    const old = panel.renderResult(result, t);
+    check('split: an older result shows a dash in the new columns, keeps the saved party payback (cell and confirmation) and the run-again hint', !old.includes('data-num="1500"') && old.includes('data-num="333.3"') && old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && /<td>Ring[^<]*<\/td><td class="num">—<\/td><td class="num">—<\/td><td class="num">—<\/td>/.test(old));
+    check('split: the other two locales carry the new strings', ['pt', 'zh'].every((l) => locales[l].col.ownSupplies && locales[l].col.ownSuppliesTip && locales[l].result.ownLine && locales[l].result.oldSplit && locales[l].col.gain !== locales.en.col.gain));
+    check('split: an EXP result keeps its per-user figure in the first column', panel.renderResult({ ...result, goal: 'exp' }, t).includes('data-num="1500"'));
+}
+
+{
     check('opsFor: steps 1..n in order', JSON.stringify(panel.opsFor(result, 'steps:2')) === JSON.stringify([...result.steps[0].ops, ...result.steps[1].ops]));
     check('opsFor: one single', panel.opsFor(result, 'single:1')[0].op === 'food');
     const all = panel.applyToSlots(slots, panel.opsFor(result, 'steps:3'));

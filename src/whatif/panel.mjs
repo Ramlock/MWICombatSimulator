@@ -311,9 +311,11 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     const c = result.confirmation;
     if (c) {
         const shared = goalExp ? { g: c.gainPerUser, se: c.sePerUser } : Number.isFinite(c.sharedGainPerUser) ? { g: c.sharedGainPerUser, se: c.sharedSePerUser } : null;
+        // With the per-player lines the party payback is dropped (the buyer's view is the one payback shown); an older result keeps it.
+        const perPlayer = !goalExp && !!c.ownSuppliesByPlayer;
         L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${shared ? num(shared.g) + ' ± ' + num(shared.se) : '—'}</b> ${esc(t('result.perUserDay'))}, ` +
-            `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}, ` +
-            `${esc(t('col.payback'))} ${paybackCell({ payback: c.payback, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}</div>`);
+            `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}` +
+            (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: c.payback, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}`) + '</div>');
         if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1 small">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: c.paybackOwnByPlayer?.[p], costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }

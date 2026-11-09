@@ -205,6 +205,10 @@ if (res) {
         const party = vals.reduce((a, x) => a + x, 0) / vals.length;
         check(vals.length === k && Number.isFinite(res.basePerUser) && Math.abs(res.basePerUser * res.partySize - party) < 1e-6 * Math.max(1, Math.abs(party)), 'result: basePerUser is the party base over the last stage base seeds divided by the party size', `${res.basePerUser} x ${res.partySize} vs ${party} (${vals.length} of ${k})`);
     }
+    check(res.singles.every((s) => [s.sharedGainPerUser, s.sharedSePerUser, s.ownSuppliesPerDay, s.ownSuppliesSe].every(Number.isFinite) && s.sharedSePerUser >= 0 && s.ownSuppliesSe >= 0 && (s.paybackOwn === null || Math.abs(s.paybackOwn - s.cost / (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * s.paybackOwn)) && res.singles.every((s) => (s.paybackOwn === null) === !(s.cost > 0 && s.sharedGainPerUser - s.ownSuppliesPerDay > 0)), 'rows: shared gain per user, own supplies and the buyer payback (cost / (shared - supplies), null unless both above 0)');
+    check(res.steps.every((s) => Number.isFinite(s.sharedGainPerUser) && Number.isFinite(s.ownSuppliesPerDay) && 'paybackOwn' in s), 'steps: the split fields are present');
+    check(!res.confirmation || (Number.isFinite(res.confirmation.sharedGainPerUser) && Object.keys(res.confirmation.ownSuppliesByPlayer).join() === Object.keys(res.budgets).join() && Object.keys(res.confirmation.paybackOwnByPlayer).join() === Object.keys(res.budgets).join() && res.confirmation.paybackOwnByPlayer.Beta === null), 'confirmation: shared gain per user, supplies change and buyer payback per player (Beta bought nothing: no payback)');
+    check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Own supplies per day') && readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Payback days (buyer)'), 'result.md: the split columns');
     check(!res.confirmation || (res.confirmation.gainPerUser * 2 - res.confirmation.gain < 1e-6 && res.confirmation.runningSpend), 'confirmation: per-user figures and spend');
     console.log(`     (${res.steps.length} steps, ${res.singles.length} singles, ${res.timing.runsThisCall} runs after the resume)`);
 }
