@@ -86,6 +86,7 @@ const notTheGameWord = {
     'allZonesData:all': 'the game has several renderings of "All"',
     'simulateAllZonesResults:all': 'the game has several renderings of "All"',
     'simulationResults.damageDoneTotal:damage': 'Dano',
+    'whatIf.result.helpsPartyHint:back': '"earn it back" is the adverb (recupera), not the Back equipment slot (Costas)',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;

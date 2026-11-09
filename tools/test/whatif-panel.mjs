@@ -332,5 +332,24 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('over budget: the strings exist in en, pt and zh', ['overBudgetShow', 'overBudgetHide'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k].includes('{{n}}'))));
 }
 
+// Helps the party, costs its buyer (result.helpsParty): its own group, no Apply, not also in Each change alone.
+{
+    const split = (extra) => ({ lastStage: '8x300', sharedSePerUser: 100, ownSuppliesPerDay: 0, costPath: 'market', ...extra });
+    const helps = split({ id: 'h1', player: 'Beta', desc: 'Food 1 → steak', gain: 800, se: 100, gainPerUser: 400, sePerUser: 50, sharedGainPerUser: 400, ownSuppliesPerDay: 700, cost: 0, payback: null, paybackOwn: null, accepted: false, acceptedParty: true, helpsParty: true, ops: [{ op: 'food', player: 'Beta', index: 0, item: '/items/steak' }] });
+    const helps2 = split({ id: 'h2', player: 'Alpha', desc: 'Drink 1 → tea', gain: 300, se: 100, gainPerUser: 150, sePerUser: 50, sharedGainPerUser: 150, ownSuppliesPerDay: 300, cost: 0, payback: null, paybackOwn: null, accepted: false, acceptedParty: true, helpsParty: true, ops: [{ op: 'drink', player: 'Alpha', index: 0, item: '/items/tea' }] });
+    const withGroup = { ...result, singles: [...result.singles, helps, helps2], helpsParty: [helps, helps2] };
+    const html = panel.renderResult(withGroup, t);
+    const at = html.indexOf('Helps the party, costs its buyer'), group = html.slice(at, html.indexOf('</table>', at)), alone = html.slice(html.indexOf(locales.en.result.singles), at);
+    check('helps the party: the heading and the hint, exact English', html.includes('<div class="fw-bold mt-3">Helps the party, costs its buyer</div>') && html.includes('Not bought: the party gains, but the player who pays does not earn it back (their share of the loot minus their own extra supplies is not above 0 by 2 errors).'));
+    check('helps the party: the group lists its rows in the order given, once each', group.indexOf('Food 1 → steak') > 0 && group.indexOf('Food 1 → steak') < group.indexOf('Drink 1 → tea') && (html.match(/Food 1 → steak/g) || []).length === 1 && (html.match(/Drink 1 → tea/g) || []).length === 1);
+    check('helps the party: the rows are not in Each change alone (the table and the grey body), which keeps its own rows', alone.includes('Food 2') && !alone.includes('Food 1 → steak') && !alone.includes('Drink 1 → tea') && /Show 1 more below 2 errors/.test(html));
+    check('helps the party: no Apply in the group, the other tables keep theirs', !group.includes('data-whatif-apply') && !group.includes('<button') && html.includes('data-whatif-apply="single:0"') && html.includes('data-whatif-apply="steps:1"'));
+    check('helps the party: the group has the columns of Each change alone, not the Apply column', (group.match(/<th[ >]/g) || []).length === 9 && group.includes(locales.en.col.ownSupplies) && group.includes(locales.en.col.costPath));
+    check('helps the party: the buyer\'s figures show (the share, his own supplies)', group.includes('data-num="400"') && group.includes('data-num="700"'));
+    check('helps the party: a result saved before this change has no group and no hint', !panel.renderResult(result, t).includes('Helps the party') && !panel.renderResult(result, t).includes('Not bought:') && !panel.renderResult({ ...result, helpsParty: [] }, t).includes('Helps the party'));
+    check('helps the party: the strings exist in en, pt, zh; the hint takes no placeholder', ['helpsParty', 'helpsPartyHint'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '' && !/\{\{/.test(locales[l].result[k]))) && locales.pt.result.helpsParty !== locales.en.result.helpsParty);
+    check('helps the party: the apply keys still open their rows (indexes kept)', JSON.stringify(panel.opsFor(withGroup, 'single:0')) === JSON.stringify(result.singles[0].ops) && panel.opsFor(withGroup, 'single:2')[0].item === '/items/steak');
+}
+
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

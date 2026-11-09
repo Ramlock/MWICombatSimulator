@@ -30,6 +30,7 @@ const result = {
     singles: [
         { id: 's1', player: 'Player 1', desc: 'Magic 1 → 2', lastStage: '8x300', gain: 900, se: 100, gainPerUser: 300, sePerUser: 33, sharedGainPerUser: 4100, sharedSePerUser: 310, ownSuppliesPerDay: -12500, ownSuppliesSe: 400, paybackOwn: 15.1, cost: 250000, payback: 277.8, costPath: 'days of play', accepted: true, ops: [{ op: 'level', player: 'Player 1', skill: 'magic', delta: 1 }] },
         { id: 'x', player: 'Nobody', desc: 'Attack 1 → 2', lastStage: '4x50', gain: 10, se: 80, gainPerUser: 3, sePerUser: 27, sharedGainPerUser: 50, sharedSePerUser: 60, ownSuppliesPerDay: 70, ownSuppliesSe: 5, paybackOwn: null, cost: 100000, payback: null, costPath: 'days of play', accepted: false, ops: [{ op: 'level', player: 'Nobody', skill: 'attack', delta: 1 }] },
+        { id: 'hp', player: 'Player 1', desc: 'Player 1 food 1 apple -> steak', lastStage: '8x300', gain: 700, se: 90, gainPerUser: 233, sePerUser: 30, sharedGainPerUser: 600, sharedSePerUser: 50, ownSuppliesPerDay: 900, ownSuppliesSe: 20, paybackOwn: null, cost: 0, payback: null, costPath: 'loadout tweak', accepted: false, acceptedParty: true, helpsParty: true, ops: [{ op: 'food', player: 'Player 1', index: 0, item: '/items/steak' }] },
     ],
     apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }],
     overBudget: [{ id: 'o', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 7000000000, costPath: 'market' }, { id: 'o2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 8000000000, costPath: 'market' }],
@@ -37,6 +38,10 @@ const result = {
     options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot', zone: '/actions/combat/fly', tier: 0 },
     basePerUser: -9666666.67,
 };
+result.helpsParty = [result.singles.at(-1)];
+// An earlier result, saved before the buyer test: no helpsParty field, and its rows carry no acceptedParty.
+const olderResult = (() => { const { helpsParty, ...rest } = result; return { ...rest, singles: result.singles.slice(0, 2) }; })();
+let serveOlder = false;
 let search = null, received = null, polls = 0;
 const send = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.map': 'application/json' };
@@ -63,7 +68,7 @@ const server = http.createServer((req, res) => {
         return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : {}) });
     }
     if (url.pathname === '/api/results') return send(res, 200, search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : []);
-    if (url.pathname.startsWith('/api/results/')) return send(res, 200, result);
+    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveOlder ? olderResult : result);
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     const file = path.join(dist, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
     if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
@@ -243,6 +248,8 @@ try {
     check('grey singles are collapsed behind "Show 1 more below 2 errors"', await js(`document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Show 1 more below 2 errors'`));
     await js(`document.querySelector('[data-whatif-more]').click(), true`);
     check('the toggle opens the grey rows', await js(`!document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Hide the 1 below 2 errors'`));
+    check('the helps-the-party group shows its heading, the hint and the row once, with no Apply, apart from Each change alone', await js(`(() => { const r = document.getElementById('whatIfResult'), t = r.textContent, tables = [...r.querySelectorAll('table')], g = tables.at(-1); const heads = [...r.querySelectorAll('.fw-bold')].map((e) => e.textContent); return heads.includes('Helps the party, costs its buyer') && t.includes('Not bought: the party gains, but the player who pays does not earn it back (their share of the loot minus their own extra supplies is not above 0 by 2 errors).') && (t.match(/steak/gi) || []).length === 1 && tables.length === 3 && g.querySelectorAll('tbody tr').length === 1 && !g.querySelector('button') && /steak/i.test(g.textContent) && !/steak/i.test(tables[1].textContent) && !/steak/i.test(tables[0].textContent) && g.querySelectorAll('thead th').length === 9; })()`));
+    check('the helps-the-party row shows the buyer figures: the share, his own supplies and a dash for his payback', await js(`(() => { const g = [...document.querySelectorAll('#whatIfResult table')].at(-1), td = [...g.querySelector('tbody tr').children].map((e) => e.textContent); return td[3] === '600' && td[5] === '900' && td[7] === '—'; })()`));
     check('the finished result shows the zone line and the loss warning under the goal line', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('Zone: Fly, tier 0 · base party profit') && t.includes('At this zone the party loses money at base, so a gain here means losing less.'); })()`));
     check('the over-budget list is closed behind one toggle with its count, and shows game names, not ids', await js(`(() => { const ul = document.getElementById('whatIfOverBudget'); const b = document.querySelector('[data-whatif-more="whatIfOverBudget"]'); return ul.hidden && getComputedStyle(ul).display === 'none' && b.textContent === 'Show the 2 priced over budget' && ul.textContent.includes('Feet Pathseeker Boots ★ +12 -> Cotton Boots +0') && !ul.textContent.includes('pathseeker_boots_refined') && ul.textContent.includes('not_a_real_item_x') && ul.children[0].textContent.startsWith('Player 1, Feet Pathseeker') && ul.children[1].textContent.startsWith('Player 1, not_a_real_item_x'); })()`));
     await js(`document.querySelector('[data-whatif-more="whatIfOverBudget"]').click(), true`);
@@ -272,6 +279,10 @@ try {
         (await js(`document.getElementById('inputLevel_attack').value`)) === (await js(`document.getElementById('inputLevel_attack').value`)));
     await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
     check('Show loads an earlier result', await until(`document.getElementById('whatIfResult').textContent.includes('Magic 1')`));
+    serveOlder = true;
+    await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    check('an older result (no helpsParty field) loads with no group and no hint', await until(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('Magic 1') && !t.includes('Helps the party') && !t.includes('Not bought:') && document.querySelectorAll('#whatIfResult table').length === 2; })()`));
+    serveOlder = false;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
     await new Promise((r) => setTimeout(r, 400));
     check('at 1100 wide the five tick boxes still share one row and no name is cut', await js(`(() => { const b = [...document.querySelectorAll('#whatIfPlayers .form-check')].map((e) => e.getBoundingClientRect()); return b.length === 5 && new Set(b.map((r) => Math.round(r.top))).size === 1 && [...document.querySelectorAll('#whatIfPlayers label')].every((e) => e.scrollWidth <= e.clientWidth); })()`));

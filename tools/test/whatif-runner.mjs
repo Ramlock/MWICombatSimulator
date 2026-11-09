@@ -42,6 +42,39 @@ check(B.pay(spent, cand('A', -30)).A === 60, 'pay: a sale never refunds a budget
 const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
+// ---- (1b) The buyer's net, score and order (tools/whatif/buyer.mjs) ----
+{
+    const Bm = await mod('tools/whatif/buyer.mjs');
+    const cp = (loot, cons, supplies) => ({ party: { profitAfterTaxPerDay: loot - cons, consumablesPerDay: cons }, players: { B: { consumablesPerDay: supplies } } });
+    // Two players. Per seed the loot rises by L and the buyer's own supplies by L/2 - 5: q (his share of the loot minus his
+    // supplies) rises by exactly 5 on every seed, so its error is 0. Adding the loot error and the supplies error (both
+    // large, one series moving the other) would give a big error and refuse a change that is certain.
+    const Ls = [10, 200, 30, 400], base = Ls.map(() => cp(1000, 100, 50));
+    const variant = Ls.map((L) => cp(1000 + L, 100, 50 + L / 2 - 5));
+    const paired = Bm.buyerNet(variant, base, 'B', 2, 'paired', 2);
+    const lootD = Bm.diffStat(variant.map(Bm.lootOf), base.map(Bm.lootOf), 'paired'), supD = Bm.diffStat(variant.map((c) => Bm.suppliesOf(c, 'B')), base.map((c) => Bm.suppliesOf(c, 'B')), 'paired');
+    check(Math.abs(paired.net - 5) < 1e-9 && paired.se < 1e-9 && paired.accepted, 'buyer net: the error is that of q itself (correlated loot and supplies: error 0, net 5, accepted)');
+    check(lootD.se / 2 + supD.se > paired.net / 2, 'buyer net: adding the loot error and the supplies error would have refused it (the wrong rule)');
+    const un = Bm.buyerNet(variant, base, 'B', 2, 'unpaired', 2);
+    const qv = variant.map((c) => Bm.lootOf(c) / 2 - Bm.suppliesOf(c, 'B')), qb = base.map((c) => Bm.lootOf(c) / 2 - Bm.suppliesOf(c, 'B'));
+    const m = (a) => a.reduce((x, y) => x + y, 0) / a.length, sd = (a) => Math.sqrt(a.reduce((x, y) => x + (y - m(a)) ** 2, 0) / (a.length - 1));
+    check(Math.abs(un.net - (m(qv) - m(qb))) < 1e-9 && Math.abs(un.se - Math.sqrt(sd(qv) ** 2 / 4 + sd(qb) ** 2 / 4)) < 1e-9, 'buyer net: unpaired rule = mean(q variant) - mean(q base) and sqrt(sv^2/kv + sb^2/kb)');
+    check(Math.abs(un.net - 5) < 1e-9, 'buyer net: both rules give the same net');
+    const loose = Ls.map((L, i) => cp(1000 + L, 100, 50 + L / 2 + 40));
+    const worse = Bm.buyerNet(loose, base, 'B', 2, 'paired', 2);
+    check(worse.net < 0 && !worse.accepted, 'buyer net: a party gain whose buyer supplies cost more than his share of it is refused (net below 0)');
+    const edge = [3, 7, 3, 7].map((d) => cp(1000 + d, 100, 50));
+    const e = Bm.buyerNet(edge, base, 'B', 1, 'paired', 2);
+    check(e.net > 0 && e.accepted === (e.net >= 2 * e.se) && Bm.buyerNet(edge, base, 'B', 1, 'paired', 1e6).accepted === false, 'buyer net: accepted only when the net is above z errors (--z follows)');
+    check(Bm.scoreOf(5, 0, false) === Infinity && Bm.scoreOf(5, 0, true) === Infinity && Bm.scoreOf(-5, 0, false) === -5 && Bm.scoreOf(-5, 0, true) === 0, 'score: price 0 with a net above 0 is Infinity; a monotone lever is floored at 0');
+    check(paired.accepted && Bm.scoreOf(paired.net, 0, false) === Infinity, 'price 0: accepted by the buyer test with a net above 0, score Infinity');
+    check(Math.abs(Bm.scoreOf(100, 1000, false) - 0.1) < 1e-12 && Bm.scoreOf(100, 1000, false) > Bm.scoreOf(100, 2000, false), 'score: net over price (1 / the buyer payback)');
+    const est = (score, net, gain) => ({ score, net, gain });
+    const sorted = [est(0.1, 50, 9), est(0.2, 10, 1), est(0.1, 80, 1), est(Infinity, 5, 1), est(Infinity, 7, 0), est(0.1, 80, 4)].sort(Bm.rankEst);
+    check(sorted.map((x) => x.net + '/' + x.gain).join() === '7/0,5/1,10/1,80/4,80/1,50/9' && sorted[0].score === Infinity && sorted[1].score === Infinity, 'order: the smaller buyer payback first, a tie by the larger net, then the larger party gain', JSON.stringify(sorted));
+    check([est(1, undefined, 3), est(1, undefined, 9)].sort(Bm.rankEst)[0].gain === 9, 'order: with no net (a goal that is not profit) the party gain decides, as before');
+}
+
 // ---- (2) Request -> arguments ----
 const generic = (name, weapon, head) => ({
     name, guildCombatBuffLevels: {}, achievements: {}, houseRooms: {}, triggerMap: {},
@@ -207,6 +240,12 @@ if (res) {
     }
     check(res.singles.every((s) => [s.sharedGainPerUser, s.sharedSePerUser, s.ownSuppliesPerDay, s.ownSuppliesSe].every(Number.isFinite) && s.sharedSePerUser >= 0 && s.ownSuppliesSe >= 0 && (s.paybackOwn === null || Math.abs(s.paybackOwn - s.cost / (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * s.paybackOwn)) && res.singles.every((s) => (s.paybackOwn === null) === !(s.cost > 0 && s.sharedGainPerUser - s.ownSuppliesPerDay > 0)), 'rows: shared gain per user, own supplies and the buyer payback (cost / (shared - supplies), null unless both above 0)');
     check(res.steps.every((s) => Number.isFinite(s.sharedGainPerUser) && Number.isFinite(s.ownSuppliesPerDay) && 'paybackOwn' in s), 'steps: the split fields are present');
+    check(res.singles.every((s) => typeof s.acceptedParty === 'boolean' && Number.isFinite(s.buyerNet) && s.buyerNetSe >= 0 && Math.abs(s.buyerNet - (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * Math.max(1, Math.abs(s.buyerNet)) && s.accepted === (s.buyerNet > 0 && s.buyerNet >= res.z * s.buyerNetSe)), 'buyer test: every row carries acceptedParty, the buyer net (his share of the loot gain minus his supplies change) and its error, and accepted is the net test at z errors');
+    const helpIds = res.singles.filter((s) => s.acceptedParty && !s.accepted).map((s) => s.id);
+    check(Array.isArray(res.helpsParty) && res.helpsParty.length === helpIds.length && res.helpsParty.every((s) => helpIds.includes(s.id) && s.helpsParty === true && s.acceptedParty && !s.accepted) && res.helpsParty.every((s, i, a) => i === 0 || a[i - 1].gainPerUser >= s.gainPerUser) && res.singles.filter((s) => s.helpsParty).length === helpIds.length, 'helps the party: result.helpsParty holds exactly the rows the party test passes and the buyer test refuses, largest party gain first, flagged in singles too');
+    check(res.steps.every((s) => s.accepted && !s.helpsParty), 'helps the party: no step is such a row');
+    check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('## Helps the party, costs its buyer') === (res.helpsParty.length > 0), 'result.md: the group is a section when there are such rows, and only then');
+    console.log(`     (${res.helpsParty.length} rows help the party and cost their buyer)`);
     check(!res.confirmation || (Number.isFinite(res.confirmation.sharedGainPerUser) && Object.keys(res.confirmation.ownSuppliesByPlayer).join() === Object.keys(res.budgets).join() && Object.keys(res.confirmation.paybackOwnByPlayer).join() === Object.keys(res.budgets).join() && res.confirmation.paybackOwnByPlayer.Beta === null), 'confirmation: shared gain per user, supplies change and buyer payback per player (Beta bought nothing: no payback)');
     check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Own supplies per day') && readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Payback days (buyer)'), 'result.md: the split columns');
     check(!res.confirmation || (res.confirmation.gainPerUser * 2 - res.confirmation.gain < 1e-6 && res.confirmation.runningSpend), 'confirmation: per-user figures and spend');
