@@ -225,6 +225,20 @@ async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
     return !stoppedByTime && !stopRequested; // a stop kills runs in flight, so this batch is incomplete
 }
 const val = (ops, seed, h) => metric(cache.get(keyOf(ops) + '#' + seed).byHours[h]);
+// The parts of a checkpoint (no new run, same cache): the party's loot income after tax (profit after tax plus its
+// consumables, there is no post-tax income field) and each player's own consumables spend per day.
+const cpOf = (ops, seed, h) => cache.get(keyOf(ops) + '#' + seed).byHours[h];
+const lootOf = (cp) => cp.party.profitAfterTaxPerDay + cp.party.consumablesPerDay;
+const suppliesOf = (cp, name) => cp.players?.[name]?.consumablesPerDay ?? 0;
+// The change (variant minus base) and its error, by the same rule as the search's gain.
+function diffStat(vs, bs) {
+    const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length, sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
+    if (errorRule === 'paired') { const d = vs.map((v, i) => v - bs[i]); return { gain: mean(d), se: sd(d) / Math.sqrt(d.length) }; }
+    return { gain: mean(vs) - mean(bs), se: Math.sqrt(sd(vs) ** 2 / vs.length + sd(bs) ** 2 / bs.length) };
+}
+// The buyer's own payback in days: the price over (his share of the loot gain per user minus the change in his own supplies
+// spend); null unless that net and the price are above 0.
+const paybackOwnOf = (cost, sharedPerUser, supplies) => { const net = sharedPerUser - supplies; return goal === 'profit' && cost > 0 && net > 0 ? cost / net : null; };
 const seedsFor = (k, off = 0) => Array.from({ length: k }, (_, i) => off + i + 1);
 // Seeds of k samples of a setup at h hours. Paired: the fixed list 1..k (approved 3.3). Unpaired (delta 4, his point
 // 23:14 BRT): any k runs of that setup that reach h, the lowest seeds first, and for the rest the next seeds that
@@ -422,7 +436,9 @@ function estimate(baseOps, c, st, baseSeeds) {
     const g = c.monotone ? Math.max(gain, 0) : gain; // a monotone lever can only help (3.2 item 1): rank by its size
     const score = cost <= 0 ? (g > 0 ? Infinity : g) : g / cost;
     const payback = goal === 'profit' && gain > 0 && cost > 0 ? cost / gain : null;
-    return { stage: `${st.k}x${st.h}`, seeds: vSeeds, baseSeeds: bSeeds, gain, se, base: mean(bs), score, payback, accepted: gain > 0 && gain >= z * se }; // a zero gain (an EXP-only charm on a profit goal) is never accepted
+    const vcp = vSeeds.map((i) => cpOf(vOps, i, st.h)), bcp = bSeeds.map((i) => cpOf(baseOps, i, st.h));
+    const shared = diffStat(vcp.map(lootOf), bcp.map(lootOf)), own = diffStat(vcp.map((cp) => suppliesOf(cp, c.player)), bcp.map((cp) => suppliesOf(cp, c.player)));
+    return { stage: `${st.k}x${st.h}`, seeds: vSeeds, baseSeeds: bSeeds, gain, se, shared, own, base: mean(bs), score, payback, accepted: gain > 0 && gain >= z * se }; // a zero gain (an EXP-only charm on a profit goal) is never accepted
 }
 const rank = (a, b) => (b.est.score - a.est.score) || (b.est.gain - a.est.gain);
 
@@ -504,7 +520,11 @@ async function main() {
         if (errorRule === 'paired') { const d = v.map((x, i) => x - b[i]); gain = mean(d); se = sd(d) / Math.sqrt(d.length); }
         else { gain = mean(v) - mean(b); se = Math.sqrt(sd(v) ** 2 / v.length + sd(b) ** 2 / b.length); }
         const total = Object.values(spent).reduce((a, x) => a + x, 0);
-        result.confirmation = { seeds: { base: fs, result: vs }, gain, se, ...perUser(gain, se), accepted: gain > 0 && gain >= z * se, cost: total, runningSpend: { ...spent }, payback: goal === 'profit' && gain > 0 ? total / gain : null, ops: baseOps };
+        const vcp = vs.map((i) => cpOf(baseOps, i, fin.h)), bcp = fs.map((i) => cpOf([], i, fin.h));
+        const shared = diffStat(vcp.map(lootOf), bcp.map(lootOf)), n = setups0.length;
+        const ownBy = Object.fromEntries(players.map((p) => [p, diffStat(vcp.map((cp) => suppliesOf(cp, p)), bcp.map((cp) => suppliesOf(cp, p))).gain]));
+        const own = goal === 'profit' ? { sharedGainPerUser: shared.gain / n, sharedSePerUser: shared.se / n, ownSuppliesByPlayer: ownBy, paybackOwnByPlayer: Object.fromEntries(players.map((p) => [p, paybackOwnOf(spent[p] || 0, shared.gain / n, ownBy[p])])) } : {};
+        result.confirmation = { seeds: { base: fs, result: vs }, gain, se, ...perUser(gain, se), accepted: gain > 0 && gain >= z * se, cost: total, runningSpend: { ...spent }, payback: goal === 'profit' && gain > 0 ? total / gain : null, ...own, ops: baseOps };
     }
     return done(result);
 }
@@ -512,7 +532,9 @@ async function main() {
 // Per user: the party figure split equally over the party (the contract's gainPerUser / sePerUser).
 const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: se / setups0.length });
 function row(c) {
-    return { id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+    const est = c.est, n = setups0.length;
+    const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
+    return { ...split, id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -544,11 +566,11 @@ function done(result) {
     result.skippedNoExport = skippedGroup();
     writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 1));
     const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, base on ${baseMult}x seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
-    L.push('## Changes, in order', '', '| # | Change | Gain | ± se | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
-    result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${fmt(s.gain)} | ${fmt(s.se)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${fmt(s.runningCost)} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`));
+    L.push('## Changes, in order', '', '| # | Change | Gain | ± se | Shared gain per user | ± se | Own supplies per day | Cost | Payback days | Payback days (buyer) | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
+    result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${fmt(s.gain)} | ${fmt(s.se)} | ${fmt(s.sharedGainPerUser)} | ${fmt(s.sharedSePerUser)} | ${fmt(s.ownSuppliesPerDay)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.paybackOwn?.toFixed(1) ?? '-'} | ${fmt(s.runningCost)} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`));
     if (result.confirmation) { const c = result.confirmation; L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): gain ${fmt(c.gain)} ± ${fmt(c.se)} ${unit()}, cost ${fmt(c.cost)}, payback ${c.payback?.toFixed(1) ?? '-'} days.`); }
-    L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Stage | Gain | ± se | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|---|');
-    for (const s of result.singles) L.push(`| ${s.desc} | ${s.lastStage} | ${fmt(s.gain)} | ${fmt(s.se)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`);
+    L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Stage | Gain | ± se | Shared gain per user | ± se | Own supplies per day | Cost | Payback days | Payback days (buyer) | Cost path |', '|---|---|---|---|---|---|---|---|---|---|---|');
+    for (const s of result.singles) L.push(`| ${s.desc} | ${s.lastStage} | ${fmt(s.gain)} | ${fmt(s.se)} | ${fmt(s.sharedGainPerUser)} | ${fmt(s.sharedSePerUser)} | ${fmt(s.ownSuppliesPerDay)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.paybackOwn?.toFixed(1) ?? '-'} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`);
     L.push(...skillLines);
     if (result.overBudget.length) { L.push('', '## Priced, over budget, not ranked', ''); for (const a of result.overBudget) L.push(`- ${a.player}, ${a.desc}: ${a.costBound === 'upper' ? '≤ ' : ''}${fmt(a.cost)}`); }
     if (result.apart.length) { L.push('', '## Unknown cost, not ranked', ''); for (const a of result.apart) L.push(`- ${a.desc}: ${a.note}`); }

@@ -258,6 +258,18 @@ export function localizeDesc(desc, names, players = [], dropPlayer = null) {
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
 const paybackCell = (row) => (row.payback === null || row.payback === undefined ? '—' : (upper(row) ? '≤ ' : '') + num(row.payback));
 
+// The split of a row (shared loot gain per user, the changing player's own supplies change, the buyer's payback). A result
+// saved before the split has none of the fields: its two new columns read "—" and Payback keeps the saved party payback.
+const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
+function splitCells(row, goalExp) {
+    const cell = (v) => `<td class="num">${v}</td>`;
+    if (goalExp) return cell(num(row.gainPerUser)) + cell('± ' + num(row.sePerUser)) + cell('—');
+    if (!hasSplit(row)) return cell('—') + cell('—') + cell('—');
+    return cell(num(row.sharedGainPerUser)) + cell('± ' + num(row.sharedSePerUser)) + cell(num(row.ownSuppliesPerDay));
+}
+const buyerPayback = (row, goalExp) => (goalExp || !hasSplit(row) ? paybackCell(row) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound }));
+const colHead = (t) => [`<th>${esc(t('col.gain'))}</th>`, `<th>${esc(t('col.se'))}</th>`, `<th title="${esc(t('col.ownSuppliesTip'))}">${esc(t('col.ownSupplies'))}</th>`].join('');
+
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
 export function renderResult(result, t, now = Date.now(), names = null) {
@@ -273,6 +285,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     const prices = pricesLine(result, t, now);
     if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
     const players = Object.keys(result.budgets || {});
+    const goalExp = result.goal === 'exp';
     // Running spend per player: a step's own figure; "≤" from the first upper-bound cost of that player on.
     const upperFrom = {};
     (result.steps || []).forEach((s, i) => { if (upper(s) && upperFrom[s.player] === undefined) upperFrom[s.player] = i; });
@@ -285,11 +298,11 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     if (!result.steps?.length) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
-            ['#', t('col.player'), t('col.change'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
+            ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th>${esc(h)}</th>`).join('') +
             players.map((p) => `<th>${esc(t('col.spent'))} ${esc(p)}</th>`).join('') + '<th></th></tr></thead><tbody>');
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td>${shown(s)}</td>` +
-                `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+                splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
                 players.map((p) => `<td class="num">${spendCell(s, i, p)}</td>`).join('') +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
@@ -297,9 +310,12 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     }
     const c = result.confirmation;
     if (c) {
-        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${num(c.gainPerUser)} ± ${num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+        const shared = goalExp ? { g: c.gainPerUser, se: c.sePerUser } : Number.isFinite(c.sharedGainPerUser) ? { g: c.sharedGainPerUser, se: c.sharedSePerUser } : null;
+        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${shared ? num(shared.g) + ' ± ' + num(shared.se) : '—'}</b> ${esc(t('result.perUserDay'))}, ` +
             `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}, ` +
             `${esc(t('col.payback'))} ${paybackCell({ payback: c.payback, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}</div>`);
+        if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1 small">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: c.paybackOwnByPlayer?.[p], costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
+        else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
     if (players.length) {
         const last = result.steps?.length ? result.steps[result.steps.length - 1] : null;
@@ -310,10 +326,10 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
-            [t('col.player'), t('col.change'), t('col.stage'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
+            [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
-            `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+            splitCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` +
             `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
         const rows = result.singles.map((s, i) => [s, i]);

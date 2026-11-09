@@ -99,7 +99,7 @@ const result = {
 
 {
     const html = panel.renderResult(result, t);
-    check('result: per-user gain and error are shown, not the party figures', html.includes('data-num="1500"') && html.includes('data-num="300"') && !html.includes('data-num="3000"'));
+    check('result: the party figures are never shown, and an older result shows no per-user gain (its first column is a dash)', !html.includes('data-num="3000"') && !html.includes('data-num="1500"'));
     check('result: "≤" on an upper-bound cost and its payback', /≤ <span data-num="400000"/.test(html) && /≤ <span data-num="200"/.test(html));
     check('result: "≤" on that player\'s running spend from that step on, not before or for others', /≤ <span data-num="600000"/.test(html) && !/≤ <span data-num="1000000"/.test(html));
     check('result: Apply on each step, "Apply 1 to n" from step 2', html.includes('data-whatif-apply="steps:1"') && html.includes('Apply 1 to 3') && html.includes('data-whatif-apply="steps:3"'));
@@ -108,7 +108,7 @@ const result = {
         !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more="whatIfMoreSingles"/g) || []).length === 1);
     check('result: the cost path cell wraps', /<td class="wrap">market<\/td>/.test(html));
     check('result: unknown costs listed apart', html.includes('Some token item: no seller'));
-    check('result: confirmation per user', html.includes('data-num="2900"') && html.includes('data-num="450"'));
+    check('result: an older confirmation shows a dash and the saved cost and payback', !html.includes('data-num="2900"') && html.includes('data-num="275.9"'));
     check('result: each player spent of budget', html.includes('data-num="50000000"') && html.includes('data-num="20000000"'));
     check('result: text is escaped', html.includes('&lt;books&gt;') && !html.includes('<books>'));
     check('result: no payback shows a dash, never NaN', !html.includes('NaN') && !html.includes('undefined'));

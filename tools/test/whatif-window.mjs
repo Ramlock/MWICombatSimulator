@@ -23,13 +23,13 @@ const result = {
     goal: 'profit', budgets: { 'Player 1': 1000000 },
     setups: [],
     steps: [
-        { id: 's1', player: 'Player 1', desc: 'Magic 1 → 2', gain: 900, se: 100, gainPerUser: 900, sePerUser: 100, cost: 250000, payback: 277.8, accepted: true, runningSpend: { 'Player 1': 250000 }, ops: [{ op: 'level', player: 'Player 1', skill: 'magic', delta: 1 }] },
-        { id: 's2', player: 'Player 1', desc: 'Stamina 1 → 2', gain: 400, se: 90, gainPerUser: 400, sePerUser: 90, cost: 300000, costBound: 'upper', payback: 750, accepted: true, runningSpend: { 'Player 1': 550000 }, ops: [{ op: 'level', player: 'Player 1', skill: 'stamina', delta: 1 }] },
+        { id: 's1', player: 'Player 1', desc: 'Magic 1 → 2', gain: 900, se: 100, gainPerUser: 300, sePerUser: 33, sharedGainPerUser: 4100, sharedSePerUser: 310, ownSuppliesPerDay: -12500, ownSuppliesSe: 400, paybackOwn: 15.1, cost: 250000, payback: 277.8, accepted: true, runningSpend: { 'Player 1': 250000 }, ops: [{ op: 'level', player: 'Player 1', skill: 'magic', delta: 1 }] },
+        { id: 's2', player: 'Player 1', desc: 'Stamina 1 → 2', gain: 400, se: 90, gainPerUser: 133, sePerUser: 30, sharedGainPerUser: 900, sharedSePerUser: 70, ownSuppliesPerDay: 1100, ownSuppliesSe: 50, paybackOwn: null, cost: 300000, costBound: 'upper', payback: 750, accepted: true, runningSpend: { 'Player 1': 550000 }, ops: [{ op: 'level', player: 'Player 1', skill: 'stamina', delta: 1 }] },
     ],
-    confirmation: { gain: 1250, se: 140, gainPerUser: 1250, sePerUser: 140, cost: 550000, payback: 440 },
+    confirmation: { gain: 1250, se: 140, gainPerUser: 417, sePerUser: 47, sharedGainPerUser: 5000, sharedSePerUser: 330, ownSuppliesByPlayer: { 'Player 1': -11400 }, paybackOwnByPlayer: { 'Player 1': 33.5 }, cost: 550000, payback: 440 },
     singles: [
-        { id: 's1', player: 'Player 1', desc: 'Magic 1 → 2', lastStage: '8x300', gain: 900, se: 100, gainPerUser: 900, sePerUser: 100, cost: 250000, payback: 277.8, costPath: 'days of play', accepted: true, ops: [{ op: 'level', player: 'Player 1', skill: 'magic', delta: 1 }] },
-        { id: 'x', player: 'Nobody', desc: 'Attack 1 → 2', lastStage: '4x50', gain: 10, se: 80, gainPerUser: 10, sePerUser: 80, cost: 100000, payback: null, costPath: 'days of play', accepted: false, ops: [{ op: 'level', player: 'Nobody', skill: 'attack', delta: 1 }] },
+        { id: 's1', player: 'Player 1', desc: 'Magic 1 → 2', lastStage: '8x300', gain: 900, se: 100, gainPerUser: 300, sePerUser: 33, sharedGainPerUser: 4100, sharedSePerUser: 310, ownSuppliesPerDay: -12500, ownSuppliesSe: 400, paybackOwn: 15.1, cost: 250000, payback: 277.8, costPath: 'days of play', accepted: true, ops: [{ op: 'level', player: 'Player 1', skill: 'magic', delta: 1 }] },
+        { id: 'x', player: 'Nobody', desc: 'Attack 1 → 2', lastStage: '4x50', gain: 10, se: 80, gainPerUser: 3, sePerUser: 27, sharedGainPerUser: 50, sharedSePerUser: 60, ownSuppliesPerDay: 70, ownSuppliesSe: 5, paybackOwn: null, cost: 100000, payback: null, costPath: 'days of play', accepted: false, ops: [{ op: 'level', player: 'Nobody', skill: 'attack', delta: 1 }] },
     ],
     apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }],
     overBudget: [{ id: 'o', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 7000000000, costPath: 'market' }, { id: 'o2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 8000000000, costPath: 'market' }],
@@ -222,7 +222,19 @@ try {
     check('the result shows "≤" and the unknown-cost list', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('≤') && t.includes('A token item'); })()`));
     check('the result shows the snapshot time and the priced over-budget group', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('market snapshot of 2023-11-14 22:13 UTC') && t.includes('Priced, over budget') && t.includes('Feet Pathseeker Boots ★ +12 -> Cotton Boots +0'); })()`));
     check('the earlier searches list fills', await until(`document.getElementById('selectWhatIfResult').options.length === 1`));
+    check('the chosen-changes table reads shared gain, error, own supplies, cost, payback, and a row shows them (a saving as a minus)', await js(`(() => { const th = [...document.querySelector('#whatIfResult table thead tr').children].map((e) => e.textContent); const td = [...document.querySelector('#whatIfResult table tbody tr').children].map((e) => e.textContent); const i = th.indexOf('Shared gain per user/day'); return i > 0 && th.slice(i, i + 5).join('|') === 'Shared gain per user/day|± error|Own supplies per day|Cost|Payback days' && !th.includes('Gain per user/day') && td[i] === '4,100' && td[i + 2] === '-12.5k' && td[i + 4] === '15.1'; })()`));
+    check('the buyer payback of a net of 0 or below is a dash, and the confirmation shows the shared gain and a line per player', await js(`(() => { const r = document.querySelectorAll('#whatIfResult table')[0].querySelectorAll('tbody tr')[1]; const t = document.getElementById('whatIfResult').textContent; return r.children[7].textContent === '—' && t.includes('Player 1: own supplies -11.4k per day, payback ≤ 33.5 days') && t.includes('Confirmed on fresh runs: 5,000 ± 330'); })()`));
     await shot('whatIfModal', 'whatif-result.png');
+    if (shots) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 1000, deviceScaleFactor: 1, mobile: false });
+        await new Promise((r) => setTimeout(r, 400));
+        await js(`(() => { const b = document.querySelector('#whatIfModal .modal-body'); b.scrollTop = b.scrollHeight; return true; })()`);
+        await new Promise((r) => setTimeout(r, 200));
+        const v = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1500, height: 1000, scale: 1 } });
+        fs.mkdirSync(path.join(shots, 'split'), { recursive: true });
+        fs.writeFileSync(path.join(shots, 'split', 'split-1500.png'), Buffer.from(v.data, 'base64'));
+        await page.send('Emulation.clearDeviceMetricsOverride');
+    }
     const before = await js(`[document.getElementById('inputLevel_magic').value, document.getElementById('inputLevel_stamina').value]`);
     await js(`document.querySelector('[data-whatif-apply="steps:2"]').click(), true`);
     const after = await js(`[document.getElementById('inputLevel_magic').value, document.getElementById('inputLevel_stamina').value]`);
