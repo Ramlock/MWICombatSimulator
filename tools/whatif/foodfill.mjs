@@ -161,9 +161,10 @@ export function foodFillCands(p, { items, market, baseline, triggerMap, need, ke
 }
 
 // One food row per player in the report. `rows` are the search's result rows (result.singles); `isFood(row)` says which are
-// food fillings. Per player, the row that stays is the best accepted food row in rankEst order (the greedy's order); of
-// the "helps the party" rows the one with the largest gainPerUser stays too (they have their own group). Every other food
-// row gets hiddenFood: true (it stays in the file). With no accepted food row a player shows none. Mutates the rows.
+// food fillings. One row per player stays: the best accepted food row in rankEst order (the greedy's order), and every other
+// food row of that player is hidden, the "helps the party" ones included. Only when the player has no accepted food row does
+// the helps-the-party row with the largest gainPerUser stay (at most one row). Hidden rows get hiddenFood: true (they stay in
+// the file). Mutates the rows.
 export function hideFoodRows(rows, isFood) {
     const est = (r) => ({ score: r.score, net: r.buyerNet, gain: r.gain });
     const players = [...new Set(rows.filter(isFood).map((r) => r.player))];
@@ -171,6 +172,6 @@ export function hideFoodRows(rows, isFood) {
         const mine = rows.filter((r) => isFood(r) && r.player === p);
         const best = mine.filter((r) => r.accepted).sort((a, b) => rankEst(est(a), est(b)))[0];
         const help = mine.filter((r) => r.helpsParty).sort((a, b) => b.gainPerUser - a.gainPerUser)[0];
-        for (const r of mine) if (r !== best && r !== help) r.hiddenFood = true;
+        for (const r of mine) if (r !== best && !(r === help && !best)) r.hiddenFood = true;
     }
 }

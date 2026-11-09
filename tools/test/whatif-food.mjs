@@ -151,7 +151,8 @@ check(r.stats.foods === 8 && r.stats.dominated === 0 && r.stats.qualify === 32 &
     const rows = [rr('f1', 'A', { accepted: true, score: 2 }), rr('f2', 'A', { accepted: true, score: 5 }), rr('f3', 'A', { accepted: false, score: 9 }), rr('d1', 'A', { accepted: true }),
         rr('f4', 'B', { accepted: false }), rr('f5', 'B', { accepted: false }),
         rr('f6', 'C', { accepted: true, score: 3, buyerNet: 1 }), rr('f7', 'C', { accepted: true, score: 3, buyerNet: 7 }),
-        rr('f8', 'D', { accepted: false, helpsParty: true, gainPerUser: 10 }), rr('f9', 'D', { accepted: false, helpsParty: true, gainPerUser: 30 }), rr('f10', 'D', { accepted: false })];
+        rr('f8', 'D', { accepted: false, helpsParty: true, gainPerUser: 10 }), rr('f9', 'D', { accepted: false, helpsParty: true, gainPerUser: 30 }), rr('f10', 'D', { accepted: false }),
+        rr('f11', 'E', { accepted: true, score: 2 }), rr('f12', 'E', { accepted: false, helpsParty: true, gainPerUser: 50 })];
     F.hideFoodRows(rows, isFood);
     const hidden = (id) => rows.find((r) => r.id === id).hiddenFood === true;
     check(!hidden('f2') && hidden('f1') && hidden('f3'), 'one food row: of a player\'s accepted food rows the best by score stays; the rest, accepted or not, are hidden');
@@ -159,6 +160,7 @@ check(r.stats.foods === 8 && r.stats.dominated === 0 && r.stats.qualify === 32 &
     check(hidden('f4') && hidden('f5'), 'one food row: no accepted food row: every food row of that player is hidden');
     check(!hidden('f7') && hidden('f6'), 'one food row: a tie on score goes to the larger buyer net (the greedy\'s order)');
     check(!hidden('f9') && hidden('f8') && hidden('f10'), 'one food row: of the helps rows the largest gainPerUser stays, the other helps row and the weak row are hidden');
+    check(!hidden('f11') && hidden('f12'), 'one food row: a player with an accepted food row keeps only that one; his helps-the-party row is hidden too');
     check(rows.every((r) => r.hiddenFood === undefined || r.hiddenFood === true), 'one food row: hiddenFood is true or absent');
 }
 
