@@ -80,6 +80,8 @@ export function buildArgs(body, outDir) {
         const list = Object.entries(body.budgets).map(([p, v]) => { if (!SAFE_NAME.test(p) || p.includes(',') || p.includes('=') || !(Number(v) >= 0)) throw new Error(`budgets: bad entry ${p}`); return `${p}=${Number(v)}`; });
         if (list.length) args.push('--budgets', list.join(','));
     }
+    // export: the old single character export (an object with its `name`) or a map { "<player name>": that player's export }; written as it comes.
+    if (body.export != null && (typeof body.export !== 'object' || Array.isArray(body.export))) throw new Error('export: a character export object, or { "<player name>": <export> }');
     if (body.export != null) { const f = path.join(outDir, 'export.json'); writeFileSync(f, JSON.stringify(body.export)); args.push('--export', f); }
     const tc = body.triggerCands ?? body['trigger-cands'];
     if (tc != null) { const f = path.join(outDir, 'trigger-cands.json'); writeFileSync(f, JSON.stringify(tc)); args.push('--trigger-cands', f); }

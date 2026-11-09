@@ -129,6 +129,26 @@ try {
     const windowZone = await js(`(() => { const s = document.getElementById('selectWhatIfZone'); s.value = s.options[4].value; s.dispatchEvent(new Event('change', { bubbles: true })); const t = document.getElementById('selectWhatIfTier'); t.value = '1'; return s.value; })()`);
     check('the window lists the levers, equipment ticked', await js(`document.querySelectorAll('#whatIfLevers input').length === 11 && document.getElementById('whatIfLever_equip').checked && !document.getElementById('whatIfLever_houses').checked`));
     check('the runner version is shown', await js(`document.getElementById('whatIfVersion').textContent.includes('test-runner')`));
+    // The character export per player: a paste box and a status line under each ticked player.
+    const exportOf = (name) => ({ name, coin: 5, inventory: [{ itemHrid: '/items/cheese_sword', enhancementLevel: 1, count: 1 }], learnedAbilities: [] });
+    const paste = (player, text) => js(`(() => { const b = document.querySelector('#whatIfBudgets textarea[data-player="${player}"]'); b.value = ${JSON.stringify(text)}; b.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    const statusOf = (player) => js(`document.querySelector('#whatIfBudgets [data-export-status="${player}"]').textContent`);
+    const stored = (player) => js(`localStorage.getItem('whatIfExport:${player}')`);
+    check('each ticked player has a paste box and a status line; no export says only that when no lever needs it', await js(`document.querySelectorAll('#whatIfBudgets textarea').length === 1 && getComputedStyle(document.querySelector('#whatIfBudgets textarea')).backgroundColor !== 'rgb(255, 255, 255)'`) && (await statusOf('Player 1')) === 'no export');
+    await js(`document.getElementById('whatIfLever_owned').click(), true`);
+    check('with Items you own ticked, the status names it as skipping the player', (await statusOf('Player 1')) === 'no export: skipped by Items you own');
+    await js(`document.getElementById('whatIfLever_owned').click(), true`);
+    await paste('Player 1', 'this is not json');
+    check('a bad paste is not kept and the status says so', (await statusOf('Player 1')) === 'not a character export: not kept' && (await stored('Player 1')) === null);
+    await paste('Player 1', JSON.stringify(exportOf('First')));
+    check('a valid paste is kept in storage under the player\'s name, the box is emptied, the status names the export', (await stored('Player 1')) === JSON.stringify(exportOf('First')) && (await statusOf('Player 1')) === 'kept (First)' && (await js(`document.querySelector('#whatIfBudgets textarea').value`)) === '');
+    await paste('Player 1', JSON.stringify(exportOf('Second')));
+    check('a new paste replaces the kept one', (await stored('Player 1')) === JSON.stringify(exportOf('Second')) && (await statusOf('Player 1')) === 'kept (Second)');
+    await paste('Player 1', '{"name":"x"}');
+    check('a bad paste over a kept one leaves the kept export in storage', (await stored('Player 1')) === JSON.stringify(exportOf('Second')) && (await statusOf('Player 1')) === 'not a character export: not kept');
+    await js(`(document.querySelector('#whatIfBudgets textarea').value = '', document.getElementById('whatIfPlayer_2').click(), true)`);
+    check('a player ticked later has a paste box of their own and no export', (await statusOf('Player 2')) === 'no export' && (await statusOf('Player 1')) === 'kept (Second)');
+    await js(`document.getElementById('whatIfPlayer_2').click(), true`);
     await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = 'abc'; return true; })()`);
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('a budget that is not a number is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('Player 1')`) && received === null);
@@ -144,6 +164,7 @@ try {
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
         received.budgets['Player 1'] === 1000000 && received.levers.join() === 'equip,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
     check('the request follows the window\'s zone, tier and players, not the page\'s', received.options.zone === windowZone && windowZone !== pageChoices.zone && received.options.tier === 1 && received.players.join() === 'Player 1', JSON.stringify(received.options.zone) + ' ' + JSON.stringify(received.players));
+    check('the request carries the export map for the ticked players that have one, nobody else', !!received.export && Object.keys(received.export).join() === 'Player 1' && received.export['Player 1'].name === 'Second', JSON.stringify(received.export)?.slice(0, 200));
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
     check('the progress bar has a dark track and a fill of its own in dark mode', await js(`(() => { const p = document.querySelector('#whatIfProgress .whatif-progress'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const t = getComputedStyle(p).backgroundColor, b = getComputedStyle(p.querySelector('.progress-bar')).backgroundColor; return lum(t) < 150 && t !== b && getComputedStyle(p).borderTopWidth !== '0px'; })()`));
     await shot('whatIfModal', 'whatif-progress.png');
@@ -199,6 +220,11 @@ try {
     check('a three-player page gives three tick boxes in the window', await js(`document.querySelectorAll('#whatIfPlayers input').length === 3 && [...document.querySelectorAll('#whatIfPlayers label')].map((l) => l.textContent).join() === 'Player 1,Player 2,Player 3'`));
     await js(`document.getElementById('whatIfPlayer_3').click(), true`);
     check('the budget rows follow the ticks in a three-player window', await js(`[...document.querySelectorAll('#whatIfBudgets input')].map((i) => i.dataset.player).join() === 'Player 1,Player 3'`));
+    // Kept across page loads: a reload, the page's player ticked again, the window opened.
+    await page.send('Page.navigate', { url: base });
+    await until(`document.getElementById('buttonWhatIf')?.style.display === ''`);
+    await js(`(() => { document.getElementById('player1').checked = true; document.getElementById('buttonWhatIf').click(); return true; })()`);
+    check('after a page reload the kept export is still there', await until(`document.querySelector('#whatIfBudgets [data-export-status="Player 1"]')?.textContent === 'kept (Second)'`));
     page.close();
 } finally {
     await chrome.close();

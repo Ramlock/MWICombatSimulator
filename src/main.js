@@ -28,7 +28,7 @@ import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
 import { fetchMarketplace } from "./marketplace.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4218,6 +4218,29 @@ function whatIfRenderChoices(fromPage) {
     copySelect('selectWhatIfTier', 'selectDifficulty');
 }
 
+// The kept character export of a player (browser storage, one key per player name), or null.
+function whatIfKeptExport(name) {
+    try { const text = localStorage.getItem(whatIfExportKey(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
+}
+
+// A paste: a valid export replaces the kept one and the box is emptied; a bad one is not kept (it stays in the box,
+// and the status says so).
+function whatIfKeepExport(box) {
+    const parsed = whatIfParseExport(box.value);
+    if (parsed.ok) {
+        try { localStorage.setItem(whatIfExportKey(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+    }
+    whatIfShowExportStatus();
+}
+
+function whatIfShowExportStatus() {
+    const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
+    for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
+        const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
+        status.textContent = whatIfExportStatus({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
+    }
+}
+
 // Shown while no player is ticked in the window; cleared again once one is (only its own text).
 function whatIfCheckPlayers() {
     const none = !document.querySelector('#whatIfPlayers input:checked');
@@ -4239,8 +4262,11 @@ function whatIfMessage(text) {
 function whatIfRenderSetup() {
     const budgets = document.getElementById('whatIfBudgets');
     const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
+    const pasted = Object.fromEntries([...budgets.querySelectorAll('textarea')].map((i) => [i.dataset.player, i.value]));
     budgets.replaceChildren();
     for (const slot of whatIfSlots(true)) {
+        const player = document.createElement('div');
+        player.className = 'mb-2';
         const group = document.createElement('div');
         group.className = 'input-group input-group-sm mb-1';
         const label = document.createElement('span');
@@ -4253,8 +4279,22 @@ function whatIfRenderSetup() {
         input.dataset.player = slot.name;
         input.value = typed[slot.name] ?? '0';
         group.append(label, input);
-        budgets.append(group);
+        // The player's character export (optional): a paste box whose valid content is kept in the browser's storage
+        // under the player's name; the status line under it is rebuilt from the storage and the box.
+        const paste = document.createElement('textarea');
+        paste.className = 'form-control form-control-sm whatif-export';
+        paste.rows = 2;
+        paste.dataset.player = slot.name;
+        paste.placeholder = whatIfT('exportLabel');
+        paste.value = pasted[slot.name] ?? '';
+        paste.addEventListener('input', () => whatIfKeepExport(paste));
+        const status = document.createElement('div');
+        status.className = 'small whatif-dim';
+        status.dataset.exportStatus = slot.name;
+        player.append(group, paste, status);
+        budgets.append(player);
     }
+    whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
     const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(WHATIF_LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
@@ -4342,12 +4382,14 @@ async function whatIfStart() {
     }
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
+    const exports = {};
+    for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
+    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
@@ -4419,6 +4461,7 @@ async function initWhatIf() {
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
         whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
+    document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);

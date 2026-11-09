@@ -110,12 +110,14 @@ const combatStyleDetailMap = await json('combatStyleDetailMap.json');
 const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
 const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : [x.trim()])));
 for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
+// --export: the old single character export (an object with its `name`), or a map { "<player name>": <that player's export> }.
+// Levers that need a player's export never block a search: that player is skipped by the lever (result.skippedNoExport).
 const exportData = arg('export', null) ? JSON.parse(readFileSync(arg('export'), 'utf8')) : null;
-if ((levers.has('owned') || levers.has('abilities')) && !exportData) throw new Error('--levers owned/abilities need --export (inventory, learned abilities)');
+const exportMap = exportData && typeof exportData.name !== 'string' ? exportData : null;
 let budget = null, budgetSource;
 const budgetList = parseBudgetList(arg('budgets', null) === true ? null : arg('budgets', null));
 if (arg('budget', null) !== null) { budget = Number(arg('budget')); budgetSource = 'typed'; }
-else if (exportData) { budget = exportData.coin; budgetSource = 'exporter coin'; if (!(budget >= 0)) throw new Error('exporter JSON has no coin'); }
+else if (exportData && !exportMap) { budget = exportData.coin; budgetSource = 'exporter coin'; if (!(budget >= 0)) throw new Error('exporter JSON has no coin'); }
 else if (Object.keys(budgetList).length) budgetSource = 'per player';
 else throw new Error('--budget, --budgets or --export required');
 if (Object.keys(budgetList).length && budget != null) budgetSource = `per player, else ${budgetSource}`;
@@ -283,7 +285,12 @@ function candidatesFor(setups, p, slots) {
 // ---- Phase 2 levers (design 1.1-1.3, 3.6 item 2): loadout tweaks, no gold cost ----
 const short = (h) => h.split('/').pop();
 const FREE = (path, note = '') => ({ cost: 0, known: true, path, mirrors: 0, note });
-const exportFor = (p) => (exportData && exportData.name === p ? exportData : null);
+const exportFor = (p) => (exportMap ? (exportMap[p] && typeof exportMap[p] === 'object' ? exportMap[p] : null) : exportData && exportData.name === p ? exportData : null);
+// The players a lever skipped for want of their export: lever -> Set(player). The levers that need it: owned, abilities
+// (swaps) and books. Ability levels have a labelled upper-bound cost without it and never skip.
+const skippedNoExport = new Map();
+const skipNoExport = (lever, p) => { if (!skippedNoExport.has(lever)) skippedNoExport.set(lever, new Set()); skippedNoExport.get(lever).add(p); };
+const skippedGroup = () => [...skippedNoExport].map(([lever, ps]) => ({ lever, players: [...ps] }));
 const market = loadMarket(pricesFile);
 const hasAsk = (h) => market[h]?.['0']?.a > 0; // a consumable with no ask has no expense price (engine.mjs metrics uses 500)
 const combatUse = (it) => it.consumableDetail?.usableInActionTypeMap?.['/action_types/combat'];
@@ -364,6 +371,7 @@ function abilityCands(setups, p, withSwaps, withOrder) {
     return out;
 }
 function allCandidates(setups, p) {
+    if (!exportFor(p)) for (const l of ['owned', 'abilities', 'books']) if (levers.has(l)) skipNoExport(l, p);
     return [
         ...(levers.has('equip') ? candidatesFor(setups, p, openSlots) : []),
         ...(levers.has('consumables') || levers.has('pairs') ? consumableCands(setups, p, levers.has('consumables'), levers.has('pairs')) : []),
@@ -417,7 +425,7 @@ const rank = (a, b) => (b.est.score - a.est.score) || (b.est.gain - a.est.gain);
 
 // ---- Search ----
 async function main() {
-    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated };
+    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated, skippedNoExport: [] };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
     if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(); }
@@ -512,6 +520,7 @@ function timing(result) {
 }
 function stop(result) {
     timing(result); result.incomplete = true; result.stoppedBy = stopRequested ? 'stop request' : '--max-minutes';
+    result.skippedNoExport = skippedGroup();
     writeFileSync(path.join(OUT, 'partial.json'), JSON.stringify(result, null, 1));
     report({ stage: 'stopped' });
     console.log(`stopped by ${result.stoppedBy}; rerun the same command to resume`);
@@ -528,6 +537,7 @@ function done(result) {
         skillLines = sk.lines;
     }
     delete result.timeOnly;
+    result.skippedNoExport = skippedGroup();
     writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 1));
     const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, base on ${baseMult}x seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
     L.push('## Changes, in order', '', '| # | Change | Gain | ± se | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');

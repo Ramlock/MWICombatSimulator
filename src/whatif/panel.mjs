@@ -44,13 +44,37 @@ export function pageSetups(slots) {
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace }) {
+export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
     if (tier !== undefined && tier !== null && tier !== '') options.tier = Number(tier);
     if (marketplace) options.marketplace = marketplace;
-    return { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+    const body = { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+    // exports: { "<player name>": that player's character export }, only for players that have one.
+    if (exports && Object.keys(exports).length) body.export = exports;
+    return body;
+}
+
+// The character export (the userscript's "Copy character export"): a JSON object with an inventory or a learned-ability list.
+// The levers that skip a player with none (the optimizer's skippedNoExport). Ability levels are not among them: without
+// the export they keep their labelled upper-bound cost.
+export const EXPORT_LEVERS = ['owned', 'abilities', 'books'];
+export const exportKey = (name) => 'whatIfExport:' + name;
+export function parseExport(text) {
+    try {
+        const d = JSON.parse(text);
+        if (d && typeof d === 'object' && !Array.isArray(d) && (Array.isArray(d.inventory) || Array.isArray(d.learnedAbilities))) return { ok: true, data: d };
+    } catch (e) { /* not JSON */ }
+    return { ok: false };
+}
+// The status line under a player's paste box. kept: the stored export or null; text: what the box holds now (a bad
+// paste stays in it); levers: the ticked lever ids.
+export function exportStatus({ kept, text }, levers, t) {
+    if (text && text.trim() && !parseExport(text).ok) return t('exportBad');
+    if (kept) return t('exportKept', { who: kept.name ?? '' });
+    const names = EXPORT_LEVERS.filter((l) => levers.includes(l)).map((l) => t('lever.' + l + '.name'));
+    return names.length ? t('exportNone', { levers: names.join(', ') }) : t('exportNoneBare');
 }
 
 // The request with the market snapshot fetched now (delivery design section 3). Returns { body }, or { error } when
@@ -276,6 +300,15 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfDominated" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
             '<ul class="small whatif-more" id="whatIfDominated" hidden>' +
             result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
+    }
+    if (result.skippedNoExport?.length) {
+        // One folded line: the players the levers that need a character export skipped; the list sits closed behind it.
+        const lever = (g) => t('lever.' + g.lever + '.name');
+        const n = new Set(result.skippedNoExport.flatMap((g) => g.players)).size;
+        L.push(`<div class="mt-3"><span class="fw-bold">${esc(t('result.skippedNoExport', { n, levers: result.skippedNoExport.map(lever).join(', ') }))}</span> ` +
+            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfSkippedNoExport" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
+            '<ul class="small whatif-more" id="whatIfSkippedNoExport" hidden>' +
+            result.skippedNoExport.map((g) => `<li>${esc(lever(g))}: ${esc(g.players.join(', '))}</li>`).join('') + '</ul>');
     }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +

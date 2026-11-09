@@ -145,6 +145,11 @@
         "zone": "区域",
         "tier": "难度",
         "choicesNote": "打开此窗口时从页面复制（页面上未勾选的玩家在此也未勾选）；在此的更改只影响本次搜索。",
+        "exportLabel": "角色导出（可选）",
+        "exportKept": "已保存（{{who}}）",
+        "exportNone": "无导出：被 {{levers}} 跳过",
+        "exportNoneBare": "无导出",
+        "exportBad": "不是角色导出：未保存",
         "levers": "搜索范围",
         "lever": {
             "equip": {
@@ -246,6 +251,7 @@
             "dominated": "已跳过 {{n}} 项更换（各项属性均无提升）",
             "dominatedShow": "显示",
             "dominatedHide": "隐藏",
+            "skippedNoExport": "{{n}} 名玩家被 {{levers}} 跳过",
             "pricesSnapshot": "价格：{{when}} 的市场快照（显示时已过 {{elapsed}}）。",
             "pricesCommitted": "价格：模拟器自带的 {{when}} 保存快照（已过 {{elapsed}}），不是当前市场。",
             "upperNote": "≤：成本仅为上限（技能书未计入当前等级内已有的经验）。"
