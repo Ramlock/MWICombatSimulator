@@ -145,14 +145,28 @@ Built: the userscript `userscript/mwics-guildchat.user.js` (tests: `userscript/t
 Where the build differs from or fixes the proposal above:
 
 - The **userscript** writes the `gap` line (it sees the history array and the helper's cursor), not the helper. The helper accepts four line types (`msg`, `update`, `gap`, `session`), drops unknown fields, clips text at 4,000 characters and refuses a bad `v`, `type`, time or `src`.
-- Wire protocol: `POST /v1/lines` with a JSON array (at most 256 lines, 256 KiB; over either is `413`, a non-array is `400`) and `GET /v1/cursor` (`{"id","t"}` or `{}`); header `X-MWI-Token`; `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (else `403`); a wrong or missing token is `401` with no body. An `Origin` is accepted when absent, from a script manager's extension scheme, or from the game's own pages; any other web page is `403`. No CORS headers are ever sent. Default port `47631`, bound to `127.0.0.1` only.
+- Wire protocol: `POST /v1/lines` with a JSON array (at most 256 lines, 256 KiB; over either is `413`, a non-array is `400`) and `GET /v1/cursor` (`{"id","t"}` or `{}`); header `X-MWI-Token`; plus `GET /token` (below); `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (else `403`); a wrong or missing token is `401` with no body. An `Origin` is accepted when absent, from a script manager's extension scheme, or from the game's own pages; any other web page is `403`. No CORS headers are ever sent. Default port `47631`, bound to `127.0.0.1` only.
 - The helper dedupes `msg` ids against the last 1,000 (rebuilt from the file's tail on start), flags a line older than the cursor `late:true`, and writes `update` deletions once per id. The cursor (newest `msg` by time) is saved after every batch to a state file next to the chat file (ids and times only; temp file, flush, swap, `.bak`), and rebuilt from the file tail if both are unreadable.
 - The helper's log carries a timestamp, route, status and counts only; no message text or sender name ever enters the log or the state file.
 - The userscript queues up to 1,000 lines while the helper is unreachable, retries with backoff (2 s doubling to 60 s), and past the cap drops the oldest and writes one `gap` line once the helper is back. One toast tells the user when the helper is unreachable or the token is wrong.
 - Read-only: a test greps the userscript source (comments excluded) for a socket `.send(`, the chat request types, `new WebSocket`, `localStorage`, `sessionStorage`, `document.cookie`, `indexedDB`, `dispatchEvent`, `click()` and for any network host other than the local helper, and fails on any.
 - Still unverified until the first real session: history depth, id type and order, `o` when translation is on, whether a normal member ever receives a deleted line, and whether the script manager sends an `Origin` (the helper accepts both cases).
 
-### Install (five steps)
+### `GET /token`: the Combat Tracker fetches the token, nothing to paste (Combat Tracker 0.9.0)
+
+- The helper answers `GET /token` with `{"token":"<the token>"}` and nothing else, and only when all of these hold: the connection is from the loopback address; the `Host` check above passed (a wrong `Host` is `403`, checked first, so a page on a rebound hostname gets nothing); and the request carries no `Origin` header or an `Origin` of a script manager's extension scheme (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`). Any other request is `403` with no body. This route is stricter than the others: `Origin: null` and the game's own Origin, which the other routes accept, are `403` here. The request carries no token header (it is how the script gets one). Only `GET`; another method is `404`.
+- The reply has no CORS headers (the helper never sends any), so a web page cannot read it even if it could send the request. The token is therefore handed to the script manager only. Any program on the same machine can still ask for it (a local program is not stopped by `Host` or `Origin`); that trade was accepted when the route was chosen.
+- The log line for it is `GET /token 200` or a `403`/`404` with a reason; the token is never logged.
+- The Combat Tracker (`mwics-exporter.user.js`) asks when it holds no token and the recorder is on: once at page load, then at each backoff retry (2 s doubling to 60 s) while the token is still empty. It stores the answer with `GM_setValue` and carries on as if it had been pasted. When the ask fails it shows one toast per page load: "no helper token, so nothing is sent to the helper. The recording stays in this browser." The toast is removed when a later ask succeeds. A token already stored (pasted with the menu entry **Set helper token**) is never replaced by the helper's.
+- The guild chat script (`mwics-guildchat.user.js`) is unchanged and still takes a pasted token.
+
+### Install the Combat Tracker (0.9.0 and later)
+
+1. Install or update `mwics-exporter.user.js` in the script manager (open the raw file). The `@name` and `@namespace` are unchanged, so an update keeps the script's stored values.
+2. Restart the helper once (the new route is in the helper's code; a helper started before the update answers `404` to `/token`).
+3. Nothing to paste. Reload the game tab; within a minute the helper's log shows `GET /token 200`, and the first combat post follows a few encounters later.
+
+### Install the guild chat script (five steps)
 
 1. Install `mwics-guildchat.user.js` in Tampermonkey (open the raw file) and accept the `@connect 127.0.0.1` prompt on first use.
 2. Run the helper's start script once; it prints a token (shown once) and starts listening.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.8.0
+// @version      0.9.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -1074,7 +1074,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.8.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.9.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1109,6 +1109,54 @@
         setTimer: (fn, ms) => setTimeout(fn, ms),
         log: (text) => console.debug('[MWI Combat Tracker] ' + text),
     });
+    // No paste: with no token the script asks the helper for it (GET /token; loopback and a script manager only, the helper refuses anything else).
+    // The ask is made once per page load, and again at each backoff retry only while the token is still empty. The warning toast shows only when the ask failed.
+    const NOTOKEN_TEXT = 'MWI Combat Tracker: no helper token, so nothing is sent to the helper. The recording stays in this browser.';
+    let tokenAsking = false, tokenRetryMs = SINK.RETRY_MIN_MS, tokenRetrySet = false, noTokenEl = null, noTokenWarned = false;
+    function tokenRequest() {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: helperUrl() + '/token',
+                timeout: 10000,
+                onload: (r) => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
+                onerror: () => resolve({ ok: false, status: 0 }),
+                ontimeout: () => resolve({ ok: false, status: 0 }),
+            });
+        });
+    }
+    function warnNoToken() {
+        if (noTokenWarned || !document.body) return;
+        noTokenWarned = true;
+        noTokenEl = toast(NOTOKEN_TEXT, 15000);
+    }
+    function clearNoTokenWarning() { if (noTokenEl) { try { noTokenEl.remove(); } catch { /* already gone */ } noTokenEl = null; } noTokenWarned = false; }
+    async function askForToken() {
+        if (tokenAsking || helperToken() !== '' || !recToggles.recorder) return;
+        tokenAsking = true;
+        let got = '';
+        try {
+            const r = await tokenRequest();
+            if (r.ok) { try { const t = JSON.parse(r.text).token; if (typeof t === 'string' && t.length > 0 && t.length <= 256 && !/s/.test(t)) got = t; } catch { /* not a token */ } }
+        } catch { /* stays empty */ }
+        tokenAsking = false;
+        if (got !== '' && helperToken() === '') {
+            GM_setValue(HELPER_TOKEN_KEY, got);
+            helperToast = false;
+            clearNoTokenWarning();
+            sink.scan(true);
+            sink.flush();
+            return;
+        }
+        if (helperToken() !== '') { clearNoTokenWarning(); return; } // pasted by hand meanwhile
+        warnNoToken();
+        if (!tokenRetrySet) {
+            tokenRetrySet = true;
+            const wait = tokenRetryMs;
+            tokenRetryMs = Math.min(tokenRetryMs * 2, SINK.RETRY_MAX_MS);
+            setTimeout(() => { tokenRetrySet = false; askForToken(); }, wait);
+        }
+    }
     function loadRecorded() {
         try {
             const w = JSON.parse(GM_getValue(REC_WIN_KEY, 'null')), e = JSON.parse(GM_getValue(REC_ENC_KEY, 'null'));
@@ -1220,6 +1268,7 @@
         el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#1e1f24;color:#e6e6e6;border:1px solid #444;border-radius:6px;padding:10px 16px;font:14px sans-serif;box-shadow:0 4px 16px #0008';
         document.body.appendChild(el);
         setTimeout(() => el.remove(), ms || 3500);
+        return el;
     }
 
     function copyExport() {
@@ -1316,7 +1365,7 @@
     }
     function setHelperToken() {
         const v = page.prompt('Paste the token the helper printed:', helperToken());
-        if (v !== null) { GM_setValue(HELPER_TOKEN_KEY, v.trim()); helperToast = false; sink.scan(true); sink.flush(); }
+        if (v !== null) { GM_setValue(HELPER_TOKEN_KEY, v.trim()); helperToast = false; if (v.trim() !== '') clearNoTokenWarning(); sink.scan(true); sink.flush(); }
     }
     function setHelperUrl() {
         const v = page.prompt('Helper address:', helperUrl());
@@ -1352,16 +1401,16 @@
             box.appendChild(row);
         }
         const sep = document.createElement('div');
-        sep.textContent = 'Combat recorder (loot, damage, healing, buffs; kept in this browser, and appended to a file when a helper token is set)';
+        sep.textContent = 'Combat recorder (loot, damage, healing, buffs; kept in this browser, and appended to a file by the helper)';
         sep.style.cssText = 'font-weight:bold;margin:12px 0 4px';
         box.appendChild(sep);
-        for (const [key, label] of [['recorder', 'Combat recorder'], ['sendToHelper', 'Send to the helper (needs a helper token, set from the menu)'], ['selfOnly', 'Only my own data (leave the other party members out of the recording and of what is sent to the helper)']]) {
+        for (const [key, label] of [['recorder', 'Combat recorder'], ['sendToHelper', 'Send to the helper (the script asks the helper for its token; the menu entry Set helper token overrides it)'], ['selfOnly', 'Only my own data (leave the other party members out of the recording and of what is sent to the helper)']]) {
             const row = document.createElement('label');
             row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer';
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = key === 'sendToHelper' ? recToggles.sendToHelper !== false : !!recToggles[key];
-            cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); if (key === 'sendToHelper' && cb.checked) { sink.scan(true); sink.flush(); } });
+            cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); if (key === 'sendToHelper' && cb.checked) { sink.scan(true); sink.flush(); } if (key === 'recorder' && cb.checked) askForToken(); });
             row.appendChild(cb);
             row.appendChild(document.createTextNode(label));
             box.appendChild(row);
@@ -1388,6 +1437,7 @@
     if (!/(^|\.)milkywayidle\.com$/.test(typeof location !== 'undefined' ? location.hostname : 'www.milkywayidle.com')) { startSim(); return; }
     loadRecorded();
     hook();
+    askForToken();
     page.addEventListener('pagehide', () => { saveRecorded(); sink.finish(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { saveRecorded(); sink.finish(); } });
     GM_registerMenuCommand('Copy character export (player, gear, inventory)', copyExport);

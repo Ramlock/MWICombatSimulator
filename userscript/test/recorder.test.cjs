@@ -349,7 +349,8 @@ test('the recorder and the sink have no network or storage calls of their own; t
     const pure = src.slice(src.indexOf('==/UserScript=='), src.indexOf("if (typeof module !== 'undefined' && module.exports)"));
     for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'GM_', 'sendBeacon', 'WebSocket']) assert.ok(!pure.includes(bad), 'module part: ' + bad);
     for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'sendBeacon', 'new WebSocket']) assert.ok(!src.includes(bad), bad);
-    assert.equal((src.match(/GM_xmlhttpRequest\(/g) || []).length, 1);
+    assert.equal((src.match(/GM_xmlhttpRequest\(/g) || []).length, 2, 'two requests: the combat POST and the token GET, both to the helper address');
+    assert.deepEqual(src.match(/url: helperUrl\(\) \+ '[^']+'/g), ["url: helperUrl() + '/v1/combat'", "url: helperUrl() + '/token'"]);
     assert.deepEqual(src.match(/^\/\/ @connect\s+\S+/gm).map((l) => l.split(/\s+/).pop()), ['127.0.0.1', 'localhost']);
     assert.ok(/url: helperUrl\(\) \+ '\/v1\/combat'/.test(src));
     assert.ok(/\^http:\\\/\\\/\(127\\\.0\\\.0\\\.1\|localhost\):\\d\+\$/.test(src), 'the helper address is limited to localhost');

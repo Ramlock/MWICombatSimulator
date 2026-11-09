@@ -4,6 +4,12 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.9.0 (2026-11-09)
+
+- Simpler install: you no longer paste the helper's token. When the script holds no token it asks the helper for it, once when the game page loads (and again at 2 s, 4 s, 8 s and so on, up to 60 s, while it still has none), and stores the answer. The helper hands the token only to a script manager on the same machine; a web page cannot read it. The menu entry **Set helper token** stays as a manual override, and a token you pasted is never replaced. After updating the script, restart the helper once (the helper needs the new `/token` route).
+- A warning now shows by itself on the game page, once per page load, when the recorder is on and the script still has no helper token: "MWI Combat Tracker: no helper token, so nothing is sent to the helper. The recording stays in this browser." It goes away when the token arrives. Before, a missing token showed nothing until you opened the Status menu entry.
+- The script's name and namespace are unchanged, so an update keeps your settings, your recording and the list of what was already sent.
+
 ### 0.8.0 (2026-11-09)
 
 - The party snapshot the simulator page reads now also says which players to tick (the slots of the party) and which zone and tier the group is fighting, and the "Import party from game" button ticks those players and sets that zone and tier (a dungeon switches the dungeon option on first). The zone and tier come from the game's own party and action messages, which the script now also reads (read-only, like the others). Idle, or in the Labyrinth, there is no zone or tier and the page keeps what it has; a zone or tier the page does not offer is left as it is. An older snapshot, or an older simulator page, imports exactly as before.

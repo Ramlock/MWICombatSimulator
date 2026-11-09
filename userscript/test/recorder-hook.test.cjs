@@ -1,6 +1,7 @@
 // Node test for the browser side of userscript/mwics-exporter.user.js (hook, menu commands, storage) on mocked page objects.
 // Run: node userscript/test/recorder-hook.test.cjs
 // Covers: the getter returns every message unchanged; only the game socket is read; recorded messages feed the recorder;
+// GET /token (the script asks the helper for its token; opts.tokenRespond(request) -> {status, responseText} or 'error'; default 403) is counted apart in tokenReqs.
 // "Copy loot export" copies the file, "Clear recorded loot" empties it, the record survives a reload through the stored keys.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,19 +14,25 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'mwics-exporter.user.js')
 function boot(store, opts) {
     opts = opts || {};
     class ME { constructor(d, url) { this._d = d; this.currentTarget = { url }; } get data() { return this._d; } }
-    const commands = {}, clip = [], toasts = [], reqs = [], timers = [], downloads = [], intervals = [], created = [];
-    const el = () => { const e = { style: {}, remove() {}, appendChild() {}, addEventListener(ev, fn) { this.on = fn; }, click() { downloads.push({ href: this.href, name: this.download }); }, set textContent(v) { toasts.push(v); } }; created.push(e); return e; };
+    const commands = {}, clip = [], toasts = [], reqs = [], tokenReqs = [], removed = [], timers = [], downloads = [], intervals = [], created = [];
+    const el = () => { const e = { style: {}, remove() { removed.push(this._t); }, appendChild(c) { (this.kids = this.kids || []).push(c); }, addEventListener(ev, fn) { this.on = fn; }, click() { downloads.push({ href: this.href, name: this.download }); }, set textContent(v) { this._t = v; toasts.push(v); } }; created.push(e); return e; };
     const blobs = [];
     const sandbox = {
         console, setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, JSON, Date, WeakSet, Object, Promise, Math, Set, Map, Array, String, Number, Error, RegExp, Blob: class { constructor(parts) { blobs.push(parts.join('')); } },
         URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
         unsafeWindow: { MessageEvent: ME, addEventListener() {}, prompt: () => opts.prompt },
-        document: { body: { appendChild() {} }, createElement: el, addEventListener() {}, getElementById: (id) => (opts.dom && opts.dom[id]) || null, visibilityState: 'visible' }, location: opts.location, setInterval: (fn) => { intervals.push(fn); return intervals.length; }, clearInterval: (i) => { intervals[i - 1] = null; },
+        document: { body: { appendChild() {} }, createElement: el, createTextNode: (text) => ({ text }), addEventListener() {}, getElementById: (id) => (opts.dom && opts.dom[id]) || null, visibilityState: 'visible' }, location: opts.location, setInterval: (fn) => { intervals.push(fn); return intervals.length; }, clearInterval: (i) => { intervals[i - 1] = null; },
         GM_registerMenuCommand: (n, f) => { commands[n] = f; },
         GM_setClipboard: (t) => clip.push(t),
         GM_getValue: (k, d) => (k in store ? store[k] : d),
         GM_setValue: (k, v) => { store[k] = v; },
         GM_xmlhttpRequest: (o) => {
+            if (o.method === 'GET') {
+                tokenReqs.push(o);
+                const t = opts.tokenRespond ? opts.tokenRespond(o) : { status: 403, responseText: '' };
+                Promise.resolve().then(() => (t === 'error' ? o.onerror() : o.onload(t)));
+                return;
+            }
             reqs.push(o);
             const n = JSON.parse(o.data).records.length;
             const r = opts.respond ? opts.respond(o) : { status: 200, responseText: JSON.stringify({ accepted: n, duplicate: 0, rejected: 0 }) };
@@ -34,7 +41,7 @@ function boot(store, opts) {
     };
     vm.runInNewContext(SRC, sandbox);
     const send = (msg, url) => new ME(typeof msg === 'string' ? msg : JSON.stringify(msg), url || 'wss://api.milkywayidle.com/ws').data;
-    return { commands, clip, toasts, send, reqs, timers, downloads, blobs, intervals, created };
+    return { commands, clip, toasts, send, reqs, tokenReqs, removed, timers, downloads, blobs, intervals, created };
 }
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -132,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.8.0/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.9.0/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -145,13 +152,15 @@ await test('with a token the finished encounters go to the helper once, in the w
 
 await test('a refused or unreachable helper keeps the data and retries; the toggle off sends nothing', async () => {
     const b = boot({}, { prompt: 't', respond: () => ({ status: 401, responseText: '{}' }) });
+    await tick();
+    const baseline = b.timers.length;
     b.send({ type: 'init_character_data', character: { id: 1 } });
     b.commands['Set helper token']();
     for (let id = 1; id <= 8; id++) b.send(NB(id));
     await tick(); await tick();
     assert.ok(b.reqs.length >= 1);
     assert.ok(b.toasts.some((t) => /helper not reachable or token wrong/.test(t)));
-    assert.ok(b.timers.some((t) => t.ms >= 2000), 'a retry is scheduled');
+    assert.ok(b.timers.slice(baseline).some((t) => t.ms >= 2000), 'a retry is scheduled');
     b.commands['Copy combat recording (clipboard)']();
     assert.ok(JSON.parse(b.clip[0]).encounters.length >= 3, 'the in-browser record is untouched');
     const off = boot({ mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper: false }) }, { prompt: 't' });
@@ -236,8 +245,10 @@ await test('the snapshot carries selected and fight, kept live by party_updated,
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.8.0/);
-    assert.ok(SRC.includes("const VERSION = '0.8.0'"));
+    assert.match(SRC, /@version\s+0.9.0/);
+    assert.ok(SRC.includes("const VERSION = '0.9.0'"));
+    assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
+    assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });
 
 await test('Copy group export: reads the battle start and a shared profile from the socket, keeps profiles across a reload, never sends', async () => {
@@ -264,6 +275,123 @@ await test('Copy group export: reads the battle start and a shared profile from 
     again.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [] });
     again.commands[NAME]();
     assert.equal(JSON.parse(again.clip[0])['1'].player.attackLevel, 33, 'the shared profile and the party survive a reload');
+});
+
+const WARN = 'MWI Combat Tracker: no helper token, so nothing is sent to the helper. The recording stays in this browser.';
+const TOK = 'fetched-token-0123456789abcdef';
+const ok = (token) => () => ({ status: 200, responseText: JSON.stringify({ token }) });
+
+await test('no token, recorder on: the script asks the helper (GET /token, no token header) and, when refused, warns once per page load', async () => {
+    const store = {};
+    const b = boot(store);
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 1);
+    assert.equal(b.tokenReqs[0].method, 'GET');
+    assert.equal(b.tokenReqs[0].url, 'http://127.0.0.1:47631/token');
+    assert.ok(!b.tokenReqs[0].headers || !Object.keys(b.tokenReqs[0].headers).some((k) => /token/i.test(k)), 'no token header on the ask');
+    assert.equal(b.toasts.filter((t) => t === WARN).length, 1, 'the warning shows once');
+    // the backoff retries ask again (the token is still empty) and never repeat the warning
+    for (let i = 0; i < 3; i++) { const t = b.timers.filter((x) => x.ms >= 2000 && !x.done).pop(); t.done = true; t.fn(); await tick(); await tick(); }
+    assert.equal(b.tokenReqs.length, 4, 'one ask at load, then one per backoff retry');
+    assert.equal(b.toasts.filter((t) => t === WARN).length, 1, 'still once per page load');
+    const waits = b.timers.filter((x) => x.ms >= 2000 && x.ms !== 15000).map((x) => x.ms);
+    assert.deepEqual(waits.slice(0, 3), [2000, 4000, 8000], 'the existing 2 s doubling backoff');
+    assert.equal(store.mwicsHelperToken, undefined, '403 leaves the token empty');
+    assert.equal(b.reqs.length, 0, 'nothing is sent');
+    b.send({ type: 'init_character_data', character: { id: 1 } });
+    for (let id = 1; id <= 8; id++) b.send(NB(id));
+    await tick(); await tick();
+    assert.equal(b.reqs.length, 0, 'still nothing is sent without a token');
+    b.commands['Copy combat recording (clipboard)']();
+    assert.ok(JSON.parse(b.clip[0]).encounters.length >= 3, 'the recording stays in the browser');
+});
+
+await test('recorder off: the script neither asks the helper nor warns', async () => {
+    const b = boot({ mwicsRecorderToggles: JSON.stringify({ recorder: false }) });
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 0);
+    assert.ok(!b.toasts.includes(WARN));
+});
+
+await test('the helper answers: the token is stored, the warning is cleared, the next send carries it', async () => {
+    const store = {};
+    let answer = { status: 403, responseText: '' };
+    const b = boot(store, { tokenRespond: () => answer });
+    await tick(); await tick();
+    assert.equal(b.toasts.filter((t) => t === WARN).length, 1, 'refused first: warned');
+    assert.ok(!b.removed.includes(WARN));
+    answer = { status: 200, responseText: JSON.stringify({ token: TOK }) };
+    b.timers.filter((x) => x.ms >= 2000).pop().fn();
+    await tick(); await tick();
+    assert.equal(store.mwicsHelperToken, TOK, 'stored with GM_setValue');
+    assert.ok(b.removed.includes(WARN), 'the warning toast is removed');
+    const asked = b.tokenReqs.length;
+    b.send({ type: 'init_character_data', character: { id: 1 } });
+    for (let id = 1; id <= 8; id++) b.send(NB(id));
+    await tick(); await tick();
+    assert.ok(b.reqs.length >= 1);
+    assert.equal(b.reqs[0].headers['X-MWI-Token'], TOK, 'the fetched token is used as if pasted');
+    assert.equal(b.tokenReqs.length, asked, 'no second ask once the token is held');
+    b.commands.Status();
+    assert.ok(b.toasts.some((x) => /sending to the helper\. Written/.test(x)));
+});
+
+await test('the helper answers on the first ask: no warning at all, and sending starts without a reload', async () => {
+    const store = {};
+    const b = boot(store, { tokenRespond: ok(TOK) });
+    await tick(); await tick();
+    assert.equal(store.mwicsHelperToken, TOK);
+    assert.ok(!b.toasts.includes(WARN));
+    assert.equal(b.tokenReqs.length, 1);
+    b.send({ type: 'init_character_data', character: { id: 1 } });
+    for (let id = 1; id <= 8; id++) b.send(NB(id));
+    await tick(); await tick();
+    assert.equal(b.reqs[0].headers['X-MWI-Token'], TOK);
+});
+
+await test('a stored token is never asked for again (the manual override stays), and Set helper token replaces a fetched one', async () => {
+    const withToken = boot({ mwicsHelperToken: 'pasted-by-hand' }, { tokenRespond: ok(TOK) });
+    await tick(); await tick();
+    assert.equal(withToken.tokenReqs.length, 0, 'a held token is not replaced by the helper');
+    assert.ok(!withToken.toasts.includes(WARN));
+    const store = {};
+    const b = boot(store, { prompt: 'manual-override', tokenRespond: ok(TOK) });
+    await tick(); await tick();
+    assert.equal(store.mwicsHelperToken, TOK);
+    b.commands['Set helper token']();
+    assert.equal(store.mwicsHelperToken, 'manual-override');
+    b.send({ type: 'init_character_data', character: { id: 1 } });
+    for (let id = 1; id <= 8; id++) b.send(NB(id));
+    await tick(); await tick();
+    assert.equal(b.reqs[0].headers['X-MWI-Token'], 'manual-override');
+    assert.equal(b.tokenReqs.length, 1);
+});
+
+await test('an unreachable helper, a 404 from an older helper and a 200 with no usable token all leave it empty, warn once and keep retrying', async () => {
+    for (const respond of ['error', { status: 404, responseText: '' }, { status: 200, responseText: 'not json' }, { status: 200, responseText: '{"token":""}' }, { status: 200, responseText: '{"token":"has space"}' }, { status: 200, responseText: '{}' }]) {
+        const store = {};
+        const b = boot(store, { tokenRespond: () => respond });
+        await tick(); await tick();
+        assert.equal(store.mwicsHelperToken, undefined, JSON.stringify(respond));
+        assert.equal(b.toasts.filter((t) => t === WARN).length, 1, JSON.stringify(respond));
+        assert.ok(b.timers.some((t) => t.ms === 2000), 'a retry is scheduled');
+        assert.equal(b.reqs.length, 0);
+    }
+});
+
+await test('turning the recorder on in Settings asks the helper when no token is held', async () => {
+    const store = { mwicsRecorderToggles: JSON.stringify({ recorder: false }) };
+    const b = boot(store, { tokenRespond: ok(TOK) });
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 0, 'recorder off at load: no ask');
+    b.commands.Settings();
+    const row = b.created.find((e) => e.kids && e.kids[1] && e.kids[1].text === 'Combat recorder');
+    const cb = row.kids[0];
+    cb.checked = true;
+    cb.on();
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 1);
+    assert.equal(store.mwicsHelperToken, TOK);
 });
 
 console.log(n + ' tests passed');
