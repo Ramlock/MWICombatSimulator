@@ -98,9 +98,35 @@ try {
     await page.send('Page.navigate', { url: base });
     check('the What-if button shows when the runner answers', await until(`document.getElementById('buttonWhatIf')?.style.display === ''`));
     check('the page is dark by default', await js(`document.body.classList.contains('dark-mode')`));
-    await js(`(() => { const c = document.getElementById('player1'); if (!c.checked) c.click(); return true; })()`);
+    // The page's own choices, which the window copies when it opens: Player 1 only, the third zone, tier 2.
+    await js(`(() => { for (const c of document.querySelectorAll('.player-checkbox')) c.checked = c.id === 'player1'; const z = document.getElementById('selectZone'); z.selectedIndex = 2; document.getElementById('selectDifficulty').value = '2'; return true; })()`);
+    const pageState = `({ zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value, ticks: [...document.querySelectorAll('.player-checkbox')].map((c) => c.checked).join() })`;
+    const pageChoices = await js(pageState);
     await js(`document.getElementById('buttonWhatIf').click(), true`);
     check('the window opens with a budget per ticked player', await until(`!!document.querySelector('#whatIfBudgets input[data-player="Player 1"]')`));
+    check('the window copies the page\'s players (only Player 1 ticked), zone and tier', await js(`(() => { const boxes = [...document.querySelectorAll('#whatIfPlayers input')]; return boxes.length === 5 && boxes.map((b) => b.checked).join() === 'true,false,false,false,false' && document.querySelector('label[for="whatIfPlayer_1"]').textContent === 'Player 1' && document.getElementById('selectWhatIfZone').value === ${JSON.stringify(pageChoices.zone)} && document.getElementById('selectWhatIfTier').value === '2'; })()`));
+    check('the zone and tier selectors carry the page\'s options in the same order and names', await js(`(() => { const same = (a, b) => JSON.stringify([...document.getElementById(a).options].map((o) => [o.value, o.textContent])) === JSON.stringify([...document.getElementById(b).options].map((o) => [o.value, o.textContent])); return document.getElementById('selectZone').options.length > 5 && same('selectWhatIfZone', 'selectZone') && same('selectWhatIfTier', 'selectDifficulty'); })()`));
+    // An edit in the window: Player 2 ticked, another zone and tier. The page keeps its own.
+    await js(`(() => { for (const [id, v] of [['selectWhatIfZone', document.getElementById('selectWhatIfZone').options[4].value], ['selectWhatIfTier', '1']]) { const s = document.getElementById(id); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); } document.getElementById('whatIfPlayer_2').click(); return true; })()`);
+    check('a player ticked in the window gets a budget row; the page is unchanged', await js(`!!document.querySelector('#whatIfBudgets input[data-player="Player 2"]') && document.querySelectorAll('#whatIfBudgets input').length === 2`) &&
+        JSON.stringify(await js(pageState)) === JSON.stringify(pageChoices));
+    await js(`document.getElementById('whatIfPlayer_2').click(), document.getElementById('whatIfPlayer_1').click(), true`);
+    check('unticking every player shows the message and no budget rows', await js(`document.getElementById('whatIfMessage').textContent === 'Tick at least one player to simulate.' && document.querySelectorAll('#whatIfBudgets input').length === 0`));
+    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    check('Start with none ticked sends nothing', received === null && (await js(`document.getElementById('whatIfMessage').textContent`)) === 'Tick at least one player to simulate.');
+    await js(`document.getElementById('whatIfPlayer_1').click(), true`);
+    check('ticking a player again clears the message and brings the budget row back', await js(`document.getElementById('whatIfMessage').textContent === '' && document.querySelectorAll('#whatIfBudgets input').length === 1`));
+    // A window opened on a page with nobody ticked copies nothing: none ticked, the message, no rows.
+    const reopen = `document.getElementById('whatIfModal').dispatchEvent(new Event('show.bs.modal')), true`;
+    await js(`(document.getElementById('player1').checked = false, true)`);
+    await js(reopen);
+    check('a page with no player ticked gives a window with none ticked and the message', await js(`[...document.querySelectorAll('#whatIfPlayers input')].every((b) => !b.checked) && document.getElementById('whatIfMessage').textContent === 'Tick at least one player to simulate.' && document.querySelectorAll('#whatIfBudgets input').length === 0`) &&
+        await js(`document.getElementById('selectWhatIfZone').value === ${JSON.stringify(pageChoices.zone)} && document.getElementById('selectWhatIfTier').value === '2'`));
+    await js(`(document.getElementById('player1').checked = true, true)`);
+    await js(reopen);
+    check('opening again copies the page again, dropping the window\'s edits', await js(`document.getElementById('whatIfPlayer_1').checked && document.getElementById('whatIfMessage').textContent === '' && !!document.querySelector('#whatIfBudgets input[data-player="Player 1"]')`));
+    // The window's own zone and tier for the request (a zone and tier other than the page's).
+    const windowZone = await js(`(() => { const s = document.getElementById('selectWhatIfZone'); s.value = s.options[4].value; s.dispatchEvent(new Event('change', { bubbles: true })); const t = document.getElementById('selectWhatIfTier'); t.value = '1'; return s.value; })()`);
     check('the window lists the levers, equipment ticked', await js(`document.querySelectorAll('#whatIfLevers input').length === 11 && document.getElementById('whatIfLever_equip').checked && !document.getElementById('whatIfLever_houses').checked`));
     check('the runner version is shown', await js(`document.getElementById('whatIfVersion').textContent.includes('test-runner')`));
     await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = 'abc'; return true; })()`);
@@ -117,6 +143,7 @@ try {
     check('progress is shown while it runs', await until(`document.getElementById('whatIfProgress').textContent.includes('candidates left')`));
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
         received.budgets['Player 1'] === 1000000 && received.levers.join() === 'equip,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
+    check('the request follows the window\'s zone, tier and players, not the page\'s', received.options.zone === windowZone && windowZone !== pageChoices.zone && received.options.tier === 1 && received.players.join() === 'Player 1', JSON.stringify(received.options.zone) + ' ' + JSON.stringify(received.players));
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
     check('the progress bar has a dark track and a fill of its own in dark mode', await js(`(() => { const p = document.querySelector('#whatIfProgress .whatif-progress'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const t = getComputedStyle(p).backgroundColor, b = getComputedStyle(p.querySelector('.progress-bar')).backgroundColor; return lum(t) < 150 && t !== b && getComputedStyle(p).borderTopWidth !== '0px'; })()`));
     await shot('whatIfModal', 'whatif-progress.png');
@@ -150,6 +177,11 @@ try {
     await js(`i18next.changeLanguage('pt').then(() => true)`);
     check('in Portuguese the names follow the language and the list is closed again', await until(`(() => { const ul = document.getElementById('whatIfOverBudget'); const n = i18next.t('itemNames./items/pathseeker_boots_refined'); return n !== 'Pathseeker Boots ★' && ul.hidden && ul.textContent.includes(n + ' +12') && !ul.textContent.includes('Pathseeker Boots'); })()`));
     check('in Portuguese the warning\'s field follows the language too', await until(`(() => { const t = document.getElementById('whatIfDiff').textContent; const n = i18next.t('skillNames./skills/magic'); return n !== 'Magic' && t.includes(i18next.t('common:whatIf.diff.level', { skill: n }) + ':') && !t.includes('Magic level'); })()`));
+    // The page's own language switch (it localizes the page's labels after the language changes).
+    const switchTo = (prefix) => js(`(document.querySelector('.language-switcher') ? [...document.querySelectorAll('.language-switcher button')].find((b) => b.textContent.startsWith('${prefix}')).click() : null, true)`);
+    await switchTo('Portugu');
+    check('in Portuguese the new labels and the zone names follow the language, and the window picks stay', await until(`(() => { const z = document.getElementById('selectWhatIfZone'); const pz = document.getElementById('selectZone'); return document.querySelector('[data-i18n="common:whatIf.players"]').textContent === 'Jogadores' && document.querySelector('label[for="selectWhatIfZone"]').textContent === 'Zona' && i18next.t('common:whatIf.choicesNote').includes('desmarcado') && z.value === ${JSON.stringify(windowZone)} && z.options[3].textContent === pz.options[3].textContent && z.options[3].textContent === i18next.t('actionNames.' + z.options[3].value) && z.options[3].textContent !== 'Porcupine' && document.getElementById('selectWhatIfTier').value === '1'; })()`));
+    await switchTo('English');
     await js(`i18next.changeLanguage('en').then(() => true)`);
     check('back in English the names are English', await until(`document.getElementById('whatIfOverBudget').textContent.includes('Feet Pathseeker Boots ★ +12')`));
     check('the cost path column wraps', await js(`getComputedStyle(document.querySelector('#whatIfResult td.wrap')).whiteSpace === 'normal'`));
@@ -161,6 +193,12 @@ try {
         (await js(`document.getElementById('inputLevel_attack').value`)) === (await js(`document.getElementById('inputLevel_attack').value`)));
     await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
     check('Show loads an earlier result', await until(`document.getElementById('whatIfResult').textContent.includes('Magic 1')`));
+    // A three-player party: only the page's real player tabs count.
+    await js(`(() => { for (const n of [4, 5]) document.getElementById('player' + n + '-tab').parentElement.remove(); return true; })()`);
+    await js(reopen);
+    check('a three-player page gives three tick boxes in the window', await js(`document.querySelectorAll('#whatIfPlayers input').length === 3 && [...document.querySelectorAll('#whatIfPlayers label')].map((l) => l.textContent).join() === 'Player 1,Player 2,Player 3'`));
+    await js(`document.getElementById('whatIfPlayer_3').click(), true`);
+    check('the budget rows follow the ticks in a three-player window', await js(`[...document.querySelectorAll('#whatIfBudgets input')].map((i) => i.dataset.player).join() === 'Player 1,Player 3'`));
     page.close();
 } finally {
     await chrome.close();

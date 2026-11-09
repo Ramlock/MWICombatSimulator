@@ -144,6 +144,10 @@
             "exp": "EXP do grupo por hora"
         },
         "budgets": "Orçamento por jogador (moedas)",
+        "players": "Jogadores",
+        "zone": "Zona",
+        "tier": "Nível",
+        "choicesNote": "Copiado da página ao abrir esta janela (um jogador desmarcado na página fica desmarcado aqui); mudanças aqui afetam só esta busca.",
         "levers": "O que buscar",
         "lever": {
             "equip": {

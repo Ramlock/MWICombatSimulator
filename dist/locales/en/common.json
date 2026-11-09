@@ -144,6 +144,10 @@
             "exp": "Party EXP per hour"
         },
         "budgets": "Budget per player (coin)",
+        "players": "Players",
+        "zone": "Zone",
+        "tier": "Tier",
+        "choicesNote": "Copied from the page when this window opens (a player unchecked on the page is unchecked here); changes here affect only this search.",
         "levers": "What to search",
         "lever": {
             "equip": {

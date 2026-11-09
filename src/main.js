@@ -4173,17 +4173,68 @@ function initErrorHandling() {
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
 const whatIf = { searchId: null, state: null, timer: null, result: null };
 
-// The page's player slots; the current tab is saved first, so the slots hold what the screen shows.
+// The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
+// shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
 function whatIfSlots(onlySelected) {
     savePreviousPlayer(currentPlayerTabId);
     const tabs = document.querySelectorAll('#playerTab .nav-link');
-    const selected = new Set([...document.querySelectorAll('.player-checkbox')].filter((c) => c.checked).map((c) => c.id.replace('player', '')));
+    const selected = new Set([...document.querySelectorAll('#whatIfPlayers input:checked')].map((c) => c.value));
     const slots = [];
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= tabs.length; i++) {
         if (onlySelected && !selected.has(String(i))) continue;
         slots.push({ id: String(i), name: tabs[i - 1].textContent.trim(), json: playerDataMap[i] });
     }
     return slots;
+}
+
+// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. Copied
+// from the page when the window opens (fromPage); otherwise (a language change) only the names are redrawn and the
+// window's own picks are kept. Nothing here writes to the page.
+function whatIfRenderChoices(fromPage) {
+    const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
+    const players = document.getElementById('whatIfPlayers');
+    const ticked = new Set(fromPage
+        ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
+        : [...players.querySelectorAll('input:checked')].map((c) => c.value));
+    players.replaceChildren();
+    tabs.forEach((tab, index) => {
+        const row = document.createElement('div');
+        row.className = 'form-check form-check-inline';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-check-input';
+        input.id = 'whatIfPlayer_' + (index + 1);
+        input.value = String(index + 1);
+        input.checked = ticked.has(input.value);
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.htmlFor = input.id;
+        label.textContent = tab.textContent.trim();
+        row.append(input, label);
+        players.append(row);
+    });
+    const copySelect = (id, pageId) => {
+        const select = document.getElementById(id);
+        const keep = fromPage ? document.getElementById(pageId).value : select.value;
+        // An option keeps the page's data-i18n key, so the page's own language switch (which localizes after the
+        // languageChanged event) renames it too.
+        select.replaceChildren(...[...document.getElementById(pageId).options].map((o) => {
+            const copy = new Option(o.textContent, o.value);
+            if (o.dataset.i18n) copy.dataset.i18n = o.dataset.i18n;
+            return copy;
+        }));
+        select.value = keep;
+    };
+    copySelect('selectWhatIfZone', 'selectZone');
+    copySelect('selectWhatIfTier', 'selectDifficulty');
+}
+
+// Shown while no player is ticked in the window; cleared again once one is (only its own text).
+function whatIfCheckPlayers() {
+    const none = !document.querySelector('#whatIfPlayers input:checked');
+    const message = document.getElementById('whatIfMessage');
+    if (none) whatIfMessage(whatIfT('noPlayers'));
+    else if (message.textContent === whatIfT('noPlayers')) whatIfMessage('');
 }
 
 async function whatIfRequest(url, options) {
@@ -4308,7 +4359,7 @@ async function whatIfStart() {
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
     const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
-        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value }, () => fetchMarketplace());
+        zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
@@ -4378,7 +4429,8 @@ async function initWhatIf() {
     // Strings are read when the window opens: i18next may not be ready when this runs.
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
-        whatIfRenderSetup(); whatIfLoadList(); whatIfShowDiff(); });
+        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
+    document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
@@ -4392,7 +4444,7 @@ async function initWhatIf() {
             more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
         }
     });
-    i18next.on('languageChanged', () => { whatIfRenderSetup(); if (whatIf.result) whatIfShowResult(whatIf.result); });
+    i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result); });
 }
 // #endregion
 
