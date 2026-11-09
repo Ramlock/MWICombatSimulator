@@ -13,6 +13,7 @@ import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
+import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { cellValue, formatNumber, formatUnit, percentSign, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
@@ -2694,6 +2695,8 @@ function showManapointsGained(simResult, playerToDisplay) {
         newChildren.push(ranOutOfManaStatRow);
     }
 
+    newChildren.push(...triggerHoldRows(simResult, playerToDisplay));
+
     resultDiv.replaceChildren(...newChildren);
 }
 
@@ -2933,6 +2936,43 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     }
 
     resultDiv.replaceChildren(...newChildren);
+}
+
+// "Held for mana" and "Held by trigger" rows under "Ran out of mana": share of sim time and holds per hour, read from
+// the result object (summarizeTriggerHolds), never from the page.
+function triggerHoldRows(simResult, playerToDisplay) {
+    const holds = summarizeTriggerHolds(simResult, playerToDisplay);
+    const value = (h) => percentHtml(h.share * 100) + " &middot; " + numberHtml(h.perHour) + '<span data-i18n="common:simulationResults.perHourSuffix">/h</span>';
+    const rows = [];
+    if (holds.mana) {
+        const row = createRow(["col-md-6", "col-md-6 text-end"], ["Held for mana", value(holds.mana)]);
+        row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldForMana");
+        rows.push(row);
+    }
+    if (holds.abilities.length > 0) {
+        const header = createRow(["col-md-12"], ["Held by trigger"]);
+        header.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldByTrigger");
+        rows.push(header);
+        for (const { abilityHrid, conditions } of holds.abilities) {
+            const abilityRow = createRow(["col-md-12 ps-3"], [abilityDetailMap[abilityHrid]?.name ?? abilityHrid]);
+            abilityRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + abilityHrid);
+            rows.push(abilityRow);
+            for (const c of conditions) {
+                rows.push(createRow(["col-md-6 ps-4", "col-md-6 text-end"], [triggerConditionHtml(c), value(c)]));
+            }
+        }
+    }
+    return rows;
+}
+
+// A trigger condition in the game's words ("My Current Mp >= 300"), each part localized by its game key.
+function triggerConditionHtml(c) {
+    const part = (key, map, hrid) => `<span data-i18n="${key}.${hrid}">${map[hrid]?.name ?? hrid}</span>`;
+    let html = part("combatTriggerDependencyNames", combatTriggerDependencyDetailMap, c.dependencyHrid) + " "
+        + part("combatTriggerConditionNames", combatTriggerConditionDetailMap, c.conditionHrid) + " "
+        + part("combatTriggerComparatorNames", combatTriggerComparatorDetailMap, c.comparatorHrid);
+    if (combatTriggerComparatorDetailMap[c.comparatorHrid]?.allowValue) html += " " + numberHtml(c.value);
+    return html;
 }
 
 function createRow(columnClassNames, columnValues) {

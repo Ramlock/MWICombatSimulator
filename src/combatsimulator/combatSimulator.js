@@ -706,6 +706,7 @@ class CombatSimulator extends EventTarget {
             }
             this.simResult.addEncounterEnd();
             this.simResult.lastEncounterFinishTime = this.simulationTime;
+            this.players.forEach((player) => this.simResult.closeTriggerHolds(player, this.simulationTime));
             // console.log("All enemies died");
 
             encounterEnded = true;
@@ -719,6 +720,7 @@ class CombatSimulator extends EventTarget {
                     this.eventQueue.addEvent(playerRespawnEvent);
                 }
                 this.simResult.addRanOutOfManaCount(player, false, this.simulationTime);
+                this.simResult.closeTriggerHolds(player, this.simulationTime);
                 // console.log(player.hrid + " died at " + (this.simulationTime / 1000000000) + 'in wave #' + (this.zone.encountersKilled - 1) + ' with ememies: ' + this.enemies?.map(enemy => (enemy.hrid+"("+(enemy.combatDetails.currentHitpoints*100/enemy.combatDetails.maxHitpoints).toFixed(2)+"%)")).join(", "));
             }
         });
@@ -792,11 +794,18 @@ class CombatSimulator extends EventTarget {
 
         let usedAbility = false;
         let skipNextAbility = false; 
+        const failedTriggers = source.isPlayer ? [] : null; // "held by trigger" stat: observes only
 
         source.abilities
             .filter((ability) => ability != null)
             .forEach((ability) => {
-                if (!usedAbility && !skipNextAbility && ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies)) {
+                if (usedAbility || skipNextAbility) {
+                    return;
+                }
+                if (failedTriggers) failedTriggers.length = 0;
+                const triggered = ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies, failedTriggers);
+                if (failedTriggers) this.simResult.updateTriggerHolds(source, ability, failedTriggers, this.simulationTime);
+                if (triggered) {
                     if (!this.canUseAbility(source, ability, true)) {
                         skipNextAbility = true;
                     }

@@ -196,7 +196,9 @@ class Ability {
         return ability;
     }
 
-    shouldTrigger(currentTime, source, target, friendlies, enemies) {
+    // failed (optional): an array that receives the index of every trigger condition that fails when the ability is
+    // otherwise ready (not stunned or silenced, off cooldown). It only observes; the result is the same with or without it.
+    shouldTrigger(currentTime, source, target, friendlies, enemies, failed = null) {
         if (source.isStunned) {
             return false;
         }
@@ -220,9 +222,10 @@ class Ability {
         }
 
         let shouldTrigger = true;
-        for (const trigger of this.triggers) {
-            if (!trigger.isActive(source, target, friendlies, enemies, currentTime)) {
+        for (let i = 0; i < this.triggers.length; i++) {
+            if (!this.triggers[i].isActive(source, target, friendlies, enemies, currentTime)) {
                 shouldTrigger = false;
+                if (failed) failed.push(i);
             }
         }
 
@@ -1092,6 +1095,7 @@ class CombatSimulator extends EventTarget {
             }
             this.simResult.addEncounterEnd();
             this.simResult.lastEncounterFinishTime = this.simulationTime;
+            this.players.forEach((player) => this.simResult.closeTriggerHolds(player, this.simulationTime));
             // console.log("All enemies died");
 
             encounterEnded = true;
@@ -1105,6 +1109,7 @@ class CombatSimulator extends EventTarget {
                     this.eventQueue.addEvent(playerRespawnEvent);
                 }
                 this.simResult.addRanOutOfManaCount(player, false, this.simulationTime);
+                this.simResult.closeTriggerHolds(player, this.simulationTime);
                 // console.log(player.hrid + " died at " + (this.simulationTime / 1000000000) + 'in wave #' + (this.zone.encountersKilled - 1) + ' with ememies: ' + this.enemies?.map(enemy => (enemy.hrid+"("+(enemy.combatDetails.currentHitpoints*100/enemy.combatDetails.maxHitpoints).toFixed(2)+"%)")).join(", "));
             }
         });
@@ -1178,11 +1183,18 @@ class CombatSimulator extends EventTarget {
 
         let usedAbility = false;
         let skipNextAbility = false; 
+        const failedTriggers = source.isPlayer ? [] : null; // "held by trigger" stat: observes only
 
         source.abilities
             .filter((ability) => ability != null)
             .forEach((ability) => {
-                if (!usedAbility && !skipNextAbility && ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies)) {
+                if (usedAbility || skipNextAbility) {
+                    return;
+                }
+                if (failedTriggers) failedTriggers.length = 0;
+                const triggered = ability.shouldTrigger(this.simulationTime, source, target, friendlies, enemies, failedTriggers);
+                if (failedTriggers) this.simResult.updateTriggerHolds(source, ability, failedTriggers, this.simulationTime);
+                if (triggered) {
                     if (!this.canUseAbility(source, ability, true)) {
                         skipNextAbility = true;
                     }
@@ -4491,6 +4503,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
 /* harmony import */ var _data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
+/* harmony import */ var _triggerHolds_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./triggerHolds.js */ "./src/combatsimulator/triggerHolds.js");
+
 
 
 class SimResult {
@@ -4514,6 +4528,11 @@ class SimResult {
             "player5": false
         };
         this.playerRanOutOfManaTime = {};
+        // "Held by trigger": per player hrid, per ability hrid, one record per trigger condition (index order).
+        // A condition holds the ability while the ability is ready but the condition fails; see updateTriggerHolds.
+        this.triggerHolds = {};
+        // "Held for mana": per player hrid, the time the player is out of mana or held by an own-MP condition.
+        this.manaHolds = {};
         this.manaUsed = {};
         this.timeSpentAlive = [];
         this.bossSpawns = [];
@@ -4765,6 +4784,72 @@ class SimResult {
                 this.playerRanOutOfManaTime[unit.hrid].totalTimeForOutOfMana += time - this.playerRanOutOfManaTime[unit.hrid].startTimeForOutOfMana;
             }
         }
+        this.syncManaHold(unit.hrid, time);
+    }
+
+    // One check of a ready-or-not ability: failed holds the indexes of the trigger conditions that failed while the
+    // ability was otherwise ready. A condition's hold starts at the first check it fails and ends at the next check
+    // it passes (the ability fired, or something else still holds it), or at death or the encounter's end.
+    updateTriggerHolds(unit, ability, failed, time) {
+        const triggers = ability.triggers;
+        if (!triggers || triggers.length == 0) return;
+        let byAbility = this.triggerHolds[unit.hrid];
+        if (!byAbility) byAbility = this.triggerHolds[unit.hrid] = {};
+        let records = byAbility[ability.hrid];
+        if (!records) {
+            records = byAbility[ability.hrid] = triggers.map((t) => ({
+                dependencyHrid: t.dependencyHrid, conditionHrid: t.conditionHrid, comparatorHrid: t.comparatorHrid, value: t.value,
+                ownMp: (0,_triggerHolds_js__WEBPACK_IMPORTED_MODULE_1__.isOwnMpTrigger)(t), held: false, start: 0, total: 0, count: 0,
+            }));
+        }
+        let mpChanged = false;
+        for (let i = 0; i < records.length; i++) {
+            const r = records[i];
+            const fails = failed.includes(i);
+            if (fails && !r.held) {
+                r.held = true; r.start = time; r.count++;
+                if (r.ownMp) mpChanged = true;
+            } else if (!fails && r.held) {
+                r.held = false; r.total += time - r.start;
+                if (r.ownMp) mpChanged = true;
+            }
+        }
+        if (mpChanged) this.syncManaHold(unit.hrid, time);
+    }
+
+    // Ends every open hold of the player (death, encounter end).
+    closeTriggerHolds(unit, time) {
+        const byAbility = this.triggerHolds[unit.hrid];
+        if (!byAbility) return;
+        let mpChanged = false;
+        for (const records of Object.values(byAbility)) {
+            for (const r of records) {
+                if (r.held) {
+                    r.held = false; r.total += time - r.start;
+                    if (r.ownMp) mpChanged = true;
+                }
+            }
+        }
+        if (mpChanged) this.syncManaHold(unit.hrid, time);
+    }
+
+    // "Held for mana" is the union of "ran out of mana" and every open own-MP hold of the player.
+    syncManaHold(hrid, time) {
+        let held = !!this.playerRanOutOfManaTime[hrid]?.isOutOfMana;
+        if (!held) {
+            const byAbility = this.triggerHolds[hrid];
+            if (byAbility) held = Object.values(byAbility).some((records) => records.some((r) => r.ownMp && r.held));
+        }
+        let m = this.manaHolds[hrid];
+        if (!m) {
+            if (!held) return;
+            m = this.manaHolds[hrid] = { held: false, start: 0, total: 0, count: 0 };
+        }
+        if (held && !m.held) {
+            m.held = true; m.start = time; m.count++;
+        } else if (!held && m.held) {
+            m.held = false; m.total += time - m.start;
+        }
     }
 
     // 添加时间序列数据点
@@ -4994,6 +5079,57 @@ class Trigger {
 }
 
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (Trigger);
+
+
+/***/ }),
+
+/***/ "./src/combatsimulator/triggerHolds.js":
+/*!*********************************************!*\
+  !*** ./src/combatsimulator/triggerHolds.js ***!
+  \*********************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   isOwnMpTrigger: () => (/* binding */ isOwnMpTrigger),
+/* harmony export */   summarizeTriggerHolds: () => (/* binding */ summarizeTriggerHolds)
+/* harmony export */ });
+// "Held by trigger" and "Held for mana": the pure parts shared by SimResult (recording) and the results panel
+// (summary). A sim result crosses the worker boundary as plain data, so the summary reads plain fields only.
+
+const OWN_MP_CONDITIONS = new Set(["/combat_trigger_conditions/current_mp", "/combat_trigger_conditions/missing_mp"]);
+
+// A condition on the player's own MP: dependency "self" with "Current Mp" or "Missing Mp".
+function isOwnMpTrigger(trigger) {
+    return trigger.dependencyHrid == "/combat_trigger_dependencies/self" && OWN_MP_CONDITIONS.has(trigger.conditionHrid);
+}
+
+const ONE_HOUR = 3600 * 1e9;
+
+// Per ability of the player, per condition: share of sim time held (0..1, an open hold counted to the end of the
+// sim) and holds per hour. Plus "Held for mana" for the player. Abilities and conditions with no hold are left out.
+function summarizeTriggerHolds(simResult, hrid) {
+    const simulatedTime = simResult.simulatedTime;
+    const hours = simulatedTime / ONE_HOUR;
+    const closedTotal = (r) => r.total + (r.held ? simulatedTime - r.start : 0);
+    const abilities = [];
+    for (const [abilityHrid, records] of Object.entries(simResult.triggerHolds?.[hrid] ?? {})) {
+        const conditions = records
+            .filter((r) => r.count > 0)
+            .map((r) => ({
+                dependencyHrid: r.dependencyHrid, conditionHrid: r.conditionHrid, comparatorHrid: r.comparatorHrid, value: r.value, ownMp: r.ownMp,
+                share: simulatedTime > 0 ? closedTotal(r) / simulatedTime : 0,
+                perHour: hours > 0 ? r.count / hours : 0,
+                count: r.count,
+            }));
+        if (conditions.length > 0) abilities.push({ abilityHrid, conditions });
+    }
+    const m = simResult.manaHolds?.[hrid];
+    const mana = m && m.count > 0
+        ? { share: simulatedTime > 0 ? closedTotal(m) / simulatedTime : 0, perHour: hours > 0 ? m.count / hours : 0, count: m.count }
+        : null;
+    return { abilities, mana };
+}
 
 
 /***/ }),
@@ -5523,4 +5659,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"/buff_uniques/labyrinth_upgrade_atta
 /***/ })
 
 }]);
-//# sourceMappingURL=src_worker_js.7ff27829.js.map
+//# sourceMappingURL=src_worker_js.493a54e6.js.map

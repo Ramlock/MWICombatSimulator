@@ -180,7 +180,9 @@ class Ability {
         return ability;
     }
 
-    shouldTrigger(currentTime, source, target, friendlies, enemies) {
+    // failed (optional): an array that receives the index of every trigger condition that fails when the ability is
+    // otherwise ready (not stunned or silenced, off cooldown). It only observes; the result is the same with or without it.
+    shouldTrigger(currentTime, source, target, friendlies, enemies, failed = null) {
         if (source.isStunned) {
             return false;
         }
@@ -204,9 +206,10 @@ class Ability {
         }
 
         let shouldTrigger = true;
-        for (const trigger of this.triggers) {
-            if (!trigger.isActive(source, target, friendlies, enemies, currentTime)) {
+        for (let i = 0; i < this.triggers.length; i++) {
+            if (!this.triggers[i].isActive(source, target, friendlies, enemies, currentTime)) {
                 shouldTrigger = false;
+                if (failed) failed.push(i);
             }
         }
 
