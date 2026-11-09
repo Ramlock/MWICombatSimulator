@@ -66,6 +66,7 @@ import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
+import { createParts } from './progress.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
@@ -169,6 +170,7 @@ process.on('message', (m) => { if (m === 'stop') { stopRequested = true; for (co
 // screen, a halving, a greedy step, the confirmation); later stages are not in etaSeconds (etaScope: 'stage').
 const progress = { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0, secondsPerRun: null, etaSeconds: null, etaScope: 'stage', elapsedSeconds: 0 };
 let batch = { hoursLeft: 0, wall: 0, done: 0 };
+let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
 function report(patch = {}) {
     Object.assign(progress, patch);
     const wall = wallLog.reduce((a, r) => a + r.wallSeconds, 0), hours = wallLog.reduce((a, r) => a + r.h, 0);
@@ -176,6 +178,7 @@ function report(patch = {}) {
     progress.secondsPerRun = batch.done ? batch.wall / batch.done : wallLog.length ? wall / wallLog.length : null;
     progress.etaSeconds = left <= 0 ? 0 : hours ? Math.round((wall / hours) * batch.hoursLeft / Math.min(jobs, left)) : null;
     progress.elapsedSeconds = Math.round((Date.now() - t0) / 1000);
+    if (partsTracker) progress.parts = partsTracker.sync(progress);
     writeFileSync(path.join(OUT, 'progress.json'), JSON.stringify(progress));
     if (process.connected) process.send({ type: 'progress', progress });
 }
@@ -445,6 +448,7 @@ async function main() {
     const baseReq = [];
     stages.forEach((st) => baseReq.push(...req([], st.h, st.k * baseMult, 'base')));
 
+    partsTracker = createParts({ stages, keep, candidates: cands.length });
     let pool = cands;
     for (let si = 0; si < stages.length; si++) {
         const st = stages[si];

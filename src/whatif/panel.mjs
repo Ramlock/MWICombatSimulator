@@ -140,6 +140,7 @@ export function diffSetups(page, base) {
 export function renderProgress(status, t) {
     if (!status) return '';
     const p = status.progress || {};
+    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t);
     const parts = [`<b>${esc(t('state.' + status.state))}</b>`];
     if (p.stage) parts.push(esc(t('progress.stage')) + ' ' + esc(p.stage));
     if (p.candidatesLeft !== undefined) parts.push(esc(t('progress.candidatesLeft')) + ' ' + num(p.candidatesLeft));
@@ -151,6 +152,38 @@ export function renderProgress(status, t) {
         const pct = Math.min(100, Math.max(0, (p.runsDone / p.runsPlanned) * 100));
         html += `<div class="progress whatif-progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
     }
+    if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
+    return html;
+}
+
+// Stacked rows from progress.parts (one per part of the search; output only, every figure is a field of the part).
+// Params given to t() here are already-escaped HTML (num()), so the translated line is not escaped again.
+const fill = (t, key, params) => t(key, params);
+export function renderParts(status, t) {
+    const p = status.progress || {}, parts = p.parts;
+    const running = parts.findIndex((r) => r.state === 'running');
+    const rowsHtml = parts.map((r) => {
+        const label = r.kind === 'screen' ? t('progress.partScreen')
+            : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
+            : r.kind === 'step' ? t('progress.partStep', { n: r.index })
+            : t('progress.partConfirmation');
+        const left = r.kind === 'halving' && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
+        let text, mark, cls;
+        if (r.state === 'waiting') { text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); mark = '·'; cls = 'waiting'; }
+        else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); mark = '✓'; cls = 'done'; }
+        else {
+            text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) });
+            if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
+            mark = '▶'; cls = 'running';
+        }
+        const pct = r.state === 'done' ? 100 : r.state === 'running' && r.runsPlanned > 0 ? Math.min(100, Math.max(0, (r.runsDone / r.runsPlanned) * 100)) : 0;
+        return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-label"><span class="whatif-part-mark">${mark}</span> <b>${esc(label)}</b>${left}</span><div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div><span class="whatif-part-text">${text}</span></div>`;
+    }).join('');
+    const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.stageN', { n: running + 1 })) : esc(t('state.' + status.state));
+    const small = [];
+    if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) small.push(esc(t('progress.secondsPerRunCap')) + ' ' + num(p.secondsPerRun));
+    if (p.elapsedSeconds !== undefined && p.elapsedSeconds !== null) small.push(esc(t('progress.elapsed')) + ' ' + esc(duration(p.elapsedSeconds)));
+    let html = `<div class="whatif-parts"><div class="mb-1"><b>${title}</b></div>${rowsHtml}${small.length ? `<div class="small mt-1">${small.join(' · ')}</div>` : ''}</div>`;
     if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
     return html;
 }

@@ -226,7 +226,19 @@
             "candidatesLeft": "candidates left",
             "runs": "runs",
             "secondsPerRun": "seconds per run",
-            "eta": "time left"
+            "eta": "time left",
+            "stageN": "stage {{n}}",
+            "partScreen": "Screen",
+            "partHalving": "Halving {{n}}",
+            "partStep": "Greedy step {{n}}",
+            "partConfirmation": "Confirmation",
+            "optionsLeft": "{{n}} options left",
+            "runsOf": "{{done}} / {{total}} runs",
+            "upTo": "up to {{n}} runs",
+            "timeLeft": "{{time}} left",
+            "done": "done",
+            "secondsPerRunCap": "Seconds per run",
+            "elapsed": "elapsed"
         },
         "result": {
             "goal": "Goal",

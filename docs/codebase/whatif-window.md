@@ -21,6 +21,10 @@ The page's What-if window runs the what-if optimizer (`tools/whatif/optimize.mjs
 4. `POST /api/search/<id>/stop`: stops a running search; the same request on a stopped one resumes it.
 5. `GET /api/results` (newest first, `{ id, finished, goal, players }`) and `GET /api/results/<id>` (one result).
 
+## The progress block
+
+`renderProgress` (`panel.mjs`) draws stacked rows from `progress.parts` (`renderParts`; `whatif-runner.md`, "Progress parts"), output only: a title `Running · stage N` (N = the running row's place, from 1), one grid row per part (bold label, bar, right text), and one small line `Seconds per run <n> · elapsed <h:mm:ss>`. Label: `Screen`, `Halving <n>` with ` · <candidatesLeft> options left`, `Greedy step <n>`, `Confirmation`. Right text: `<done> / <planned> runs · <h:mm:ss> left` (running), `<planned> / <planned> runs · done`, `up to <runsUpTo> runs` (waiting). A done row has a check mark and a green bar, the running row a play mark and a blue bar, a waiting row is grey. A stopped or finished search keeps its rows. A progress with no `parts` (an older search) draws the single line as before. Strings `common:whatIf.progress.*` in en, pt and zh (pt and zh not checked by a native speaker). Styles `.whatif-part*` in `index.html`.
+
 ## What the window reads from a result
 
 1. Top: `goal`, `budgets` per player, `setups` (the base the search ran on), `confirmation` (`gainPerUser`, `sePerUser`, `cost`, `payback`), `apart` (unknown cost, listed, never ranked), `overBudget` (priced but above its player's budget: "Priced, over budget", player, change and cost, listed apart in the same style, never ranked), `options.pricesTimestamp` and `options.pricesSource` (one line: the snapshot's time and its age when shown, or that the simulator's own saved snapshot was used).
@@ -37,4 +41,5 @@ The page's What-if window runs the what-if optimizer (`tools/whatif/optimize.mjs
 
 1. `tools/test/whatif-panel.mjs`: the logic and the strings in en, pt and zh.
 2. `tools/test/whatif-exports.mjs`: the export map end to end: the window's request, status and result line (pure), the runner's old and new forms, and the optimizer on a generic party (skips, `skippedNoExport`, no throw).
-3. `tools/test/whatif-window.mjs`: the built page (`dist/`) in our own headless Chrome against a fake runner that implements the interface above; `--shots <dir>` saves dark pictures of the window.
+3. `tools/test/whatif-progress-parts.mjs`: the parts across a whole search, the rows the panel draws, the old single line.
+4. `tools/test/whatif-window.mjs`: the built page (`dist/`) in our own headless Chrome against a fake runner that implements the interface above; `--shots <dir>` saves dark pictures of the window.

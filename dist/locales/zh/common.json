@@ -225,7 +225,19 @@
             "candidatesLeft": "剩余候选",
             "runs": "运行次数",
             "secondsPerRun": "每次运行秒数",
-            "eta": "剩余时间"
+            "eta": "剩余时间",
+            "stageN": "第 {{n}} 阶段",
+            "partScreen": "初筛",
+            "partHalving": "淘汰 {{n}}",
+            "partStep": "贪心步骤 {{n}}",
+            "partConfirmation": "确认",
+            "optionsLeft": "剩余 {{n}} 个选项",
+            "runsOf": "{{done}} / {{total}} 次运行",
+            "upTo": "最多 {{n}} 次运行",
+            "timeLeft": "剩余 {{time}}",
+            "done": "完成",
+            "secondsPerRunCap": "每次运行秒数",
+            "elapsed": "已用时间"
         },
         "result": {
             "goal": "目标",

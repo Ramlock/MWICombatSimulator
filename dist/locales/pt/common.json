@@ -226,7 +226,19 @@
             "candidatesLeft": "candidatos restantes",
             "runs": "execuções",
             "secondsPerRun": "segundos por execução",
-            "eta": "Tempo restante"
+            "eta": "Tempo restante",
+            "stageN": "etapa {{n}}",
+            "partScreen": "Triagem",
+            "partHalving": "Corte {{n}}",
+            "partStep": "Passo guloso {{n}}",
+            "partConfirmation": "Confirmação",
+            "optionsLeft": "{{n}} opções restantes",
+            "runsOf": "{{done}} / {{total}} execuções",
+            "upTo": "até {{n}} execuções",
+            "timeLeft": "Tempo restante {{time}}",
+            "done": "concluído",
+            "secondsPerRunCap": "Segundos por execução",
+            "elapsed": "decorrido"
         },
         "result": {
             "goal": "Objetivo",
