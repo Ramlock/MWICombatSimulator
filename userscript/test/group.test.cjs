@@ -28,7 +28,7 @@ const battle = { type: 'new_battle', players: [
 const profileMsg = (id, name) => ({ type: 'profile_shared', profile: {
     sharableCharacter: { id, name },
     characterSkills: [{ characterID: id, skillHrid: '/skills/attack', level: 70 }, { characterID: id, skillHrid: '/skills/magic', level: 12 }, { characterID: id, skillHrid: '/skills/woodcutting', level: 99 }],
-    wearableItemMap: { a: { itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/blade', enhancementLevel: 4 }, b: { itemLocationHrid: '/item_locations/woodcutting_tool', itemHrid: '/items/axe', enhancementLevel: 1 } },
+    wearableItemMap: { a: { itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/blade', enhancementLevel: 4 }, b: { itemLocationHrid: '/item_locations/woodcutting_tool', itemHrid: '/items/axe', enhancementLevel: 1 }, c: { itemLocationHrid: '/item_locations/trinket', itemHrid: '/items/badge_one', enhancementLevel: 0 } },
     equippedAbilities: [{ abilityHrid: '/abilities/y', level: 41 }],
     abilityCombatTriggersMap: { '/abilities/y': [{ t: 3 }] }, consumableCombatTriggersMap: { '/items/tonic_one': [{ t: 4 }] },
     characterHouseRoomMap: { a: { houseRoomHrid: '/house_rooms/gym', level: 6 } },
@@ -61,6 +61,12 @@ test('another player: abilities, food and drinks from the battle; nothing else i
     assert.deepEqual(r.slots[0].missing, ['skillLevels', 'gear', 'triggers', 'houseRooms', 'achievements', 'guildBuffs']);
 });
 
+test('the character export (and so your own group slot) keeps the trinket slot', () => {
+    const me = { ...self, characterItems: [...self.characterItems, { itemLocationHrid: '/item_locations/trinket', itemHrid: '/items/badge_one', enhancementLevel: 3 }] };
+    const o = buildGroupExport(ctx({ characterObj: me })).group['2'];
+    assert.ok(o.player.equipment.some((e) => e.itemLocationHrid === '/item_locations/trinket' && e.itemHrid === '/items/badge_one' && e.enhancementLevel === 3));
+});
+
 test('a drink without item data is told by its name; food is the rest', () => {
     const o = buildGroupExport(ctx()).group['3'];
     assert.deepEqual(o.drinks[COMBAT][0], { itemHrid: '/items/zeta_coffee' });
@@ -70,7 +76,7 @@ test('a drink without item data is told by its name; food is the rest', () => {
 test('a shared profile fills levels, gear, triggers, house rooms and achievements (combat parts only)', () => {
     const p = trimProfile(profileMsg(11, 'Bravo'));
     assert.deepEqual(p.skills, { attack: 70, magic: 12 });
-    assert.deepEqual(p.equipment, [{ itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/blade', enhancementLevel: 4 }]);
+    assert.deepEqual(p.equipment, [{ itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/blade', enhancementLevel: 4 }, { itemLocationHrid: '/item_locations/trinket', itemHrid: '/items/badge_one', enhancementLevel: 0 }], 'the trinket slot (task badge) is kept, the skilling tool is not');
     const r = buildGroupExport(ctx({ profiles: [p] }));
     const o = r.group['1'];
     assert.deepEqual(o.player, { attackLevel: 70, magicLevel: 12, equipment: p.equipment });

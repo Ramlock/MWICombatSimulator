@@ -4,6 +4,11 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.7.3 (2026-11-08)
+
+- The combat recording now keeps every damage hit you and your party deal, not only the totals: when it happened, who dealt it, which ability, which enemy, how much, and whether it hit, missed or crit. Each fight stores them as one short packed text, about 70 KB per hour of fighting (the totals stay as they were). The "own character only" export keeps only your hits. A fight stores at most 20000 hits; any beyond that are counted, not kept. Damage you take is not stored hit by hit yet.
+- The party export and the character export now include the trinket slot (the task badge). The simulator does not read that slot yet, so importing it changes nothing there.
+
 ### 0.7.2 (2026-11-08)
 
 - Fix in the combat recording: a critical hit is now counted only when the hit did damage. Before, an attack that did no damage but carried the critical flag was counted as a critical hit, which put more crits than hits in some sources. Those events are now kept in a new field `critsOnMiss` next to `crits`, so nothing recorded is lost. Recordings made before this version keep their old crit counts.

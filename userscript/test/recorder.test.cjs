@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const ROOT = path.join(__dirname, '..', '..');
 const mod = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'userscript', 'mwics-exporter.user.js'), 'utf8'), { module: mod, console });
-const { createRecorder, REC } = mod.exports;
+const { createRecorder, REC, unpackHits } = mod.exports;
 const J = (x) => JSON.parse(JSON.stringify(x));
 
 const GAME = {
@@ -85,6 +85,60 @@ test('a crit counts only on a hit; a crit flag on an event with no damage goes t
     r2.handle(BU(1, { 0: ent(950, 0, 2, 2) }, { 0: ent(1000, 2, 0, 0, { isAutoAtk: true }) }), 1200);
     close(r2, 2000);
     assert.deepEqual(J(lastEnc(r2).players[0].events.received), { events: 2, hits: 1, misses: 1, crits: 1, critsOnMiss: 1 });
+});
+
+test('hit log codec: a few hundred events round-trip (miss, crit, crit on a miss, big amounts, long gaps), base64 string', () => {
+    const { createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes } = mod.exports;
+    for (const len of [0, 1, 2, 3, 4, 5, 255]) { const a = Array.from({ length: len }, (_, i) => (i * 37 + 11) & 255); assert.deepEqual(J(b64ToBytes(bytesToB64(a))), a); }
+    assert.equal(bytesToB64([77, 97, 110]), Buffer.from('Man').toString('base64'));
+    assert.equal(bytesToB64([77, 97]), Buffer.from('Ma').toString('base64'));
+    const t0 = 1794000000000, srcs = ['auto', '/abilities/a', '/abilities/b', '/abilities/a:dot', '/abilities/c'];
+    const L = createHitLog(t0), want = [];
+    let t = t0, seed = 7;
+    const rnd = (m) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % m; };
+    for (let i = 0; i < 400; i++) {
+        t += i % 50 === 0 ? 70000 + rnd(5000) : rnd(2500);
+        const kind = i % 4; // 0 plain hit, 1 miss, 2 crit hit, 3 crit on a miss
+        const hit = kind === 0 || kind === 2, crit = kind >= 2;
+        const amount = !hit ? 0 : i % 97 === 0 ? 5000000 + rnd(1000) : i % 13 === 0 ? 16384 + rnd(100000) : 1 + rnd(900);
+        const e = { t, slot: rnd(5), source: srcs[rnd(5)], monster: rnd(5), amount, hit, crit };
+        L.add(e.t, e.slot, e.source, e.monster, e.amount, e.hit, e.crit); want.push(e);
+    }
+    const h = L.finish();
+    assert.equal(h.n, 400); assert.equal(typeof h.data, 'string'); assert.match(h.data, /^[A-Za-z0-9+/]+={0,2}$/);
+    assert.deepEqual(J(unpackHits(h, t0)), want);
+    assert.ok(h.src.length <= 5 && !('dropped' in h));
+    // cut to some dealer slots
+    const f = filterHits(h, [1, 3], t0);
+    assert.deepEqual(J(unpackHits(f, t0)), want.filter((e) => e.slot === 1 || e.slot === 3));
+    // a cap per encounter: the rest is counted, not stored
+    const keep = REC.MAX_HITS; REC.MAX_HITS = 3;
+    const C = createHitLog(0); for (let i = 0; i < 5; i++) C.add(i, 0, 'auto', 0, 10, true, false);
+    REC.MAX_HITS = keep;
+    const ch = C.finish(); assert.equal(ch.n, 3); assert.equal(ch.dropped, 2);
+});
+
+test('every attributed dealt event is stored in order; ambiguous ones are not; selfOnly keeps only the self slot\'s hits', () => {
+    const r = fresh();
+    r.handle({ type: 'init_character_data', character: { id: 7, name: 'Someone' } }, 500);
+    r.handle(NB(1, [unit({ character: { id: 8 }, preparingAbilityHrid: '/abilities/fireball', isPreparingAutoAttack: false }), unit({ character: { id: 7 }, preparingAbilityHrid: '/abilities/fireball', isPreparingAutoAttack: false })], [mon('/monsters/m'), mon('/monsters/n')]), 1000);
+    // slot 0 hits monster 0 for 100 with a crit
+    r.handle(BU(1, { 0: ent(1000, 1, 0, 0, { abilityHrid: '/abilities/x' }), 1: ent(1000, 0, 0, 0) }, { 0: ent(900, 0, 1, 1), 1: ent(1000, 0, 0, 0) }), 1100);
+    // slot 1 (self) misses monster 1 with the crit flag set, no hp change
+    r.handle(BU(1, { 0: ent(1000, 1, 0, 0, { isAutoAtk: true }), 1: ent(1000, 1, 0, 0, { abilityHrid: '/abilities/y' }) }, { 0: ent(900, 0, 1, 1), 1: ent(1000, 0, 1, 1) }), 1400);
+    // two player actors in one message: ambiguous, not stored as a hit
+    r.handle(BU(1, { 0: ent(1000, 2, 0, 0, { isAutoAtk: true }), 1: ent(1000, 2, 0, 0, { isAutoAtk: true }) }, { 0: ent(850, 0, 2, 1) }), 1700);
+    close(r, 2000);
+    const e = lastEnc(r);
+    assert.equal(e.ambiguous.length, 1);
+    assert.equal(e.hits.n, 2);
+    assert.deepEqual(J(unpackHits(e.hits, e.startedAt)), [
+        { t: 1100, slot: 0, source: '/abilities/fireball', monster: 0, amount: 100, hit: true, crit: true },
+        { t: 1400, slot: 1, source: '/abilities/fireball', monster: 1, amount: 0, hit: false, crit: true },
+    ]);
+    const last = (x) => x.encounters[x.encounters.length - 1], all = last(r.exportData(false)), mine = last(r.exportData(true));
+    assert.equal(all.hits.n, 2);
+    assert.deepEqual(J(unpackHits(mine.hits, mine.startedAt).map((x) => x.slot)), [1]);
 });
 
 test('a message with two player actors is kept raw and flagged, never split', () => {

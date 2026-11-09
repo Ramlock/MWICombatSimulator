@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.7.2
+// @version      0.7.3
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -47,7 +47,7 @@
         { key: 'coin', label: 'Liquid Coin' },
     ];
     // The slots the sim imports (the skilling tool slots, /item_locations/*_tool, stay out).
-    const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'off_hand', 'pouch', 'neck', 'earrings', 'ring', 'back', 'charm', 'main_hand', 'two_hand'].map((s) => '/item_locations/' + s);
+    const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'off_hand', 'pouch', 'neck', 'earrings', 'ring', 'back', 'charm', 'trinket', 'main_hand', 'two_hand'].map((s) => '/item_locations/' + s);
     const COMBAT_SKILLS = ['stamina', 'intelligence', 'attack', 'melee', 'defense', 'ranged', 'magic'];
     const COMBAT_SHRINES = ['force', 'tempo', 'spirit', 'rarity', 'scholar'];
     // Used only when the game's own ability data (init client data) cannot be read.
@@ -356,10 +356,75 @@
         return { names, full, base, leaveOneOut: loo, shapley: sh, method, samples, stderr, evals };
     }
 
+    // ================= Per-hit log (pure) =================
+    // One packed list per encounter of the damage events the recorder attributes (dealt side). Each event is delta-coded: milliseconds since the
+    // previous event (the first from the encounter start), dealer slot, source index (into the encounter's source table), target monster index,
+    // the amount (the HP drop), all as unsigned varints (7 bits per byte), then one flags byte (1 = hit, 2 = crit; a crit on a miss is 2, a plain
+    // miss is 0). The byte stream is stored as base64 in one string: { src: [ability, ...], n, data, dropped? }. unpackHits decodes it.
+    const HIT_FLAG = { HIT: 1, CRIT: 2 };
+    const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    function bytesToB64(a) {
+        let o = '';
+        for (let i = 0; i < a.length; i += 3) {
+            const n = (a[i] << 16) | ((a[i + 1] || 0) << 8) | (a[i + 2] || 0);
+            o += B64[(n >> 18) & 63] + B64[(n >> 12) & 63] + (i + 1 < a.length ? B64[(n >> 6) & 63] : '=') + (i + 2 < a.length ? B64[n & 63] : '=');
+        }
+        return o;
+    }
+    function b64ToBytes(s) {
+        const out = [];
+        for (let i = 0; i < s.length; i += 4) {
+            const c = [0, 1, 2, 3].map((k) => (s[i + k] === '=' || s[i + k] === undefined ? -1 : B64.indexOf(s[i + k])));
+            const n = (c[0] << 18) | (c[1] << 12) | ((c[2] < 0 ? 0 : c[2]) << 6) | (c[3] < 0 ? 0 : c[3]);
+            out.push((n >> 16) & 255);
+            if (c[2] >= 0) out.push((n >> 8) & 255);
+            if (c[3] >= 0) out.push(n & 255);
+        }
+        return out;
+    }
+    function pushVar(a, v) {
+        v = v > 0 ? Math.floor(v) : 0;
+        while (v >= 128) { a.push((v % 128) | 128); v = Math.floor(v / 128); }
+        a.push(v);
+    }
+    // t0: the time the deltas start from (the encounter start). Beyond REC.MAX_HITS events nothing more is added and `dropped` counts them.
+    function createHitLog(t0) {
+        const L = { src: [], idx: new Map(), bytes: [], n: 0, last: t0, dropped: 0 };
+        L.add = (t, slot, source, mon, amount, hit, crit) => {
+            if (L.n >= REC.MAX_HITS) { L.dropped++; return; }
+            let s = L.idx.get(source);
+            if (s === undefined) { s = L.src.length; L.src.push(source); L.idx.set(source, s); }
+            pushVar(L.bytes, t - L.last); L.last = t > L.last ? t : L.last;
+            pushVar(L.bytes, slot); pushVar(L.bytes, s); pushVar(L.bytes, mon); pushVar(L.bytes, amount);
+            L.bytes.push((hit ? HIT_FLAG.HIT : 0) | (crit ? HIT_FLAG.CRIT : 0));
+            L.n++;
+        };
+        L.finish = () => { const h = { src: L.src.slice(), n: L.n, data: bytesToB64(L.bytes) }; if (L.dropped) h.dropped = L.dropped; return h; };
+        return L;
+    }
+    function unpackHits(h, t0) {
+        const b = b64ToBytes(h.data || ''), out = [];
+        let p = 0, t = t0 || 0;
+        const rd = () => { let v = 0, m = 1, c; do { c = b[p++]; v += (c & 127) * m; m *= 128; } while (c & 128); return v; };
+        for (let i = 0; i < h.n; i++) {
+            t += rd();
+            const slot = rd(), s = rd(), mon = rd(), amount = rd(), f = b[p++];
+            out.push({ t, slot, source: h.src[s], monster: mon, amount, hit: (f & HIT_FLAG.HIT) !== 0, crit: (f & HIT_FLAG.CRIT) !== 0 });
+        }
+        return out;
+    }
+    // The same list cut to some dealer slots (the self-only export must not carry other players' hits).
+    function filterHits(h, slots, t0) {
+        const L = createHitLog(t0);
+        for (const e of unpackHits(h, t0)) if (slots.includes(e.slot)) L.add(e.t, e.slot, e.source, e.monster, e.amount, e.hit, e.crit);
+        L.dropped = h.dropped || 0;
+        return L.finish();
+    }
+
     // ================= Combat recorder (read-only) =================
     // Spec: docs/codebase/toolasha-loot-tracker.md ("Recorder spec"). Pure state machine: handle(message, nowMs) per game message,
     // exportData(selfOnly) for the file, no DOM and no network. The likelihood split, shares and closed-form checks are NOT here.
-    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2 };
+    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000 };
     const REC_TYPES = ['new_battle', 'battle_updated', 'action_completed', 'quests_updated', 'init_character_data'];
     const DOT_FALLBACK = { '/abilities/firestorm': { ratio: 1, ms: 6000 }, '/abilities/maim': { ratio: 1, ms: 9000 } };
     const HEAL_FALLBACK = ['/abilities/quick_aid'];
@@ -432,7 +497,7 @@
     // Views of a row for the file and for the helper: the window without its internal key, and the party cut to the self slot.
     const plainWin = (w) => ({ ...w, key: undefined });
     const pickSelfWin = (w) => ({ ...w, key: undefined, players: w.players.filter((p) => p.self) });
-    const pickSelfEnc = (e) => ({ ...e, players: e.players.filter((p) => p.self), ambiguous: e.ambiguous.filter((a) => (a.target.side === 'p' && e.players.some((p) => p.self && p.slot === a.target.idx)) || a.target.side === 'm') });
+    const pickSelfEnc = (e) => ({ ...e, ...(e.hits ? { hits: filterHits(e.hits, e.players.filter((p) => p.self).map((p) => p.slot), e.startedAt) } : {}), players: e.players.filter((p) => p.self), ambiguous: e.ambiguous.filter((a) => (a.target.side === 'p' && e.players.some((p) => p.self && p.slot === a.target.idx)) || a.target.side === 'm') });
     const hasSelf = (S) => S.windows.some((w) => w.players.some((p) => p.self)) || S.encounters.some((e) => e.players.some((p) => p.self));
 
     function createRecorder(opts) {
@@ -480,7 +545,7 @@
                 index: ++S.idx, battleId: msg.battleId, combatStartTime: msg.combatStartTime, startedAt: t, endedAt: null,
                 monsters: monsters.map((m) => ({ hrid: m.hrid, isBoss: !!m.isBoss, tier: m.difficultyTier, maxHP: nz(m.maxHitpoints, 0), killMs: null })),
                 players: players.map((p, i) => newPlayerRec(i, S.selfId != null && p.character && p.character.id === S.selfId)),
-                pU: {}, mU: {}, pending: [], ambiguous: [], casts: [], unattributed: { dealt: 0, taken: 0 },
+                pU: {}, mU: {}, pending: [], ambiguous: [], casts: [], unattributed: { dealt: 0, taken: 0 }, hl: createHitLog(t),
             };
             players.forEach((p, i) => { enc.pU[i] = unitFrom(p, gd); });
             monsters.forEach((m, i) => { enc.mU[i] = unitFrom(m, gd); });
@@ -586,7 +651,8 @@
                 fr.endedAt = t; fr.encounters++;
                 enc.players.forEach((pr, i) => { const wp = S.win.players[i]; if (wp) { const { slot, self, consumes: _c, ...rest } = pr; addInto(wp.totals, rest); } });
             }
-            delete enc.pU; delete enc.mU; delete enc.pending; delete enc.index;
+            if (enc.hl && enc.hl.n) enc.hits = enc.hl.finish();
+            delete enc.hl; delete enc.pU; delete enc.mU; delete enc.pending; delete enc.index;
             S.encounters.push(enc);
             if (S.encounters.length > REC.MAX_ENCOUNTERS) S.encounters.shift();
             S.stats.closed++;
@@ -697,6 +763,7 @@
                 if (!pr) { ambiguous(enc, t, x, side, actors, 'no-actor'); return; }
                 const hrid = (enc.monsters[x.idx] || {}).hrid || '?';
                 pr.dealt.total += dmg; bump(pr.dealt.byMonster, hrid, dmg);
+                enc.hl.add(t, src.idx, ab, x.idx, dmg, hit, x.crit);
                 const b = pr.dealt.bySource[ab] || (pr.dealt.bySource[ab] = { amount: 0, events: 0, hits: 0, misses: 0, crits: 0, critsOnMiss: 0 });
                 b.amount += dmg; tally(b); tally(pr.events.dealt);
             } else {
@@ -917,7 +984,7 @@
 
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { attributeBonuses, ATTR, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -933,7 +1000,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.7.2'; // keep equal to @version (a test checks it)
+    const VERSION = '0.7.3'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
