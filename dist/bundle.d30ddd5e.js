@@ -6433,13 +6433,16 @@ function withTip(row, key, fallback) {
 // the result object (summarizeTriggerHolds), never from the page.
 function triggerHoldRows(simResult, playerToDisplay) {
     const holds = (0,_combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_15__.summarizeTriggerHolds)(simResult, playerToDisplay);
-    const value = (h) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(h.share * 100) + " &middot; " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(h.perHour) + '<span data-i18n="common:simulationResults.perHourSuffix">/h</span>';
+    // The numbers go on their own right-aligned line under each label: the results column is narrow.
+    const valueRow = (h, indent = "") => createRow(["col-md-12 text-end" + indent], [(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.percentHtml)(h.share * 100) + ' <span data-i18n="common:simulationResults.ofTheTime">of the time</span> &middot; ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_16__.numberHtml)(h.perHour) + ' <span data-i18n="common:simulationResults.holdsPerHour">holds/h</span>']);
     const rows = [];
     if (holds.mana) {
-        const row = createRow(["col-md-6", "col-md-6 text-end"], ["Held for mana", value(holds.mana)]);
+        const row = createRow(["col-md-12"], ["Held for mana"]);
         row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldForMana");
+        const values = valueRow(holds.mana);
         withTip(row, "common:simulationResults.heldForManaTip", HELD_FOR_MANA_TIP);
-        rows.push(row);
+        withTip(values, "common:simulationResults.heldForManaTip", HELD_FOR_MANA_TIP);
+        rows.push(row, values);
     }
     if (holds.abilities.length > 0) {
         const header = createRow(["col-md-12"], ["Held by trigger"]);
@@ -6451,7 +6454,7 @@ function triggerHoldRows(simResult, playerToDisplay) {
             abilityRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + abilityHrid);
             rows.push(abilityRow);
             for (const c of conditions) {
-                rows.push(createRow(["col-md-6 ps-4", "col-md-6 text-end"], [triggerConditionHtml(c), value(c)]));
+                rows.push(createRow(["col-md-12 ps-4"], [triggerConditionHtml(c)]), valueRow(c, " ps-4"));
             }
         }
     }
@@ -8891,4 +8894,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.166535a5.js.map
+//# sourceMappingURL=bundle.d30ddd5e.js.map
