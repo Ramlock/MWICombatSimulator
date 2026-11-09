@@ -259,6 +259,8 @@
             "singles": "Cada alteração sozinha",
             "singlesNote": "(contra o setup de onde a busca partiu; cinza = ganho abaixo de 2 erros)",
             "noSingles": "Nenhuma mudança foi medida.",
+            "helpsParty": "Ajuda o grupo, tem custo para o comprador",
+            "helpsPartyHint": "Não comprado: o grupo ganha, mas quem paga não recupera o gasto (sua parte do loot menos seus próprios suprimentos extras não está acima de 0 por 2 erros).",
             "showMore": "Mostrar mais {{n}} abaixo de 2 erros",
             "showLess": "Ocultar os {{n}} abaixo de 2 erros",
             "apart": "Custo desconhecido, sem ranking",
