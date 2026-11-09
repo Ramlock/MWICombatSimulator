@@ -3577,7 +3577,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"654baacb","2":"5a889c11","3":"e0598102","5":"89c6f340","src_multiWorker_js-_004d1":"0ebd25e7","src_multiWorker_js-_004d2":"0ebd25e7","src_multiWorker_js-_004d3":"0ebd25e7","src_multiWorker_js-_004d0":"0ebd25e7","src_multiWorker_js-_004d4":"0ebd25e7"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"21bb04f1","2":"58d5d6e2","3":"ba68a5b6","5":"64afa335","src_multiWorker_js-_004d1":"08a70815","src_multiWorker_js-_004d2":"08a70815","src_multiWorker_js-_004d3":"08a70815","src_multiWorker_js-_004d0":"08a70815","src_multiWorker_js-_004d4":"08a70815"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -7886,9 +7886,11 @@ function whatIfRenderChoices(fromPage) {
         ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
         : [...players.querySelectorAll('input:checked')].map((c) => c.value));
     players.replaceChildren();
+    // One row of equal columns, one per player (a long name is cut with an ellipsis, its title holds the whole name).
+    players.style.setProperty('--whatif-n', String(Math.max(tabs.length, 1)));
     tabs.forEach((tab, index) => {
         const row = document.createElement('div');
-        row.className = 'form-check form-check-inline';
+        row.className = 'form-check';
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.className = 'form-check-input';
@@ -7899,6 +7901,7 @@ function whatIfRenderChoices(fromPage) {
         label.className = 'form-check-label';
         label.htmlFor = input.id;
         label.textContent = tab.textContent.trim();
+        label.title = label.textContent;
         row.append(input, label);
         players.append(row);
     });
@@ -9210,4 +9213,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.afe9878a.js.map
+//# sourceMappingURL=bundle.acace13e.js.map

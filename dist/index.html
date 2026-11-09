@@ -35,6 +35,9 @@
         .whatif-weak td { color: #999 !important; }
         .whatif-warn { color: #b07800; }
         .whatif-dim { color: #888; }
+        #whatIfPlayers { display: grid; grid-template-columns: repeat(var(--whatif-n, 5), minmax(0, 1fr)); gap: .25rem .75rem; }
+        #whatIfPlayers .form-check { min-width: 0; margin: 0; }
+        #whatIfPlayers .form-check-label { font-size: .875rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         body.dark-mode .whatif-warn { color: #f0c060; }
         body.dark-mode .whatif-progress { background-color: #1e2125; border: 1px solid #6c757d; }
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
@@ -1733,7 +1736,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="row">
-                        <div class="col-md-4">
+                        <div class="col-md-5">
                             <label for="selectWhatIfGoal" class="form-label fw-bold" data-i18n="common:whatIf.goalLabel">Goal</label>
                             <select id="selectWhatIfGoal" class="form-select form-select-sm mb-2">
                                 <option value="profit" data-i18n="common:whatIf.goal.profit">Party profit per day, after tax</option>
@@ -1753,7 +1756,7 @@
                             <div class="fw-bold" data-i18n="common:whatIf.budgets">Budget per player (coin)</div>
                             <div id="whatIfBudgets"></div>
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-md-7">
                             <div class="fw-bold" data-i18n="common:whatIf.levers">What to search</div>
                             <div id="whatIfLevers"></div>
                         </div>
@@ -2126,10 +2129,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=afe9878a"></script>
+    <script src="js/i18n.js?v=acace13e"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.afe9878a.js" type="module"></script>
+    <script src="bundle.acace13e.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">

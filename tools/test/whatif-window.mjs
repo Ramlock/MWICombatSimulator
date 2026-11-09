@@ -105,6 +105,7 @@ try {
     await js(`document.getElementById('buttonWhatIf').click(), true`);
     check('the window opens with a budget per ticked player', await until(`!!document.querySelector('#whatIfBudgets input[data-player="Player 1"]')`));
     check('the window copies the page\'s players (only Player 1 ticked), zone and tier', await js(`(() => { const boxes = [...document.querySelectorAll('#whatIfPlayers input')]; return boxes.length === 5 && boxes.map((b) => b.checked).join() === 'true,false,false,false,false' && document.querySelector('label[for="whatIfPlayer_1"]').textContent === 'Player 1' && document.getElementById('selectWhatIfZone').value === ${JSON.stringify(pageChoices.zone)} && document.getElementById('selectWhatIfTier').value === '2'; })()`));
+    check('the five tick boxes share one row, in equal columns, with no name cut', await js(`(() => { const b = [...document.querySelectorAll('#whatIfPlayers .form-check')].map((e) => e.getBoundingClientRect()); const l = [...document.querySelectorAll('#whatIfPlayers label')]; return b.length === 5 && new Set(b.map((r) => Math.round(r.top))).size === 1 && new Set(b.map((r) => Math.round(r.width))).size === 1 && l.every((e) => e.scrollWidth <= e.clientWidth); })()`));
     check('the zone and tier selectors carry the page\'s options in the same order and names', await js(`(() => { const same = (a, b) => JSON.stringify([...document.getElementById(a).options].map((o) => [o.value, o.textContent])) === JSON.stringify([...document.getElementById(b).options].map((o) => [o.value, o.textContent])); return document.getElementById('selectZone').options.length > 5 && same('selectWhatIfZone', 'selectZone') && same('selectWhatIfTier', 'selectDifficulty'); })()`));
     // An edit in the window: Player 2 ticked, another zone and tier. The page keeps its own.
     await js(`(() => { for (const [id, v] of [['selectWhatIfZone', document.getElementById('selectWhatIfZone').options[4].value], ['selectWhatIfTier', '1']]) { const s = document.getElementById(id); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); } document.getElementById('whatIfPlayer_2').click(); return true; })()`);
@@ -214,6 +215,10 @@ try {
         (await js(`document.getElementById('inputLevel_attack').value`)) === (await js(`document.getElementById('inputLevel_attack').value`)));
     await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
     check('Show loads an earlier result', await until(`document.getElementById('whatIfResult').textContent.includes('Magic 1')`));
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
+    await new Promise((r) => setTimeout(r, 400));
+    check('at 1100 wide the five tick boxes still share one row and no name is cut', await js(`(() => { const b = [...document.querySelectorAll('#whatIfPlayers .form-check')].map((e) => e.getBoundingClientRect()); return b.length === 5 && new Set(b.map((r) => Math.round(r.top))).size === 1 && [...document.querySelectorAll('#whatIfPlayers label')].every((e) => e.scrollWidth <= e.clientWidth); })()`));
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
     // A three-player party: only the page's real player tabs count.
     await js(`(() => { for (const n of [4, 5]) document.getElementById('player' + n + '-tab').parentElement.remove(); return true; })()`);
     await js(reopen);

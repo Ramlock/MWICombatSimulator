@@ -4187,9 +4187,11 @@ function whatIfRenderChoices(fromPage) {
         ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
         : [...players.querySelectorAll('input:checked')].map((c) => c.value));
     players.replaceChildren();
+    // One row of equal columns, one per player (a long name is cut with an ellipsis, its title holds the whole name).
+    players.style.setProperty('--whatif-n', String(Math.max(tabs.length, 1)));
     tabs.forEach((tab, index) => {
         const row = document.createElement('div');
-        row.className = 'form-check form-check-inline';
+        row.className = 'form-check';
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.className = 'form-check-input';
@@ -4200,6 +4202,7 @@ function whatIfRenderChoices(fromPage) {
         label.className = 'form-check-label';
         label.htmlFor = input.id;
         label.textContent = tab.textContent.trim();
+        label.title = label.textContent;
         row.append(input, label);
         players.append(row);
     });
