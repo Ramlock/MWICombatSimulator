@@ -65,6 +65,7 @@ import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
+import { isDominatedSwap } from './dominated.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
@@ -240,6 +241,8 @@ const req = (ops, h, k, tag, fresh = false) => pick(ops, h, k, fresh).map((seed)
 const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'main_hand', 'two_hand', 'off_hand', 'pouch', 'back', 'neck', 'earrings', 'ring', 'trinket', 'charm'];
 const slotItem = (setups, p, slot) => setups.find((s) => s.name === p).player.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + slot);
 const meetsReq = (setup, item) => (item.equipmentDetail.levelRequirements || []).every((r) => (setup.player[r.skillHrid.split('/').pop() + 'Level'] ?? 0) >= r.level);
+// Market swaps no better on any combat stat (dominated.mjs): never offered, listed in result.json `dominated`.
+const dominated = [], dominatedKeys = new Set();
 
 // Charms change only EXP, so a profit goal leaves them out (phase 1 measured exactly zero for every charm, docs
 // what-if/phase-1.md in the private repo); --charms keeps them. An EXP goal keeps them.
@@ -265,7 +268,12 @@ function candidatesFor(setups, p, slots) {
                 const c = pricer.swap(it.itemHrid, it.enhancementLevel, item.hrid, L);
                 if (!c.known) continue; // no seller at this level: not a market swap
                 if (c.cost <= 0 && !sellDown) continue; // frees gold: a sell-down, dropped (design 4.3 item 2)
-                out.push({ id: `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: false, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`, ops: [{ op: 'equip', player: p, slot, item: item.hrid, level: L }], cost: c });
+                const id = `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`;
+                if (isDominatedSwap(itemDetailMap[it.itemHrid], it.enhancementLevel, item, L)) {
+                    if (!dominatedKeys.has(desc)) { dominatedKeys.add(desc); dominated.push({ id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } }); }
+                    continue;
+                }
+                out.push({ id, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: false, desc, ops: [{ op: 'equip', player: p, slot, item: item.hrid, level: L }], cost: c });
             }
         }
     }
@@ -409,7 +417,7 @@ const rank = (a, b) => (b.est.score - a.est.score) || (b.est.gain - a.est.gain);
 
 // ---- Search ----
 async function main() {
-    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [] };
+    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
     if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(); }
@@ -423,7 +431,7 @@ async function main() {
     cands.sort((a, b) => (b.monotone - a.monotone));
     result.candidates = cands.length;
     result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
-    console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart`);
+    console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${dominated.length} swaps skipped (no better on any stat)`);
 
     // Base: each seed run once, at the longest stage it is needed for.
     const baseReq = [];
