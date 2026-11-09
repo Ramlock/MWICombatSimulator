@@ -222,6 +222,8 @@
             "singles": "Cada alteração sozinha",
             "singlesNote": "(contra o setup de onde a busca partiu; cinza = ganho abaixo de 2 erros)",
             "noSingles": "Nenhuma mudança foi medida.",
+            "showMore": "Mostrar mais {{n}} abaixo de 2 erros",
+            "showLess": "Ocultar os {{n}} abaixo de 2 erros",
             "apart": "Custo desconhecido, sem ranking",
             "upperNote": "≤: o custo é só um limite superior (livros de técnica sem a experiência já dentro do nível)."
         },

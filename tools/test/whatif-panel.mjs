@@ -77,6 +77,9 @@ const result = {
     check('result: "≤" on that player\'s running spend from that step on, not before or for others', /≤ <span data-num="600000"/.test(html) && !/≤ <span data-num="1000000"/.test(html));
     check('result: Apply on each step, "Apply 1 to n" from step 2', html.includes('data-whatif-apply="steps:1"') && html.includes('Apply 1 to 3') && html.includes('data-whatif-apply="steps:3"'));
     check('result: a single below 2 errors is grey', /<tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html));
+    check('result: grey singles sit collapsed in a hidden body behind one toggle with their count', /<tbody class="whatif-more" hidden><tr class="whatif-weak"><td>Alpha<\/td><td>Food 2/.test(html) &&
+        !/<tbody><tr[^]*Food 2[^]*<\/tbody><tbody class="whatif-more"/.test(html) && (html.match(/data-whatif-more/g) || []).length === 1);
+    check('result: the cost path cell wraps', /<td class="wrap">market<\/td>/.test(html));
     check('result: unknown costs listed apart', html.includes('Some token item: no seller'));
     check('result: confirmation per user', html.includes('data-num="2900"') && html.includes('data-num="450"'));
     check('result: each player spent of budget', html.includes('data-num="50000000"') && html.includes('data-num="20000000"'));

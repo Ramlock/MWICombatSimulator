@@ -121,6 +121,13 @@ try {
     const after = await js(`[document.getElementById('inputLevel_magic').value, document.getElementById('inputLevel_stamina').value]`);
     check('Apply 1 to 2 writes both steps into the setup', Number(after[0]) === Number(before[0]) + 1 && Number(after[1]) === Number(before[1]) + 1, JSON.stringify({ before, after }));
     check('the window now lists where the page differs from the search', await js(`document.getElementById('whatIfDiff').textContent.includes('magicLevel')`));
+    check('grey singles are collapsed behind "Show 1 more below 2 errors"', await js(`document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Show 1 more below 2 errors'`));
+    await js(`document.querySelector('[data-whatif-more]').click(), true`);
+    check('the toggle opens the grey rows', await js(`!document.querySelector('#whatIfResult .whatif-more').hidden && document.querySelector('[data-whatif-more]').textContent === 'Hide the 1 below 2 errors'`));
+    check('the cost path column wraps', await js(`getComputedStyle(document.querySelector('#whatIfResult td.wrap')).whiteSpace === 'normal'`));
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
+    await new Promise((r) => setTimeout(r, 300));
+    check('the window fits a 1500x900 viewport and scrolls inside itself, with no horizontal scroll', await js(`(() => { const b = document.querySelector('#whatIfModal .modal-content').getBoundingClientRect(); const body = document.querySelector('#whatIfModal .modal-body'); return b.top >= 0 && b.bottom <= innerHeight && b.right <= innerWidth && body.scrollHeight > body.clientHeight && body.scrollWidth <= body.clientWidth; })()`));
     await js(`document.querySelector('[data-whatif-apply="single:1"]').click(), true`);
     check('a player the page lacks is named, nothing applied', await js(`document.getElementById('whatIfMessage').textContent.includes('Nobody')`) &&
         (await js(`document.getElementById('inputLevel_attack').value`)) === (await js(`document.getElementById('inputLevel_attack').value`)));

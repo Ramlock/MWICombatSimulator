@@ -31,6 +31,7 @@
 
         .whatif-table td, .whatif-table th { padding: 2px 8px; white-space: nowrap; vertical-align: middle; }
         .whatif-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .whatif-table td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
         .whatif-weak td { color: #999 !important; }
         .whatif-warn { color: #b07800; }
         .whatif-dim { color: #888; }
@@ -1721,7 +1722,7 @@
     </div>
     <div class="modal" id="whatIfModal" tabindex="-1">
         <!-- #region What-if Modal: shown only when the page is served by the local what-if runner (src/whatif/panel.mjs) -->
-        <div class="modal-dialog" style="width: 100%; max-width: 1500px;">
+        <div class="modal-dialog modal-dialog-scrollable" style="width: 100%; max-width: 1500px;">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" data-i18n="common:whatIf.title">What-if</h5>

@@ -2942,14 +2942,18 @@ function renderResult(result, t) {
     if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
-            [t('col.player'), t('col.change'), t('col.stage'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead><tbody>');
-        result.singles.forEach((s, i) => {
-            L.push(`<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${esc(s.desc)}</td><td>${esc(s.lastStage)}</td>` +
-                `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
-                `<td>${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
-                `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`);
-        });
-        L.push('</tbody></table>');
+            [t('col.player'), t('col.change'), t('col.stage'), t('col.gain'), t('col.se'), t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
+        // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
+        const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td>${esc(s.desc)}</td><td>${esc(s.lastStage)}</td>` +
+            `<td class="num">${num(s.gainPerUser)}</td><td class="num">± ${num(s.sePerUser)}</td><td class="num">${costCell(s)}</td><td class="num">${paybackCell(s)}</td>` +
+            `<td class="wrap">${esc(s.costPath)}${s.note ? ' (' + esc(s.note) + ')' : ''}</td>` +
+            `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
+        const rows = result.singles.map((s, i) => [s, i]);
+        const weak = rows.filter(([s]) => !s.accepted);
+        L.push('<tbody>' + rows.filter(([s]) => s.accepted).map(([s, i]) => row(s, i)).join('') + '</tbody>');
+        if (weak.length) L.push('<tbody class="whatif-more" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
+        L.push('</table>');
+        if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
     }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
@@ -7659,6 +7663,12 @@ async function initWhatIf() {
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);
+        const more = event.target.closest('[data-whatif-more]');
+        if (more) {
+            const body = document.querySelector('#whatIfResult .whatif-more');
+            body.hidden = !body.hidden;
+            more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
+        }
     });
     i18next.on('languageChanged', () => { whatIfRenderSetup(); if (whatIf.result) whatIfShowResult(whatIf.result); });
 }
@@ -8710,4 +8720,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.292fbb76.js.map
+//# sourceMappingURL=bundle.cb576dda.js.map

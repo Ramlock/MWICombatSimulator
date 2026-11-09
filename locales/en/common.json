@@ -222,6 +222,8 @@
             "singles": "Each change alone",
             "singlesNote": "(against the setup the search started from; grey = gain below 2 errors)",
             "noSingles": "No changes were measured.",
+            "showMore": "Show {{n}} more below 2 errors",
+            "showLess": "Hide the {{n}} below 2 errors",
             "apart": "Unknown cost, not ranked",
             "upperNote": "≤: the cost is only an upper bound (ability books without the experience already inside the level)."
         },

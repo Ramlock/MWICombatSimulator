@@ -21,7 +21,7 @@ The page's What-if window runs the what-if optimizer (`tools/whatif/optimize.mjs
 ## What the window reads from a result
 
 1. Top: `goal`, `budgets` per player, `setups` (the base the search ran on), `confirmation` (`gainPerUser`, `sePerUser`, `cost`, `payback`), `apart` (unknown cost, listed, never ranked).
-2. Each row of `steps` and `singles`: `player`, `desc`, `gainPerUser`, `sePerUser`, `cost`, `costBound: "upper"` (printed as "≤" on the cost, the payback, and that player's running spend from that step on), `payback` (none shows "—"), `accepted` (a single that is not is grey), `ops`; a single also `lastStage`, `costPath`, `note`; a step also `runningSpend` per player.
+2. Each row of `steps` and `singles`: `player`, `desc`, `gainPerUser`, `sePerUser`, `cost`, `costBound: "upper"` (printed as "≤" on the cost, the payback, and that player's running spend from that step on), `payback` (none shows "—"), `accepted` (a single that is not is grey, and sits collapsed behind one "Show N more below 2 errors" toggle, N being the count of those rows), `ops`; a single also `lastStage`, `costPath`, `note`; a step also `runningSpend` per player.
 3. Apply on step n applies the ops of steps 1 to n together; Apply on a single applies its own. An op naming a player no tab is named after applies nothing and names that player.
 
 ## Tests

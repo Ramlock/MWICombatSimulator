@@ -4314,6 +4314,12 @@ async function initWhatIf() {
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);
+        const more = event.target.closest('[data-whatif-more]');
+        if (more) {
+            const body = document.querySelector('#whatIfResult .whatif-more');
+            body.hidden = !body.hidden;
+            more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
+        }
     });
     i18next.on('languageChanged', () => { whatIfRenderSetup(); if (whatIf.result) whatIfShowResult(whatIf.result); });
 }
