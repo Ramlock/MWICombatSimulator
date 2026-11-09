@@ -138,6 +138,15 @@ const result = {
     check("split: the Payback column is the buyer's view; a net of 0 or below shows a dash", html.includes('data-num="22.5"') && /Gym 0[^]*?data-num="200000"[^]*?<\/span><\/td><td class="num">—<\/td>/.test(html));
     check('split: the confirmation shows the shared gain per user and a line per player; no party payback beside them', html.includes('data-num="9999"') && html.includes('Alpha: own supplies <span data-num="-5551"') && /Beta: own supplies <span data-num="6662"[^]*?payback —? ?days|Beta: own supplies <span data-num="6662"/.test(html) && html.includes('data-num="12.5"') && !/Confirmed on fresh runs[^]*?Payback days[^]*?Alpha: own/.test(html) && !html.includes('data-num="275.9"'));
     check('split: an upper-bound cost marks the buyer payback "≤"', /≤ <span data-num="51.4"/.test(html));
+    // A saved payback of 0 means nothing was bought: the confirmation lines show a dash, as the table does; above 0 shows the number.
+    const zero = JSON.parse(JSON.stringify(split));
+    Object.assign(zero.confirmation, { cost: 0, payback: 0, paybackOwnByPlayer: { Alpha: 0, Beta: 31.5 } });
+    const zeroHtml = panel.renderResult(zero, t);
+    check('confirmation: a payback of 0 shows a dash in the per-player line, a payback above 0 shows the number', /Alpha: own supplies <span data-num="-5551"[^<]*<\/span> per day, payback — days/.test(zeroHtml) && /Beta: own supplies <span data-num="6662"[^<]*<\/span> per day, payback (≤ )?<span data-num="31.5"/.test(zeroHtml));
+    const zeroOld = JSON.parse(JSON.stringify(result));
+    zeroOld.confirmation = { ...zeroOld.confirmation, cost: 0, payback: 0 };
+    const zeroOldHtml = panel.renderResult(zeroOld, t);
+    check('confirmation: a party payback of 0 (older result) shows "Payback days —", a payback above 0 shows the number', /Payback days —<\/div>/.test(zeroOldHtml) && !/Payback days <span data-num="0"/.test(zeroOldHtml));
     const old = panel.renderResult(result, t);
     check('split: an older result shows a dash in the new columns, keeps the saved party payback (cell and confirmation) and the run-again hint', !old.includes('data-num="1500"') && old.includes('data-num="333.3"') && old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && /<td class="chg">Ring[^<]*<\/td><td class="num">—<\/td><td class="num">—<\/td><td class="num">—<\/td>/.test(old));
     check('split: the other two locales carry the new strings', ['pt', 'zh'].every((l) => locales[l].col.ownSupplies && locales[l].col.ownSuppliesTip && locales[l].result.ownLine && locales[l].result.oldSplit && locales[l].col.gain !== locales.en.col.gain));
