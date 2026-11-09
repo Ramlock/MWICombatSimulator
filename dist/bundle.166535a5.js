@@ -3356,7 +3356,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"3d518bce","2":"76aa023b","3":"b452d0a3","5":"8d8ba0b3","src_multiWorker_js-_004d1":"881f8dd7","src_multiWorker_js-_004d2":"881f8dd7","src_multiWorker_js-_004d3":"881f8dd7","src_multiWorker_js-_004d0":"881f8dd7","src_multiWorker_js-_004d4":"881f8dd7"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"a2f3a0a9","2":"bac78d82","3":"f6d8b4f3","5":"210e62e9","src_multiWorker_js-_004d1":"affb033b","src_multiWorker_js-_004d2":"affb033b","src_multiWorker_js-_004d3":"affb033b","src_multiWorker_js-_004d0":"affb033b","src_multiWorker_js-_004d4":"affb033b"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -6416,6 +6416,19 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     resultDiv.replaceChildren(...newChildren);
 }
 
+// English fallbacks of the definitions shown as tooltips (the locale files hold the same text).
+const HELD_BY_TRIGGER_TIP = "Per skill and trigger condition: the share of sim time the condition held the skill while it was ready (cooldown over, the player not Stunned or Silenced), and holds per hour. A hold starts at the first check the condition fails and ends at the next check it passes, at death or at the encounter's end. When several conditions fail, each one counts.";
+const HELD_FOR_MANA_TIP = "The share of sim time the player is out of mana or has a skill held by a condition on their own MP (My Current Mp, My Missing Mp), counted once when both happen; per hour: how often the player enters that state.";
+
+// A tooltip on the row's label and its value, localized by key.
+function withTip(row, key, fallback) {
+    for (const cell of row.children) {
+        cell.title = typeof i18next !== "undefined" ? i18next.t(key) : fallback;
+        cell.setAttribute("data-i18n-title", key);
+        cell.style.cursor = "help";
+    }
+}
+
 // "Held for mana" and "Held by trigger" rows under "Ran out of mana": share of sim time and holds per hour, read from
 // the result object (summarizeTriggerHolds), never from the page.
 function triggerHoldRows(simResult, playerToDisplay) {
@@ -6425,11 +6438,13 @@ function triggerHoldRows(simResult, playerToDisplay) {
     if (holds.mana) {
         const row = createRow(["col-md-6", "col-md-6 text-end"], ["Held for mana", value(holds.mana)]);
         row.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldForMana");
+        withTip(row, "common:simulationResults.heldForManaTip", HELD_FOR_MANA_TIP);
         rows.push(row);
     }
     if (holds.abilities.length > 0) {
         const header = createRow(["col-md-12"], ["Held by trigger"]);
         header.firstElementChild.setAttribute("data-i18n", "common:simulationResults.heldByTrigger");
+        withTip(header, "common:simulationResults.heldByTriggerTip", HELD_BY_TRIGGER_TIP);
         rows.push(header);
         for (const { abilityHrid, conditions } of holds.abilities) {
             const abilityRow = createRow(["col-md-12 ps-3"], [_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[abilityHrid]?.name ?? abilityHrid]);
@@ -8832,6 +8847,13 @@ function updateContent() {
         }
     });
 
+    document.querySelectorAll('[data-i18n-title]').forEach(function (element) {
+        const key = element.getAttribute('data-i18n-title');
+        if (key) {
+            element.title = i18next.t(key);
+        }
+    });
+
     document.querySelectorAll('option[data-i18n]').forEach(function (element) {
         const key = element.getAttribute('data-i18n');
         if (key) {
@@ -8869,4 +8891,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.356e12a6.js.map
+//# sourceMappingURL=bundle.166535a5.js.map

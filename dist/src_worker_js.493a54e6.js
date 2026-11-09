@@ -5659,4 +5659,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"/buff_uniques/labyrinth_upgrade_atta
 /***/ })
 
 }]);
-//# sourceMappingURL=src_worker_js.a23ff818.js.map
+//# sourceMappingURL=src_worker_js.493a54e6.js.map

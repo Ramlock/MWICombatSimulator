@@ -59,6 +59,8 @@
         "ranOutOfManaRatio": "Proporção sem mana",
         "heldForMana": "Retido por mana",
         "heldByTrigger": "Retido por gatilho",
+        "heldByTriggerTip": "Por técnica e condição de gatilho: a parte do tempo simulado em que a condição segurou a técnica quando ela estava pronta (recarga concluída, o jogador nem Atordoado nem Silenciado), e retenções por hora. Uma retenção começa na primeira verificação em que a condição falha e termina na próxima em que ela passa, na morte ou no fim do encontro. Quando várias condições falham, cada uma conta.",
+        "heldForManaTip": "A parte do tempo simulado em que o jogador está sem mana ou tem uma técnica segurada por uma condição sobre o próprio MP (Meu MP atual, Meu MP faltante), contada uma vez quando as duas acontecem; por hora: quantas vezes o jogador entra nesse estado.",
         "perHourSuffix": "/h",
         "healthRestoredPerSecond": "HP restaurado por segundo",
         "manaRestoredPerSecond": "Mana restaurada por segundo",
