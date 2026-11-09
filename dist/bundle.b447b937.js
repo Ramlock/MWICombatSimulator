@@ -3256,6 +3256,8 @@ function localizeDesc(desc, names, players = [], dropPlayer = null) {
 
 // A cost cell: "≤" when the cost is only an upper bound.
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
+// In the confirmation lines, a payback that is not a number above 0 (a saved 0 means nothing was bought) is missing.
+const confirmedPayback = (v) => (typeof v === 'number' && v > 0 ? v : null);
 const paybackCell = (row) => (row.payback === null || row.payback === undefined ? '—' : (upper(row) ? '≤ ' : '') + num(row.payback));
 
 // The split of a row (shared loot gain per user, the changing player's own supplies change, the buyer's payback). A result
@@ -3315,8 +3317,8 @@ function renderResult(result, t, now = Date.now(), names = null) {
         const perPlayer = !goalExp && !!c.ownSuppliesByPlayer;
         L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${shared ? num(shared.g) + ' ± ' + num(shared.se) : '—'}</b> ${esc(t('result.perUserDay'))}, ` +
             `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}` +
-            (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: c.payback, costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}`) + '</div>');
-        if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1 small">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: c.paybackOwnByPlayer?.[p], costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
+            (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: (result.steps || []).some(upper) ? 'upper' : undefined })}`) + '</div>');
+        if (!goalExp && c.ownSuppliesByPlayer) for (const p of Object.keys(c.ownSuppliesByPlayer)) L.push(`<div class="mb-1 small">${t('result.ownLine', { player: esc(p), supplies: num(c.ownSuppliesByPlayer[p]), payback: paybackCell({ payback: confirmedPayback(c.paybackOwnByPlayer?.[p]), costBound: (result.steps || []).some(upper) ? 'upper' : undefined }) })}</div>`);
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
     if (players.length) {
@@ -3327,7 +3329,7 @@ function renderResult(result, t, now = Date.now(), names = null) {
     L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
     if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
     else {
-        L.push('<table class="table table-sm whatif-table"><thead><tr>' +
+        L.push('<table class="table table-sm whatif-table whatif-each"><thead><tr>' +
             [t('col.player'), t('col.change'), t('col.stage')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback'), t('col.costPath')].map((h) => `<th>${esc(h)}</th>`).join('') + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td><td>${esc(s.lastStage)}</td>` +
@@ -9318,4 +9320,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.aa75d1da.js.map
+//# sourceMappingURL=bundle.b447b937.js.map
