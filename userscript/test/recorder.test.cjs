@@ -60,7 +60,31 @@ test('hit, miss, crit and auto attack are attributed by counters', () => {
     assert.equal(p.dealt.bySource.auto.amount, 50);
     assert.equal(p.dealt.byMonster['/monsters/m'], 150);
     assert.equal(p.attempts, 3);
-    assert.deepEqual(J(p.events.dealt), { events: 3, hits: 2, misses: 1, crits: 1 });
+    assert.deepEqual(J(p.events.dealt), { events: 3, hits: 2, misses: 1, crits: 1, critsOnMiss: 0 });
+});
+
+test('a crit counts only on a hit; a crit flag on an event with no damage goes to critsOnMiss, in every tally', () => {
+    const r = fresh();
+    r.handle(NB(1, [unit({ preparingAbilityHrid: '/abilities/fireball', isPreparingAutoAttack: false })], [mon('/monsters/m')]), 1000);
+    // fireball executes (atk 1): hit for 100 with a crit (critCounter becomes 1)
+    r.handle(BU(1, { 0: ent(1000, 1, 0, 0, { abilityHrid: '/abilities/fireball' }) }, { 0: ent(900, 0, 1, 1) }), 1100);
+    // fireball executes again (atk 2): no hp change, but critCounter moved to 2 (a crit flag on an event with no damage)
+    r.handle(BU(1, { 0: ent(1000, 2, 0, 0, { isAutoAtk: true }) }, { 0: ent(900, 0, 2, 2) }), 1200);
+    close(r, 2000);
+    const p = lastEnc(r).players[0];
+    const b = p.dealt.bySource['/abilities/fireball'];
+    assert.equal(b.hits, 1); assert.equal(b.misses, 1); assert.equal(b.crits, 1); assert.equal(b.critsOnMiss, 1);
+    assert.deepEqual(J(p.events.dealt), { events: 2, hits: 1, misses: 1, crits: 1, critsOnMiss: 1 });
+    // the window totals carry both fields
+    const w = r.state.windows[r.state.windows.length - 1].players[0].totals;
+    assert.equal(w.events.dealt.crits, 1); assert.equal(w.events.dealt.critsOnMiss, 1);
+    // damage taken is tallied the same way
+    const r2 = fresh();
+    r2.handle(NB(1, [unit()], [mon('/monsters/m', { preparingAbilityHrid: '', isPreparingAutoAttack: true })]), 1000);
+    r2.handle(BU(1, { 0: ent(950, 0, 1, 1) }, { 0: ent(1000, 1, 0, 0, { isAutoAtk: true }) }), 1100);
+    r2.handle(BU(1, { 0: ent(950, 0, 2, 2) }, { 0: ent(1000, 2, 0, 0, { isAutoAtk: true }) }), 1200);
+    close(r2, 2000);
+    assert.deepEqual(J(lastEnc(r2).players[0].events.received), { events: 2, hits: 1, misses: 1, crits: 1, critsOnMiss: 1 });
 });
 
 test('a message with two player actors is kept raw and flagged, never split', () => {

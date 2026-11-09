@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.7.1
+// @version      0.7.2
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -399,7 +399,7 @@
             healed: { total: 0, regen: 0, bySource: {}, heuristic: 0, unresolved: 0 },
             mana: { spent: 0, regained: 0 },
             attempts: 0, casts: {},
-            events: { dealt: { events: 0, hits: 0, misses: 0, crits: 0 }, received: { events: 0, hits: 0, misses: 0, crits: 0 } },
+            events: { dealt: { events: 0, hits: 0, misses: 0, crits: 0, critsOnMiss: 0 }, received: { events: 0, hits: 0, misses: 0, crits: 0, critsOnMiss: 0 } },
             status: { stunnedMs: 0, blindedMs: 0, silencedMs: 0 },
             loot: {}, xp: {}, abilityXp: {}, consumablesUsed: {}, trades: {}, deaths: 0,
         };
@@ -690,20 +690,21 @@
                 src = { side: m.casterSide, idx: m.casterIdx, exec: m.ability, hrid: m.casterHrid }; ab = m.ability + ':dot'; dotTick = true;
             } else { ambiguous(enc, t, x, side, actors, 'multi-actor'); return; }
             const hit = dmg > 0;
-            const tally = (c) => { c.events++; if (hit) c.hits++; else c.misses++; if (x.crit) c.crits++; };
+            // A crit counts only on a hit; a crit-flagged event that did no damage is kept apart in critsOnMiss (nothing recorded is lost).
+            const tally = (c) => { c.events++; if (hit) c.hits++; else c.misses++; if (x.crit) { if (hit) c.crits++; else c.critsOnMiss++; } };
             if (side === 'm') {
                 const pr = enc.players[src.idx];
                 if (!pr) { ambiguous(enc, t, x, side, actors, 'no-actor'); return; }
                 const hrid = (enc.monsters[x.idx] || {}).hrid || '?';
                 pr.dealt.total += dmg; bump(pr.dealt.byMonster, hrid, dmg);
-                const b = pr.dealt.bySource[ab] || (pr.dealt.bySource[ab] = { amount: 0, events: 0, hits: 0, misses: 0, crits: 0 });
+                const b = pr.dealt.bySource[ab] || (pr.dealt.bySource[ab] = { amount: 0, events: 0, hits: 0, misses: 0, crits: 0, critsOnMiss: 0 });
                 b.amount += dmg; tally(b); tally(pr.events.dealt);
             } else {
                 const pr = enc.players[x.idx];
                 const hrid = src.hrid || (enc.monsters[src.idx] || {}).hrid || '?';
                 pr.taken.total += dmg;
                 const key = hrid + '::' + ab;
-                const b = pr.taken.bySource[key] || (pr.taken.bySource[key] = { amount: 0, events: 0, hits: 0, misses: 0, crits: 0 });
+                const b = pr.taken.bySource[key] || (pr.taken.bySource[key] = { amount: 0, events: 0, hits: 0, misses: 0, crits: 0, critsOnMiss: 0 });
                 b.amount += dmg; tally(b); tally(pr.events.received);
             }
             const dd = gd.dot[ab];
@@ -932,7 +933,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.7.1'; // keep equal to @version (a test checks it)
+    const VERSION = '0.7.2'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }

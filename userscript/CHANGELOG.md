@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.7.2 (2026-11-08)
+
+- Fix in the combat recording: a critical hit is now counted only when the hit did damage. Before, an attack that did no damage but carried the critical flag was counted as a critical hit, which put more crits than hits in some sources. Those events are now kept in a new field `critsOnMiss` next to `crits`, so nothing recorded is lost. Recordings made before this version keep their old crit counts.
+
 ### 0.7.1 (2026-11-08)
 
 - No change you can see. Adds two calculation functions for working out how much each damage bonus added to a hit (what the hit loses without that one bonus) and each bonus's even share of the total. Nothing calls them yet and nothing is shown; they will be used once the damage formula is fed from the recording.
