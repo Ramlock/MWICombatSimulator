@@ -63,7 +63,8 @@ try {
 
     await paste({ ...three, selected: [1, 3], fight: { zone: '/actions/combat/not_a_zone', tier: 9, kind: 'combat' } });
     check('a zone or tier the page lacks is left as it is; the ticks and slots still import', (s = await state()).zone === ids.zone2 && s.tier === '1' && JSON.stringify(s.ticked) === '[1,3]', JSON.stringify(s));
-    check('the slots of that paste were imported', await js(`JSON.parse(playerDataMap['3']).player.attackLevel === 43`));
+    await js(`document.getElementById('player3-tab').click(), true`);
+    check('the slots of that paste were imported (player 3 shows its level)', await until(`document.getElementById('inputLevel_attack').value === '43'`));
 
     await paste({ ...three, selected: [1, 2, 3], fight: { zone: ids.dungeon, tier: 1, kind: 'dungeon' } });
     s = await state();
@@ -72,7 +73,11 @@ try {
     if (shots) {
         await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
         await paste({ ...three, selected: [1, 2, 3], fight: { zone: ids.zone, tier: 2, kind: 'combat' } });
-        const [x, y, width, height] = await js(`(() => { const rs = ['playerCheckBox', 'selectDifficulty', 'selectZone'].map((id) => document.getElementById(id).getBoundingClientRect()); const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top)), r = Math.max(...rs.map((q) => q.right)), b = Math.max(...rs.map((q) => q.bottom)); return [l + scrollX - 12, t + scrollY - 12, r - l + 24, b - t + 24]; })()`);
+        // The tick boxes, zone and tier sit in the simulation setup window: open it and crop to its content.
+        await js(`document.getElementById('buttonSimulationSetup').click(), true`);
+        check('the setup window shows the controls', await until(`document.getElementById('playerCheckBox').getBoundingClientRect().width > 0`));
+        await new Promise((r) => setTimeout(r, 600));
+        const [x, y, width, height] = await js(`(() => { const b = document.getElementById('playerCheckBox').closest('.modal-content').getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
         const shot = await page.send('Page.captureScreenshot', { format: 'png', clip: { x, y, width, height, scale: 1 }, captureBeyondViewport: true });
         fs.mkdirSync(shots, { recursive: true });
         fs.writeFileSync(path.join(shots, 'group-selection.png'), Buffer.from(shot.data, 'base64'));
