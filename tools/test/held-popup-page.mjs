@@ -78,6 +78,8 @@ try {
     const body = await js(`document.getElementById('heldByTriggerBody').innerText`);
     check('the pop-up lists the skill, its conditions with shares, the separate previous-skill group and the overlap line', /Toxic Pollen/.test(body) && /\d+(\.\d+)?%/.test(body) && /A previous skill was out of mana/.test(body) && /Share of the whole simulation time each reason kept the skill from casting while it was ready; reasons can overlap, so they do not add up\./.test(body), body);
     check('the pop-up is dark', await js(`getComputedStyle(document.querySelector('#heldByTriggerModal .modal-content')).backgroundColor !== 'rgb(255, 255, 255)'`));
+    check('the modal title is the button text', await js(`document.querySelector('#heldByTriggerModal .modal-title').textContent.trim() === document.getElementById('heldByTriggerButton').textContent.trim()`));
+    check('a previous-skill row has name and share on one line, with the same indent and height as a condition row', await js(`(() => { const rows = [...document.querySelectorAll('#heldSkipGroup .held-line')]; const cond = document.querySelector('#heldTriggerGroup .held-line'); if (!rows.length || !cond) return false; const r = rows[0], a = r.children[0].getBoundingClientRect(), b = r.children[1].getBoundingClientRect(), c = cond.children[0].getBoundingClientRect(); return Math.abs(a.top - b.top) < 2 && Math.abs(r.getBoundingClientRect().height - cond.getBoundingClientRect().height) < 2 && Math.abs(a.left - c.left) < 1; })()`));
     await shot('held-popup.png', '#heldByTriggerModal .modal-content');
     page.close();
 } finally {

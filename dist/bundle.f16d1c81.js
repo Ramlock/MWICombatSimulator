@@ -1396,7 +1396,7 @@ function heldPopupHtml(summary, fmt) {
     }
     if (skips.length > 0) {
         html += `<div id="heldSkipGroup" class="mb-3"><h6 data-i18n="common:simulationResults.previousSkillOutOfMana">A previous skill was out of mana</h6>`;
-        for (const a of skips) html += `<div class="held-block mb-2">${name(a)}${line("", a.skip, "ps-3")}</div>`;
+        for (const a of skips) html += line(`<span data-ability="${a.abilityHrid}">${fmt.abilityName(a.abilityHrid)}</span>`, a.skip, "ps-3");
         html += `</div>`;
     }
     html += `<p id="heldOverlapLine" class="text-muted mb-0" data-i18n="common:simulationResults.heldByTriggerOverlap">${HELD_OVERLAP_LINE}</p>`;
@@ -9239,4 +9239,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.6d871b31.js.map
+//# sourceMappingURL=bundle.f16d1c81.js.map
