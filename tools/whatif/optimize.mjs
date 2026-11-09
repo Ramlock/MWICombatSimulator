@@ -17,7 +17,11 @@
 //   --skill-up 2  --skill-left P1:stamina=300.5K,magic=1.2M;P2:...   experience left to the next level (levers/skills.mjs)
 //   --charms                     keep charm candidates on a profit goal (left out by default: they change only EXP)
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
-//   --budget <coin> | --export <exporter JSON>   budget: typed, else `coin` of the exporter JSON (3.1)
+//   --budget <coin> | --export <exporter JSON>   budget: typed, else `coin` of the exporter JSON (3.1); every
+//                                player's budget unless --budgets names that player
+//   --budgets A=1.5M,B=200K      a budget per player (budgets.mjs): each change is paid from its own player's coin,
+//                                each step records every player's running spend (result.json steps[].runningSpend)
+//   --low-priority               run this process and every run process at the lowest priority (Windows: idle class)
 //   --stages 4x50,4x150,8x300    seeds x sim hours per stage: screen, halvings; the last is the finalist stage
 //   --keep 40,10                 candidates kept after each stage but the last
 //   --error unpaired|paired      default unpaired (design revision 6). paired: se of per-seed differences, base on the variant's seed count (3.3 up to
@@ -41,7 +45,11 @@
 //                                they replace the generated ones for that owner
 //   --comdrop 20 --comexp 20 --tier 4 --zone /actions/combat/infernal_abyss
 // Every run is cached in <out>/runs.jsonl by (resulting setups, options, seed); a rerun with the same args
-// resumes. Results: <out>/result.json and <out>/result.md. Exit code 3 = stopped by --max-minutes, rerun.
+// resumes. Results: <out>/result.json and <out>/result.md. Exit code 3 = stopped (by --max-minutes or a stop
+// request), rerun. Progress goes to <out>/progress.json and, when started with an IPC channel (the runner,
+// tools/whatif/runner/), as { type: 'progress', progress } messages; the message 'stop' ends the search cleanly: no
+// new runs, the runs in flight are dropped, runs.jsonl keeps every finished run, and the same command resumes.
+// Every run process takes this process's priority.
 import { fork } from 'node:child_process';
 import { readFileSync, existsSync, appendFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -56,6 +64,7 @@ import { installProbe, summarize, mergeProbes, triggerCands, localCands } from '
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
+import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
@@ -102,10 +111,15 @@ const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => 
 for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
 const exportData = arg('export', null) ? JSON.parse(readFileSync(arg('export'), 'utf8')) : null;
 if ((levers.has('owned') || levers.has('abilities')) && !exportData) throw new Error('--levers owned/abilities need --export (inventory, learned abilities)');
-let budget, budgetSource;
+let budget = null, budgetSource;
+const budgetList = parseBudgetList(arg('budgets', null) === true ? null : arg('budgets', null));
 if (arg('budget', null) !== null) { budget = Number(arg('budget')); budgetSource = 'typed'; }
 else if (exportData) { budget = exportData.coin; budgetSource = 'exporter coin'; if (!(budget >= 0)) throw new Error('exporter JSON has no coin'); }
-else throw new Error('--budget or --export required');
+else if (Object.keys(budgetList).length) budgetSource = 'per player';
+else throw new Error('--budget, --budgets or --export required');
+if (Object.keys(budgetList).length && budget != null) budgetSource = `per player, else ${budgetSource}`;
+const budgets = resolveBudgets(players, budgetList, budget ?? NaN);
+if (arg('low-priority', false) === true) os.setPriority(os.constants.priority.PRIORITY_LOW);
 
 const [probeK, probeH] = String(arg('probe', '1x50')).split('x').map(Number);
 const trigOpts = { owners: list(arg('trigger-owners', null)), fixed: list(arg('trigger-fixed', null)) };
@@ -137,8 +151,26 @@ function put(r) {
 const keyOptions = { ...options, prices: path.relative(root, path.resolve(options.prices)).split(path.sep).join('/') };
 const keyOf = (ops) => createHash('sha1').update(JSON.stringify({ s: applyOps(setups0, ops), o: keyOptions })).digest('hex').slice(0, 16);
 const allHours = [...new Set(stages.map((s) => s.h))].sort((a, b) => a - b);
-let stoppedByTime = false;
+let stoppedByTime = false, stopRequested = false;
 const wallLog = []; // per run actually made in this invocation
+const live = new Set(); // run processes in flight, killed by a stop request
+process.on('message', (m) => { if (m === 'stop') { stopRequested = true; for (const c of live) c.kill(); } });
+
+// ---- Progress (delivery design section 3): the stage, candidates left, runs of the current batch, seconds per run
+// measured, and the batch's time left from the measured core-seconds per sim hour. The batch is one stage (the
+// screen, a halving, a greedy step, the confirmation); later stages are not in etaSeconds (etaScope: 'stage').
+const progress = { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0, secondsPerRun: null, etaSeconds: null, etaScope: 'stage', elapsedSeconds: 0 };
+let batch = { hoursLeft: 0, wall: 0, done: 0 };
+function report(patch = {}) {
+    Object.assign(progress, patch);
+    const wall = wallLog.reduce((a, r) => a + r.wallSeconds, 0), hours = wallLog.reduce((a, r) => a + r.h, 0);
+    const left = progress.runsPlanned - progress.runsDone;
+    progress.secondsPerRun = batch.done ? batch.wall / batch.done : wallLog.length ? wall / wallLog.length : null;
+    progress.etaSeconds = left <= 0 ? 0 : hours ? Math.round((wall / hours) * batch.hoursLeft / Math.min(jobs, left)) : null;
+    progress.elapsedSeconds = Math.round((Date.now() - t0) / 1000);
+    writeFileSync(path.join(OUT, 'progress.json'), JSON.stringify(progress));
+    if (process.connected) process.send({ type: 'progress', progress });
+}
 
 async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
     const tasks = [], need = new Map(); // id -> task, at the longest length asked for that run
@@ -151,15 +183,20 @@ async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
     }
     for (const t of need.values()) tasks.push({ ...t, checkpoints: allHours.filter((x) => x <= t.h) });
     tasks.sort((a, b) => b.h - a.h); // longest first, so the last wave is short
+    batch = { hoursLeft: tasks.reduce((a, t) => a + t.h, 0), wall: 0, done: 0 };
+    report({ runsDone: 0, runsPlanned: tasks.length });
     if (!tasks.length) return true;
+    if (stopRequested) { stoppedByTime = true; return false; }
     console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] ${tasks.length} runs, ${tasks.reduce((a, t) => a + t.h, 0)} sim h`);
     let next = 0;
     const self = fileURLToPath(new URL('./batch.mjs', import.meta.url));
     await Promise.all(Array.from({ length: Math.min(jobs, tasks.length) }, () => new Promise((resolve, reject) => {
         const c = fork(self, ['--child'], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+        try { os.setPriority(c.pid, os.getPriority()); } catch { /* the child exited already */ }
+        live.add(c);
         const feed = () => {
-            if (next < tasks.length && (Date.now() - t0) / 60000 < maxMinutes) c.send(tasks[next++]);
-            else { if (next < tasks.length) stoppedByTime = true; c.send('exit'); }
+            if (next < tasks.length && !stopRequested && (Date.now() - t0) / 60000 < maxMinutes) c.send(tasks[next++]);
+            else { if (next < tasks.length || stopRequested) stoppedByTime = true; c.send('exit'); }
         };
         c.on('message', (res) => {
             const t = tasks.find((x) => x.variant === res.variant && x.seed === res.seed);
@@ -167,12 +204,14 @@ async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
             appendFileSync(CACHE, JSON.stringify(rec) + '\n');
             put(rec);
             wallLog.push({ tag: t.tag, h: t.h, wallSeconds: res.wallSeconds });
+            batch.hoursLeft -= t.h; batch.wall += res.wallSeconds; batch.done++;
+            report({ runsDone: progress.runsDone + 1 });
             feed();
         });
-        c.on('exit', (code) => (code === 0 ? resolve() : reject(new Error('child exited ' + code))));
+        c.on('exit', (code) => { live.delete(c); if (code === 0 || stopRequested) resolve(); else reject(new Error('child exited ' + code)); });
         feed();
     })));
-    return !stoppedByTime;
+    return !stoppedByTime && !stopRequested; // a stop kills runs in flight, so this batch is incomplete
 }
 const val = (ops, seed, h) => metric(cache.get(keyOf(ops) + '#' + seed).byHours[h]);
 const seedsFor = (k, off = 0) => Array.from({ length: k }, (_, i) => off + i + 1);
@@ -365,14 +404,14 @@ const rank = (a, b) => (b.est.score - a.est.score) || (b.est.gain - a.est.gain);
 
 // ---- Search ----
 async function main() {
-    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgetSource, taxLabel: TAX_LABEL, players, steps: [], singles: [], apart: [] };
+    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [] };
     const fin = stages[stages.length - 1];
-    let baseOps = [], spent = 0;
-    if (levers.has('triggers')) probeStore = await probeBase();
+    let baseOps = [], spent = zeroSpend(budgets);
+    if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(); }
     let cands = players.flatMap((p) => allCandidates(setups0, p));
     if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
     result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
-    cands = cands.filter((c) => c.cost.known && c.cost.cost <= budget);
+    cands = cands.filter((c) => c.cost.known && affordable(c, budgets, null)); // each within its own player's budget
     // Monotone levers first (3.2 item 1), then the rest; screen then halving.
     cands.sort((a, b) => (b.monotone - a.monotone));
     result.candidates = cands.length;
@@ -386,6 +425,7 @@ async function main() {
     let pool = cands;
     for (let si = 0; si < stages.length; si++) {
         const st = stages[si];
+        report({ stage: si === 0 ? 'screen' : `halving ${si}`, candidatesLeft: pool.length });
         // The base runs alongside the screen, so the cores are not idle while it runs.
         if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => req(c.ops, st.h, st.k, 'variant'))])) return stop(result);
         for (const c of pool) { c.est = estimate([], c, st, st.k * baseMult); (c.history ||= []).push(c.est); }
@@ -398,12 +438,12 @@ async function main() {
     let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
     result.timeOnly = cands.filter((c) => c.timeOnly);
     for (let step = 0; step < maxSteps; step++) {
-        const ok = finalists.filter((c) => c.est.accepted && c.cost.cost <= budget - spent).sort(rank);
+        const ok = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)).sort(rank); // paid from its own player's coin left
         if (!ok.length) break;
         const best = ok[0];
-        spent += Math.max(best.cost.cost, 0);
+        spent = pay(spent, best);
         baseOps = [...baseOps, ...best.ops];
-        result.steps.push({ ...row(best), runningCost: spent });
+        result.steps.push({ ...row(best), runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
         console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
         // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
         const newBase = req(baseOps, fin.h, fin.k * baseMult, 'base');
@@ -412,19 +452,21 @@ async function main() {
         // phase 1; the other groups it touched keep only their survivors, so a loadout step does not re-add dozens.
         const setupsNow = applyOps(setups0, baseOps), touched = new Set(best.groups);
         const survivors = new Set(finalists.filter((c) => c !== best).map((c) => c.id));
-        finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && c.cost.cost <= budget - spent && (
+        finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && affordable(c, budgets, spent) && (
             c.groups.some((g) => touched.has(g)) && c.kind === 'equip' && (best.kind === 'equip' || best.kind === 'owned')
                 ? (c.monotone || !onlyCands || onlyCands.includes(c.id))
                 : c.groups.some((g) => touched.has(g)) && c.kind === 'trigger' ? false // stale: built on the owner's old list
                     : (survivors.has(c.id) && c.id !== best.id)));
         // Coordinate-wise rounds (3.5 item 3): the changed owner's terms get local candidates around the new values.
         if (best.kind === 'trigger') finalists.push(...localCands(setupsNow.find((x) => x.name === best.player), best.player, probeStore, best.owner));
+        report({ stage: `greedy step ${step + 1}`, candidatesLeft: finalists.length });
         if (!await ensure([...newBase, ...finalists.flatMap((c) => req([...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
     }
 
     // One confirmation on fresh seeds (3.3): base and result.
     if (result.steps.length) {
+        report({ stage: 'confirmation', candidatesLeft: 0 });
         const fs = pick([], fin.h, fin.k * baseMult, true), vs = pick(baseOps, fin.h, fin.k, true);
         if (!await ensure([...fs.map((i) => ({ ops: [], seed: i, h: fin.h, tag: 'confirm' })), ...vs.map((i) => ({ ops: baseOps, seed: i, h: fin.h, tag: 'confirm' }))])) return stop(result);
         const v = vs.map((i) => val(baseOps, i, fin.h)), b = fs.map((i) => val([], i, fin.h));
@@ -432,13 +474,16 @@ async function main() {
         let gain, se;
         if (errorRule === 'paired') { const d = v.map((x, i) => x - b[i]); gain = mean(d); se = sd(d) / Math.sqrt(d.length); }
         else { gain = mean(v) - mean(b); se = Math.sqrt(sd(v) ** 2 / v.length + sd(b) ** 2 / b.length); }
-        result.confirmation = { seeds: { base: fs, result: vs }, gain, se, cost: spent, payback: goal === 'profit' && gain > 0 ? spent / gain : null, ops: baseOps };
+        const total = Object.values(spent).reduce((a, x) => a + x, 0);
+        result.confirmation = { seeds: { base: fs, result: vs }, gain, se, ...perUser(gain, se), accepted: gain > 0 && gain >= z * se, cost: total, runningSpend: { ...spent }, payback: goal === 'profit' && gain > 0 ? total / gain : null, ops: baseOps };
     }
     return done(result);
 }
 
+// Per user: the party figure split equally over the party (the contract's gainPerUser / sePerUser).
+const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: se / setups0.length });
 function row(c) {
-    return { id: c.id, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+    return { id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -448,7 +493,13 @@ function timing(result) {
     result.timing = { wallMinutes: (Date.now() - t0) / 60000, runsThisCall: wallLog.length, coreHoursThisCall: wallLog.reduce((a, r) => a + r.wallSeconds, 0) / 3600, simHoursThisCall: wallLog.reduce((a, r) => a + r.h, 0), coreHoursAllRuns: runs.reduce((a, r) => a + r.wallSeconds, 0) / 3600, simHoursAllRuns: runs.reduce((a, r) => a + r.hours, 0) };
     result.timing.secondsPerSimHour = result.timing.simHoursAllRuns ? result.timing.coreHoursAllRuns * 3600 / result.timing.simHoursAllRuns : null;
 }
-function stop(result) { timing(result); result.incomplete = true; writeFileSync(path.join(OUT, 'partial.json'), JSON.stringify(result, null, 1)); console.log('stopped by --max-minutes; rerun the same command to resume'); process.exit(3); }
+function stop(result) {
+    timing(result); result.incomplete = true; result.stoppedBy = stopRequested ? 'stop request' : '--max-minutes';
+    writeFileSync(path.join(OUT, 'partial.json'), JSON.stringify(result, null, 1));
+    report({ stage: 'stopped' });
+    console.log(`stopped by ${result.stoppedBy}; rerun the same command to resume`);
+    process.exit(3);
+}
 function done(result) {
     timing(result);
     let skillLines = [];
@@ -461,7 +512,7 @@ function done(result) {
     }
     delete result.timeOnly;
     writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 1));
-    const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget ${fmt(budget)} (${budgetSource}). Error rule: ${errorRule}, base on ${baseMult}x seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
+    const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, base on ${baseMult}x seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
     L.push('## Changes, in order', '', '| # | Change | Gain | ± se | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
     result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${fmt(s.gain)} | ${fmt(s.se)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${fmt(s.runningCost)} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`));
     if (result.confirmation) { const c = result.confirmation; L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): gain ${fmt(c.gain)} ± ${fmt(c.se)} ${unit()}, cost ${fmt(c.cost)}, payback ${c.payback?.toFixed(1) ?? '-'} days.`); }
@@ -472,7 +523,9 @@ function done(result) {
     const t = result.timing;
     L.push('', `Timing: ${t.wallMinutes.toFixed(1)} min wall this call, ${t.coreHoursAllRuns.toFixed(2)} core-hours over all cached runs (${t.simHoursAllRuns} sim h, ${t.secondsPerSimHour?.toFixed(2)} s per sim hour).`);
     writeFileSync(path.join(OUT, 'result.md'), L.join('\n') + '\n');
+    report({ stage: 'done', candidatesLeft: 0 });
     console.log(`done: ${result.steps.length} steps; ${path.join(OUT, 'result.md')}`);
 }
 
 await main();
+if (process.connected) process.disconnect(); // the IPC channel (stop requests) would keep the process alive

@@ -52,6 +52,7 @@ if (arg('child', false) === true) {
     const self = fileURLToPath(import.meta.url);
     await Promise.all(Array.from({ length: Math.min(jobs, tasks.length) }, () => new Promise((resolve, reject) => {
         const c = fork(self, ['--child'], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+        try { os.setPriority(c.pid, os.getPriority()); } catch { /* the child exited already */ } // a run takes its parent's priority
         const feed = () => { if (next < tasks.length) c.send(tasks[next++]); else c.send('exit'); };
         c.on('message', (r) => {
             appendFileSync(OUT, JSON.stringify(r) + '\n');
