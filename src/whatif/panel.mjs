@@ -5,6 +5,7 @@
 // and where the page's setup differs from the one the search ran on.
 import { applyOps } from './applyOps.mjs';
 import { numberHtml } from '../numberFormat.js';
+import { isMarketplace } from '../marketplace.mjs';
 
 // The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
 // Labyrinth are not levers. `def` = checked by default (the optimizer's own default is equip only).
@@ -42,12 +43,23 @@ export function pageSetups(slots) {
 }
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
-export function searchBody({ slots, goal, budgets, levers, zone, tier }) {
+// marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
+export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
     if (tier !== undefined && tier !== null && tier !== '') options.tier = Number(tier);
+    if (marketplace) options.marketplace = marketplace;
     return { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+}
+
+// The request with the market snapshot fetched now (delivery design section 3). Returns { body }, or { error } when
+// the fetch fails or answers no snapshot: then no search starts (no fallback to an older snapshot).
+export async function searchRequest(params, getMarketplace) {
+    let marketplace;
+    try { marketplace = await getMarketplace(); } catch (e) { return { error: String(e?.message || e) }; }
+    if (!isMarketplace(marketplace)) return { error: 'no marketData or timestamp' };
+    return { body: searchBody({ ...params, marketplace }) };
 }
 
 // Apply ops to the page's slots. Returns { missing: [player names no slot holds] } and applies nothing when any op
@@ -113,7 +125,7 @@ export function renderProgress(status, t) {
     let html = parts.join(' · ');
     if (p.runsPlanned > 0) {
         const pct = Math.min(100, Math.max(0, (p.runsDone / p.runsPlanned) * 100));
-        html += `<div class="progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
+        html += `<div class="progress whatif-progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
     }
     if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
     return html;
@@ -132,11 +144,13 @@ const paybackCell = (row) => (row.payback === null || row.payback === undefined 
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
-export function renderResult(result, t) {
+export function renderResult(result, t, now = Date.now()) {
     if (!result) return '';
     const L = [];
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
     L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
+    const prices = pricesLine(result, t, now);
+    if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
     const players = Object.keys(result.budgets || {});
     // Running spend per player: a step's own figure; "≤" from the first upper-bound cost of that player on.
     const upperFrom = {};
@@ -188,12 +202,33 @@ export function renderResult(result, t) {
         L.push('</table>');
         if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
     }
+    if (result.overBudget?.length) {
+        L.push(`<div class="fw-bold mt-3">${esc(t('result.overBudget'))} <span class="text-secondary fw-normal small">${esc(t('result.overBudgetNote', { n: result.overBudget.length }))}</span></div><ul class="small">` +
+            result.overBudget.map((a) => `<li>${esc(a.player)}, ${esc(a.desc)}: ${costCell(a)}</li>`).join('') + '</ul>');
+    }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
             result.apart.map((a) => `<li>${esc(a.desc)}: ${esc(a.note)}</li>`).join('') + '</ul>');
     }
-    if ((result.steps || []).some(upper) || (result.singles || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
     return L.join('');
+}
+
+// The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`
+// (a clock reading of that field, as duration() is); "committed file" when the request carried no snapshot.
+export function pricesLine(result, t, now = Date.now()) {
+    const ts = result?.options?.pricesTimestamp;
+    if (!Number.isFinite(ts)) return '';
+    const when = new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+    const key = result.options.pricesSource === 'committed' ? 'result.pricesCommitted' : 'result.pricesSnapshot';
+    return esc(t(key, { when, elapsed: age((now / 1000) - ts, t) }));
+}
+// Seconds as the largest whole unit (days, hours or minutes).
+export function age(s, t) {
+    const x = Math.max(0, Number(s));
+    if (x >= 86400) return t('age.days', { n: Math.floor(x / 86400) });
+    if (x >= 3600) return t('age.hours', { n: Math.floor(x / 3600) });
+    return t('age.minutes', { n: Math.floor(x / 60) });
 }
 
 // The ops behind a button's data-whatif-apply value.

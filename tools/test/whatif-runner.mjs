@@ -62,6 +62,19 @@ check(throws(() => R.buildArgs({ setups: party, cacheFrom: 'x' }, argDir)) && th
 check(throws(() => R.buildArgs({ setups: party, options: { prices: '../../secret.json' } }, argDir)) && throws(() => R.buildArgs({ setups: party, options: { prices: 'nope.json' } }, argDir)), 'buildArgs: a price file outside the snapshots throws');
 check(throws(() => R.buildArgs({ setups: [{ ...party[0], name: '../x' }] }, argDir)) && throws(() => R.buildArgs({ setups: [] }, argDir)) && throws(() => R.buildArgs({ setups: party, budgets: { 'A,B': 1 } }, argDir)), 'buildArgs: bad setup names, no setups, a bad budget name throw');
 check(throws(() => R.buildArgs({ setups: party, zone: '--out' }, argDir)), 'buildArgs: a value that would be read as a flag throws');
+// The window's market snapshot: saved once in the search's folder and passed as --prices; a second call (a resume) keeps it.
+const snap = (timestamp) => ({ marketData: { '/items/cheese_sword': { 0: { a: 100, b: 90 } } }, timestamp });
+const mpDir = path.join(tmp, 'mp');
+const mpArgs = R.buildArgs({ setups: party, options: { marketplace: snap(1700000000) } }, mpDir);
+const mpFile = path.join(mpDir, R.MARKETPLACE_FILE);
+check(mpArgs[mpArgs.indexOf('--prices') + 1] === mpFile && JSON.parse(readFileSync(mpFile, 'utf8')).timestamp === 1700000000 && !mpArgs.some((a) => /marketplace/.test(a) && a !== mpFile && a !== '--prices'), 'buildArgs: options.marketplace is saved in the search folder and passed as --prices');
+const mpArgs2 = R.buildArgs({ setups: party, options: { marketplace: snap(1800000000) } }, mpDir);
+check(mpArgs2[mpArgs2.indexOf('--prices') + 1] === mpFile && JSON.parse(readFileSync(mpFile, 'utf8')).timestamp === 1700000000, 'buildArgs: a resume reuses the saved snapshot, never a new one');
+check(throws(() => R.buildArgs({ setups: party, options: { marketplace: { marketData: {} } } }, path.join(tmp, 'mp2'))) && throws(() => R.buildArgs({ setups: party, options: { marketplace: [] } }, path.join(tmp, 'mp3'))), 'buildArgs: a marketplace with no timestamp or no marketData throws');
+check(throws(() => R.buildArgs({ setups: party, options: { marketplace: snap(1), prices: 'marketplace-2026-11-03.json' } }, path.join(tmp, 'mp4'))), 'buildArgs: prices and marketplace together throw');
+check(!R.buildArgs({ setups: party, options: {} }, path.join(tmp, 'mp5')).includes('--prices') && !existsSync(path.join(tmp, 'mp5', R.MARKETPLACE_FILE)), 'buildArgs: no snapshot, no --prices (the optimizer\'s committed default)');
+const big = JSON.parse(readFileSync(path.join(root, 'tools/calibration/marketplace-2026-11-03.json'), 'utf8'));
+check(JSON.stringify({ setups: party, options: { marketplace: big } }).length < 5e6, `the request limit (50 MB) holds a full marketplace.json (${Math.round(JSON.stringify(big).length / 1024)} KB)`);
 check(R.searchId({ a: 1, b: [1, 2] }) === R.searchId({ b: [1, 2], a: 1 }) && R.searchId({ a: 1 }) !== R.searchId({ a: 2 }), 'searchId: the same request (any key order) is the same id');
 
 // ---- HTTP helper ----
@@ -128,6 +141,18 @@ const s4 = await call(base, 'POST', '/api/search', { ...body, goal: 'exp' });
 fakes[2].onExit(1, 'line 1\nError: boom');
 const g4 = await call(base, 'GET', '/api/search/' + s4.json.id);
 check(g4.json.state === 'error' && g4.json.error.includes('boom'), 'error: a failed optimizer reads error with its last lines');
+// A search with the window's snapshot through the interface: saved once, passed, and the Resume keeps the same file.
+const mpBody = { setups: party, options: { marketplace: snap(1700000000) }, goal: 'exp', budgets: { Alpha: 1, Beta: 1 }, levers: ['equip'] };
+const m1 = await call(base, 'POST', '/api/search', mpBody);
+const mh = fakes[fakes.length - 1], mFile = path.join(mh.dir, R.MARKETPLACE_FILE);
+check(m1.status === 200 && mh.args[mh.args.indexOf('--prices') + 1] === mFile && JSON.parse(readFileSync(mFile, 'utf8')).timestamp === 1700000000, 'search: the window\'s snapshot is saved in the search folder and passed to the optimizer');
+const mStat = readFileSync(mFile, 'utf8');
+await call(base, 'POST', `/api/search/${m1.json.id}/stop`);
+await sleep(50);
+const mr = await call(base, 'POST', `/api/search/${m1.json.id}/stop`);
+const mh2 = fakes[fakes.length - 1];
+check(mr.json.resumed && mh2 !== mh && mh2.args[mh2.args.indexOf('--prices') + 1] === mFile && readFileSync(mFile, 'utf8') === mStat, 'resume: the same saved snapshot is passed again');
+mh2.stop(); await sleep(50);
 const list = await call(base, 'GET', '/api/results');
 check(list.json.length === 1 && list.json[0].id === s1.json.id && list.json[0].goal === 'profit' && !!Date.parse(list.json[0].finished), 'results: finished searches with id, finished, goal, players');
 check((await call(base, 'GET', '/api/results/' + s1.json.id)).json.goal === 'profit' && (await call(base, 'GET', '/api/results/000000000000')).status === 404 && (await call(base, 'GET', '/api/results/..%2F..')).status === 404, 'results/<id>: one result; unknown or malformed ids are 404');
@@ -142,7 +167,7 @@ await fake.close();
 // Beta has no coin: no paid change of Beta's may be screened or bought. Two short stages; 1 or 2 simulated hours.
 const real = R.createRunner({ resultsDir: path.join(tmp, 'real'), distDir: dist, lowPriority: false });
 const rb = await real.listen(0);
-const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], stages: ['4x2', '4x2'], keep: [4], maxUp: 2, swaps: false, z: 0, jobs: 2 };
+const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], stages: ['4x2', '4x2'], keep: [4], maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
 const r1 = await call(rb, 'POST', '/api/search', req);
 const id = r1.json.id, dir = path.join(tmp, 'real', id);
@@ -164,6 +189,9 @@ check(fin.trace.some((p) => p && p.runsDone > 0 && p.secondsPerRun > 0 && p.etaS
 check(fin.r.progress?.stage === 'done', 'progress: the last stage is done');
 if (res) {
     check(JSON.stringify(res.budgets) === JSON.stringify({ Alpha: 1e9, Beta: 0 }) && res.setups.length === 2 && res.options.zone === '/actions/combat/fly' && res.options.levers.includes('equip') && res.partySize === 2, 'result: budgets per player, the base setups, the run options at the top');
+    check(res.options.pricesTimestamp === 1700000000 && res.options.pricesSource === 'snapshot' && res.options.prices.endsWith(id + '/' + R.MARKETPLACE_FILE) && existsSync(path.join(dir, R.MARKETPLACE_FILE)), 'result: the request\'s snapshot was used, its timestamp beside options.prices');
+    check(res.overBudget.length > 0 && res.overBudget.every((c) => c.player === 'Beta' && c.cost > 0 && c.desc && c.id) && !res.candidateList.some((c) => res.overBudget.some((o) => o.id === c.id)), 'result: Beta\'s priced changes are listed as over budget (id, player, desc, cost), never screened');
+    check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('## Priced, over budget, not ranked'), 'result.md: the over-budget list');
     check(res.candidateList.every((c) => !c.id.startsWith('Beta:') || c.cost <= 0) && res.candidateList.some((c) => c.id.startsWith('Alpha:') && c.cost > 0), 'budget per player: Beta\'s paid changes are never screened, Alpha\'s are');
     check(res.singles.length > 0 && res.singles.every((s) => s.player && Array.isArray(s.ops) && s.ops.length && typeof s.accepted === 'boolean' && Math.abs(s.gainPerUser * 2 - s.gain) < 1e-6 && Math.abs(s.sePerUser * 2 - s.se) < 1e-6), 'rows: player, ops, accepted, gainPerUser and sePerUser (party figure / party size)');
     check(res.steps.every((s) => s.runningSpend && s.runningSpend.Beta === 0 && s.runningSpend.Alpha <= 1e9 && s.player === 'Alpha'), 'steps: each carries every player\'s running spend; Beta spends nothing');
@@ -172,6 +200,12 @@ if (res) {
     check(!res.confirmation || (res.confirmation.gainPerUser * 2 - res.confirmation.gain < 1e-6 && res.confirmation.runningSpend), 'confirmation: per-user figures and spend');
     console.log(`     (${res.steps.length} steps, ${res.singles.length} singles, ${res.timing.runsThisCall} runs after the resume)`);
 }
+// A request with no snapshot: result.json says the committed file was used, and its date.
+const plainReq = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 }, levers: ['equip'], stages: ['4x1'], keep: [1], onlyCandidates: ['none'], z: 0, jobs: 2 };
+const p1 = await call(rb, 'POST', '/api/search', plainReq);
+const pf = (await wait(p1.json.id, (r) => r.state !== 'running')).r;
+if (pf.state !== 'done') console.log(JSON.stringify(pf).slice(0, 600));
+check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && pf.result.options.pricesTimestamp === big.timestamp && pf.result.options.prices === 'tools/calibration/marketplace-2026-11-03.json', 'result: no snapshot in the request: the committed file, its name and its timestamp', JSON.stringify(pf.error || pf.result?.options));
 await real.close();
 
 // ---- (5) The runner's own page reaches its interface; a page of another origin does not (design section 7 item 1) ----

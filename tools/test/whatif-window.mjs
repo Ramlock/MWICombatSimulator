@@ -32,6 +32,8 @@ const result = {
         { id: 'x', player: 'Nobody', desc: 'Attack 1 → 2', lastStage: '4x50', gain: 10, se: 80, gainPerUser: 10, sePerUser: 80, cost: 100000, payback: null, costPath: 'days of play', accepted: false, ops: [{ op: 'level', player: 'Nobody', skill: 'attack', delta: 1 }] },
     ],
     apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }],
+    overBudget: [{ id: 'o', player: 'Player 1', desc: 'A big staff +10', cost: 7000000000, costPath: 'market' }],
+    options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot' },
 };
 let search = null, received = null, polls = 0;
 const send = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -103,10 +105,18 @@ try {
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('a budget that is not a number is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('Player 1')`) && received === null);
     await js(`(() => { document.querySelector('#whatIfBudgets input').value = '1000000'; document.getElementById('whatIfLever_houses').click(); return true; })()`);
+    // The market snapshot: the page's fetch of marketplace.json is answered here (no network for it in the test).
+    await js(`(() => { const f = window.fetch; window.__mpCalls = 0; window.fetch = (u, o) => { if (!String(u).includes('marketplace.json')) return f(u, o); window.__mpCalls++;
+        return window.__mpFail ? Promise.reject(new Error('offline')) : Promise.resolve(new Response(JSON.stringify({ marketData: { '/items/apple': { 0: { a: 10, b: 9 } } }, timestamp: 1700000000 }), { status: 200 })); }; window.__mpFail = true; return true; })()`);
+    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    check('a failed price fetch starts no search and says so', await until(`document.getElementById('whatIfMessage').textContent.includes('could not be fetched')`) && received === null && (await js('window.__mpCalls')) >= 1);
+    await js(`(window.__mpFail = false, true)`);
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('progress is shown while it runs', await until(`document.getElementById('whatIfProgress').textContent.includes('candidates left')`));
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
         received.budgets['Player 1'] === 1000000 && received.levers.join() === 'equip,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
+    check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
+    check('the progress bar has a dark track and a fill of its own in dark mode', await js(`(() => { const p = document.querySelector('#whatIfProgress .whatif-progress'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const t = getComputedStyle(p).backgroundColor, b = getComputedStyle(p.querySelector('.progress-bar')).backgroundColor; return lum(t) < 150 && t !== b && getComputedStyle(p).borderTopWidth !== '0px'; })()`));
     await shot('whatIfModal', 'whatif-progress.png');
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Stop stops it and offers Resume', await until(`document.getElementById('buttonWhatIfStop').textContent === 'Resume'`) && search.state === 'stopped');
@@ -114,6 +124,7 @@ try {
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Resume runs it to the end and the result shows', await until(`document.getElementById('whatIfResult').textContent.includes('Apply 1 to 2')`));
     check('the result shows "≤" and the unknown-cost list', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('≤') && t.includes('A token item'); })()`));
+    check('the result shows the snapshot time and the priced over-budget group', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('market snapshot of 2023-11-14 22:13 UTC') && t.includes('Priced, over budget') && t.includes('A big staff +10'); })()`));
     check('the earlier searches list fills', await until(`document.getElementById('selectWhatIfResult').options.length === 1`));
     await shot('whatIfModal', 'whatif-result.png');
     const before = await js(`[document.getElementById('inputLevel_magic').value, document.getElementById('inputLevel_stamina').value]`);

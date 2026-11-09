@@ -12,6 +12,7 @@ const imp = (p) => import(pathToFileURL(path.join(root, p)).href);
 const panel = await imp('src/whatif/panel.mjs');
 const { applyOps } = await imp('src/whatif/applyOps.mjs');
 const variants = await imp('tools/whatif/variants.mjs');
+const M = await imp('src/marketplace.mjs');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const locales = Object.fromEntries(['en', 'pt', 'zh'].map((l) => [l, JSON.parse(read(`locales/${l}/common.json`)).whatIf]));
 
@@ -42,6 +43,29 @@ check('variants.mjs re-exports the shared applyOps', variants.applyOps === apply
     check('search body: the slot JSON is sent as it is', body.setups[0].player.equipment[0].enhancementLevel === 5 && body.setups[0].zone === '/actions/combat/fly');
 }
 
+// The market snapshot: fetched when a search starts (the fetch injected, no network), sent as it came, none on failure.
+const snapshot = { marketData: { '/items/apple': { 0: { a: 10, b: 9 } } }, timestamp: 1700000000 };
+const answer = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });
+{
+    const params = { slots, goal: 'profit', budgets: { Alpha: 1, Beta: 0 }, levers: ['equip'], zone: '/actions/combat/x', tier: 2 };
+    const r = await panel.searchRequest(params, async () => snapshot);
+    check('search request: the snapshot rides in options.marketplace, as it came', JSON.stringify(r.body?.options.marketplace) === JSON.stringify(snapshot) && r.body.options.tier === 2 && r.body.setups.length === 2);
+    const bad = await panel.searchRequest(params, async () => { throw new Error('offline'); });
+    check('search request: a failed fetch gives an error and no body (no search)', bad.error === 'offline' && !bad.body);
+    const empty = await panel.searchRequest(params, async () => ({ marketData: {} }));
+    check('search request: an answer with no timestamp gives an error and no body', !!empty.error && !empty.body);
+    check('search body: no marketplace, no options.marketplace', !('marketplace' in panel.searchBody(params).options));
+    const urls = [];
+    const got = await M.fetchMarketplace(async (u) => { urls.push(u); return answer(snapshot); });
+    check('fetchMarketplace: the international server, the body parsed', got.timestamp === 1700000000 && urls.length === 1 && urls[0] === M.MARKETPLACE_URLS[0]);
+    urls.length = 0;
+    const cn = await M.fetchMarketplace(async (u) => { urls.push(u); if (urls.length === 1) throw new Error('down'); return answer(snapshot); });
+    check('fetchMarketplace: the CN server when the first fetch throws', cn.timestamp === 1700000000 && urls[1] === M.MARKETPLACE_URLS[1]);
+    const rejects = async (f) => { try { await f(); return false; } catch { return true; } };
+    check('fetchMarketplace: an HTTP error or a body without a snapshot throws', await rejects(() => M.fetchMarketplace(async () => answer({}, false, 503))) && await rejects(() => M.fetchMarketplace(async () => answer({ marketData: {} }))));
+    check('page: Get Prices and the window share fetchMarketplace', (read('src/main.js').match(/fetchMarketplace\(\)/g) || []).length === 2 && !read('src/main.js').includes('game_data/marketplace.json'));
+}
+
 {
     const ops = [{ op: 'enhance', player: 'Beta', slot: 'ring', delta: 1 }, { op: 'abilityLevel', player: 'Beta', index: 1, delta: 2 }, { op: 'house', player: 'Beta', room: '/house_rooms/gym', delta: 1 }];
     const out = panel.applyToSlots(slots, ops);
@@ -68,6 +92,8 @@ const result = {
         { id: 'd', player: 'Alpha', desc: 'Food 2 → cake', lastStage: '4x50', gain: -100, se: 900, gainPerUser: -50, sePerUser: 450, cost: 0, payback: null, costPath: 'loadout', accepted: false, ops: [{ op: 'food', player: 'Alpha', index: 1, item: '/items/cake' }] },
     ],
     apart: [{ id: 'e', desc: 'Some token item', note: 'no seller' }],
+    overBudget: [{ id: 'f', player: 'Beta', desc: 'Big staff +10', cost: 7e9, costPath: 'market' }, { id: 'g', player: 'Alpha', desc: 'Fireball 30 → 40 <books>', cost: 3e8, costBound: 'upper', costPath: 'books' }],
+    options: { zone: '/actions/combat/x', pricesTimestamp: 1700000000, pricesSource: 'snapshot' },
 };
 
 {
@@ -86,6 +112,14 @@ const result = {
     check('result: text is escaped', html.includes('&lt;books&gt;') && !html.includes('<books>'));
     check('result: no payback shows a dash, never NaN', !html.includes('NaN') && !html.includes('undefined'));
     check('result: the upper-bound note is shown', html.includes(locales.en.result.upperNote.slice(0, 20)));
+    check('result: priced over-budget changes listed in their own group with player and cost, "≤" on an upper bound', html.includes(locales.en.result.overBudget) && html.includes('Beta, Big staff +10: <span data-num="7000000000"') && /Alpha, Fireball 30 → 40 &lt;books&gt;: ≤ <span data-num="300000000"/.test(html));
+    check('result: the over-budget group is apart from the unknown-cost list and not in the ranked tables', html.indexOf(locales.en.result.overBudget) < html.indexOf(locales.en.result.apart) && !html.includes('data-whatif-apply="over'));
+    const at = (1700000000 + 3 * 86400 + 5 * 3600) * 1000;
+    check('result: the snapshot time and its age', panel.renderResult(result, t, at).includes('Prices: market snapshot of 2023-11-14 22:13 UTC (3 days old'));
+    check('result: the committed file says so', panel.renderResult({ ...result, options: { pricesTimestamp: 1700000000, pricesSource: 'committed' } }, t, at).includes("simulator's own saved snapshot of 2023-11-14 22:13 UTC (3 days old)"));
+    check('result: ages in hours and minutes', panel.age(7200, t) === '2 hours' && panel.age(59, t) === '0 minutes' && panel.age(-5, t) === '0 minutes');
+    check('result: no price time, no price line', !panel.renderResult({ ...result, options: {} }, t).includes('Prices:'));
+    check('result: no over-budget rows, no group', !panel.renderResult({ ...result, overBudget: [] }, t).includes(locales.en.result.overBudget));
     check('result: no steps reads as such', panel.renderResult({ ...result, steps: [], confirmation: undefined }, t).includes(locales.en.result.noSteps));
 }
 
@@ -115,7 +149,8 @@ const result = {
 {
     const html = panel.renderProgress({ state: 'running', progress: { stage: 'screen', candidatesLeft: 120, runsDone: 30, runsPlanned: 120, secondsPerRun: 12.5, etaSeconds: 3725 } }, t);
     check('progress: the runner\'s fields as they come', html.includes('screen') && html.includes('data-num="120"') && html.includes('data-num="30"') && html.includes('data-num="12.5"') && html.includes('1:02:05'));
-    check('progress: bar at runs done of planned', html.includes('width: 25%'));
+    check('progress: bar at runs done of planned, with its own class for the dark track', html.includes('width: 25%') && html.includes('progress whatif-progress'));
+    check('page: dark mode gives the bar a dark track and a fill', /body\.dark-mode \.whatif-progress \{[^}]*background-color/.test(read('index.html')) && /body\.dark-mode \.whatif-progress \.progress-bar \{[^}]*background-color/.test(read('index.html')));
     check('progress: an error shows its text', panel.renderProgress({ state: 'error', progress: {}, error: 'bad <x>' }, t).includes('bad &lt;x&gt;'));
 }
 
@@ -124,6 +159,7 @@ for (const m of read('src/main.js').matchAll(/whatIfT\('([\w.]+)'[,)]/g)) used.a
 for (const m of read('index.html').matchAll(/data-i18n="common:whatIf\.([\w.]+)"/g)) used.add(m[1]);
 for (const l of panel.LEVERS) { used.add('lever.' + l.id + '.name'); used.add('lever.' + l.id + '.desc'); }
 for (const s of ['running', 'stopped', 'done', 'error']) used.add('state.' + s);
+for (const k of ['age.days', 'result.pricesSnapshot', 'result.pricesCommitted']) used.add(k);
 for (const lang of ['en', 'pt', 'zh']) {
     const missing = [...used].filter((k) => typeof lookup(locales[lang], k) !== 'string');
     check(`strings: ${lang} has every key the window uses (${used.size})`, missing.length === 0, missing.join(', '));

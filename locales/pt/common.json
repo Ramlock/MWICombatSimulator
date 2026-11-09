@@ -200,6 +200,9 @@
         "alreadyRunning": "Uma busca já está rodando; mostrando ela.",
         "runnerError": "O executor recusou o pedido.",
         "runnerGone": "O executor não responde. Ele ainda está aberto?",
+        "fetchingPrices": "Buscando os preços do mercado…",
+        "pricesFailed": "Nenhuma busca iniciada: não foi possível buscar os preços do mercado ({{error}}). Tente de novo.",
+        "age": { "days": "{{n}} dias", "hours": "{{n}} horas", "minutes": "{{n}} minutos" },
         "missingPlayer": "Nada aplicado: nenhuma aba de jogador se chama {{names}}.",
         "applied": "Aplicado ao setup. Rode uma simulação para ver.",
         "state": {
@@ -228,6 +231,10 @@
             "showMore": "Mostrar mais {{n}} abaixo de 2 erros",
             "showLess": "Ocultar os {{n}} abaixo de 2 erros",
             "apart": "Custo desconhecido, sem ranking",
+            "overBudget": "Com preço, acima do orçamento",
+            "overBudgetNote": "({{n}}, sem ranking: cada um custa mais que o orçamento do seu jogador)",
+            "pricesSnapshot": "Preços: retrato do mercado de {{when}} ({{elapsed}} atrás, ao mostrar).",
+            "pricesCommitted": "Preços: o retrato salvo do próprio simulador, de {{when}} ({{elapsed}} atrás), não o mercado de agora.",
             "upperNote": "≤: o custo é só um limite superior (livros de técnica sem a experiência já dentro do nível)."
         },
         "col": {

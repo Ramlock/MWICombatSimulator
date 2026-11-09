@@ -27,7 +27,8 @@ import openableLootDropMap from "./combatsimulator/data/openableLootDropMap.json
 import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.json"
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchBody as whatIfSearchBody, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, renderDiff as whatIfRenderDiff } from "./whatif/panel.mjs";
+import { fetchMarketplace } from "./marketplace.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, renderDiff as whatIfRenderDiff } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4279,8 +4280,14 @@ async function whatIfStart() {
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
-    const body = whatIfSearchBody({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
-        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value });
+    // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
+    // fetch fails no search starts (no older snapshot is used in its place).
+    whatIfMessage(whatIfT('fetchingPrices'));
+    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
+        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value }, () => fetchMarketplace());
+    if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
+    whatIfMessage('');
+    const body = request.body;
     try {
         const { ok, body: answer } = await whatIfRequest(WHATIF_API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (ok) whatIfWatch(answer.id);
@@ -4937,36 +4944,12 @@ function showErrorModal(error) {
 window.prices;
 
 async function fetchPrices() {
-    let response = null;
+    let pricesJson;
     try {
-        response = await fetch('https://www.milkywayidle.com/game_data/marketplace.json'
-            , {
-                mode: 'cors'
-            }
-        );
-        if (!response.ok) {
-            console.log('Error fetching prices');
-        }
+        pricesJson = await fetchMarketplace();
     } catch (error) {
         console.error(error);
-    }
-
-    if (response == null) {
-        try {
-            response = await fetch('https://www.milkywayidlecn.com/game_data/marketplace.json'
-                , {
-                    mode: 'cors'
-                }
-            );
-            if (!response.ok) {
-                console.log('Error fetching prices');
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    }
-
-    if (!response || !response.ok) {
+        console.log('Error fetching prices');
         return;
     }
 
@@ -4974,8 +4957,6 @@ async function fetchPrices() {
 
         let btn = document.querySelector('#buttonGetPrices');
         btn.style.backgroundColor = 'green';
-
-        const pricesJson = await response.json();
 
         const priceTmp = pricesJson['marketData'];
         window.prices = {};

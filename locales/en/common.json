@@ -200,6 +200,9 @@
         "alreadyRunning": "A search is already running; showing it.",
         "runnerError": "The runner refused the request.",
         "runnerGone": "The runner does not answer. Is it still running?",
+        "fetchingPrices": "Getting the market prices…",
+        "pricesFailed": "No search started: the market prices could not be fetched ({{error}}). Try again.",
+        "age": { "days": "{{n}} days", "hours": "{{n}} hours", "minutes": "{{n}} minutes" },
         "missingPlayer": "Nothing applied: no player tab is named {{names}}.",
         "applied": "Applied to the setup. Run a simulation to see it.",
         "state": {
@@ -228,6 +231,10 @@
             "showMore": "Show {{n}} more below 2 errors",
             "showLess": "Hide the {{n}} below 2 errors",
             "apart": "Unknown cost, not ranked",
+            "overBudget": "Priced, over budget",
+            "overBudgetNote": "({{n}}, not ranked: each is priced above its player's budget)",
+            "pricesSnapshot": "Prices: market snapshot of {{when}} ({{elapsed}} old when shown).",
+            "pricesCommitted": "Prices: the simulator's own saved snapshot of {{when}} ({{elapsed}} old), not the market of now.",
             "upperNote": "≤: the cost is only an upper bound (ability books without the experience already inside the level)."
         },
         "col": {

@@ -149,6 +149,11 @@ function put(r) {
 }
 // The key holds the prices file relative to the checkout, so runs cached in one worktree match in another.
 const keyOptions = { ...options, prices: path.relative(root, path.resolve(options.prices)).split(path.sep).join('/') };
+// The snapshot's own time (marketplace.json timestamp, seconds) and where it came from, for result.json (not in the key).
+// "committed": a file of tools/calibration (the repo's saved snapshot); "snapshot": any other file, such as the one the
+// runner saves from the window's request.
+const pricesStamp = JSON.parse(readFileSync(pricesFile, 'utf8')).timestamp;
+const pricesMeta = { pricesTimestamp: Number.isFinite(pricesStamp) ? pricesStamp : null, pricesSource: keyOptions.prices.startsWith('tools/calibration/') ? 'committed' : 'snapshot' };
 const keyOf = (ops) => createHash('sha1').update(JSON.stringify({ s: applyOps(setups0, ops), o: keyOptions })).digest('hex').slice(0, 16);
 const allHours = [...new Set(stages.map((s) => s.h))].sort((a, b) => a - b);
 let stoppedByTime = false, stopRequested = false;
@@ -404,19 +409,21 @@ const rank = (a, b) => (b.est.score - a.est.score) || (b.est.gain - a.est.gain);
 
 // ---- Search ----
 async function main() {
-    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [] };
+    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [] };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
     if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(); }
     let cands = players.flatMap((p) => allCandidates(setups0, p));
     if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
     result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
+    // Priced but over its own player's budget: listed in their own group, never ranked (so a result with no steps says why).
+    result.overBudget = cands.filter((c) => c.cost.known && !affordable(c, budgets, null)).map((c) => ({ id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '' }));
     cands = cands.filter((c) => c.cost.known && affordable(c, budgets, null)); // each within its own player's budget
     // Monotone levers first (3.2 item 1), then the rest; screen then halving.
     cands.sort((a, b) => (b.monotone - a.monotone));
     result.candidates = cands.length;
     result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
-    console.log(`${cands.length} candidates within budget, ${result.apart.length} with unknown cost listed apart`);
+    console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart`);
 
     // Base: each seed run once, at the longest stage it is needed for.
     const baseReq = [];
@@ -519,6 +526,7 @@ function done(result) {
     L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Stage | Gain | ± se | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|---|');
     for (const s of result.singles) L.push(`| ${s.desc} | ${s.lastStage} | ${fmt(s.gain)} | ${fmt(s.se)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`);
     L.push(...skillLines);
+    if (result.overBudget.length) { L.push('', '## Priced, over budget, not ranked', ''); for (const a of result.overBudget) L.push(`- ${a.player}, ${a.desc}: ${a.costBound === 'upper' ? '≤ ' : ''}${fmt(a.cost)}`); }
     if (result.apart.length) { L.push('', '## Unknown cost, not ranked', ''); for (const a of result.apart) L.push(`- ${a.desc}: ${a.note}`); }
     const t = result.timing;
     L.push('', `Timing: ${t.wallMinutes.toFixed(1)} min wall this call, ${t.coreHoursAllRuns.toFixed(2)} core-hours over all cached runs (${t.simHoursAllRuns} sim h, ${t.secondsPerSimHour?.toFixed(2)} s per sim hour).`);

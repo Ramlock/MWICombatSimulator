@@ -199,6 +199,9 @@
         "alreadyRunning": "已有搜索在运行；正在显示该搜索。",
         "runnerError": "运行器拒绝了该请求。",
         "runnerGone": "运行器没有响应。它还在运行吗？",
+        "fetchingPrices": "正在获取市场价格…",
+        "pricesFailed": "未开始搜索：无法获取市场价格（{{error}}）。请重试。",
+        "age": { "days": "{{n}} 天", "hours": "{{n}} 小时", "minutes": "{{n}} 分钟" },
         "missingPlayer": "未应用：没有名为 {{names}} 的玩家标签页。",
         "applied": "已应用到配置。运行模拟即可查看。",
         "state": {
@@ -227,6 +230,10 @@
             "showMore": "显示另外 {{n}} 项（低于 2 个误差）",
             "showLess": "隐藏这 {{n}} 项（低于 2 个误差）",
             "apart": "成本未知，不参与排名",
+            "overBudget": "有价格，超出预算",
+            "overBudgetNote": "（{{n}} 项，不参与排名：每项成本都超过其玩家的预算）",
+            "pricesSnapshot": "价格：{{when}} 的市场快照（显示时已过 {{elapsed}}）。",
+            "pricesCommitted": "价格：模拟器自带的 {{when}} 保存快照（已过 {{elapsed}}），不是当前市场。",
             "upperNote": "≤：成本仅为上限（技能书未计入当前等级内已有的经验）。"
         },
         "col": {

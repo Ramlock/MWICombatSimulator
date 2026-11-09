@@ -2720,6 +2720,39 @@ function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra, withDrinks
 
 /***/ }),
 
+/***/ "./src/marketplace.mjs":
+/*!*****************************!*\
+  !*** ./src/marketplace.mjs ***!
+  \*****************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   MARKETPLACE_URLS: () => (/* binding */ MARKETPLACE_URLS),
+/* harmony export */   fetchMarketplace: () => (/* binding */ fetchMarketplace),
+/* harmony export */   isMarketplace: () => (/* binding */ isMarketplace)
+/* harmony export */ });
+// The game's public market snapshot (marketplace.json: { marketData, timestamp }), shared by the page's Get Prices
+// button (src/main.js fetchPrices) and the What-if window (a search carries the snapshot it was started with).
+// The international server first; the CN server only when that fetch throws (as Get Prices always did).
+const MARKETPLACE_URLS = ['https://www.milkywayidle.com/game_data/marketplace.json', 'https://www.milkywayidlecn.com/game_data/marketplace.json'];
+
+// Resolves to the parsed body; throws when neither server answers with a snapshot. fetchFn is injected by the tests.
+async function fetchMarketplace(fetchFn = (...a) => fetch(...a)) {
+    let response = null;
+    try { response = await fetchFn(MARKETPLACE_URLS[0], { mode: 'cors' }); } catch (error) { console.error(error); }
+    if (response == null) response = await fetchFn(MARKETPLACE_URLS[1], { mode: 'cors' });
+    if (!response.ok) throw new Error(`marketplace.json: HTTP ${response.status}`);
+    const body = await response.json();
+    if (!isMarketplace(body)) throw new Error('marketplace.json: no marketData or timestamp');
+    return body;
+}
+
+const isMarketplace = (b) => !!b && typeof b === 'object' && !!b.marketData && typeof b.marketData === 'object' && !Array.isArray(b.marketData) && Number.isFinite(b.timestamp);
+
+
+/***/ }),
+
 /***/ "./src/whatif/applyOps.mjs":
 /*!*********************************!*\
   !*** ./src/whatif/applyOps.mjs ***!
@@ -2806,24 +2839,29 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   API: () => (/* binding */ API),
 /* harmony export */   LEVERS: () => (/* binding */ LEVERS),
+/* harmony export */   age: () => (/* binding */ age),
 /* harmony export */   applyToSlots: () => (/* binding */ applyToSlots),
 /* harmony export */   diffSetups: () => (/* binding */ diffSetups),
 /* harmony export */   duration: () => (/* binding */ duration),
 /* harmony export */   opsFor: () => (/* binding */ opsFor),
 /* harmony export */   pageSetups: () => (/* binding */ pageSetups),
+/* harmony export */   pricesLine: () => (/* binding */ pricesLine),
 /* harmony export */   renderDiff: () => (/* binding */ renderDiff),
 /* harmony export */   renderProgress: () => (/* binding */ renderProgress),
 /* harmony export */   renderResult: () => (/* binding */ renderResult),
 /* harmony export */   searchBody: () => (/* binding */ searchBody),
+/* harmony export */   searchRequest: () => (/* binding */ searchRequest),
 /* harmony export */   stepsOps: () => (/* binding */ stepsOps)
 /* harmony export */ });
 /* harmony import */ var _applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./applyOps.mjs */ "./src/whatif/applyOps.mjs");
 /* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../numberFormat.js */ "./src/numberFormat.js");
+/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../marketplace.mjs */ "./src/marketplace.mjs");
 // The What-if window's logic, DOM-free so it is tested in Node (tools/test/whatif-panel.mjs). The window talks to the
 // local runner (docs/codebase/whatif-window.md): it sends the page's setup and the search settings, shows the runner's
 // progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
+
 
 
 
@@ -2863,12 +2901,23 @@ function pageSetups(slots) {
 }
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
-function searchBody({ slots, goal, budgets, levers, zone, tier }) {
+// marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
+function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
     if (tier !== undefined && tier !== null && tier !== '') options.tier = Number(tier);
+    if (marketplace) options.marketplace = marketplace;
     return { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
+}
+
+// The request with the market snapshot fetched now (delivery design section 3). Returns { body }, or { error } when
+// the fetch fails or answers no snapshot: then no search starts (no fallback to an older snapshot).
+async function searchRequest(params, getMarketplace) {
+    let marketplace;
+    try { marketplace = await getMarketplace(); } catch (e) { return { error: String(e?.message || e) }; }
+    if (!(0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_2__.isMarketplace)(marketplace)) return { error: 'no marketData or timestamp' };
+    return { body: searchBody({ ...params, marketplace }) };
 }
 
 // Apply ops to the page's slots. Returns { missing: [player names no slot holds] } and applies nothing when any op
@@ -2934,7 +2983,7 @@ function renderProgress(status, t) {
     let html = parts.join(' · ');
     if (p.runsPlanned > 0) {
         const pct = Math.min(100, Math.max(0, (p.runsDone / p.runsPlanned) * 100));
-        html += `<div class="progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
+        html += `<div class="progress whatif-progress mt-1" style="height: 6px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
     }
     if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
     return html;
@@ -2953,11 +3002,13 @@ const paybackCell = (row) => (row.payback === null || row.payback === undefined 
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
-function renderResult(result, t) {
+function renderResult(result, t, now = Date.now()) {
     if (!result) return '';
     const L = [];
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
     L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
+    const prices = pricesLine(result, t, now);
+    if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
     const players = Object.keys(result.budgets || {});
     // Running spend per player: a step's own figure; "≤" from the first upper-bound cost of that player on.
     const upperFrom = {};
@@ -3009,12 +3060,33 @@ function renderResult(result, t) {
         L.push('</table>');
         if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
     }
+    if (result.overBudget?.length) {
+        L.push(`<div class="fw-bold mt-3">${esc(t('result.overBudget'))} <span class="text-secondary fw-normal small">${esc(t('result.overBudgetNote', { n: result.overBudget.length }))}</span></div><ul class="small">` +
+            result.overBudget.map((a) => `<li>${esc(a.player)}, ${esc(a.desc)}: ${costCell(a)}</li>`).join('') + '</ul>');
+    }
     if (result.apart?.length) {
         L.push(`<div class="fw-bold mt-3">${esc(t('result.apart'))}</div><ul class="small">` +
             result.apart.map((a) => `<li>${esc(a.desc)}: ${esc(a.note)}</li>`).join('') + '</ul>');
     }
-    if ((result.steps || []).some(upper) || (result.singles || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
     return L.join('');
+}
+
+// The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`
+// (a clock reading of that field, as duration() is); "committed file" when the request carried no snapshot.
+function pricesLine(result, t, now = Date.now()) {
+    const ts = result?.options?.pricesTimestamp;
+    if (!Number.isFinite(ts)) return '';
+    const when = new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+    const key = result.options.pricesSource === 'committed' ? 'result.pricesCommitted' : 'result.pricesSnapshot';
+    return esc(t(key, { when, elapsed: age((now / 1000) - ts, t) }));
+}
+// Seconds as the largest whole unit (days, hours or minutes).
+function age(s, t) {
+    const x = Math.max(0, Number(s));
+    if (x >= 86400) return t('age.days', { n: Math.floor(x / 86400) });
+    if (x >= 3600) return t('age.hours', { n: Math.floor(x / 3600) });
+    return t('age.minutes', { n: Math.floor(x / 60) });
 }
 
 // The ops behind a button's data-whatif-apply value.
@@ -3284,7 +3356,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"a2f3a0a9","2":"bac78d82","3":"f6d8b4f3","5":"210e62e9","src_multiWorker_js-_004d1":"affb033b","src_multiWorker_js-_004d2":"affb033b","src_multiWorker_js-_004d3":"affb033b","src_multiWorker_js-_004d0":"affb033b","src_multiWorker_js-_004d4":"affb033b"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"3d518bce","2":"76aa023b","3":"b452d0a3","5":"8d8ba0b3","src_multiWorker_js-_004d1":"881f8dd7","src_multiWorker_js-_004d2":"881f8dd7","src_multiWorker_js-_004d3":"881f8dd7","src_multiWorker_js-_004d0":"881f8dd7","src_multiWorker_js-_004d4":"881f8dd7"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -3399,9 +3471,11 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
 /* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
 /* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
-/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
+/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
 
 
 
@@ -7601,9 +7675,9 @@ function whatIfRenderSetup() {
         budgets.append(group);
     }
     const levers = document.getElementById('whatIfLevers');
-    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.LEVERS.filter((l) => l.def).map((l) => l.id));
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
-    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.LEVERS) {
+    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.LEVERS) {
         const row = document.createElement('div');
         row.className = 'form-check';
         const input = document.createElement('input');
@@ -7625,7 +7699,7 @@ function whatIfRenderSetup() {
 
 function whatIfShowResult(result) {
     whatIf.result = result;
-    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.renderResult)(result, whatIfT) : '';
+    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderResult)(result, whatIfT) : '';
     whatIfShowDiff();
 }
 
@@ -7635,13 +7709,13 @@ function whatIfShowDiff() {
     const box = document.getElementById('whatIfDiff');
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
-    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
-    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.diffSetups)(page, result.setups), whatIfT);
+    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.diffSetups)(page, result.setups), whatIfT);
 }
 
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
-    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.renderProgress)(status, whatIfT);
+    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.renderProgress)(status, whatIfT);
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
@@ -7660,7 +7734,7 @@ function whatIfWatch(id) {
     whatIfStopWatching();
     const poll = async () => {
         try {
-            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.API.status(id));
+            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.API.status(id));
             if (ok) whatIfShowStatus(body);
             else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
         } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
@@ -7683,10 +7757,16 @@ async function whatIfStart() {
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
-    const body = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.searchBody)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
-        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value });
+    // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
+    // fetch fails no search starts (no older snapshot is used in its place).
+    whatIfMessage(whatIfT('fetchingPrices'));
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers,
+        zone: document.getElementById('selectZone').value, tier: document.getElementById('selectDifficulty').value }, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__.fetchMarketplace)());
+    if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
+    whatIfMessage('');
+    const body = request.body;
     try {
-        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (ok) whatIfWatch(answer.id);
         else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
         else whatIfMessage(answer.error || whatIfT('runnerError'));
@@ -7697,7 +7777,7 @@ async function whatIfStopOrResume() {
     if (!whatIf.searchId) return;
     const resuming = whatIf.state === 'stopped';
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.API.stop(whatIf.searchId), { method: 'POST' });
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
         if (resuming) whatIfWatch(whatIf.searchId);
         else if (body.state) whatIfShowStatus(body);
@@ -7708,7 +7788,7 @@ async function whatIfStopOrResume() {
 async function whatIfLoadList() {
     const select = document.getElementById('selectWhatIfResult');
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.API.results);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.API.results);
         if (!ok || !Array.isArray(body)) return;
         select.replaceChildren(...body.map((r) => {
             const option = document.createElement('option');
@@ -7723,15 +7803,15 @@ async function whatIfLoadResult() {
     const id = document.getElementById('selectWhatIfResult').value;
     if (!id) return;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.API.result(id));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.API.result(id));
         if (ok) { whatIfMessage(''); whatIfShowResult(body); }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
 
 function whatIfApply(key) {
-    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.opsFor)(whatIf.result, key);
-    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.applyToSlots)(whatIfSlots(false), ops);
+    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.opsFor)(whatIf.result, key);
+    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.applyToSlots)(whatIfSlots(false), ops);
     if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
     for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
     updateNextPlayer(currentPlayerTabId);
@@ -7743,7 +7823,7 @@ function whatIfApply(key) {
 
 async function initWhatIf() {
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_28__.API.version);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_29__.API.version);
         if (!ok || !body || body.runner === undefined) return;
         whatIf.version = body;
     } catch (err) { return; } // not served by the runner (the public page): no What-if window
@@ -8341,36 +8421,12 @@ function showErrorModal(error) {
 window.prices;
 
 async function fetchPrices() {
-    let response = null;
+    let pricesJson;
     try {
-        response = await fetch('https://www.milkywayidle.com/game_data/marketplace.json'
-            , {
-                mode: 'cors'
-            }
-        );
-        if (!response.ok) {
-            console.log('Error fetching prices');
-        }
+        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_28__.fetchMarketplace)();
     } catch (error) {
         console.error(error);
-    }
-
-    if (response == null) {
-        try {
-            response = await fetch('https://www.milkywayidlecn.com/game_data/marketplace.json'
-                , {
-                    mode: 'cors'
-                }
-            );
-            if (!response.ok) {
-                console.log('Error fetching prices');
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    }
-
-    if (!response || !response.ok) {
+        console.log('Error fetching prices');
         return;
     }
 
@@ -8378,8 +8434,6 @@ async function fetchPrices() {
 
         let btn = document.querySelector('#buttonGetPrices');
         btn.style.backgroundColor = 'green';
-
-        const pricesJson = await response.json();
 
         const priceTmp = pricesJson['marketData'];
         window.prices = {};
@@ -8539,15 +8593,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_29__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_30__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_29__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_29__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_29__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_30__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_30__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_30__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_30__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_31__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -8558,7 +8612,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_30__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_31__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -8815,4 +8869,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.18e205a1.js.map
+//# sourceMappingURL=bundle.356e12a6.js.map

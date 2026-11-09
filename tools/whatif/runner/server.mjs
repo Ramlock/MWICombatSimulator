@@ -7,7 +7,7 @@
 //
 // Interface (JSON over HTTP):
 //   GET  /api/version              { runner, engine }
-//   POST /api/search               body { setups, options: { zone, tier, comdrop, comexp, prices }, goal, budgets,
+//   POST /api/search               body { setups, options: { zone, tier, comdrop, comexp, prices | marketplace }, goal, budgets,
 //                                  levers, players, stages, keep, export?, ...the optimizer's own flags without the
 //                                  dashes }; answer { id }. One search at a time: 409 { error, running } otherwise.
 //                                  The id is a hash of the request, so the same request again resumes its run store.
@@ -24,19 +24,21 @@ import { fork, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, createWriteStream, createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isMarketplace } from '../../../src/marketplace.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, '..', '..', '..');
 const OPTIMIZER = path.join(ROOT, 'tools', 'whatif', 'optimize.mjs');
 const PRICES_DIR = path.join(ROOT, 'tools', 'calibration');
 export const RUNNER_VERSION = '0.1.0';
+export const MARKETPLACE_FILE = 'marketplace.json';
 export const DEFAULT_RESULTS = path.join(os.homedir(), 'MWI-WhatIf', 'results');
 
 // The optimizer's flags a request may set (camelCase or dashed). --out, --setups, --export and --prices are set by
 // the runner itself; --cache-from is not offered (it reads arbitrary files).
 const PASS = ['players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
 const dashed = (k) => k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
-const RESERVED = new Set(['setups', 'options', 'budgets', 'export', 'prices', 'triggerCands', 'trigger-cands']);
+const RESERVED = new Set(['setups', 'options', 'budgets', 'export', 'prices', 'marketplace', 'triggerCands', 'trigger-cands']);
 const SAFE_NAME = /^[^\\/:*?"<>|\r\n]+$/;
 
 const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
@@ -63,7 +65,16 @@ export function buildArgs(body, outDir) {
     writeFileSync(path.join(setupsDir, 'party.txt'), setups.map((s) => s.name).join('\n') + '\n');
     const args = ['--out', outDir, '--setups', setupsDir, '--low-priority'];
     const flags = { ...(body.options || {}), ...body };
-    if (body.options?.prices != null) args.push('--prices', pricesPath(body.options.prices));
+    const market = body.options?.marketplace;
+    if (market != null) {
+        // The window's market snapshot (delivery design section 3): saved once in the search's folder and used from
+        // there; a resume finds it and keeps it (the run cache's key holds the price file, so it must not change).
+        if (body.options.prices != null) throw new Error('options: prices or marketplace, not both');
+        if (!isMarketplace(market)) throw new Error('options.marketplace: the marketplace.json body, { marketData, timestamp }');
+        const f = path.join(outDir, MARKETPLACE_FILE);
+        if (!existsSync(f)) writeFileSync(f, JSON.stringify(market));
+        args.push('--prices', f);
+    } else if (body.options?.prices != null) args.push('--prices', pricesPath(body.options.prices));
     if (body.budgets != null) {
         if (typeof body.budgets !== 'object') throw new Error('budgets: { "<player>": <coin> }');
         const list = Object.entries(body.budgets).map(([p, v]) => { if (!SAFE_NAME.test(p) || p.includes(',') || p.includes('=') || !(Number(v) >= 0)) throw new Error(`budgets: bad entry ${p}`); return `${p}=${Number(v)}`; });
