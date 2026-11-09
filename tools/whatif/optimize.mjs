@@ -10,7 +10,10 @@
 //                                triggers (each numeric term over its grid, structure changes; design 3.5),
 //                                owned (items in the exporter's
 //                                inventory), abilities (learned, at their learned level), order (ability order),
-//                                skills (each trained combat skill +1..+skill-up; days to reach, never stacked); all
+//                                skills (each trained combat skill +1..+skill-up; days to reach, never stacked),
+//                                houses, abilitylevels, books (phase 3, tools/whatif/levers/houses.mjs; its flags
+//                                --house-rooms, --house-up, --ability-steps, --book-levels; a cost that is only an
+//                                upper bound carries costBound: 'upper' in its row and prints as "≤"); all
 //   --skill-up 2  --skill-left P1:stamina=300.5K,magic=1.2M;P2:...   experience left to the next level (levers/skills.mjs)
 //   --charms                     keep charm candidates on a profit goal (left out by default: they change only EXP)
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
@@ -52,6 +55,7 @@ import { consumableType, swapCands, tierPairCands } from './consumables.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands } from './triggers.mjs';
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
+import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
@@ -91,7 +95,7 @@ const confirmOffset = Number(arg('confirm-seed-offset', 10000));
 const setupsDir = arg('setups', undefined);
 const pricesFile = arg('prices', DEFAULT_PRICES);
 const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order', 'triggers', 'skills'];
+const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
 const combatStyleDetailMap = await json('combatStyleDetailMap.json');
 const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
 const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : [x.trim()])));
@@ -313,6 +317,7 @@ function allCandidates(setups, p) {
         ...(levers.has('consumables') || levers.has('pairs') ? consumableCands(setups, p, levers.has('consumables'), levers.has('pairs')) : []),
         ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
         ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
+        ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p) }),
         ...(levers.has('triggers') ? triggerCands(setups.find((x) => x.name === p), p, probeStore, { ...trigOpts, user: userTrig[p] }) : []),
         ...(levers.has('skills') ? skillCands(setups, p, skillOpts) : []),
     ];
@@ -433,7 +438,7 @@ async function main() {
 }
 
 function row(c) {
-    return { id: c.id, desc: c.desc, cost: c.cost.cost, costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+    return { id: c.id, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -458,10 +463,10 @@ function done(result) {
     writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 1));
     const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget ${fmt(budget)} (${budgetSource}). Error rule: ${errorRule}, base on ${baseMult}x seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
     L.push('## Changes, in order', '', '| # | Change | Gain | ± se | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
-    result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${fmt(s.gain)} | ${fmt(s.se)} | ${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${fmt(s.runningCost)} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`));
+    result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${fmt(s.gain)} | ${fmt(s.se)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${fmt(s.runningCost)} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`));
     if (result.confirmation) { const c = result.confirmation; L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): gain ${fmt(c.gain)} ± ${fmt(c.se)} ${unit()}, cost ${fmt(c.cost)}, payback ${c.payback?.toFixed(1) ?? '-'} days.`); }
     L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Stage | Gain | ± se | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|---|');
-    for (const s of result.singles) L.push(`| ${s.desc} | ${s.lastStage} | ${fmt(s.gain)} | ${fmt(s.se)} | ${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`);
+    for (const s of result.singles) L.push(`| ${s.desc} | ${s.lastStage} | ${fmt(s.gain)} | ${fmt(s.se)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${s.payback?.toFixed(1) ?? '-'} | ${s.costPath}${s.note ? ' (' + s.note + ')' : ''} |`);
     L.push(...skillLines);
     if (result.apart.length) { L.push('', '## Unknown cost, not ranked', ''); for (const a of result.apart) L.push(`- ${a.desc}: ${a.note}`); }
     const t = result.timing;
