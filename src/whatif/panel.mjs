@@ -117,6 +117,10 @@ export function applyToSlots(slots, ops) {
 // The ops of the first n chosen steps, in order ("Apply 1 to n").
 export const stepsOps = (result, n) => result.steps.slice(0, n).flatMap((s) => s.ops || []);
 
+// The best foods and drinks the search chose first (result.baselineOps; every other row is measured on top of them). Every Apply
+// puts them in first, then its own ops, so one click gives the measured setup. A result without the field (older) adds nothing.
+const baselineOps = (result) => (Array.isArray(result.baselineOps) ? result.baselineOps : []);
+
 // Where the page's setup differs from the result's base setups, on what the levers touch. Each difference:
 // { player, field, page, result } with raw values (hrids, levels); a player missing on either side has field "player".
 export function diffSetups(page, base) {
@@ -452,8 +456,8 @@ export function age(s, t) {
 // The ops behind a button's data-whatif-apply value.
 export function opsFor(result, key) {
     const [kind, n] = String(key).split(':');
-    if (kind === 'steps') return stepsOps(result, Number(n));
-    if (kind === 'single') return result.singles[Number(n)]?.ops || [];
+    if (kind === 'steps') return [...baselineOps(result), ...stepsOps(result, Number(n))];
+    if (kind === 'single') { const own = result.singles[Number(n)]?.ops; return own ? [...baselineOps(result), ...own] : []; }
     throw new Error('unknown apply key ' + key);
 }
 

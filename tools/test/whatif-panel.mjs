@@ -181,6 +181,18 @@ const result = {
     const a = JSON.parse(all.slots['1']), b = JSON.parse(all.slots['2']);
     check('apply 1 to 3 writes every step', a.player.equipment[0].enhancementLevel === 6 && b.abilities[1].level === 31 && b.houseRooms['/house_rooms/gym'] === 1);
 }
+// ---- Apply puts the best foods and drinks (result.baselineOps) in first, then its own ops; an older result applies as before ----
+{
+    const base = [{ op: 'food', player: 'Alpha', index: 0, item: '/items/cake' }, { op: 'drink', player: 'Alpha', index: 0, item: '/items/swiftness_coffee' }];
+    const withBase = { ...result, baselineOps: base };
+    const json = JSON.stringify;
+    check('apply: a step\'s ops are the baseline ops, then the steps before it and itself, in order', json(panel.opsFor(withBase, 'steps:2')) === json([...base, ...result.steps[0].ops, ...result.steps[1].ops]) && json(panel.opsFor(withBase, 'steps:1')) === json([...base, ...result.steps[0].ops]));
+    check('apply: a single\'s ops are the baseline ops, then its own', json(panel.opsFor(withBase, 'single:0')) === json([...base, ...result.singles[0].ops]));
+    check('apply: an older result (no baselineOps) applies exactly what it did before; an empty baselineOps too', json(panel.opsFor(result, 'steps:2')) === json([...result.steps[0].ops, ...result.steps[1].ops]) && json(panel.opsFor(result, 'single:0')) === json(result.singles[0].ops) && json(panel.opsFor({ ...result, baselineOps: [] }, 'steps:3')) === json(panel.opsFor(result, 'steps:3')));
+    check('apply: a single that does not exist applies nothing, not the baseline alone', panel.opsFor(withBase, 'single:99').length === 0);
+    const out = JSON.parse(panel.applyToSlots(slots, panel.opsFor(withBase, 'steps:1')).slots['1']);
+    check('apply: one click writes the best food and drink and the step into the setup', out.food['/action_types/combat'][0].itemHrid === '/items/cake' && out.drinks['/action_types/combat'][0].itemHrid === '/items/swiftness_coffee' && out.player.equipment[0].enhancementLevel === 6, json(out.food));
+}
 
 {
     const page = panel.pageSetups(slots);
