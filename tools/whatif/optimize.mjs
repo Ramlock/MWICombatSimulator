@@ -67,7 +67,7 @@ import { DEFAULT_PRICES, buildDtos, root, measureNeed } from './engine.mjs';
 import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
-import { cutPool, bestPerPlayer } from './pools.mjs';
+import { cutPool, bestPerPlayer, dropChainStates } from './pools.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText } from './triggers.mjs';
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
@@ -586,12 +586,16 @@ async function main() {
     let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
     result.timeOnly = cands.filter((c) => c.timeOnly);
     logCandidates(1, finalists);
+    // The chain guard (pools.mjs dropChainStates): no candidate may lead back to a state the search has already been in.
+    const chain = new Set([keyOf([]), keyOf(baseOps)]);
+    const guard = (list) => { const { kept, dropped } = dropChainStates(list, baseOps, keyOf, chain); if (dropped.length) console.log(`  ${dropped.length} candidate(s) lead back to a state already in the chain, dropped: ${dropped.map((c) => c.id).join(', ')}`); return kept; };
     for (let step = 0; step < maxSteps; step++) {
         const ok = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)).sort(rank); // paid from its own player's coin left
         if (!ok.length) break;
         const best = ok[0];
         spent = pay(spent, best);
         baseOps = [...baseOps, ...best.ops];
+        chain.add(keyOf(baseOps));
         result.steps.push({ ...row(best), runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
         console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
         // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
@@ -608,6 +612,7 @@ async function main() {
                     : (survivors.has(c.id) && c.id !== best.id)));
         // Coordinate-wise rounds (3.5 item 3): the changed owner's terms get local candidates around the new values.
         if (best.kind === 'trigger') finalists.push(...localCands(setupsNow.find((x) => x.name === best.player), best.player, probeStore, best.owner));
+        finalists = guard(finalists);
         report({ stage: `greedy step ${step + 1}`, candidatesLeft: finalists.length });
         if (!await ensure([...newBase, ...finalists.flatMap((c) => req([...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);

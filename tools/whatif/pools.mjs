@@ -15,6 +15,19 @@ export function cutPool(pool, n, byPlayer = false) {
     return pool.filter((c) => kept.has(c));
 }
 
+// The chain guard of the greedy steps. `chain` holds the run key of every state the search has been in (the original base,
+// the foods and drinks baseline, the state after each accepted step). A candidate whose resulting state (the base so far plus
+// its ops, keyed by `keyOf`, which hashes the applied setup, so a full-list trigger op applied last-wins counts as the state it
+// produces) is already in the chain is dropped before it is estimated. Why: an accepted change becomes the base, and the old
+// state, rebuilt as a candidate (a trigger term back to its old value, an item swapped back), is measured on its own low seeds
+// against the base's more numerous seeds; two states that simulate alike then show the same gain in both directions and the
+// search flips between them forever. Returns { kept, dropped }, each in the input's order.
+export function dropChainStates(cands, baseOps, keyOf, chain) {
+    const kept = [], dropped = [];
+    for (const c of cands) (chain.has(keyOf([...baseOps, ...c.ops])) ? dropped : kept).push(c);
+    return { kept, dropped };
+}
+
 // Stage F / Stage D: each player's best filling is the first accepted one of his in the sorted pool; a player with none accepted
 // has no entry (his current items stay). Returns { <player>: candidate }.
 export function bestPerPlayer(pool, players) {

@@ -102,5 +102,38 @@ const has = (a, b) => loc.some((ts) => ts[0].value === a && ts[1].value === b);
 check(loc.length === 4 && has(500, 200) && has(450, 200) && has(400, 300) && has(400, 250), `local candidates: grid neighbours and midpoints (${loc.map((ts) => ts.map((t) => t.value).join('/')).join(' ')})`);
 check(T.effectiveTriggers({ triggerMap: {} }, '/items/star_fruit_gummy')[0].conditionHrid.endsWith('missing_mp'), 'no stored trigger: the game default');
 
+// ---- (3) The chain guard: a toggle back to an earlier state is never offered again (tools/whatif/pools.mjs) ----
+{
+    const { applyOps } = await import(pathToFileURL(path.join(root, 'src/whatif/applyOps.mjs')).href);
+    const { dropChainStates } = await import(pathToFileURL(path.join(root, 'tools/whatif/pools.mjs')).href);
+    const { createHash } = await import('node:crypto');
+    const keyOf = (ops) => createHash('sha1').update(JSON.stringify(applyOps([setup], ops))).digest('hex').slice(0, 16);
+    const OWNER = '/abilities/toxic_pollen';
+    const first = (x) => x.ops[0].triggers[1].value, other = (x) => x.ops[0].triggers[0].value;
+    const chain = new Set([keyOf([])]);
+    // State A is the setup as it is (my MP >= 200); step 1 accepts A -> B (my MP >= 300).
+    const fromA = T.localCands(setup, 'P', probe, OWNER);
+    const toB = fromA.find((x) => first(x) === 300 && other(x) === 400);
+    check(!!toB && fromA.some((x) => first(x) === 250), 'toggle: from A the candidate to B (MP 300) is generated');
+    const base = [...toB.ops];
+    chain.add(keyOf(base));
+    // Round two: the candidates are rebuilt from the new value; the one back to 400 is state A again.
+    const setupB = applyOps([setup], base)[0];
+    const fromB = T.localCands(setupB, 'P', probe, OWNER);
+    const back = fromB.find((x) => first(x) === 200 && other(x) === 400);
+    check(!!back, 'toggle: from B the candidate back to A (MP 200) is generated (the premise of the bug)');
+    const { kept, dropped } = dropChainStates(fromB, base, keyOf, chain);
+    check(dropped.length === 1 && dropped[0] === back && !kept.includes(back), 'toggle: B to A is dropped by its run key, before it can be estimated');
+    check(kept.length === fromB.length - 1 && kept.every((x, i) => x === fromB.filter((y) => y !== back)[i]), 'toggle: the other candidates of B are kept, in their order');
+    // The key is the resulting state, not the ops: ops [A, B] and [B, A, B] are one state, and so are [B] and [B, A, B] on top of A.
+    const opA = { op: 'trigger', player: 'P', hrid: OWNER, triggers: pollenTriggers }, opB = toB.ops[0];
+    check(keyOf([opB]) === keyOf([opA, opB]) && keyOf([opB, opA, opB]) === keyOf([opB]) && keyOf([opA]) === keyOf([]), 'key: a full-list trigger op applied last-wins, so a state reached by another path has the same key');
+    const viaLongPath = dropChainStates([{ id: 'x', ops: [opA, opB] }, { id: 'y', ops: [opA] }], [opB], keyOf, chain);
+    check(viaLongPath.dropped.length === 2 && viaLongPath.kept.length === 0, 'a candidate whose state equals an earlier one by another path is dropped (B + [A, B] is B; B + [A] is A)');
+    // A new state is kept, and the original base counts as in the chain.
+    const fresh = fromA.find((x) => first(x) === 250);
+    check(dropChainStates([fresh], [], keyOf, chain).kept.length === 1 && dropChainStates([{ id: 'orig', ops: [opA] }], [], keyOf, chain).dropped.length === 1, 'a state not yet in the chain is kept; the original base is in the chain');
+}
+
 console.log(fails ? `${fails} failed` : 'all passed');
 process.exit(fails ? 1 : 0);

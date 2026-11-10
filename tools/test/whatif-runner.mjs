@@ -42,6 +42,8 @@ check(B.pay(spent, cand('A', -30)).A === 60, 'pay: a sale never refunds a budget
 const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
+check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /finalists = guard\(finalists\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
+
 // ---- (1a) The cut between stages and the per-player choice (tools/whatif/pools.mjs) ----
 {
     const { cutPool, bestPerPlayer } = await mod('tools/whatif/pools.mjs');
