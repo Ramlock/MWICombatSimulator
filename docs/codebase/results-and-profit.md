@@ -45,6 +45,17 @@ Run per displayed player after the simulation, from `simResult.deaths` (kill cou
 - Hours used for rates (`src/main.js:2252-2257`): `simulatedTime`, replaced by `lastDungeonFinishTime` for dungeons or `lastEncounterFinishTime` when > 0. `showConsumablesUsed`, `showDeaths`, `showExperienceGained` divide by plain `simulatedTime` (`src/main.js:2444, 2457, 2507`). `simulatedTime` is the time of the last processed event (src/combatsimulator/combatSimulator.js:232).
 - Rounding: displayed values use `toLocaleString`/`toFixed`; `noRngRevenue`, `expenses` and `noRngProfit` in the all-zones rows are formatted strings with 2 decimals (`src/main.js:2139-2141`). Prices edited in the tables update totals through `updateTable` (`src/main.js:4739-4819`).
 
+## The XP-vs-profit chart of the all-zones result
+
+A Chart.js scatter above `#allZonesData` in `#allSimsModal` (`index.html`, `#xpChartPanel`), hidden for Labyrinth results. It is drawn from the display rows `manipulateSimResultsDataForDisplay` builds (one per zone, tier and player), which `showAllSimulationResults` hands to the view (`src/xpChartView.js`, `setRows`); it never reads the table cells.
+
+- **Chart-only key:** each display row also carries `ProfitPerDay = noRngProfit * 24 / hoursSimulated` (`profitPerDay`, `src/xpChart.mjs`), so Y does not depend on the Duration input (`noRngProfit` itself is a per-player total over the whole run). `updateAllSimsModal` skips it (`CHART_ONLY_KEYS`): the table, its sort and the CSV export have exactly the 16 columns they had.
+- **Axes:** X = the XP column chosen in the XP selector (Total, then Stamina, Intelligence, Attack, Melee, Defense, Ranged, Magic), per hour as the table shows it; Y = `ProfitPerDay`. Axis titles use the table's header texts, and `common:xpChart.profitPerDay` for Y.
+- **Dots:** `pointsFor` (`src/xpChart.mjs`) makes one dot per map (zone and tier). Party (default) averages X, Y and deaths over the players that have a row for the map; a player selected in the Player selector gives that player's row.
+- **Frontier:** `frontier` keeps the dots no other dot beats on both axes (at least as high on both, higher on one); they are filled and joined in increasing X, the others hollow and dim.
+- **Hover** shows the translated map name, tier, X, Y and deaths per hour (page number format). **Click** marks the map's table rows (`data-map-key`, `data-player`, written by `updateAllSimsModal`) with `xp-chart-picked` and scrolls to them; the mark clears on the next click, a selector change, a sort or closing the dialog.
+- Tests: `tools/test/xp-chart.mjs` (pure functions), `tools/test/xp-chart-page.mjs` (built page, stubbed Worker with synthetic results).
+
 ## Assumptions baked into the numbers
 
 - Drop rate for the displayed player equals `rate / numberOfPlayers` for every player (group drops are divided evenly; the displayed player's own multipliers apply).
