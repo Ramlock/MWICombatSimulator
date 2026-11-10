@@ -95,7 +95,7 @@ try {
     check('a 12 h run with the same potions has twice the Y of the 24 h one (jungle vs aqua tier 1)', find(all, 'jungle_planet', 0)[3] === 2 * find(all, 'aqua_planet', 1)[3], JSON.stringify([find(all, 'jungle_planet', 0), find(all, 'aqua_planet', 1)]));
     check('no frontier dot is beaten on both axes, every other dot is', s.frontier.length >= 1 && s.frontier.every((f) => !all.some((o) => o !== f && o[2] >= f[2] && o[3] >= f[3] && (o[2] > f[2] || o[3] > f[3]))) && s.others.every((f) => all.some((o) => o !== f && o[2] >= f[2] && o[3] >= f[3] && (o[2] > f[2] || o[3] > f[3]))));
     const titles = await js(`({ y: i18next.t('common:xpChart.profitPerDay'), x: i18next.t('common:simulationResults.totalExperience') })`);
-    check('the axis titles are the table header text and Profit per day', s.xTitle === titles.x && s.yTitle === titles.y && titles.y === 'Profit per day', JSON.stringify([s.xTitle, s.yTitle]));
+    check('the axis titles are the table header text + "per hour", and Profit per day', s.xTitle === titles.x + ' per hour' && s.yTitle === titles.y && titles.y === 'Profit per day', JSON.stringify([s.xTitle, s.yTitle]));
 
     // Selectors change the points.
     const options = await js(`({ skill: [...document.getElementById('xpChartSkill').options].map((o) => o.value), player: [...document.getElementById('xpChartPlayer').options].map((o) => o.value) })`);
@@ -109,7 +109,7 @@ try {
     s = await chartState();
     const pa = find([...s.frontier, ...s.others], 'swamp_planet', 0);
     check('a skill: that skill\'s XP only (half of the total in the fixture)', pa[2] === 1500, JSON.stringify(pa));
-    check('the X axis title follows the skill', s.xTitle === await js(`i18next.t('skillNames./skills/attack')`), s.xTitle);
+    check('the X axis title follows the skill, per hour', s.xTitle === (await js(`i18next.t('skillNames./skills/attack')`)) + ' per hour', s.xTitle);
 
     // Click a dot: the table rows of that map are scrolled into view and highlighted; Party highlights every player of the map.
     const clickDot = async (ds, i) => {
@@ -136,6 +136,25 @@ try {
     await js(`bootstrap.Modal.getInstance(document.getElementById('allSimsModal')).hide(); true`);
     await sleep(800);
     check('closing the dialog clears the highlight', (await pickedCount()) === 0);
+
+    // Hover: the tooltip holds the map name, the tier, X per hour, Y per day and the deaths per hour.
+    await js(`document.getElementById('buttonShowAllSimData').click(); true`);
+    await until(`document.getElementById('allSimsModal').classList.contains('show') && document.getElementById('xpChartCanvas').getBoundingClientRect().width > 0`, 10000);
+    await sleep(700);
+    await setSelect('xpChartPlayer', 'Party'); await setSelect('xpChartSkill', 'TotalExperience');
+    await js(`document.getElementById('xpChartPanel').scrollIntoView({ block: 'start' }); true`);
+    let tip = null, hpos = null;
+    for (let attempt = 0; attempt < 6 && !(tip && tip.opacity > 0); attempt++) {
+        await sleep(500);
+        hpos = await js(`(() => { const c = Chart.getChart('xpChartCanvas'); const e = c.getDatasetMeta(0).data[0]; const r = c.canvas.getBoundingClientRect(); return [r.left + e.x, r.top + e.y, innerWidth, innerHeight, c.canvas.width, r.width]; })()`);
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hpos[0] - 3, y: hpos[1] - 3 });
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hpos[0], y: hpos[1] });
+        await sleep(400);
+        tip = await js(`(() => { const t = Chart.getChart('xpChartCanvas').tooltip; return { opacity: t.opacity, title: t.title, lines: t.body.flatMap((b) => b.lines), tier: t.dataPoints?.[0]?.raw?.point?.tier }; })()`);
+        tip.pos = hpos;
+    }
+        check('hover shows the translated map name, tier, X per hour, Y per day and deaths per hour', tip.opacity > 0 && tip.title.length === 1 && tip.title[0] !== '' && !tip.title[0].startsWith('/') && tip.lines.length === 4 && tip.lines[0] === `Difficulty: ${tip.tier}` && / per hour: /.test(tip.lines[1]) && /^Profit per day: /.test(tip.lines[2]) && /^Deaths Per Hour: /.test(tip.lines[3]), JSON.stringify(tip));
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
 
     // Layout, at two sizes: no horizontal bar, the chart inside the dialog, 360 px high.
     for (const [w, h] of [[1920, 1080], [1366, 768]]) {
