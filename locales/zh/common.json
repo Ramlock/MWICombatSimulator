@@ -165,11 +165,11 @@
             },
             "consumables": {
                 "name": "食物和饮料",
-                "desc": "用市场上出售的物品替换、移除或填充每个食物和饮料栏位"
+                "desc": "find the best foods and the best drinks first (every slot of each), then measure everything else on top of them"
             },
             "pairs": {
                 "name": "食物和饮料组合",
-                "desc": "同时更改两个食物或饮料栏位，各换为同类的其他等级"
+                "desc": "no longer needed: the food and drink search already tries whole combinations of every slot"
             },
             "owned": {
                 "name": "已拥有的物品",
@@ -267,6 +267,12 @@
             "oldSplit": "在逐玩家收益行出现之前保存：请重新运行搜索以查看。",
             "noChange": "no change",
             "playerLineNoChange": "{{player}}: gain {{gain}} per day, pays back in {{payback}} days",
+            "playerLineFree": "{{player}}: gain {{gain}} ± {{se}} per day, no cost, nothing to pay back",
+            "playerLineFreeNoChange": "{{player}}: gain {{gain}} per day, no cost, nothing to pay back",
+            "noCost": "no cost, nothing to pay back",
+            "bestFoods": "Best foods",
+            "bestDrinks": "Best drinks",
+            "bestBaseline": "Everything below is measured on top of these foods and drinks.",
             "singles": "单项改动",
             "singlesNote": "（相对于搜索起始配置；灰色 = 对队伍和购买者并非都有明确收益）",
             "noSingles": "没有测量任何改动。",

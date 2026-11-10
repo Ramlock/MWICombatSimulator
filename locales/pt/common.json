@@ -166,11 +166,11 @@
             },
             "consumables": {
                 "name": "Comidas e bebidas",
-                "desc": "trocar, tirar ou preencher cada slot de comida e bebida com um item vendido no mercado"
+                "desc": "achar primeiro as melhores comidas e as melhores bebidas (todos os espaços de cada), e medir todo o resto em cima delas"
             },
             "pairs": {
                 "name": "Pares de comidas e bebidas",
-                "desc": "alterar dois espaços de comida ou bebida juntos, cada um para outro nível do seu tipo"
+                "desc": "não é mais preciso: a busca de comidas e bebidas já testa combinações inteiras de todos os espaços"
             },
             "owned": {
                 "name": "Itens que você tem",
@@ -266,6 +266,12 @@
             "oldSplit": "Salvo antes das linhas de ganho por jogador: execute a busca de novo para vê-las.",
             "noChange": "sem alteração",
             "playerLineNoChange": "{{player}}: ganho {{gain}} por dia, retorno em {{payback}} dias",
+            "playerLineFree": "{{player}}: ganho {{gain}} ± {{se}} por dia, sem custo, nada a recuperar",
+            "playerLineFreeNoChange": "{{player}}: ganho {{gain}} por dia, sem custo, nada a recuperar",
+            "noCost": "sem custo, nada a recuperar",
+            "bestFoods": "Melhores comidas",
+            "bestDrinks": "Melhores bebidas",
+            "bestBaseline": "Tudo abaixo é medido em cima dessas comidas e bebidas.",
             "singles": "Cada alteração sozinha",
             "singlesNote": "(contra o setup de onde a busca partiu; cinza = ganho não claro para o grupo e para o comprador)",
             "noSingles": "Nenhuma mudança foi medida.",

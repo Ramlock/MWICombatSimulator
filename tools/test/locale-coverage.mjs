@@ -88,6 +88,9 @@ const notTheGameWord = {
     'simulationResults.damageDoneTotal:damage': 'Dano',
     'whatIf.result.playerLine:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.playerLineNoChange:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.playerLineFree:back': '"nothing to pay back" is the verb phrase (nada a recuperar), not the Back equipment slot (Costas)',
+    'whatIf.result.playerLineFreeNoChange:back': '"nothing to pay back" is the verb phrase (nada a recuperar), not the Back equipment slot (Costas)',
+    'whatIf.result.noCost:back': '"nothing to pay back" is the verb phrase (nada a recuperar), not the Back equipment slot (Costas)',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;

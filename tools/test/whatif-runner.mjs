@@ -326,10 +326,14 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
     check(existsSync(path.join(tmp, 'real', f1.json.id, 'need.json')), 'need.json is kept in the search folder');
     const md = readFileSync(path.join(tmp, 'real', f1.json.id, 'result.md'), 'utf8');
     check([...fills, ...dfills].every((s) => !md.includes(s.desc)), 'the food and drink filling rows are not in result.md');
+    const mdAt = (s) => md.indexOf(s);
+    check(mdAt('## Best foods and drinks') >= 0 && mdAt('### Best foods') > mdAt('## Best foods and drinks') && mdAt('### Best drinks') > mdAt('### Best foods') && mdAt('Everything below is measured on top of these foods and drinks.') > mdAt('### Best drinks') && mdAt('## Changes, in order') > mdAt('Everything below is measured'), 'result.md: Best foods and drinks above Changes, in order, with the baseline line');
+    check(md.includes('- Alpha: ' + be('foods').items.map((x) => x.item.split('/').pop() + (x.trigger ? ` (${x.trigger})` : '')).join(', ') + (be('foods').unchanged ? ' (no change)' : '')) && md.includes('- Alpha: ' + be('drinks').items.map((x) => x.item.split('/').pop()).join(', ') + (be('drinks').unchanged ? ' (no change)' : '')), 'result.md: one line per player with the items in slot order');
     // Off: without the consumables lever there is no Stage F, no Stage D and no best.
     const f2 = await call(rb, 'POST', '/api/search', { ...reqF, levers: ['equip'], onlyCandidates: ['none'], budgets: { Alpha: 0 } });
     const off = (await wait(f2.json.id, (r) => r.state !== 'running')).r;
     check(off.state === 'done' && Object.keys(off.result.best.foods).length === 0 && !off.result.singles.some((s) => s.stage), 'consumables off: no Stage F or Stage D, no filling rows, result.best empty');
+    check(!readFileSync(path.join(tmp, 'real', f2.json.id, 'result.md'), 'utf8').includes('Best foods and drinks'), 'consumables off: result.md has no Best foods and drinks section');
     console.log('     (' + ids.length + ' candidates in the rest, ' + fills.length + ' food and ' + dfills.length + ' drink fillings)');
 }
 await real.close();
