@@ -30,9 +30,10 @@
 //                                (cost 0) AND this many paid candidates and the pool is their union (390 free tweaks would
 //                                otherwise take every place); in Stage F and Stage D it is kept per player
 //   --error unpaired|paired      default unpaired (design revision 6). paired: se of per-seed differences, base on the variant's seed count (3.3 up to
-//                                revision 5); unpaired: sqrt(sv^2/kv + sb^2/kb), base on --base-mult x seeds, each new
-//                                run on the next seed its setup never ran (delta 4, with his point of 23:14 BRT)
-//   --base-mult <n>              base seeds per variant seed; default 1 when paired, 4 when unpaired
+//                                revision 5); unpaired: sqrt(sv^2/kv + sb^2/kb) with the base on --base-mult x seeds, each new
+//                                run on the next seed its setup never ran (delta 4, with his point of 23:14 BRT); the unpaired
+//                                GAIN is the variant against the base on the variant's own seeds (his pick "Compare on the same seeds")
+//   --base-mult <n>              base seeds per variant seed (they feed the error); default 1 when paired, 4 when unpaired
 //   --z 2                        profit goal: the party's shared loot gain or the buyer's net is above 0 by z errors, and the other is not below -(z/2) errors (acceptBoth)
 //   --max-up 3                   enhance levers +1..+max-up per slot
 //   --swaps / --no-swaps         market swaps of each slot's item (same equipment type, level requirement met)
@@ -237,8 +238,9 @@ async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
 const val = (ops, seed, h) => metric(cache.get(keyOf(ops) + '#' + seed).byHours[h]);
 // The parts of a checkpoint (no new run, same cache); the readers and the buyer's net are in buyer.mjs.
 const cpOf = (ops, seed, h) => cache.get(keyOf(ops) + '#' + seed).byHours[h];
-// The change (variant minus base) and its error, by the same rule as the search's gain.
-const diffStat = (vs, bs) => diffStatBy(vs, bs, errorRule);
+// The change (variant minus base) and its error, by the same rule as the search's gain. `same`: the base's values on the
+// variant's own seeds, the gain's base (the error keeps `bs`, all the base's seeds).
+const diffStat = (vs, bs, same) => diffStatBy(vs, bs, errorRule, same);
 // The buyer's own payback in days: the price over (his share of the loot gain per user minus the change in his own supplies
 // spend); null unless that net and the price are above 0.
 const paybackOwnOf = (cost, sharedPerUser, supplies) => { const net = sharedPerUser - supplies; return goal === 'profit' && cost > 0 && net > 0 ? cost / net : null; };
@@ -258,6 +260,10 @@ function pick(ops, h, k, fresh = false) {
     return out;
 }
 const req = (ops, h, k, tag, fresh = false) => pick(ops, h, k, fresh).map((seed) => ({ ops, seed, h, tag }));
+// A variant's runs and, on exactly those seeds, the base's: the gain is the variant against the base on the same seeds ("Compare
+// on the same seeds"), so a base run the variant's seeds need that is not saved yet is run here. The base's own k x baseMult
+// seeds (the error) are requested separately.
+const reqPair = (baseOps, vOps, h, k, tag, fresh = false) => { const v = req(vOps, h, k, tag, fresh); return [...v, ...v.map((r) => ({ ops: baseOps, seed: r.seed, h, tag: 'base' }))]; };
 
 // ---- Candidates ----
 const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'main_hand', 'two_hand', 'off_hand', 'pouch', 'back', 'neck', 'earrings', 'ring', 'trinket', 'charm'];
@@ -460,13 +466,15 @@ function estimate(baseOps, c, st, baseSeeds) {
     const vOps = [...baseOps, ...c.ops], vSeeds = pick(vOps, st.h, st.k), bSeeds = pick(baseOps, st.h, baseSeeds);
     const vs = vSeeds.map((i) => val(vOps, i, st.h));
     const bs = bSeeds.map((i) => val(baseOps, i, st.h));
+    // The gain's base: the base on exactly the variant's seeds (its error keeps all of `bs`).
+    const bsSame = vSeeds.map((i) => val(baseOps, i, st.h));
     const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
     const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
     let gain, se;
     if (errorRule === 'paired') { const d = vs.map((v, i) => v - bs[i]); gain = mean(d); se = sd(d) / Math.sqrt(d.length); }
-    else { gain = mean(vs) - mean(bs); se = Math.sqrt(sd(vs) ** 2 / vs.length + sd(bs) ** 2 / bs.length); }
-    const vcp = vSeeds.map((i) => cpOf(vOps, i, st.h)), bcp = bSeeds.map((i) => cpOf(baseOps, i, st.h));
-    const shared = diffStat(vcp.map(lootOf), bcp.map(lootOf)), own = diffStat(vcp.map((cp) => suppliesOf(cp, c.player)), bcp.map((cp) => suppliesOf(cp, c.player)));
+    else { gain = mean(vs) - mean(bsSame); se = Math.sqrt(sd(vs) ** 2 / vs.length + sd(bs) ** 2 / bs.length); }
+    const vcp = vSeeds.map((i) => cpOf(vOps, i, st.h)), bcp = bSeeds.map((i) => cpOf(baseOps, i, st.h)), bcpSame = vSeeds.map((i) => cpOf(baseOps, i, st.h));
+    const shared = diffStat(vcp.map(lootOf), bcp.map(lootOf), bcpSame.map(lootOf)), own = diffStat(vcp.map((cp) => suppliesOf(cp, c.player)), bcp.map((cp) => suppliesOf(cp, c.player)), bcpSame.map((cp) => suppliesOf(cp, c.player)));
     // The party figure on the profit goal is the shared loot gain only, with no one's food or drink in it (Owner: "Gain is per
     // party, cost is per person"). Another goal keeps its own metric and the party test.
     if (goal === 'profit') ({ gain, se } = shared);
@@ -478,21 +486,21 @@ function estimate(baseOps, c, st, baseSeeds) {
     // error are the search's own rule on that one series (never the loot error plus the supplies error: they are correlated).
     // Accepted by acceptBoth: one of the party's shared gain and the buyer's net is at least z errors above 0 and the other is not
     // below -(z/2) errors. Another goal keeps the party test and the party score as they were.
-    let net, netSe, accepted = acceptedParty, score;
+    let net, netSe, netSeSame, accepted = acceptedParty, score;
     if (goal === 'profit') {
-        ({ net, se: netSe } = buyerNet(vcp, bcp, c.player, setups0.length, errorRule, z));
+        ({ net, se: netSe, seSame: netSeSame } = buyerNet(vcp, bcp, c.player, setups0.length, errorRule, z, bcpSame));
         accepted = acceptBoth(gain, se, net, netSe, z);
         score = scoreOf(net, cost, c.monotone); // 1 / the buyer's payback
     } else score = cost <= 0 ? (g > 0 ? Infinity : g) : g / cost;
-    const judged = judgeFood(c, vcp, bcp);
-    return { judged, stage: `${st.k}x${st.h}`, seeds: vSeeds, baseSeeds: bSeeds, gain, se, shared, own, ...(goal === 'profit' ? { net, netSe } : {}), base: mean(bs), score, payback, accepted: accepted && !judged };
+    const judged = judgeFood(c, vcp, bcp, bcpSame);
+    return { judged, stage: `${st.k}x${st.h}`, seeds: vSeeds, baseSeeds: bSeeds, gain, se, shared, own, ...(goal === 'profit' ? { net, netSe, netSeSame } : {}), base: mean(bs), score, payback, accepted: accepted && !judged };
 }
 // The sim as judge for a food filling: refused when, on the same series and error rule as the gain, the party's deaths per
 // hour are higher than the base's by more than z x the error, or its encounters per hour (the kills) are lower by that much.
 // Other candidate kinds are never judged here. Returns 'deaths', 'kills' or null.
-function judgeFood(c, vcp, bcp) {
+function judgeFood(c, vcp, bcp, bcpSame) {
     if (c.kind !== 'food-fill') return null;
-    const d = diffStat(vcp.map((cp) => cp.party.deathsPerHour), bcp.map((cp) => cp.party.deathsPerHour)), k = diffStat(vcp.map((cp) => cp.encountersPerHour), bcp.map((cp) => cp.encountersPerHour));
+    const d = diffStat(vcp.map((cp) => cp.party.deathsPerHour), bcp.map((cp) => cp.party.deathsPerHour), bcpSame.map((cp) => cp.party.deathsPerHour)), k = diffStat(vcp.map((cp) => cp.encountersPerHour), bcp.map((cp) => cp.encountersPerHour), bcpSame.map((cp) => cp.encountersPerHour));
     return d.gain > z * d.se ? 'deaths' : -k.gain > z * k.se ? 'kills' : null;
 }
 // Order: the buyer's score (1 / his payback), a tie by the larger buyer net, then the larger party gain.
@@ -511,7 +519,7 @@ async function halve(cands, base, label, byPlayer) {
     for (let si = 0; si < stages.length; si++) {
         const st = stages[si];
         report({ stage: label ?? (si === 0 ? 'screen' : `halving ${si}`), candidatesLeft: pool.length });
-        if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => req([...base, ...c.ops], st.h, st.k, 'variant'))])) return null;
+        if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => reqPair(base, [...base, ...c.ops], st.h, st.k, 'variant'))])) return null;
         for (const c of pool) { c.est = estimate(base, c, st, st.k * baseMult); (c.history ||= []).push(c.est); }
         pool.sort(rankFirst); // accepted rows first, so the cut to the next stage keeps the ones that can be taken
         if (si < stages.length - 1) pool = cutPool(pool, keep[si] ?? pool.length, byPlayer);
@@ -614,7 +622,7 @@ async function main() {
         if (best.kind === 'trigger') finalists.push(...localCands(setupsNow.find((x) => x.name === best.player), best.player, probeStore, best.owner));
         finalists = guard(finalists);
         report({ stage: `greedy step ${step + 1}`, candidatesLeft: finalists.length });
-        if (!await ensure([...newBase, ...finalists.flatMap((c) => req([...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
+        if (!await ensure([...newBase, ...finalists.flatMap((c) => reqPair(baseOps, [...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
         logCandidates(step + 2, finalists);
     }
@@ -624,19 +632,20 @@ async function main() {
     if (baseOps.length) {
         report({ stage: 'confirmation', candidatesLeft: 0 });
         const fs = pick([], fin.h, fin.k * baseMult, true), vs = pick(baseOps, fin.h, fin.k, true);
-        if (!await ensure([...fs.map((i) => ({ ops: [], seed: i, h: fin.h, tag: 'confirm' })), ...vs.map((i) => ({ ops: baseOps, seed: i, h: fin.h, tag: 'confirm' }))])) return stop(result);
-        const v = vs.map((i) => val(baseOps, i, fin.h)), b = fs.map((i) => val([], i, fin.h));
+        // The gain's base is the original base on the result's own seeds (vs); the other base seeds of fs feed the error.
+        if (!await ensure([...fs.map((i) => ({ ops: [], seed: i, h: fin.h, tag: 'confirm' })), ...vs.map((i) => ({ ops: [], seed: i, h: fin.h, tag: 'confirm' })), ...vs.map((i) => ({ ops: baseOps, seed: i, h: fin.h, tag: 'confirm' }))])) return stop(result);
+        const v = vs.map((i) => val(baseOps, i, fin.h)), b = fs.map((i) => val([], i, fin.h)), bSame = vs.map((i) => val([], i, fin.h));
         const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length, sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
         let gain, se;
         if (errorRule === 'paired') { const d = v.map((x, i) => x - b[i]); gain = mean(d); se = sd(d) / Math.sqrt(d.length); }
-        else { gain = mean(v) - mean(b); se = Math.sqrt(sd(v) ** 2 / v.length + sd(b) ** 2 / b.length); }
+        else { gain = mean(v) - mean(bSame); se = Math.sqrt(sd(v) ** 2 / v.length + sd(b) ** 2 / b.length); }
         const total = Object.values(spent).reduce((a, x) => a + x, 0);
-        const vcp = vs.map((i) => cpOf(baseOps, i, fin.h)), bcp = fs.map((i) => cpOf([], i, fin.h));
-        const shared = diffStat(vcp.map(lootOf), bcp.map(lootOf)), n = setups0.length;
+        const vcp = vs.map((i) => cpOf(baseOps, i, fin.h)), bcp = fs.map((i) => cpOf([], i, fin.h)), bcpSame = vs.map((i) => cpOf([], i, fin.h));
+        const shared = diffStat(vcp.map(lootOf), bcp.map(lootOf), bcpSame.map(lootOf)), n = setups0.length;
         if (goal === 'profit') ({ gain, se } = shared); // the party line is the shared loot gain on the fresh runs, like the rows' party figure
-        const ownBy = Object.fromEntries(players.map((p) => [p, diffStat(vcp.map((cp) => suppliesOf(cp, p)), bcp.map((cp) => suppliesOf(cp, p))).gain]));
-        const own = goal === 'profit' ? { sharedGainPerUser: shared.gain / n, sharedSePerUser: shared.se / n, ownSuppliesByPlayer: ownBy, paybackOwnByPlayer: Object.fromEntries(players.map((p) => [p, paybackOwnOf(spent[p] || 0, shared.gain / n, ownBy[p])])) } : {};
-        const buyerByPlayer = goal === 'profit' ? Object.fromEntries(players.map((p) => { const b = buyerNet(vcp, bcp, p, n, errorRule, z); return [p, { gain: b.net, se: b.se, payback: spent[p] > 0 && b.net > 0 ? spent[p] / b.net : null }]; })) : undefined;
+        const ownBy = Object.fromEntries(players.map((p) => [p, diffStat(vcp.map((cp) => suppliesOf(cp, p)), bcp.map((cp) => suppliesOf(cp, p)), bcpSame.map((cp) => suppliesOf(cp, p))).gain]));
+        const own = goal === 'profit' ? { sharedGainPerUser: shared.gain / n, sharedSePerUser: shared.se / n, sharedSeSamePerUser: shared.seSame / n, ownSuppliesByPlayer: ownBy, paybackOwnByPlayer: Object.fromEntries(players.map((p) => [p, paybackOwnOf(spent[p] || 0, shared.gain / n, ownBy[p])])) } : {};
+        const buyerByPlayer = goal === 'profit' ? Object.fromEntries(players.map((p) => { const b = buyerNet(vcp, bcp, p, n, errorRule, z, bcpSame); return [p, { gain: b.net, se: b.se, seSame: b.seSame, payback: spent[p] > 0 && b.net > 0 ? spent[p] / b.net : null }]; })) : undefined;
         result.confirmation = { seeds: { base: fs, result: vs }, gain, se, ...perUser(gain, se), accepted: gain > 0 && gain >= z * se, cost: total, runningSpend: { ...spent }, payback: goal === 'profit' && gain > 0 ? total / gain : null, ...own, ...(buyerByPlayer ? { buyerByPlayer } : {}), ops: baseOps };
     }
     return done(result);
@@ -646,8 +655,8 @@ async function main() {
 const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: se / setups0.length });
 function row(c) {
     const est = c.est, n = setups0.length;
-    const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
-    return { ...split, id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+    const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, sharedSeSamePerUser: est.shared.seSame / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
+    return { ...split, id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -678,7 +687,7 @@ function done(result) {
     delete result.timeOnly;
     result.skippedNoExport = skippedGroup();
     writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 1));
-    const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, base on ${baseMult}x seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
+    const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
     // The cost path as the report shows it: the note without the upper-bound caveat (the "≤" on the cost carries that).
     const pathMd = (s) => { const note = (s.note || '').replace('; upper bound (XP inside the level unknown)', ''); return s.costPath + (note ? ' (' + note + ')' : ''); };
     // A gain within one error of zero reads "no change" with the real value in brackets (a file has no hover), its error "-".

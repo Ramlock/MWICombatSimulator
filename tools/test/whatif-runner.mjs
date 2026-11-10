@@ -43,6 +43,7 @@ const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
 check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /finalists = guard\(finalists\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
+check((opt.match(/reqPair\(/g) || []).length === 2 && /bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
 
 // ---- (1a) The cut between stages and the per-player choice (tools/whatif/pools.mjs) ----
 {
@@ -82,6 +83,19 @@ check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\
     const m = (a) => a.reduce((x, y) => x + y, 0) / a.length, sd = (a) => Math.sqrt(a.reduce((x, y) => x + (y - m(a)) ** 2, 0) / (a.length - 1));
     check(Math.abs(un.net - (m(qv) - m(qb))) < 1e-9 && Math.abs(un.se - Math.sqrt(sd(qv) ** 2 / 4 + sd(qb) ** 2 / 4)) < 1e-9, 'buyer net: unpaired rule = mean(q variant) - mean(q base) and sqrt(sv^2/kv + sb^2/kb)');
     check(Math.abs(un.net - 5) < 1e-9, 'buyer net: both rules give the same net');
+    {   // Gain on the same seeds ("Compare on the same seeds"): the unpaired gain is against the base on the variant's own seeds, the error keeps all the base's seeds.
+        const vs = [10, 12, 14, 16], bsAll = [1, 5, 9, 13, 17, 21, 25, 29, 3, 7, 11, 15, 19, 23, 27, 31], bsSame = [9, 11, 13, 15];
+        const d = Bm.diffStat(vs, bsAll, 'unpaired', bsSame), old = Bm.diffStat(vs, bsAll, 'unpaired');
+        check(Math.abs(d.gain - (m(vs) - m(bsSame))) < 1e-12 && Math.abs(old.gain - (m(vs) - m(bsAll))) < 1e-12 && Math.abs(d.gain - old.gain) > 1, 'same seeds: the unpaired gain is mean(variant) - mean(base on the variant\'s seeds); with no same-seed list it is the old mean(all base)');
+        check(d.se === old.se && Math.abs(d.se - Math.sqrt(sd(vs) ** 2 / 4 + sd(bsAll) ** 2 / 16)) < 1e-12, 'same seeds: the error is unchanged, the base\'s variance over all its seeds');
+        check(Math.abs(d.seSame - Math.sqrt(sd(vs) ** 2 / 4 + sd(bsSame) ** 2 / 4)) < 1e-12 && old.seSame === old.se, 'same seeds: seSame is the error with the base\'s variance over the same seeds only (reported, never used)');
+        // The toggle case: a variant whose state equals the base's has the same runs, so the same values on the same seeds, and a gain of exactly 0.
+        const same = [3, 1, 4, 1, 5, 9, 2, 6].map((x) => 1000 * x + 0.1 * x), tog = Bm.diffStat(same.slice(0, 4), same.concat([7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]), 'unpaired', same.slice(0, 4));
+        check(tog.gain === 0, 'same seeds: a variant identical to the base (the toggle case) has a gain of exactly 0', String(tog.gain));
+        const cpx = (x) => ({ party: { profitAfterTaxPerDay: x - 10, consumablesPerDay: 10 }, players: { B: { consumablesPerDay: 5 } } });
+        const bn = Bm.buyerNet([1, 2, 3, 4].map(cpx), [1, 2, 3, 4, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101].map(cpx), 'B', 2, 'unpaired', 2, [1, 2, 3, 4].map(cpx));
+        check(bn.net === 0 && !bn.accepted, 'same seeds: the buyer\'s net of a variant identical to the base is exactly 0 and not accepted');
+    }
     const loose = Ls.map((L, i) => cp(1000 + L, 100, 50 + L / 2 + 40));
     const worse = Bm.buyerNet(loose, base, 'B', 2, 'paired', 2);
     check(worse.net < 0 && !worse.accepted, 'buyer net: a party gain whose buyer supplies cost more than his share of it is refused (net below 0)');

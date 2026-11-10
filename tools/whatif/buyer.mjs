@@ -5,21 +5,25 @@ export const lootOf = (cp) => cp.party.profitAfterTaxPerDay + cp.party.consumabl
 export const suppliesOf = (cp, name) => cp.players?.[name]?.consumablesPerDay ?? 0;
 
 // The change (variant minus base) and its error, by the search's error rule on one series: paired = the mean of the
-// per-seed differences and sd(differences) / sqrt(n); unpaired = mean(variant) - mean(base) and sqrt(sv^2/kv + sb^2/kb).
-export function diffStat(vs, bs, rule) {
+// per-seed differences and sd(differences) / sqrt(n); unpaired = the gain and sqrt(sv^2/kv + sb^2/kb) with `bs` (all the base's
+// seeds) feeding the error. The unpaired gain is mean(variant) - mean(base on the variant's own seeds): `bsSame`, the base's values
+// on exactly the seeds the variant ran (the owner's pick "Compare on the same seeds"); with no `bsSame` it is mean(bs). `seSame` is
+// the error if the base's variance were taken over those seeds only (reported next to `se`, never used).
+export function diffStat(vs, bs, rule, bsSame) {
     const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length, sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
     if (rule === 'paired') { const d = vs.map((v, i) => v - bs[i]); return { gain: mean(d), se: sd(d) / Math.sqrt(d.length) }; }
-    return { gain: mean(vs) - mean(bs), se: Math.sqrt(sd(vs) ** 2 / vs.length + sd(bs) ** 2 / bs.length) };
+    const same = bsSame || bs;
+    return { gain: mean(vs) - mean(same), se: Math.sqrt(sd(vs) ** 2 / vs.length + sd(bs) ** 2 / bs.length), seSame: Math.sqrt(sd(vs) ** 2 / vs.length + sd(same) ** 2 / same.length) };
 }
 
 // The buyer's net for a change bought by `player`: per run q = (the party's loot per user, over `n` players) minus the
 // buyer's own supplies per day; the net and its error are diffStat of that one series (never the loot error plus the
 // supplies error: the two move together). Accepted when the net is above 0 by `z` errors. `vcp` / `bcp`: the variant's and
-// the base's checkpoints, in seed order.
-export function buyerNet(vcp, bcp, player, n, rule, z) {
+// the base's checkpoints, in seed order; `bcpSame` (optional): the base's checkpoints on the variant's own seeds (see diffStat).
+export function buyerNet(vcp, bcp, player, n, rule, z, bcpSame) {
     const q = (cp) => lootOf(cp) / n - suppliesOf(cp, player);
-    const { gain: net, se } = diffStat(vcp.map(q), bcp.map(q), rule);
-    return { net, se, accepted: net > 0 && net >= z * se };
+    const { gain: net, se, seSame } = diffStat(vcp.map(q), bcp.map(q), rule, bcpSame && bcpSame.map(q));
+    return { net, se, seSame, accepted: net > 0 && net >= z * se };
 }
 
 // The score: the net over the price, which is 1 / the buyer's payback (a free change with a net above 0 is Infinity). A
