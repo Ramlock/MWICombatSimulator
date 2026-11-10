@@ -43,6 +43,11 @@
     "noRNGRevenue": "No RNG Revenue",
     "dropTotal": "Drops (Total)",
     "noRNGDrops": "No RNG Drops",
+    "xpChart": {
+        "xp": "XP",
+        "party": "Party",
+        "profitPerDay": "Profit per day"
+    },
     "simulationResults": {
         "title": "Simulation Results",
         "killPerHour": "Kills Per Hour",

@@ -2766,6 +2766,131 @@ function getTimeZeroPlayer(playerDTO, zoneSpec, labyrinthSpec, extra, withDrinks
 
 /***/ }),
 
+/***/ "./src/xpChartView.js":
+/*!****************************!*\
+  !*** ./src/xpChartView.js ***!
+  \****************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   createXpChartView: () => (/* binding */ createXpChartView)
+/* harmony export */ });
+/* harmony import */ var _xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./xpChart.mjs */ "./src/xpChart.mjs");
+// The XP-vs-profit chart of the all-zones result dialog: the selectors, the Chart.js scatter and the click-to-row highlight.
+// It draws from the display rows it is given (never from the table cells) and finds table rows by the data attributes
+// `updateAllSimsModal` writes (data-map-key, data-player), never by cell text.
+
+
+// Table header texts, by XP key: the chart's X axis title uses the table's own header keys.
+const X_TITLE_KEYS = {
+    TotalExperience: 'common:simulationResults.totalExperience',
+    Stamina: 'skillNames./skills/stamina', Intelligence: 'skillNames./skills/intelligence', Attack: 'skillNames./skills/attack',
+    Melee: 'skillNames./skills/melee', Defense: 'skillNames./skills/defense', Ranged: 'skillNames./skills/ranged', Magic: 'skillNames./skills/magic',
+};
+const COLORS = { frontier: 'rgb(255, 193, 7)', frontierLine: 'rgba(255, 193, 7, 0.7)', dim: 'rgba(160, 170, 185, 0.55)', text: '#f0f0f0', grid: 'rgba(255, 255, 255, 0.12)' };
+
+// deps: { t(key), format(number), Chart }. Returns { setRows, redraw, clearHighlight }.
+function createXpChartView({ t, format, Chart }) {
+    const $ = (id) => document.getElementById(id);
+    const panel = $('xpChartPanel'), canvas = $('xpChartCanvas'), skillSelect = $('xpChartSkill'), playerSelect = $('xpChartPlayer');
+    let rows = [], chart = null, points = [];
+
+    const mapName = (zone) => {
+        const s = String(zone);
+        if (s.startsWith('/action')) return t('actionNames.' + s);
+        if (s.startsWith('/monsters')) return t('monsterNames.' + s);
+        return s;
+    };
+
+    function clearHighlight() {
+        document.querySelectorAll('#allZonesData tr.xp-chart-picked').forEach((tr) => tr.classList.remove('xp-chart-picked'));
+    }
+
+    // Scrolls to and marks the table rows of the clicked dot: every player row of the map for Party, that player's row otherwise.
+    function pick(point) {
+        clearHighlight();
+        const player = playerSelect.value;
+        const hit = [...document.querySelectorAll('#allZonesData tbody tr')].filter((tr) => tr.dataset.mapKey === point.key && (player === _xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.PARTY || tr.dataset.player === player));
+        hit.forEach((tr) => tr.classList.add('xp-chart-picked'));
+        hit[0]?.scrollIntoView({ block: 'center' });
+    }
+
+    function fillSelectors() {
+        const keep = skillSelect.value;
+        skillSelect.innerHTML = '';
+        for (const key of _xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.XP_KEYS) {
+            const o = document.createElement('option');
+            o.value = key;
+            o.textContent = t(key === 'TotalExperience' ? 'common:total' : X_TITLE_KEYS[key]);
+            skillSelect.appendChild(o);
+        }
+        if (keep) skillSelect.value = keep;
+        const keepPlayer = playerSelect.value;
+        playerSelect.innerHTML = '';
+        for (const p of [_xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.PARTY, ...(0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.playersOf)(rows)]) {
+            const o = document.createElement('option');
+            o.value = p;
+            o.textContent = p === _xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.PARTY ? t('common:xpChart.party') : p;
+            playerSelect.appendChild(o);
+        }
+        if ([...playerSelect.options].some((o) => o.value === keepPlayer)) playerSelect.value = keepPlayer;
+    }
+
+    function redraw() {
+        if (!panel || panel.classList.contains('d-none')) return;
+        const xKey = skillSelect.value || _xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.XP_KEYS[0];
+        points = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.pointsFor)(rows, { xKey, player: playerSelect.value || _xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.PARTY });
+        const front = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_0__.frontier)(points);
+        const onFront = new Set(front);
+        const dot = (p) => ({ x: p.x, y: p.y, point: p });
+        const data = {
+            datasets: [
+                { label: 'frontier', data: front.map(dot), showLine: true, borderColor: COLORS.frontierLine, backgroundColor: COLORS.frontier, pointBackgroundColor: COLORS.frontier, pointBorderColor: COLORS.frontier, pointRadius: 5, pointHoverRadius: 7, borderWidth: 2 },
+                { label: 'others', data: points.filter((p) => !onFront.has(p)).map(dot), showLine: false, backgroundColor: 'rgba(0, 0, 0, 0)', pointBackgroundColor: 'rgba(0, 0, 0, 0)', pointBorderColor: COLORS.dim, pointRadius: 4, pointHoverRadius: 6, borderWidth: 1.5 },
+            ],
+        };
+        const axis = (text) => ({ title: { display: true, text, color: COLORS.text }, ticks: { color: COLORS.text, callback: (v) => format(v) }, grid: { color: COLORS.grid } });
+        const options = {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            scales: { x: axis(t(X_TITLE_KEYS[xKey])), y: axis(t('common:xpChart.profitPerDay')) },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => mapName(items[0].raw.point.zone),
+                        label: (item) => {
+                            const p = item.raw.point;
+                            return [`${t('party.difficulty')}: ${p.tier}`, `${t(X_TITLE_KEYS[xKey])}: ${format(p.x)}`, `${t('common:xpChart.profitPerDay')}: ${format(p.y)}`, `${t('common:simulationResults.deathPerHour')}: ${format(p.deaths)}`];
+                        },
+                    },
+                },
+            },
+            onClick: (event, elements) => { if (elements.length) pick(elements[0].element.$context.raw.point); },
+        };
+        if (chart) { chart.data = data; chart.options = options; chart.update(); }
+        else chart = new Chart(canvas, { type: 'scatter', data, options });
+    }
+
+    // rows: the display rows of the result; hidden for a Labyrinth result.
+    function setRows(newRows, isLabyrinth) {
+        rows = newRows;
+        clearHighlight();
+        panel?.classList.toggle('d-none', !!isLabyrinth);
+        if (isLabyrinth) { chart?.destroy(); chart = null; return; }
+        fillSelectors();
+        redraw();
+    }
+
+    skillSelect?.addEventListener('change', () => { clearHighlight(); redraw(); });
+    playerSelect?.addEventListener('change', () => { clearHighlight(); redraw(); });
+    document.getElementById('allSimsModal')?.addEventListener('hidden.bs.modal', clearHighlight);
+    return { setRows, redraw, clearHighlight, refreshLabels: () => { if (rows.length) { fillSelectors(); redraw(); } } };
+}
+
+
+/***/ }),
+
 /***/ "./src/groupSelection.mjs":
 /*!********************************!*\
   !*** ./src/groupSelection.mjs ***!
@@ -3438,6 +3563,81 @@ const fmtRaw = (v) => (v === null ? '—' : typeof v === 'object' ? JSON.stringi
 
 /***/ }),
 
+/***/ "./src/xpChart.mjs":
+/*!*************************!*\
+  !*** ./src/xpChart.mjs ***!
+  \*************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   PARTY: () => (/* binding */ PARTY),
+/* harmony export */   PROFIT_KEY: () => (/* binding */ PROFIT_KEY),
+/* harmony export */   XP_KEYS: () => (/* binding */ XP_KEYS),
+/* harmony export */   frontier: () => (/* binding */ frontier),
+/* harmony export */   mapKey: () => (/* binding */ mapKey),
+/* harmony export */   playersOf: () => (/* binding */ playersOf),
+/* harmony export */   pointsFor: () => (/* binding */ pointsFor),
+/* harmony export */   profitPerDay: () => (/* binding */ profitPerDay)
+/* harmony export */ });
+// The XP-vs-profit chart of the all-zones result: which dot each map gets, and which dots are on the frontier.
+// Pure functions over the display rows `manipulateSimResultsDataForDisplay` builds (one row per zone, tier and player);
+// nothing here reads the table or any other displayed text.
+
+const PARTY = 'Party';
+// The XP choices, in selector order. The first is the default; each is a key of the display rows.
+const XP_KEYS = ['TotalExperience', 'Stamina', 'Intelligence', 'Attack', 'Melee', 'Defense', 'Ranged', 'Magic'];
+const PROFIT_KEY = 'ProfitPerDay';
+
+// Profit of a run scaled to one day, per player. The run length is the Duration input, so the raw total is only a per-day figure at 24 h.
+function profitPerDay(noRngProfit, hoursSimulated) {
+    return hoursSimulated > 0 ? (noRngProfit * 24) / hoursSimulated : 0;
+}
+
+// One map is one zone at one tier. The key is for lookups only; it is also written to the table rows as a data attribute.
+function mapKey(zoneName, difficultyTier) {
+    return zoneName + '|' + difficultyTier;
+}
+
+// Distinct players of the rows, in first-seen order.
+function playersOf(rows) {
+    return [...new Set(rows.map((r) => r.Player))];
+}
+
+const mean = (list, key) => list.reduce((sum, r) => sum + r[key], 0) / list.length;
+
+// The dots for a selection: { xKey, player }. One dot per map; first-seen order of the maps.
+// player = PARTY: the average over the players that have a row for the map (X, Y and deaths). Any other value: that player's row.
+// A dot: { key, zone, tier, x, y, deaths, players } where players lists the players the dot is made of.
+function pointsFor(rows, { xKey = XP_KEYS[0], player = PARTY } = {}) {
+    const byMap = new Map();
+    for (const r of rows) {
+        if (player !== PARTY && r.Player !== player) continue;
+        const key = mapKey(r.ZoneName, r.DifficultyTier);
+        if (!byMap.has(key)) byMap.set(key, []);
+        byMap.get(key).push(r);
+    }
+    return [...byMap.entries()].map(([key, list]) => ({
+        key,
+        zone: list[0].ZoneName,
+        tier: list[0].DifficultyTier,
+        x: mean(list, xKey),
+        y: mean(list, PROFIT_KEY),
+        deaths: mean(list, 'Deaths'),
+        players: list.map((r) => r.Player),
+    }));
+}
+
+// The frontier: a dot is on it when no other dot has X at least as high and Y at least as high with one of them strictly higher.
+// Returns the dots on it in increasing X (ties: lower Y first); dots equal on both axes are all on it.
+function frontier(points) {
+    const on = points.filter((p) => !points.some((q) => q !== p && q.x >= p.x && q.y >= p.y && (q.x > p.x || q.y > p.y)));
+    return on.sort((a, b) => a.x - b.x || a.y - b.y);
+}
+
+
+/***/ }),
+
 /***/ "./patchNote.i18n.json":
 /*!*****************************!*\
   !*** ./patchNote.i18n.json ***!
@@ -3685,7 +3885,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"654baacb","2":"5a889c11","3":"e0598102","5":"89c6f340","src_multiWorker_js-_004d1":"0ebd25e7","src_multiWorker_js-_004d2":"0ebd25e7","src_multiWorker_js-_004d3":"0ebd25e7","src_multiWorker_js-_004d0":"0ebd25e7","src_multiWorker_js-_004d4":"0ebd25e7"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"21bb04f1","2":"58d5d6e2","3":"ba68a5b6","5":"64afa335","src_multiWorker_js-_004d1":"08a70815","src_multiWorker_js-_004d2":"08a70815","src_multiWorker_js-_004d3":"08a70815","src_multiWorker_js-_004d0":"08a70815","src_multiWorker_js-_004d4":"08a70815"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -3802,10 +4002,14 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
 /* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
 /* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
-/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
-/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _xpChart_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./xpChart.mjs */ "./src/xpChart.mjs");
+/* harmony import */ var _xpChartView_js__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./xpChartView.js */ "./src/xpChartView.js");
+/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
+/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
+
 
 
 
@@ -5304,6 +5508,8 @@ function showAllSimulationResults(simResults) {
     updateAllSimsModal(displaySimResults);
 
     let isLabyrinth = simResults?.[0].isLabyrinth ?? false;
+    // The chart is drawn from these rows, never from the table cells.
+    getXpChartView().setRows(displaySimResults, isLabyrinth);
     if (isLabyrinth) {
         const table = document.getElementById('allZonesData');
         const rows = table.getElementsByTagName('tr');
@@ -5720,7 +5926,9 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 "Melee": experiencePerHour["Melee"], "Defense": experiencePerHour["Defense"],
                 "noRngRevenue": noRngRevenue,
                 "expenses": expenses,
-                "noRngProfit": noRngProfit
+                "noRngProfit": noRngProfit,
+                // Chart only: the table loop skips it (see CHART_ONLY_KEYS). Profit scaled to one day, so the chart does not depend on the Duration input.
+                "ProfitPerDay": (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_30__.profitPerDay)(noRngProfit, hoursSimulated)
             };
             displaySimResults.push(displaySimRow);
         }
@@ -5898,13 +6106,29 @@ function getDropProfit(simResult, playerToDisplay) {
     simResult["noRngProfit"] = noRngTotal - expenses;
 }
 
+// Keys of a display row that are for the chart only and never a table column.
+const CHART_ONLY_KEYS = new Set(['ProfitPerDay']);
+
+let xpChartView = null;
+function getXpChartView() {
+    if (!xpChartView) {
+        xpChartView = (0,_xpChartView_js__WEBPACK_IMPORTED_MODULE_31__.createXpChartView)({ t: (key) => i18next.t(key), format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.formatNumber)(v), Chart });
+        i18next.on('languageChanged', () => xpChartView.refreshLabels());
+    }
+    return xpChartView;
+}
+
 function updateAllSimsModal(data) {
     const tableBody = document.getElementById('allZonesData').getElementsByTagName('tbody')[0];
     tableBody.innerHTML = '';
     data.forEach(item => {
         const row = document.createElement('tr');
+        // The chart finds the rows of a map by these, never by cell text.
+        row.dataset.mapKey = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_30__.mapKey)(item.ZoneName, item.DifficultyTier);
+        row.dataset.player = item.Player;
 
         Object.keys(item).forEach(key => {
+            if (CHART_ONLY_KEYS.has(key)) return;
             const cell = document.createElement('td');
             if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
                 (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(cell, item[key]);
@@ -5972,6 +6196,7 @@ document.querySelectorAll('#allZonesData th').forEach((header, index) => {
             currentSortColumn = index;
             currentSortDirection = 'desc';
         }
+        getXpChartView().clearHighlight();
         sortTable('allZonesData', currentSortColumn, currentSortDirection);
     });
 });
@@ -8009,15 +8234,15 @@ function whatIfRenderChoices(fromPage) {
 
 // The kept character export of a player (browser storage, one key per player name), or null.
 function whatIfKeptExport(name) {
-    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
+    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
 // A paste: a valid export replaces the kept one and the box is emptied; a bad one is not kept (it stays in the box,
 // and the status says so).
 function whatIfKeepExport(box) {
-    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.parseExport)(box.value);
+    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.parseExport)(box.value);
     if (parsed.ok) {
-        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportKey)(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.exportKey)(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
     }
     whatIfShowExportStatus();
 }
@@ -8026,7 +8251,7 @@ function whatIfShowExportStatus() {
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
         const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
-        status.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.exportStatus)({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
+        status.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.exportStatus)({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
         status.title = status.textContent;
     }
 }
@@ -8086,9 +8311,9 @@ function whatIfRenderSetup() {
     }
     whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
-    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.LEVERS.filter((l) => l.def).map((l) => l.id));
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
-    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.LEVERS) {
+    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.LEVERS) {
         const row = document.createElement('div');
         row.className = 'form-check';
         const input = document.createElement('input');
@@ -8111,12 +8336,12 @@ function whatIfRenderSetup() {
 // The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
 function whatIfNames() {
     const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
-    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
+    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
 }
 
 function whatIfShowResult(result) {
     whatIf.result = result;
-    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.renderResult)(result, whatIfT, Date.now(), whatIfNames()) : '';
+    document.getElementById('whatIfResult').innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.renderResult)(result, whatIfT, Date.now(), whatIfNames()) : '';
     whatIfShowDiff();
 }
 
@@ -8126,13 +8351,13 @@ function whatIfShowDiff() {
     const box = document.getElementById('whatIfDiff');
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
-    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
-    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
+    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
 }
 
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
-    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.renderProgress)(status, whatIfT);
+    document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.renderProgress)(status, whatIfT);
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
@@ -8151,7 +8376,7 @@ function whatIfWatch(id) {
     whatIfStopWatching();
     const poll = async () => {
         try {
-            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.status(id));
+            const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.API.status(id));
             if (ok) whatIfShowStatus(body);
             else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
         } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
@@ -8179,13 +8404,13 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__.fetchMarketplace)());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
-        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (ok) whatIfWatch(answer.id);
         else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
         else whatIfMessage(answer.error || whatIfT('runnerError'));
@@ -8196,7 +8421,7 @@ async function whatIfStopOrResume() {
     if (!whatIf.searchId) return;
     const resuming = whatIf.state === 'stopped';
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.stop(whatIf.searchId), { method: 'POST' });
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
         if (resuming) whatIfWatch(whatIf.searchId);
         else if (body.state) whatIfShowStatus(body);
@@ -8207,7 +8432,7 @@ async function whatIfStopOrResume() {
 async function whatIfLoadList() {
     const select = document.getElementById('selectWhatIfResult');
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.results);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.API.results);
         if (!ok || !Array.isArray(body)) return;
         select.replaceChildren(...body.map((r) => {
             const option = document.createElement('option');
@@ -8222,15 +8447,15 @@ async function whatIfLoadResult() {
     const id = document.getElementById('selectWhatIfResult').value;
     if (!id) return;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.result(id));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.API.result(id));
         if (ok) { whatIfMessage(''); whatIfShowResult(body); }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
 
 function whatIfApply(key) {
-    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.opsFor)(whatIf.result, key);
-    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.applyToSlots)(whatIfSlots(false), ops);
+    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.opsFor)(whatIf.result, key);
+    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.applyToSlots)(whatIfSlots(false), ops);
     if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
     for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
     updateNextPlayer(currentPlayerTabId);
@@ -8242,7 +8467,7 @@ function whatIfApply(key) {
 
 async function initWhatIf() {
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_31__.API.version);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_33__.API.version);
         if (!ok || !body || body.runner === undefined) return;
         whatIf.version = body;
     } catch (err) { return; } // not served by the runner (the public page): no What-if window
@@ -8443,13 +8668,13 @@ function doGroupImport() {
         }
     } else {
         // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
-        const { slots: importMap, selected, fight } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_30__.splitGroupImport)(JSON.parse(value));
+        const { slots: importMap, selected, fight } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_32__.splitGroupImport)(JSON.parse(value));
         for (const id of Object.keys(importMap)) {
             const slotJson = typeof importMap[id] === "string" ? importMap[id] : JSON.stringify(importMap[id]);
             playerDataMap[id] = mergePlayerImport(playerDataMap[id], slotJson);
         }
         needUpdateCurrentTab = true;
-        const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_30__.applyGroupSelection)(document, { selected, fight });
+        const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_32__.applyGroupSelection)(document, { selected, fight });
         if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
     }
 
@@ -9017,15 +9242,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_32__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_34__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_32__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_32__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_32__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_34__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_34__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_34__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_33__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_35__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -9036,7 +9261,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_33__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_35__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -9300,4 +9525,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.d1cc8458.js.map
+//# sourceMappingURL=bundle.cb383d55.js.map

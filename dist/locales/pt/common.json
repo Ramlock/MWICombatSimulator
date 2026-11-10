@@ -43,6 +43,11 @@
     "noRNGRevenue": "Receita sem RNG",
     "dropTotal": "Itens (total)",
     "noRNGDrops": "Itens sem RNG",
+    "xpChart": {
+        "xp": "XP",
+        "party": "grupo",
+        "profitPerDay": "Lucro por dia"
+    },
     "simulationResults": {
         "title": "Resultados da simulação",
         "killPerHour": "Abates por hora",
