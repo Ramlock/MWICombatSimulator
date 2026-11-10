@@ -47,7 +47,8 @@
         "xp": "经验",
         "party": "队伍",
         "perHour": "每小时",
-        "profitPerDay": "每日利润"
+        "profitPerDay": "每日利润",
+        "legend": "连线上的实心点:没有其他地图在经验和利润上同时胜过的地图。空心点:被其他地图在两项上都胜过的地图。"
     },
     "simulationResults": {
         "title": "模拟结果",

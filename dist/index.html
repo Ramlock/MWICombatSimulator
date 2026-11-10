@@ -82,6 +82,7 @@
         .xp-chart-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
         .xp-chart-controls .form-select { width: auto; }
         .xp-chart-box { position: relative; width: 100%; height: 360px; }
+        .xp-chart-legend { margin-top: 6px; font-size: 0.85em; opacity: 0.85; }
         body.dark-mode #xpChartPanel { color: #f0f0f0; }
         body.dark-mode #xpChartPanel .form-select { background-color: #2b2b2b; color: #f0f0f0; border-color: #555; }
         #allZonesData tr.xp-chart-picked td { outline: 2px solid #ffc107; outline-offset: -2px; background-color: rgba(255, 193, 7, 0.22); }
@@ -1736,6 +1737,7 @@
                             <select id="xpChartPlayer" class="form-select form-select-sm"></select>
                         </div>
                         <div class="xp-chart-box"><canvas id="xpChartCanvas"></canvas></div>
+                        <div id="xpChartLegend" class="xp-chart-legend" data-i18n="common:xpChart.legend">Solid dots joined by the line: maps no other map beats on both XP and profit. Hollow dots: maps another map beats on both.</div>
                     </div>
                     <table id="allZonesData">
                         <thead>
@@ -2200,10 +2202,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=b891f78d"></script>
+    <script src="js/i18n.js?v=58542a0b"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.b891f78d.js" type="module"></script>
+    <script src="bundle.58542a0b.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">

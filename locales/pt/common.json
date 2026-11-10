@@ -47,7 +47,8 @@
         "xp": "XP",
         "party": "grupo",
         "perHour": "por hora",
-        "profitPerDay": "Lucro por dia"
+        "profitPerDay": "Lucro por dia",
+        "legend": "Pontos cheios ligados pela linha: mapas que nenhum outro mapa supera em XP e lucro ao mesmo tempo. Pontos vazios: mapas que outro mapa supera nos dois."
     },
     "simulationResults": {
         "title": "Resultados da simulação",

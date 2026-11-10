@@ -47,7 +47,8 @@
         "xp": "XP",
         "party": "Party",
         "perHour": "per hour",
-        "profitPerDay": "Profit per day"
+        "profitPerDay": "Profit per day",
+        "legend": "Solid dots joined by the line: maps no other map beats on both XP and profit. Hollow dots: maps another map beats on both."
     },
     "simulationResults": {
         "title": "Simulation Results",

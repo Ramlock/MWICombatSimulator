@@ -18,7 +18,7 @@ export function createXpChartView({ t, format, Chart }) {
     let rows = [], chart = null, points = [];
 
     // The X axis and the tooltip say what the values are per: the skill's name as the table has it, then "per hour".
-    const xLabel = (xKey) => `${t(X_TITLE_KEYS[xKey])} ${t('common:xpChart.perHour')}`;
+    const xLabel = (xKey) => `${t(X_TITLE_KEYS[xKey])}${xKey === 'TotalExperience' ? '' : ' ' + t('common:xpChart.xp')} ${t('common:xpChart.perHour')}`;
     const mapName = (zone) => {
         const s = String(zone);
         if (s.startsWith('/action')) return t('actionNames.' + s);
@@ -80,6 +80,7 @@ export function createXpChartView({ t, format, Chart }) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    displayColors: false,
                     callbacks: {
                         title: (items) => mapName(items[0].raw.point.zone),
                         label: (item) => {

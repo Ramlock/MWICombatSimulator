@@ -109,7 +109,9 @@ try {
     s = await chartState();
     const pa = find([...s.frontier, ...s.others], 'swamp_planet', 0);
     check('a skill: that skill\'s XP only (half of the total in the fixture)', pa[2] === 1500, JSON.stringify(pa));
-    check('the X axis title follows the skill, per hour', s.xTitle === (await js(`i18next.t('skillNames./skills/attack')`)) + ' per hour', s.xTitle);
+    check('the X axis title follows the skill, per hour', s.xTitle === (await js(`i18next.t('skillNames./skills/attack')`)) + ' XP per hour', s.xTitle);
+    const legend = await js(`(() => { const e = document.getElementById('xpChartLegend'); const r = e.getBoundingClientRect(); const c = document.getElementById('xpChartCanvas').getBoundingClientRect(); return { text: e.textContent, shown: r.height > 0, belowChart: r.top >= c.bottom - 1 }; })()`);
+    check('a legend under the chart says what the filled and hollow dots are', legend.shown && legend.belowChart && /no other map beats/.test(legend.text) && /Hollow/.test(legend.text), JSON.stringify(legend));
 
     // Click a dot: the table rows of that map are scrolled into view and highlighted; Party highlights every player of the map.
     const clickDot = async (ds, i) => {
