@@ -32,7 +32,11 @@ export const rankEst = (a, b) => (b.score - a.score) || ((b.net ?? 0) - (a.net ?
 // The same order with the rows that pass the accept rule first (used to cut each stage's pool).
 export const rankAcceptedFirst = (a, b) => (Number(b.accepted) - Number(a.accepted)) || rankEst(a, b);
 
-// The profit goal's acceptance: the party's gain and the buyer's net must both be above 0 by at least z/2 errors, and at
-// least one of the two by z errors (so neither can be a net loss, and one is clearly real). `gain`/`se` are the party's
-// (totals; only the ratio matters), `net`/`netSe` the buyer's. At z = 0 it is both above 0.
-export const acceptBoth = (gain, se, net, netSe, z) => gain > 0 && net > 0 && gain >= (z / 2) * se && net >= (z / 2) * netSe && (gain >= z * se || net >= z * netSe);
+// The profit goal's acceptance: one of the two figures (the party's shared loot gain and the buyer's net) is above 0 by at least
+// z errors, and the other is not a clear loss: at least -(z / 2) errors (so a pure cost cut, or a change that does not touch the
+// group at all, passes when the buyer's side is clear). gain/se are the party's (totals; only the ratio matters),
+// net/netSe the buyer's. At z = 0 neither may be below 0 and one must be above 0.
+export const acceptBoth = (gain, se, net, netSe, z) => {
+    const clear = (v, e) => v > 0 && v >= z * e, notLoss = (v, e) => v >= -(z / 2) * e;
+    return (clear(gain, se) && notLoss(net, netSe)) || (clear(net, netSe) && notLoss(gain, se));
+};

@@ -66,11 +66,14 @@ check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c,
     const edge = [3, 7, 3, 7].map((d) => cp(1000 + d, 100, 50));
     const e = Bm.buyerNet(edge, base, 'B', 1, 'paired', 2);
     { const ab = Bm.acceptBoth;
-    check(ab(10, 5, 10, 5, 2) && ab(10, 5, 4, 4, 2) && ab(10, 5, 5, 5, 2), 'acceptBoth: both at 2 errors accepted; one at 2 and the other at 1 accepted');
-    check(!ab(10, 5, 2, 4, 2) && !ab(2, 4, 10, 5, 2), 'acceptBoth: one at 2 errors and the other at 0.5 rejected');
-    check(!ab(10, 5, -1, 5, 2) && !ab(-1, 5, 10, 5, 2) && !ab(10, 5, 0, 5, 2), 'acceptBoth: one negative (or zero) rejected');
-    check(!ab(7.5, 5, 6, 4, 2) && ab(7.5, 5, 6, 4, 0) , 'acceptBoth: both at 1.5 errors rejected at z 2');
-    check(ab(0.1, 5, 0.1, 5, 0) && !ab(0.1, 5, 0, 5, 0), 'acceptBoth: z 0 with both positive accepted, a zero refused'); }
+    // (gain, party error, net, buyer error, z): invented numbers. One side at least z errors above 0, the other not below -(z/2) errors.
+    check(ab(0, 100, 250, 100, 2), 'acceptBoth: a pure cost cut (party 0 +- 100, buyer at 2.5 errors) is accepted');
+    check(ab(-90, 100, 200, 100, 2) && ab(200, 100, -90, 100, 2), 'acceptBoth: party at -0.9 errors and buyer at 2 errors accepted; the symmetric case too');
+    check(!ab(-110, 100, 500, 100, 2) && !ab(500, 100, -110, 100, 2), 'acceptBoth: party at -1.1 errors and buyer at 5 rejected; the symmetric case too');
+    check(!ab(150, 100, 150, 100, 2), 'acceptBoth: both at 1.5 errors rejected (neither reaches 2)');
+    check(!ab(0, 100, 0, 100, 2) && !ab(0, 100, 0, 100, 0), 'acceptBoth: both exactly 0 rejected, at z 2 and at z 0');
+    check(ab(200, 100, 200, 100, 2) && ab(200, 100, 0, 100, 2) && !ab(199, 100, 199, 100, 2), 'acceptBoth: both at 2 errors accepted; one at 2 errors and the other exactly 0 accepted; both just under 2 rejected');
+    check(ab(0.1, 5, 0.1, 5, 0) && ab(0.1, 5, 0, 5, 0) && !ab(0.1, 5, -0.1, 5, 0) && !ab(-0.1, 5, 0.1, 5, 0), 'acceptBoth: z 0 needs one above 0 and neither below 0'); }
     check(e.net > 0 && e.accepted === (e.net >= 2 * e.se) && Bm.buyerNet(edge, base, 'B', 1, 'paired', 1e6).accepted === false, 'buyer net: accepted only when the net is above z errors (--z follows)');
     check(Bm.scoreOf(5, 0, false) === Infinity && Bm.scoreOf(5, 0, true) === Infinity && Bm.scoreOf(-5, 0, false) === -5 && Bm.scoreOf(-5, 0, true) === 0, 'score: price 0 with a net above 0 is Infinity; a monotone lever is floored at 0');
     check(paired.accepted && Bm.scoreOf(paired.net, 0, false) === Infinity, 'price 0: accepted by the buyer test with a net above 0, score Infinity');
@@ -258,6 +261,7 @@ if (res) {
     check(res.singles.every((s) => [s.sharedGainPerUser, s.sharedSePerUser, s.ownSuppliesPerDay, s.ownSuppliesSe].every(Number.isFinite) && s.sharedSePerUser >= 0 && s.ownSuppliesSe >= 0 && (s.paybackOwn === null || Math.abs(s.paybackOwn - s.cost / (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * s.paybackOwn)) && res.singles.every((s) => (s.paybackOwn === null) === !(s.cost > 0 && s.sharedGainPerUser - s.ownSuppliesPerDay > 0)), 'rows: shared gain per user, own supplies and the buyer payback (cost / (shared - supplies), null unless both above 0)');
     check(res.steps.every((s) => Number.isFinite(s.sharedGainPerUser) && Number.isFinite(s.ownSuppliesPerDay) && 'paybackOwn' in s), 'steps: the split fields are present');
     const { acceptBoth } = await mod('tools/whatif/buyer.mjs');
+    check(res.singles.every((s) => Math.abs(s.gainPerUser - s.sharedGainPerUser) < 1e-9 * Math.max(1, Math.abs(s.gainPerUser)) && Math.abs(s.sePerUser - s.sharedSePerUser) < 1e-9 * Math.max(1, s.sePerUser)) && res.steps.every((s) => Math.abs(s.gainPerUser - s.sharedGainPerUser) < 1e-9 * Math.max(1, Math.abs(s.gainPerUser))), 'party figure: on the profit goal the party gain per user of a row and error are the shared loot gain per user and its error (no food or drink in them)');
     check(res.singles.every((s) => Number.isFinite(s.buyerNet) && s.buyerNetSe >= 0 && Math.abs(s.buyerNet - (s.sharedGainPerUser - s.ownSuppliesPerDay)) < 1e-6 * Math.max(1, Math.abs(s.buyerNet)) && s.accepted === (acceptBoth(s.gain, s.se, s.buyerNet, s.buyerNetSe, res.z) && !s.judged)), 'accept rule: every row carries the buyer net (his share of the loot gain minus his supplies change) and its error, and accepted is acceptBoth of the party gain and the buyer net at z');
     check(res.singles.every((s) => !('acceptedParty' in s) && !('helpsParty' in s)) && !('helpsParty' in res) && res.steps.every((s) => s.accepted && !('acceptedParty' in s)), 'no acceptedParty or helpsParty field in the rows, the steps or the result');
     check(!readFileSync(path.join(dir, 'result.md'), 'utf8').includes('Helps the party'), 'result.md: no helps-the-party section');

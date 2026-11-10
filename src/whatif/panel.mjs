@@ -4,7 +4,7 @@
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
 import { applyOps } from './applyOps.mjs';
-import { numberHtml } from '../numberFormat.js';
+import { numberHtml, formatNumber } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
 
 // The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
@@ -35,6 +35,17 @@ export const API = {
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? numberHtml(v) : '—');
 const upper = (row) => row?.costBound === 'upper';
+// A gain within one error of zero is read as "no change" (a player is not used to error margins): the word, with the real value
+// ("+288K ± 242K") as its hover title. Strictly inside one error; exactly one error shows the number.
+const withinError = (v, se) => typeof v === 'number' && Number.isFinite(v) && typeof se === 'number' && Number.isFinite(se) && Math.abs(v) < se;
+const signedPlain = (v) => (v > 0 ? '+' : '') + formatNumber(v);
+const realValue = (v, se) => signedPlain(v) + ' ± ' + formatNumber(se);
+const noChange = (v, se, t) => `<span title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</span>`;
+// The two cells of a gain and its error: "no change" and "—" (both with the real value as title) when within one error.
+function gainPair(v, se, t) {
+    if (withinError(v, se)) { const title = ` title="${esc(realValue(v, se))}"`; return `<td class="num"${title}>${esc(t('result.noChange'))}</td><td class="num"${title}>—</td>`; }
+    return `<td class="num">${num(v)}</td><td class="num">± ${num(se)}</td>`;
+}
 
 // slots: [{ id: "1", name: "<tab name>", json: "<the slot's setup JSON>" }] for the players in the search.
 // The setups the runner gets: each slot's JSON with its name, in the optimizer's setup format.
@@ -263,10 +274,9 @@ const paybackCell = (row) => (row.payback === null || row.payback === undefined 
 // The split of a row: the party's gain per user and its error, then the buyer's gain per day and its error (profit goal; "—" on the EXP
 // goal and on a result saved before the buyer's net). hasSplit: the row carries the buyer's split, so Payback is the buyer's.
 const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
-function gainCells(row, goalExp) {
-    const cell = (v) => `<td class="num">${v}</td>`;
+function gainCells(row, goalExp, t) {
     const buyer = !goalExp && Number.isFinite(row.buyerNet);
-    return cell(num(row.gainPerUser)) + cell('± ' + num(row.sePerUser)) + cell(buyer ? num(row.buyerNet) : '—') + cell(buyer ? '± ' + num(row.buyerNetSe) : '—');
+    return gainPair(row.gainPerUser, row.sePerUser, t) + (buyer ? gainPair(row.buyerNet, row.buyerNetSe, t) : '<td class="num">—</td><td class="num">—</td>');
 }
 // How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
 const pathCell = (s) => {
@@ -301,7 +311,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-                gainCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` + pathCell(s) +
+                gainCells(s, goalExp, t) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` + pathCell(s) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
@@ -311,10 +321,10 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         // With the per-player lines the party payback is dropped (each line has its own buyer's payback); an older result keeps it.
         const perPlayer = !goalExp && !!c.buyerByPlayer;
         const bound = (result.steps || []).some(upper) ? 'upper' : undefined;
-        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${num(c.gainPerUser)} ± ${num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${withinError(c.gainPerUser, c.sePerUser) ? noChange(c.gainPerUser, c.sePerUser, t) : num(c.gainPerUser) + ' ± ' + num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
             `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}` +
             (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: bound })}`) + '</div>');
-        if (perPlayer) for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`<div class="mb-1">${t('result.playerLine', { player: esc(p), gain: num(b.gain), se: num(b.se), payback: paybackCell({ payback: confirmedPayback(b.payback), costBound: bound }) })}</div>`);
+        if (perPlayer) for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`<div class="mb-1">${withinError(b.gain, b.se) ? t('result.playerLineNoChange', { player: esc(p), gain: noChange(b.gain, b.se, t), payback: paybackCell({ payback: confirmedPayback(b.payback), costBound: bound }) }) : t('result.playerLine', { player: esc(p), gain: num(b.gain), se: num(b.se), payback: paybackCell({ payback: confirmedPayback(b.payback), costBound: bound }) })}</div>`);
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
     L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
@@ -324,7 +334,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-            gainCells(s, goalExp) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` + pathCell(s) +
+            gainCells(s, goalExp, t) + `<td class="num">${costCell(s)}</td><td class="num">${buyerPayback(s, goalExp)}</td>` + pathCell(s) +
             `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
         const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.hiddenFood); // hiddenFood: a food row the search left out (one food row per player)
         const weak = rows.filter(([s]) => !s.accepted);

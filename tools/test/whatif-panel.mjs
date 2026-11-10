@@ -142,7 +142,7 @@ const result = {
     const tail = ['Cost', 'Payback days', 'How it is bought', ''], pair = ['Party gain per player/day', '± error', "Buyer's gain per day", '± error'];
     check('columns: Chosen changes reads #, Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(stepsTb)) === JSON.stringify(['#', 'Player', 'Change', ...pair, ...tail]), heads(stepsTb).join('|'));
     check('columns: Each change alone reads Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(eachTb)) === JSON.stringify(['Player', 'Change', ...pair, ...tail]), heads(eachTb).join('|'));
-    check('columns: the two gain headings carry their help text, exact English', html.includes("title=\"How much more the average player makes per day with this change, after everyone's food and drink are paid.\"") &&
+    check('columns: the two gain headings carry their help text, exact English', html.includes("title=\"How much more the group's shared loot is worth per day per player with this change, before anyone's own food and drink.\"") &&
         html.includes("title=\"How much more the player who pays for this change makes per day, after their own food and drink are paid. Payback is the cost divided by this.\""));
     const sr = rowsOf(stepsTb);
     check('cells: both gain pairs show with their errors (party first, then the buyer\'s), the buyer payback and How it is bought', JSON.stringify(sr[0]) === JSON.stringify(['1', 'Alpha', 'Ring +5 → +6', '1500', '± 300', '1234', '± 77', '1000000', '22.5', 'books (25 x berserk)', 'Apply']), JSON.stringify(sr[0]));
@@ -399,6 +399,24 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const older = panel.renderResult({ ...result, singles: [...result.singles, { ...hiddenFood }, { ...hiddenWeak }].map((s) => { const { hiddenFood: h, ...rest } = s; return rest; }) }, t);
     check('one food row: a result without the field shows every row as before', older.includes('hidden-row') && older.includes('hidden-weak'));
     check('one food row: the apply keys keep their indexes (a hidden row is skipped, not renumbered)', panel.opsFor({ ...result, singles }, 'single:' + (result.singles.length)).length === 1 && html.includes('data-whatif-apply="single:' + result.singles.length + '"'));
+}
+// ---- A gain within one error of zero reads "no change" (title: the real value); one error or more shows the number ----
+{
+    const row = (id, gpu, spu, net, netSe) => ({ id, player: 'Alpha', desc: 'Ring ' + id, lastStage: '8x300', gain: gpu * 2, se: spu * 2, gainPerUser: gpu, sePerUser: spu, buyerNet: net, buyerNetSe: netSe, cost: 0, payback: null, costPath: 'market', accepted: true, ops: [] });
+    const nc = locales.en.result.noChange;
+    const res = { ...result, steps: [row('in', 100, 242, 1000, 100), row('edge', 242, 242, -50, 100)], singles: [row('neg', -200, 242, 1000, 100), row('big', 288, 242, 300, 100)], confirmation: { gainPerUser: 100, sePerUser: 242, cost: 0, buyerByPlayer: { Alpha: { gain: 30, se: 80, payback: null }, Beta: { gain: 600, se: 90, payback: null } } } };
+    const html = panel.renderResult(res, t);
+    const cellsOf = (id) => { const tr = html.split('<tr').find((x) => x.includes('Ring ' + id)); return [...tr.matchAll(/<td([^>]*)>([^]*?)<\/td>/g)].map((m) => ({ attrs: m[1], html: m[2] })); };
+    const inRow = cellsOf('in');
+    check('no change: a party gain below 1 error shows the words, with the real value in the title', inRow[3].html === nc && /title="[^"]*242[^"]*"/.test(inRow[3].attrs) && inRow[3].attrs.includes('class="num"'));
+    check('no change: the error cell next to it shows a dash and the same title', inRow[4].html === '—' && inRow[4].attrs === inRow[3].attrs);
+    check('no change: the buyer cells beside it still show numbers (1000 is beyond 1 error)', inRow[5].html.includes('data-num="1000"') && inRow[6].html.includes('data-num="100"'));
+    const edgeRow = cellsOf('edge');
+    check('no change: exactly 1 error shows the number; the buyer at -0.5 errors reads no change', edgeRow[3].html.includes('data-num="242"') && edgeRow[4].html.includes('data-num="242"') && edgeRow[5].html === nc);
+    const negRow = cellsOf('neg');
+    check('no change: a negative within 1 error shows the words too (Each change alone)', negRow[2].html === nc && /title="[^"]*-[^"]*"/.test(negRow[2].attrs));
+    check('no change: 288 against 242 is beyond 1 error and shows the number', cellsOf('big')[2].html.includes('data-num="288"'));
+    check('no change: the confirmation line shows the words, titled; the per-player lines too, and a clear one keeps its numbers', /Confirmed on fresh runs: <b><span title="[^"]*">no change<\/span><\/b>/.test(html) && /Alpha: gain <span title="[^"]*">no change<\/span> per day/.test(html) && /Beta: gain <span data-num="600"/.test(html));
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

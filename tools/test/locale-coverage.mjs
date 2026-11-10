@@ -87,6 +87,7 @@ const notTheGameWord = {
     'simulateAllZonesResults:all': 'the game has several renderings of "All"',
     'simulationResults.damageDoneTotal:damage': 'Dano',
     'whatIf.result.playerLine:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.playerLineNoChange:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;
