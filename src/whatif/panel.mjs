@@ -174,13 +174,15 @@ export function renderParts(status, t) {
     const p = status.progress || {}, parts = p.parts;
     const running = parts.findIndex((r) => r.state === 'running');
     const rowsHtml = parts.map((r) => {
-        const label = r.kind === 'screen' ? t('progress.partScreen')
+        const label = r.kind === 'foods' ? t('progress.partFoods')
+            : r.kind === 'drinks' ? t('progress.partDrinks')
+            : r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
             : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
             : r.kind === 'step' ? t('progress.partStep', { n: r.index })
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
             : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
-        const left = r.kind === 'halving' && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
+        const left = (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
         let text = '', cls;
         if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); cls = 'waiting'; }
         else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); cls = 'done'; }

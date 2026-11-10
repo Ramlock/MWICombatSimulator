@@ -42,6 +42,26 @@ check(B.pay(spent, cand('A', -30)).A === 60, 'pay: a sale never refunds a budget
 const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
+// ---- (1a) The cut between stages and the per-player choice (tools/whatif/pools.mjs) ----
+{
+    const { cutPool, bestPerPlayer } = await mod('tools/whatif/pools.mjs');
+    const mk = (id, player, cost, accepted = true) => ({ id, player, cost: { cost }, est: { accepted } });
+    // 50 free candidates all rank above 5 paid ones: with keep 40 the paid ones still pass, 40 free and all 5 paid.
+    const free = Array.from({ length: 50 }, (_, i) => mk('f' + i, 'A', 0)), paid = Array.from({ length: 5 }, (_, i) => mk('p' + i, 'A', 100));
+    const sorted = [...free, ...paid]; // best first: every free one outranks every paid one
+    const cut = cutPool(sorted, 40);
+    check(cut.length === 45 && cut.filter((c) => c.cost.cost === 0).length === 40 && cut.filter((c) => c.cost.cost > 0).length === 5, 'cutPool: 50 free ahead of 5 paid with keep 40 keeps 40 free and all 5 paid');
+    check(cut.slice(0, 40).every((c, i) => c === free[i]) && cut.slice(40).every((c, i) => c === paid[i]), 'cutPool: the union keeps the pool\'s order');
+    check(cutPool(sorted, 3).length === 6 && cutPool(sorted, 100).length === 55 && cutPool([], 3).length === 0, 'cutPool: n of each; fewer than n of a kind keeps them all; empty pool');
+    // Per player: one player's fillings cannot crowd out another's.
+    const mixed = [...Array.from({ length: 6 }, (_, i) => mk('a' + i, 'A', 0)), ...Array.from({ length: 6 }, (_, i) => mk('b' + i, 'B', 0))];
+    check(cutPool(mixed, 2).length === 2 && cutPool(mixed, 2, true).map((c) => c.id).join() === 'a0,a1,b0,b1', 'cutPool: byPlayer keeps n of each player (the plain cut keeps n in all)');
+    // Best per player: the first accepted one in the sorted pool; none accepted leaves the player out.
+    const pool = [mk('a0', 'A', 0, false), mk('b0', 'B', 0, true), mk('a1', 'A', 0, true), mk('a2', 'A', 0, true), mk('c0', 'C', 0, false)];
+    const bp = bestPerPlayer(pool, ['A', 'B', 'C']);
+    check(bp.A.id === 'a1' && bp.B.id === 'b0' && !('C' in bp), 'bestPerPlayer: the first accepted filling of each player; a player with none accepted has no entry (his items stay)');
+}
+
 // ---- (1b) The buyer's net, score and order (tools/whatif/buyer.mjs) ----
 {
     const Bm = await mod('tools/whatif/buyer.mjs');
@@ -276,28 +296,41 @@ const p1 = await call(rb, 'POST', '/api/search', plainReq);
 const pf = (await wait(p1.json.id, (r) => r.state !== 'running')).r;
 if (pf.state !== 'done') console.log(JSON.stringify(pf).slice(0, 600));
 check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && pf.result.options.pricesTimestamp === big.timestamp && pf.result.options.prices === 'tools/calibration/marketplace-2026-11-03.json', 'result: no snapshot in the request: the committed file, its name and its timestamp', JSON.stringify(pf.error || pf.result?.options));
-// Foods and drinks: the consumables and pairs levers on a party with a giant pouch (3 food and 3 drink slots). Foods give
-// food fillings only (no single swap, no "empty this slot", no food pair); drinks keep singles and pairs; every food filling
-// row carries the judge field; one food row per player stays visible.
+// Foods and drinks first (Stage F, Stage D): the consumables lever decides each player's food filling and drink filling before the
+// rest of the search and they become the baseline. A party with a giant pouch (3 food and 3 drink slots) would make hundreds of
+// drink fillings, so this player has the pouch-less 1 slot of each: the stages stay small. Beta has no consumables to change.
 {
-    const eater = { ...party[0], name: 'Alpha', player: { ...party[0].player, equipment: [...party[0].player.equipment, { itemLocationHrid: '/item_locations/pouch', itemHrid: '/items/giant_pouch', enhancementLevel: 0 }] },
-        food: { '/action_types/combat': ['/items/donut', '/items/yogurt', '/items/apple_gummy'].map((itemHrid) => ({ itemHrid })) }, drinks: { '/action_types/combat': ['/items/attack_coffee', '/items/defense_coffee'].map((itemHrid) => ({ itemHrid })) } };
-    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'pairs'], stages: ['4x1'], keep: [1], maxSteps: 0, z: 0, jobs: 2 };
+    const eater = { ...party[0], name: 'Alpha', food: { '/action_types/combat': ['/items/donut'].map((itemHrid) => ({ itemHrid })) }, drinks: { '/action_types/combat': ['/items/attack_coffee'].map((itemHrid) => ({ itemHrid })) } };
+    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'triggers'], probe: '1x1', stages: ['4x1'], keep: [1], maxSteps: 0, z: 0, jobs: 2 };
     const f1 = await call(rb, 'POST', '/api/search', reqF);
-    const ff = (await wait(f1.json.id, (r) => r.state !== 'running', 900000)).r;
+    const ff = (await wait(f1.json.id, (r) => r.state !== 'running', 1800000)).r;
     if (ff.state !== 'done') console.log(JSON.stringify(ff).slice(0, 600));
-    const fr = ff.result, ids = fr?.candidateList.map((c) => c.id) || [];
-    check(ff.state === 'done' && ids.some((i) => i.startsWith('Alpha:foodfill=')), 'food: the consumables lever lists food fillings in candidateList', String(ids.length));
-    check(!ids.some((i) => /^Alpha:food\d=/.test(i)) && !ids.some((i) => /^Alpha:food\d\+food\d=/.test(i)), 'food: no single food swap, no "empty this slot", no food pair');
-    check(ids.some((i) => /^Alpha:drink\d=/.test(i)) && ids.some((i) => /^Alpha:drink\d\+drink\d=/.test(i)), 'drinks: singles and pairs are still produced');
-    const fills = (fr?.singles || []).filter((s) => s.id.startsWith('Alpha:foodfill='));
-    check(fills.length > 0 && fills.every((s) => 'judged' in s && [null, 'deaths', 'kills'].includes(s.judged) && s.ops.length > 0 && s.ops.every((o) => ['food', 'trigger'].includes(o.op))), 'food: every food filling row carries the judge field (null, deaths or kills) and food ops');
-    check((fr?.singles || []).filter((s) => !s.id.startsWith('Alpha:foodfill=')).every((s) => s.judged == null), 'judge: no other row is judged');
-    check(fills.filter((s) => !s.hiddenFood).length <= 1 && fills.every((s) => !s.judged || !s.accepted), 'food: at most one food row stays visible per player; a judged row is refused');
+    const fr = ff.result, ids = fr?.candidateList.map((c) => c.id) || [], singles = fr?.singles || [];
+    check(ff.state === 'done' && !!fr, 'foods first: the search with the consumables lever finishes', String(ff.error || ''));
+    const fills = singles.filter((s) => s.id.startsWith('Alpha:foodfill=')), dfills = singles.filter((s) => s.id.startsWith('Alpha:drinkfill='));
+    check(fills.length > 0 && fills.every((s) => s.stage === 'food' && s.hiddenFood === true && 'judged' in s && [null, 'deaths', 'kills'].includes(s.judged) && s.ops.length > 0 && s.ops.every((o) => ['food', 'trigger'].includes(o.op))), 'Stage F: the food fillings are rows flagged stage food, hidden from the report, with the judge field and food ops');
+    check(dfills.length > 0 && dfills.every((s) => s.stage === 'drink' && s.hiddenFood === true && s.ops.length > 0 && s.ops.every((o) => o.op === 'drink')), 'Stage D: the drink fillings are rows flagged stage drink, hidden from the report, with drink ops only (no trigger op)');
+    check(!ids.some((i) => /foodfill|drinkfill|^Alpha:(food|drink)\d/.test(i)) && singles.filter((s) => !s.stage).every((s) => !/foodfill|drinkfill/.test(s.id)), 'the rest of the search has no food or drink candidates');
+    check(!ids.some((i) => /^Alpha:trig:/.test(i) && !fr.best.foods.Alpha.items.some((f) => i.startsWith('Alpha:trig:' + f.item.split('/').pop() + ':')) && !/toxic|entangle/.test(i)), 'the trigger candidates are built on the baseline: food owners are the baseline foods; there are no drink owners');
+    const b = fr.best, be = (kind) => b[kind].Alpha;
+    check(b && Object.keys(b.foods).join() === 'Alpha' && Object.keys(b.drinks).join() === 'Alpha', 'result.best: foods and drinks, one entry per searched player');
+    check(be('foods').items.length === 1 && 'trigger' in be('foods').items[0] && (be('foods').items[0].trigger === null || typeof be('foods').items[0].trigger === 'string') && be('drinks').items.length === 1 && !('trigger' in be('drinks').items[0]), 'result.best: items in slot order, a food with its trigger text (or null), a drink without a trigger');
+    for (const kind of ['foods', 'drinks']) {
+        const e = be(kind);
+        check(e.unchanged ? !('gain' in e) : [e.gain, e.se, e.buyerNet, e.buyerNetSe].every(Number.isFinite), 'result.best.' + kind + ': an unchanged player has no figures; a changed one has gain, se, buyerNet, buyerNetSe');
+    }
+    const chosenOps = fr.baselineOps || [];
+    check(chosenOps.every((o) => ['food', 'drink', 'trigger'].includes(o.op) && o.player === 'Alpha') && (be('foods').unchanged ? !chosenOps.some((o) => o.op === 'food') : chosenOps.some((o) => o.op === 'food')) && (be('drinks').unchanged ? !chosenOps.some((o) => o.op === 'drink') : chosenOps.some((o) => o.op === 'drink')), 'baselineOps: the chosen filling ops, none for an unchanged kind');
+    check(chosenOps.length === 0 ? !fr.confirmation : JSON.stringify(fr.confirmation?.ops) === JSON.stringify(chosenOps), 'confirmation: the original base against the final baseOps (foods and drinks included), none when nothing changed');
+    check(Object.keys(fr.drinkPruning || {}).join() === 'Alpha' && fr.drinkPruning.Alpha.kept === 18 && fr.drinkPruning.Alpha.dropped.a === 6, 'result.drinkPruning: the counts per player', JSON.stringify(fr.drinkPruning));
     check(existsSync(path.join(tmp, 'real', f1.json.id, 'need.json')), 'need.json is kept in the search folder');
     const md = readFileSync(path.join(tmp, 'real', f1.json.id, 'result.md'), 'utf8');
-    check(fills.filter((s) => s.hiddenFood).every((s) => !md.includes(s.desc)), 'food: the hidden rows are not in result.md');
-    console.log(`     (${ids.length} candidates, ${fills.length} food fillings, ${fills.filter((s) => !s.hiddenFood).length} visible)`);
+    check([...fills, ...dfills].every((s) => !md.includes(s.desc)), 'the food and drink filling rows are not in result.md');
+    // Off: without the consumables lever there is no Stage F, no Stage D and no best.
+    const f2 = await call(rb, 'POST', '/api/search', { ...reqF, levers: ['equip'], onlyCandidates: ['none'], budgets: { Alpha: 0 } });
+    const off = (await wait(f2.json.id, (r) => r.state !== 'running')).r;
+    check(off.state === 'done' && Object.keys(off.result.best.foods).length === 0 && !off.result.singles.some((s) => s.stage), 'consumables off: no Stage F or Stage D, no filling rows, result.best empty');
+    console.log('     (' + ids.length + ' candidates in the rest, ' + fills.length + ' food and ' + dfills.length + ' drink fillings)');
 }
 await real.close();
 

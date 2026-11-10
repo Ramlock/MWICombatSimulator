@@ -239,6 +239,8 @@
             "partMoreSteps": "Mais passos gulosos: até {{n}} a mais",
             "partConfirmationWaiting": "Confirmação: só se um passo for aceito",
             "partScreen": "Triagem",
+            "partFoods": "Melhores comidas",
+            "partDrinks": "Melhores bebidas",
             "partHalving": "Corte {{n}}",
             "partStep": "Passo guloso {{n}}",
             "partConfirmation": "Confirmação",

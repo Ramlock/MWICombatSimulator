@@ -27,9 +27,9 @@ const P = 'steps0:waiting confirmation:waiting';
 const ps0 = () => createParts(plan).sync({ stage: 'screen', runsPlanned: 1, runsDone: 0 });
 let ps = tr.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 0, runsPlanned: 164, etaSeconds: 900 });
 check('start: screen running, both halvings waiting', kinds(ps) === 'screen0:running halving1:waiting halving2:waiting ' + P, kinds(ps));
-check('start: waiting halvings carry up-to counts (pool times seeds)', ps[1].runsUpTo === 40 && ps[1].candidatesLeft === 10 && ps[2].runsUpTo === 24 && ps[2].candidatesLeft === 3, JSON.stringify(ps.slice(1)));
-// pool entering halving 1 is min(40, keep[0]=10) = 10 candidates x 4 seeds = 40
-check('start: halving 1 up to 10 candidates x 4 seeds', ps[1].runsUpTo === 40, String(ps[1].runsUpTo));
+check('start: waiting halvings carry up-to counts (pool times seeds)', ps[1].runsUpTo === 80 && ps[1].candidatesLeft === 20 && ps[2].runsUpTo === 48 && ps[2].candidatesLeft === 6, JSON.stringify(ps.slice(1)));
+// pool entering halving 1 is at most min(40, 2 x keep[0]=10) = 20 candidates (10 free and 10 paid) x 4 seeds = 80
+check('start: halving 1 up to 20 candidates x 4 seeds', ps[1].runsUpTo === 80, String(ps[1].runsUpTo));
 check('start: the running row has its runs and eta', ps[0].runsPlanned === 164 && ps[0].runsDone === 0 && ps[0].etaSeconds === 900);
 
 ps = tr.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 100, runsPlanned: 164, etaSeconds: 300 });
@@ -75,6 +75,23 @@ ps = tr2.sync({ stage: 'done', candidatesLeft: 0, runsDone: 24, runsPlanned: 24 
 check('no step accepted: three rows, all done', kinds(ps) === 'screen0:done halving1:done halving2:done steps0:waiting confirmation:waiting', kinds(ps));
 check('probe before the screen: all rows waiting', kinds(createParts(plan).sync({ stage: 'probe' })) === 'screen0:waiting halving1:waiting halving2:waiting ' + P);
 check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, h: 50 }], keep: [], candidates: 5, maxSteps: 20 }).sync({ stage: 'screen', runsPlanned: 3, runsDone: 1 }).length === 3);
+
+// Stage F and Stage D (plan.fillings): two parts come first, the pool of the rest is unknown until setCandidates.
+{
+    const tf = createParts({ ...plan, candidates: null, fillings: true });
+    let q = tf.sync({ stage: 'need' });
+    check('fillings: foods and drinks first, everything waiting, no up-to counts before the candidates are known', kinds(q) === 'foods0:waiting drinks0:waiting screen0:waiting halving1:waiting halving2:waiting ' + P && q.every((p) => p.runsUpTo === undefined), kinds(q));
+    q = tf.sync({ stage: 'foods', candidatesLeft: 120, runsDone: 3, runsPlanned: 480, etaSeconds: 900 });
+    check('fillings: foods running with its runs and candidates', kinds(q).startsWith('foods0:running drinks0:waiting screen0:waiting') && q[0].runsPlanned === 480 && q[0].candidatesLeft === 120, kinds(q));
+    q = tf.sync({ stage: 'drinks', candidatesLeft: 585, runsDone: 0, runsPlanned: 100 });
+    check('fillings: drinks running, foods done and full', kinds(q).startsWith('foods0:done drinks0:running screen0:waiting') && q[0].runsDone === 480, kinds(q));
+    tf.setCandidates(40);
+    q = tf.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 0, runsPlanned: 164 });
+    check('fillings: after setCandidates the waiting halvings carry up-to counts (up to 2 x keep)', kinds(q) === 'foods0:done drinks0:done screen0:running halving1:waiting halving2:waiting ' + P && q[3].runsUpTo === 80 && q[4].runsUpTo === 48, JSON.stringify(q.slice(3, 5)));
+    check('fillings off: the plan has no foods or drinks parts', !tr.sync({ stage: 'foods' }).some((p) => p.kind === 'foods'));
+    const fh = panel.renderProgress({ state: 'running', progress: { parts: q } }, t).replace(/<[^>]+>/g, '');
+    check('panel: foods and drinks rows are labelled', fh.includes('Best foods') && fh.includes('Best drinks'), fh);
+}
 
 // The optimizer wires it into progress.json; the runner passes progress on unchanged.
 check('optimizer: createParts after the candidates, parts in progress', /partsTracker = createParts\(/.test(read('tools/whatif/optimize.mjs')) && /progress\.parts = partsTracker\.sync\(progress\)/.test(read('tools/whatif/optimize.mjs')));

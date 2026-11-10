@@ -4,9 +4,12 @@
 //
 // Usage: node tools/whatif/optimize.mjs --out <dir> [options]
 //   --players Ramlock            whose equipment is open (comma list); each change is costed to its player
-//   --levers equip               comma list of equip (phase 1: +N and market swaps), consumables (any food or drink
-//                                with a market ask, drop one, fill an empty slot; one of each food or drink type),
-//                                pairs (two slots of a kind changed together, each to another tier of its type),
+//   --levers equip               comma list of equip (phase 1: +N and market swaps), consumables (the foods and the drinks
+//                                are decided FIRST, each as whole fillings of every open slot: Stage F picks each player's
+//                                best food filling, Stage D his best drink filling (drinkfill.mjs, pruned by his rules); the
+//                                two become the baseline every other change is measured on; result.best says what they are;
+//                                without it there is no Stage F or D and the current foods and drinks are the baseline),
+//                                pairs (kept for old command lines: it produces nothing now, drinks are fillings),
 //                                triggers (each numeric term over its grid, structure changes; design 3.5),
 //                                owned (items in the exporter's
 //                                inventory), abilities (learned, at their learned level), order (ability order),
@@ -23,7 +26,9 @@
 //                                each step records every player's running spend (result.json steps[].runningSpend)
 //   --low-priority               run this process and every run process at the lowest priority (Windows: idle class)
 //   --stages 4x50,4x150,8x300    seeds x sim hours per stage: screen, halvings; the last is the finalist stage
-//   --keep 40,10                 candidates kept after each stage but the last
+//   --keep 40,10                 candidates kept after each stage but the last. In the rest of the search the cut keeps this many free
+//                                (cost 0) AND this many paid candidates and the pool is their union (390 free tweaks would
+//                                otherwise take every place); in Stage F and Stage D it is kept per player
 //   --error unpaired|paired      default unpaired (design revision 6). paired: se of per-seed differences, base on the variant's seed count (3.3 up to
 //                                revision 5); unpaired: sqrt(sv^2/kv + sb^2/kb), base on --base-mult x seeds, each new
 //                                run on the next seed its setup never ran (delta 4, with his point of 23:14 BRT)
@@ -59,9 +64,11 @@ import os from 'node:os';
 import { readParty, applyOps } from './variants.mjs';
 import { loadMarket, makePricer, TAX_LABEL } from './prices.mjs';
 import { DEFAULT_PRICES, buildDtos, root, measureNeed } from './engine.mjs';
-import { consumableType, swapCands, tierPairCands } from './consumables.mjs';
-import { foodFillCands, hideFoodRows } from './foodfill.mjs';
-import { installProbe, summarize, mergeProbes, triggerCands, localCands } from './triggers.mjs';
+import { consumableType } from './consumables.mjs';
+import { foodFillCands } from './foodfill.mjs';
+import { drinkFillCands } from './drinkfill.mjs';
+import { cutPool, bestPerPlayer } from './pools.mjs';
+import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText } from './triggers.mjs';
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -317,19 +324,26 @@ function consumableSlots(setups, p) {
     const d = buildDtos(t)[i];
     return { food: d.food.filter(Boolean).length, drink: d.drinks.filter(Boolean).length };
 }
-// Drinks: one drink of each type at a time (consumables.mjs); --levers pairs adds both slots changed together, each to
-// another tier of its own type. Foods: every food slot refilled at once (foodfill.mjs, from the party's measured need) and
-// the single food swaps, "empty this slot" and the food tier pairs are not produced for foods.
+// Foods and drinks are decided before the rest of the search (Stage F, Stage D in main()), each as whole fillings of every open
+// slot of a player: foods from the party's measured need (foodfill.mjs), drinks from the pruned drink pool (drinkfill.mjs). The
+// rest of the search has no food or drink candidates. `setups` are the setups the filling is built on (the baseline so far).
 const typeOf = (h) => consumableType(itemDetailMap[h]);
-function consumableCands(setups, p, withSingles, withPairs) {
-    const s = setups.find((x) => x.name === p), n = consumableSlots(setups, p), out = [];
-    for (const [kind, key, pool] of [['food', 'food', FOODS], ['drink', 'drinks', DRINKS]]) {
-        const list = Array.from({ length: n[kind] }, (_, i) => s[key]['/action_types/combat']?.[i]?.itemHrid || null);
-        if (kind === 'food') { out.push(...foodCands(s, p, list)); continue; }
-        if (withSingles) out.push(...swapCands(p, kind, list, n[kind], pool, typeOf));
-        if (withPairs) out.push(...tierPairCands(p, kind, list, n[kind], pool, typeOf));
-    }
-    return out;
+const slotList = (setups, p, kind) => {
+    const s = setups.find((x) => x.name === p), n = consumableSlots(setups, p)[kind === 'food' ? 'food' : 'drink'];
+    return { s, list: Array.from({ length: n }, (_, i) => s[kind === 'food' ? 'food' : 'drinks']['/action_types/combat']?.[i]?.itemHrid || null) };
+};
+function foodStageCands(setups, p) {
+    const { s, list } = slotList(setups, p, 'food');
+    return foodCands(s, p, list);
+}
+const drinkStats = {}; // player -> pruning counts of Stage D (result.drinkPruning)
+function drinkStageCands(setups, p) {
+    const { s, list } = slotList(setups, p, 'drink');
+    const { cands, stats } = drinkFillCands(p, { items: itemDetailMap, market, baseline: list, setup: s, goal });
+    const r = stats.byRule;
+    console.log(`${p} drinks: ${stats.style} style, ${stats.table} drinks with an ask; dropped by main stat ${r.a}, basic attack ${r.b}, profit/exp ${r.c}, dominance ${r.d}; ${stats.kept.length} kept of ${stats.types} types; ${stats.fillings} fillings`);
+    drinkStats[p] = { style: stats.style, table: stats.table, dropped: stats.byRule, kept: stats.kept.length, types: stats.types, fillings: stats.fillings };
+    return cands;
 }
 function foodCands(s, p, baseline) {
     const need = needStore?.mean[p];
@@ -410,7 +424,6 @@ function allCandidates(setups, p) {
     if (!exportFor(p)) for (const l of ['owned', 'abilities', 'books']) if (levers.has(l)) skipNoExport(l, p);
     return [
         ...(levers.has('equip') ? candidatesFor(setups, p, openSlots) : []),
-        ...(levers.has('consumables') || levers.has('pairs') ? consumableCands(setups, p, levers.has('consumables'), levers.has('pairs')) : []),
         ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
         ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
         ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p) }),
@@ -419,17 +432,18 @@ function allCandidates(setups, p) {
     ];
 }
 
-// The trigger counter (design 3.5 item 2): base runs with the probe, cut to percentiles, kept in <out>/probe.json
-// for this base. Each probe run must equal the plain run of the same seed (the probe only observes): it is checked
+// The trigger counter (design 3.5 item 2): runs of the baseline (the original base with the chosen foods and drinks, so the
+// counter and the food-trigger candidates see the new foods) with the probe, cut to percentiles, kept in <out>/probe.json
+// for this baseline. Each probe run must equal the plain run of the same seed (the probe only observes): it is checked
 // against the cached plain run when there is one (tools/test/whatif-triggers.mjs checks it on a generic party).
-async function probeBase() {
-    const file = path.join(OUT, 'probe.json'), key = keyOf([]);
+async function probeBase(baseOps) {
+    const file = path.join(OUT, 'probe.json'), key = keyOf(baseOps), setupsB = applyOps(setups0, baseOps);
     if (existsSync(file)) { const p = JSON.parse(readFileSync(file, 'utf8')); if (p.key === key && p.k === probeK && p.h === probeH) return p.store; }
     const stores = [];
     for (const seed of seedsFor(probeK)) {
         let st;
         const t1 = Date.now();
-        const res = await runParty({ ...options, setups: setups0, seed, checkpoints: [probeH], onPlayers: (pls, names) => { st = installProbe(pls, names, players, Trigger); } });
+        const res = await runParty({ ...options, setups: setupsB, seed, checkpoints: [probeH], onPlayers: (pls, names) => { st = installProbe(pls, names, players, Trigger); } });
         const cached = cache.get(key + '#' + seed)?.byHours[probeH];
         if (cached && JSON.stringify(cached) !== JSON.stringify(res.checkpoints[0])) throw new Error(`probe changed the run of seed ${seed}: the counter must only observe`);
         console.log(`probe seed ${seed} ${probeH} h: ${((Date.now() - t1) / 1000).toFixed(0)} s, ${cached ? 'equal to the cached plain run' : 'no cached plain run to compare'}`);
@@ -486,14 +500,66 @@ const rank = (a, b) => rankEst(a.est, b.est);
 const rankFirst = (a, b) => rankAcceptedFirst(a.est, b.est);
 const logCandidates = (n, list) => { for (const c of list) console.log(`  step ${n} candidate: ${c.desc}, gain ${fmt(c.est.gain)} ± ${fmt(c.est.se)}, buyer ${fmt(c.est.net)} ± ${fmt(c.est.netSe)}, ${c.est.accepted ? 'accepted' : c.est.judged ? 'refused (' + c.est.judged + ')' : 'not accepted'}`); };
 
+// ---- Stages ----
+// Screen and halvings of one pool of candidates against `base` (ops of the baseline so far): each stage runs the base and the
+// pool at that stage's seeds and hours, estimates, sorts accepted rows first and cuts. `label` names the stage for the progress
+// (null: screen / halving n). Returns the pool after the last stage, sorted, or null when the time limit stopped it.
+async function halve(cands, base, label, byPlayer) {
+    let pool = cands;
+    // The base runs alongside the screen, so the cores are not idle while it runs.
+    const baseReq = stages.flatMap((st) => req(base, st.h, st.k * baseMult, 'base'));
+    for (let si = 0; si < stages.length; si++) {
+        const st = stages[si];
+        report({ stage: label ?? (si === 0 ? 'screen' : `halving ${si}`), candidatesLeft: pool.length });
+        if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => req([...base, ...c.ops], st.h, st.k, 'variant'))])) return null;
+        for (const c of pool) { c.est = estimate(base, c, st, st.k * baseMult); (c.history ||= []).push(c.est); }
+        pool.sort(rankFirst); // accepted rows first, so the cut to the next stage keeps the ones that can be taken
+        if (si < stages.length - 1) pool = cutPool(pool, keep[si] ?? pool.length, byPlayer);
+    }
+    return pool;
+}
+// One player's entry of result.best: his items in slot order after the stage (a food with the readable text of its trigger, null
+// when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
+function bestEntry(kind, setup, chosen) {
+    const slots = (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x) => x?.itemHrid).filter(Boolean);
+    const items = slots.map((item) => (kind === 'foods' ? { item, trigger: triggerText(effectiveTriggers(setup, item)) } : { item }));
+    if (!chosen) return { items, unchanged: true };
+    const e = chosen.est, n = setups0.length;
+    return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), stage: e.stage };
+}
+
 // ---- Search ----
 async function main() {
     const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated, skippedNoExport: [] };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
-    if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(); }
-    if (levers.has('consumables') || levers.has('pairs')) { report({ stage: 'need' }); needStore = await needBase(); }
-    let cands = players.flatMap((p) => allCandidates(setups0, p));
+    const fillings = levers.has('consumables');
+    partsTracker = createParts({ stages, keep, candidates: null, maxSteps, fillings });
+    result.best = { foods: {}, drinks: {} };
+    result.baselineOps = [];
+    if (fillings) {
+        report({ stage: 'need' }); needStore = await needBase();
+        // STAGE F, then STAGE D: the foods and the drinks are decided first, whole fillings of every open slot, each against the
+        // baseline so far; all players' choices together are the baseline the rest of the search is measured on.
+        for (const kind of ['foods', 'drinks']) {
+            const setupsNow = applyOps(setups0, baseOps);
+            const fc = players.flatMap((p) => (kind === 'foods' ? foodStageCands(setupsNow, p) : drinkStageCands(setupsNow, p)));
+            const fpool = await halve(fc, baseOps, kind, true);
+            if (!fpool) return stop(result);
+            const chosen = bestPerPlayer(fpool, players); // fpool is in rankAcceptedFirst order
+            for (const p of players) if (chosen[p]) baseOps = [...baseOps, ...chosen[p].ops];
+            const after = applyOps(setups0, baseOps);
+            for (const p of players) result.best[kind][p] = bestEntry(kind, after.find((s) => s.name === p), chosen[p]);
+            const flag = kind === 'foods' ? 'food' : 'drink';
+            result.singles.push(...fc.map((c) => ({ ...row(c), stage: flag, hiddenFood: true })));
+            console.log(`${kind}: ${players.map((p) => `${p} ${chosen[p] ? chosen[p].desc.slice(p.length + 1) : 'unchanged'}`).join('; ')}`);
+        }
+        result.baselineOps = baseOps;
+        result.drinkPruning = drinkStats;
+    }
+    if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(baseOps); }
+    const setupsBase = applyOps(setups0, baseOps);
+    let cands = players.flatMap((p) => allCandidates(setupsBase, p));
     if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
     result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
     // Priced but over its own player's budget: listed in their own group, never ranked (so a result with no steps says why).
@@ -505,26 +571,16 @@ async function main() {
     result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
     console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${dominated.length} swaps skipped (no better on any stat)`);
 
-    // Base: each seed run once, at the longest stage it is needed for.
-    const baseReq = [];
-    stages.forEach((st) => baseReq.push(...req([], st.h, st.k * baseMult, 'base')));
-
-    partsTracker = createParts({ stages, keep, candidates: cands.length, maxSteps });
-    let pool = cands;
-    for (let si = 0; si < stages.length; si++) {
-        const st = stages[si];
-        report({ stage: si === 0 ? 'screen' : `halving ${si}`, candidatesLeft: pool.length });
-        // The base runs alongside the screen, so the cores are not idle while it runs.
-        if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => req(c.ops, st.h, st.k, 'variant'))])) return stop(result);
-        for (const c of pool) { c.est = estimate([], c, st, st.k * baseMult); (c.history ||= []).push(c.est); }
-        pool.sort(rankFirst); // accepted rows first, so the cut to the next stage keeps the ones that can be taken
-        if (si < stages.length - 1) pool = pool.slice(0, keep[si] ?? pool.length);
-    }
-    // The base the search compared against, per user, in the goal's unit: the mean over the base seeds of the last stage.
+    // The rest of the search runs on the baseline (baseOps: the chosen foods and drinks): screen, then halvings, with the free
+    // and the paid candidates kept as two pools at each cut.
+    partsTracker.setCandidates(cands.length);
+    const pool = await halve(cands, baseOps, null, false);
+    if (!pool) return stop(result);
+    // The original base (no food or drink change), per user, in the goal's unit: the mean over the base seeds of the last stage.
+    // The rows below are measured against the baseline, this figure stays the original base.
+    if (!await ensure(req([], fin.h, fin.k * baseMult, 'base'))) return stop(result);
     { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
-    result.singles = cands.map((c) => row(c)).sort((a, b) => (a.lastStage === b.lastStage ? (b.score - a.score) : (b.stageIndex - a.stageIndex)));
-    // One food row per player (foodfill.mjs hideFoodRows): the others stay in singles with hiddenFood and are left out of the report.
-    { const food = new Set(cands.filter((c) => c.kind === 'food-fill').map((c) => c.id)); hideFoodRows(result.singles, (r) => food.has(r.id)); }
+    result.singles = [...cands.map((c) => row(c)).sort((a, b) => (a.lastStage === b.lastStage ? (b.score - a.score) : (b.stageIndex - a.stageIndex))), ...result.singles];
 
     // Greedy stacking on the finalists.
     let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
@@ -558,8 +614,9 @@ async function main() {
         logCandidates(step + 2, finalists);
     }
 
-    // One confirmation on fresh seeds (3.3): base and result.
-    if (result.steps.length) {
+    // One confirmation on fresh seeds (3.3): the original base against the final result (the chosen foods and drinks and every
+    // accepted step), so the combined gain is shown.
+    if (baseOps.length) {
         report({ stage: 'confirmation', candidatesLeft: 0 });
         const fs = pick([], fin.h, fin.k * baseMult, true), vs = pick(baseOps, fin.h, fin.k, true);
         if (!await ensure([...fs.map((i) => ({ ops: [], seed: i, h: fin.h, tag: 'confirm' })), ...vs.map((i) => ({ ops: baseOps, seed: i, h: fin.h, tag: 'confirm' }))])) return stop(result);

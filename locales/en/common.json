@@ -239,6 +239,10 @@
             "partMoreSteps": "More greedy steps: up to {{n}} more",
             "partConfirmationWaiting": "Confirmation: only if a step is accepted",
             "partScreen": "Screen",
+
+            "partFoods": "Best foods",
+
+            "partDrinks": "Best drinks",
             "partHalving": "Halving {{n}}",
             "partStep": "Greedy step {{n}}",
             "partConfirmation": "Confirmation",

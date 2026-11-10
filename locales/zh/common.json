@@ -238,6 +238,10 @@
             "partMoreSteps": "更多贪心步骤：最多再 {{n}} 步",
             "partConfirmationWaiting": "确认：仅在有步骤被接受时",
             "partScreen": "初筛",
+
+            "partFoods": "最佳食物",
+
+            "partDrinks": "最佳饮品",
             "partHalving": "淘汰 {{n}}",
             "partStep": "贪心步骤 {{n}}",
             "partConfirmation": "确认",

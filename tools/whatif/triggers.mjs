@@ -99,6 +99,8 @@ const roundStep = (m) => (m >= 10000 ? 500 : m >= 1000 ? 50 : m >= 100 ? 10 : 1)
 const TRIG = (p, hrid, kind, id, desc, triggers, extra = {}) => ({ id: `${p}:trig:${short(hrid)}:${id}`, kind: 'trigger', owner: hrid, groups: [`${p}:trigger:${hrid}`], player: p, monotone: false, desc: `${p} ${short(hrid)} trigger: ${desc}`, ops: [{ op: 'trigger', player: p, hrid, triggers }], cost: { cost: 0, known: true, path: 'loadout tweak', mirrors: 0, note: '' }, ...extra });
 export const termText = (t) => `${short(t.dependencyHrid)} ${short(t.conditionHrid)} ${t.comparatorHrid === GE ? '>=' : t.comparatorHrid === LE ? '<=' : short(t.comparatorHrid)}${isNumeric(t) ? ' ' + t.value : ''}`;
 const listText = (ts) => (ts.length ? ts.map(termText).join(' AND ') : 'always');
+// A trigger list as the report words it ("self current_hp <= 60 AND ..."); null when the list is empty (it always fires).
+export const triggerText = (ts) => (ts.length ? listText(ts) : null);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // probe: store[player][owner] from installProbe (merged over seeds). opts.owners limits the owners searched;
@@ -107,6 +109,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export function triggerCands(setup, p, probe, opts = {}) {
     const out = [];
     for (const o of ownersOf(setup)) {
+        if (o.kind === 'drink') continue; // Owner: drinks have 100% uptime, editing their triggers makes no sense
         const named = (xs) => xs?.some((x) => x === o.hrid || x === short(o.hrid)); // a full hrid or its last part
         if (opts.owners && !named(opts.owners)) continue;
         if (named(opts.fixed)) continue;

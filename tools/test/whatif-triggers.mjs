@@ -90,6 +90,7 @@ check(ids.includes('P:trig:star_fruit_gummy:0=500') && ids.includes('P:trig:star
 check(ids.some((x) => x.startsWith('P:trig:entangle:')) === false || c.filter((x) => x.owner === '/abilities/entangle').every((x) => !/:\d=/.test(x.id)), 'no value candidates without a numeric term or a probe');
 check(new Set(c.map((x) => JSON.stringify([x.owner, x.ops[0].triggers]))).size === c.length, 'no two candidates give the same list');
 check(c.every((x) => x.groups.length === 1 && x.groups[0] === 'P:trigger:' + x.owner && x.cost.cost === 0), 'one group per owner, no cost');
+check(!c.some((x) => x.owner === '/items/ultra_magic_coffee') && T.triggerCands(setup, 'P', probe, { owners: ['/items/ultra_magic_coffee'] }).length === 0, 'a drink owner gets no trigger candidates (drinks have 100% uptime), even when named');
 const only = T.triggerCands(setup, 'P', probe, { owners: ['/items/star_fruit_gummy'] });
 check(only.length > 0 && only.every((x) => x.owner === '/items/star_fruit_gummy'), '--trigger-owners limits the owners');
 check(T.triggerCands(setup, 'P', probe, { fixed: ['/abilities/toxic_pollen'] }).every((x) => x.owner !== '/abilities/toxic_pollen'), 'a fixed owner is skipped');
