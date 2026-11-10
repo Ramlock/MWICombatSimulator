@@ -46,6 +46,7 @@
     "xpChart": {
         "xp": "经验",
         "party": "队伍",
+        "perHour": "每小时",
         "profitPerDay": "每日利润"
     },
     "simulationResults": {

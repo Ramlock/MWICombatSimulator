@@ -2796,6 +2796,8 @@ function createXpChartView({ t, format, Chart }) {
     const panel = $('xpChartPanel'), canvas = $('xpChartCanvas'), skillSelect = $('xpChartSkill'), playerSelect = $('xpChartPlayer');
     let rows = [], chart = null, points = [];
 
+    // The X axis and the tooltip say what the values are per: the skill's name as the table has it, then "per hour".
+    const xLabel = (xKey) => `${t(X_TITLE_KEYS[xKey])} ${t('common:xpChart.perHour')}`;
     const mapName = (zone) => {
         const s = String(zone);
         if (s.startsWith('/action')) return t('actionNames.' + s);
@@ -2853,7 +2855,7 @@ function createXpChartView({ t, format, Chart }) {
         const axis = (text) => ({ title: { display: true, text, color: COLORS.text }, ticks: { color: COLORS.text, callback: (v) => format(v) }, grid: { color: COLORS.grid } });
         const options = {
             responsive: true, maintainAspectRatio: false, animation: false,
-            scales: { x: axis(t(X_TITLE_KEYS[xKey])), y: axis(t('common:xpChart.profitPerDay')) },
+            scales: { x: axis(xLabel(xKey)), y: axis(t('common:xpChart.profitPerDay')) },
             plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -2861,7 +2863,7 @@ function createXpChartView({ t, format, Chart }) {
                         title: (items) => mapName(items[0].raw.point.zone),
                         label: (item) => {
                             const p = item.raw.point;
-                            return [`${t('party.difficulty')}: ${p.tier}`, `${t(X_TITLE_KEYS[xKey])}: ${format(p.x)}`, `${t('common:xpChart.profitPerDay')}: ${format(p.y)}`, `${t('common:simulationResults.deathPerHour')}: ${format(p.deaths)}`];
+                            return [`${t('party.difficulty')}: ${p.tier}`, `${xLabel(xKey)}: ${format(p.x)}`, `${t('common:xpChart.profitPerDay')}: ${format(p.y)}`, `${t('common:simulationResults.deathPerHour')}: ${format(p.deaths)}`];
                         },
                     },
                 },
@@ -9525,4 +9527,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.cb383d55.js.map
+//# sourceMappingURL=bundle.b891f78d.js.map

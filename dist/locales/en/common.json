@@ -46,6 +46,7 @@
     "xpChart": {
         "xp": "XP",
         "party": "Party",
+        "perHour": "per hour",
         "profitPerDay": "Profit per day"
     },
     "simulationResults": {
