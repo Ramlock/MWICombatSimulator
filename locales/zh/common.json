@@ -43,6 +43,11 @@
     "noRNGRevenue": "期望收入",
     "dropTotal": "掉落物合计",
     "noRNGDrops": "非随机掉落物",
+    "xpChart": {
+        "xp": "经验",
+        "party": "队伍",
+        "profitPerDay": "每日利润"
+    },
     "simulationResults": {
         "title": "模拟结果",
         "killPerHour": "每小时击杀数",

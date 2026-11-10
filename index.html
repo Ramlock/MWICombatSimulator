@@ -78,6 +78,14 @@
             color: #f0f0f0;
         }
 
+        #xpChartPanel { margin-bottom: 12px; }
+        .xp-chart-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .xp-chart-controls .form-select { width: auto; }
+        .xp-chart-box { position: relative; width: 100%; height: 360px; }
+        body.dark-mode #xpChartPanel { color: #f0f0f0; }
+        body.dark-mode #xpChartPanel .form-select { background-color: #2b2b2b; color: #f0f0f0; border-color: #555; }
+        #allZonesData tr.xp-chart-picked td { outline: 2px solid #ffc107; outline-offset: -2px; background-color: rgba(255, 193, 7, 0.22); }
+
         #allZonesData {
             width: 100%;
             table-layout: auto; 
@@ -1720,6 +1728,15 @@
                     </div>
                 </div>
                 <div class="modal-body">
+                    <div id="xpChartPanel" class="d-none">
+                        <div class="xp-chart-controls">
+                            <label for="xpChartSkill" data-i18n="common:xpChart.xp">XP</label>
+                            <select id="xpChartSkill" class="form-select form-select-sm"></select>
+                            <label for="xpChartPlayer" data-i18n="common:player">Player</label>
+                            <select id="xpChartPlayer" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="xp-chart-box"><canvas id="xpChartCanvas"></canvas></div>
+                    </div>
                     <table id="allZonesData">
                         <thead>
                             <tr>

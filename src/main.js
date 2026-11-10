@@ -29,6 +29,8 @@ import achievementTierMap from "./combatsimulator/data/achievementTierDetailMap.
 import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.json"
 
 import { fetchMarketplace } from "./marketplace.mjs";
+import { profitPerDay, mapKey } from "./xpChart.mjs";
+import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
@@ -1496,6 +1498,8 @@ function showAllSimulationResults(simResults) {
     updateAllSimsModal(displaySimResults);
 
     let isLabyrinth = simResults?.[0].isLabyrinth ?? false;
+    // The chart is drawn from these rows, never from the table cells.
+    getXpChartView().setRows(displaySimResults, isLabyrinth);
     if (isLabyrinth) {
         const table = document.getElementById('allZonesData');
         const rows = table.getElementsByTagName('tr');
@@ -1912,7 +1916,9 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 "Melee": experiencePerHour["Melee"], "Defense": experiencePerHour["Defense"],
                 "noRngRevenue": noRngRevenue,
                 "expenses": expenses,
-                "noRngProfit": noRngProfit
+                "noRngProfit": noRngProfit,
+                // Chart only: the table loop skips it (see CHART_ONLY_KEYS). Profit scaled to one day, so the chart does not depend on the Duration input.
+                "ProfitPerDay": profitPerDay(noRngProfit, hoursSimulated)
             };
             displaySimResults.push(displaySimRow);
         }
@@ -2090,13 +2096,29 @@ function getDropProfit(simResult, playerToDisplay) {
     simResult["noRngProfit"] = noRngTotal - expenses;
 }
 
+// Keys of a display row that are for the chart only and never a table column.
+const CHART_ONLY_KEYS = new Set(['ProfitPerDay']);
+
+let xpChartView = null;
+function getXpChartView() {
+    if (!xpChartView) {
+        xpChartView = createXpChartView({ t: (key) => i18next.t(key), format: (v) => formatNumber(v), Chart });
+        i18next.on('languageChanged', () => xpChartView.refreshLabels());
+    }
+    return xpChartView;
+}
+
 function updateAllSimsModal(data) {
     const tableBody = document.getElementById('allZonesData').getElementsByTagName('tbody')[0];
     tableBody.innerHTML = '';
     data.forEach(item => {
         const row = document.createElement('tr');
+        // The chart finds the rows of a map by these, never by cell text.
+        row.dataset.mapKey = mapKey(item.ZoneName, item.DifficultyTier);
+        row.dataset.player = item.Player;
 
         Object.keys(item).forEach(key => {
+            if (CHART_ONLY_KEYS.has(key)) return;
             const cell = document.createElement('td');
             if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
                 setNumberText(cell, item[key]);
@@ -2164,6 +2186,7 @@ document.querySelectorAll('#allZonesData th').forEach((header, index) => {
             currentSortColumn = index;
             currentSortDirection = 'desc';
         }
+        getXpChartView().clearHighlight();
         sortTable('allZonesData', currentSortColumn, currentSortDirection);
     });
 });
