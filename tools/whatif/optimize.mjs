@@ -68,7 +68,7 @@ import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { createParts } from './progress.mjs';
-import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst } from './buyer.mjs';
+import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
 const json = async (f) => (await import(new URL('../../src/combatsimulator/data/' + f, import.meta.url), { with: { type: 'json' } })).default;
@@ -479,6 +479,8 @@ function judgeFood(c, vcp, bcp) {
 }
 // Order: the buyer's score (1 / his payback), a tie by the larger buyer net, then the larger party gain.
 const rank = (a, b) => rankEst(a.est, b.est);
+const rankFirst = (a, b) => rankAcceptedFirst(a.est, b.est);
+const logCandidates = (n, list) => { for (const c of list) console.log(`  step ${n} candidate: ${c.desc}, gain ${fmt(c.est.gain)} ± ${fmt(c.est.se)}, buyer ${fmt(c.est.net)} ± ${fmt(c.est.netSe)}, ${c.est.accepted ? 'accepted' : c.est.judged ? 'refused (' + c.est.judged + ')' : 'not accepted'}`); };
 
 // ---- Search ----
 async function main() {
@@ -511,7 +513,7 @@ async function main() {
         // The base runs alongside the screen, so the cores are not idle while it runs.
         if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => req(c.ops, st.h, st.k, 'variant'))])) return stop(result);
         for (const c of pool) { c.est = estimate([], c, st, st.k * baseMult); (c.history ||= []).push(c.est); }
-        pool.sort(rank);
+        pool.sort(rankFirst); // accepted rows first, so the cut to the next stage keeps the ones that can be taken
         if (si < stages.length - 1) pool = pool.slice(0, keep[si] ?? pool.length);
     }
     // The base the search compared against, per user, in the goal's unit: the mean over the base seeds of the last stage.
@@ -523,6 +525,7 @@ async function main() {
     // Greedy stacking on the finalists.
     let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
     result.timeOnly = cands.filter((c) => c.timeOnly);
+    logCandidates(1, finalists);
     for (let step = 0; step < maxSteps; step++) {
         const ok = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)).sort(rank); // paid from its own player's coin left
         if (!ok.length) break;
@@ -548,6 +551,7 @@ async function main() {
         report({ stage: `greedy step ${step + 1}`, candidatesLeft: finalists.length });
         if (!await ensure([...newBase, ...finalists.flatMap((c) => req([...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
+        logCandidates(step + 2, finalists);
     }
 
     // One confirmation on fresh seeds (3.3): base and result.

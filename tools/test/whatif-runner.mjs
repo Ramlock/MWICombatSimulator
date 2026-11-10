@@ -79,6 +79,17 @@ check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c,
     const sorted = [est(0.1, 50, 9), est(0.2, 10, 1), est(0.1, 80, 1), est(Infinity, 5, 1), est(Infinity, 7, 0), est(0.1, 80, 4)].sort(Bm.rankEst);
     check(sorted.map((x) => x.net + '/' + x.gain).join() === '7/0,5/1,10/1,80/4,80/1,50/9' && sorted[0].score === Infinity && sorted[1].score === Infinity, 'order: the smaller buyer payback first, a tie by the larger net, then the larger party gain', JSON.stringify(sorted));
     check([est(1, undefined, 3), est(1, undefined, 9)].sort(Bm.rankEst)[0].gain === 9, 'order: with no net (a goal that is not profit) the party gain decides, as before');
+    {
+        const ea = (score, net, gain, accepted) => ({ score, net, gain, accepted });
+        const first = Bm.rankAcceptedFirst;
+        check([ea(Infinity, 90, -5, false), ea(0.01, 1, 1, true)].sort(first)[0].accepted === true, 'rankAcceptedFirst: an accepted row with a low score comes before a not-accepted row with a high score');
+        const acc = [ea(0.1, 50, 9, true), ea(0.2, 10, 1, true), ea(0.1, 80, 1, true), ea(Infinity, 5, 1, true)];
+        check(acc.slice().sort(first).map((x) => x.net + '/' + x.gain).join() === acc.slice().sort(Bm.rankEst).map((x) => x.net + '/' + x.gain).join(), 'rankAcceptedFirst: two or more accepted rows keep the rankEst order');
+        const rej = [ea(0.1, 50, 9, false), ea(0.2, 10, 1, false), ea(0.1, 80, 1, false), ea(Infinity, 5, 1, false)];
+        check(rej.slice().sort(first).map((x) => x.net + '/' + x.gain).join() === rej.slice().sort(Bm.rankEst).map((x) => x.net + '/' + x.gain).join(), 'rankAcceptedFirst: not-accepted rows keep the rankEst order');
+        const mix = [ea(Infinity, 5, 1, false), ea(0.1, 50, 9, true), ea(0.3, 4, 1, false), ea(0.2, 10, 1, true)].sort(first);
+        check(mix.map((x) => x.accepted).join() === 'true,true,false,false' && mix[0].score === 0.2 && mix[2].score === Infinity, 'rankAcceptedFirst: accepted rows first (rankEst order inside), then the rest (rankEst order inside)', JSON.stringify(mix));
+    }
 }
 
 // ---- (2) Request -> arguments ----
