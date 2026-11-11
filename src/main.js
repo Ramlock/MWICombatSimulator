@@ -30,6 +30,7 @@ import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.js
 
 import { fetchMarketplace } from "./marketplace.mjs";
 import { profitPerDay, mapKey } from "./xpChart.mjs";
+import { unitPrice } from "./unitPrice.mjs";
 import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey } from "./whatif/panel.mjs";
@@ -2029,29 +2030,7 @@ function getDropProfit(simResult, playerToDisplay) {
 
     let noRngTotal = 0;
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
-        let price = -1;
-        let revenueSetting = document.getElementById('selectPrices_drops').value;
-        if (window.prices) {
-            let item = window.prices[name];
-            if (item) {
-                if (revenueSetting == 'bid') {
-                    if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    } else if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    }
-                } else if (revenueSetting == 'ask') {
-                    if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    } else if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    }
-                }
-                if (price == -1) {
-                    price = item['vendor'];
-                }
-            }
-        }
+        let price = unitPrice(window.prices, name, document.getElementById('selectPrices_drops').value);
         noRngTotal += price * dropAmount;
     }
 
@@ -2065,29 +2044,7 @@ function getDropProfit(simResult, playerToDisplay) {
 
     let expenses = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let price = -1;
-        let expensesSetting = document.getElementById('selectPrices_consumables').value;
-        if (window.prices) {
-            let item = window.prices[consumable];
-            if (item) {
-                if (expensesSetting == 'bid') {
-                    if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    } else if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    }
-                } else if (expensesSetting == 'ask') {
-                    if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    } else if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    }
-                }
-                if (price == -1) {
-                    price = item['vendor'];
-                }
-            }
-        }
+        let price = unitPrice(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
         expenses += price * amount;
     }
 
@@ -2323,29 +2280,7 @@ function showKills(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + name.replace(/\s+/g, '') + '"><td data-i18n="itemNames.';
         tableRow += name;
         tableRow += '"></td><td contenteditable="true">';
-        let price = -1;
-        let revenueSetting = document.getElementById('selectPrices_drops').value;
-        if (window.prices) {
-            let item = window.prices[name];
-            if (item) {
-                if (revenueSetting == 'bid') {
-                    if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    } else if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    }
-                } else if (revenueSetting == 'ask') {
-                    if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    } else if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    }
-                }
-                if (price == -1) {
-                    price = item['vendor'];
-                }
-            }
-        }
+        let price = unitPrice(window.prices, name, document.getElementById('selectPrices_drops').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
         tableRow += numberHtml(dropAmount);
@@ -2371,29 +2306,7 @@ function showKills(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + name.replace(/\s+/g, '') + '"><td data-i18n="itemNames.';
         tableRow += name;
         tableRow += '"></td><td contenteditable="true">';
-        let price = -1;
-        let revenueSetting = document.getElementById('selectPrices_drops').value;
-        if (window.prices) {
-            let item = window.prices[name];
-            if (item) {
-                if (revenueSetting == 'bid') {
-                    if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    } else if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    }
-                } else if (revenueSetting == 'ask') {
-                    if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    } else if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    }
-                }
-                if (price == -1) {
-                    price = item['vendor'];
-                }
-            }
-        }
+        let price = unitPrice(window.prices, name, document.getElementById('selectPrices_drops').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
         tableRow += numberHtml(dropAmount);
@@ -2507,29 +2420,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + consumable + '"><td data-i18n="itemNames.';
         tableRow += consumable;
         tableRow += '"></td><td contenteditable="true">';
-        let price = -1;
-        let expensesSetting = document.getElementById('selectPrices_consumables').value;
-        if (window.prices) {
-            let item = window.prices[consumable];
-            if (item) {
-                if (expensesSetting == 'bid') {
-                    if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    } else if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    }
-                } else if (expensesSetting == 'ask') {
-                    if (item['ask'] !== -1) {
-                        price = item['ask'];
-                    } else if (item['bid'] !== -1) {
-                        price = item['bid'];
-                    }
-                }
-                if (price == -1) {
-                    price = item['vendor'];
-                }
-            }
-        }
+        let price = unitPrice(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + amount + '">';
         tableRow += numberHtml(amount);
@@ -5089,41 +4980,17 @@ async function fetchPrices() {
 
         window.prices["/items/coin"] = { "ask": 1, "bid": 1, "vendor": 1 };
 
-        window.prices["/items/small_treasure_chest"] = {
-            "ask": openableLootDropMap["/items/small_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
-            }).reduce((a, b) => a + b, 0),
-            "bid": openableLootDropMap["/items/small_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
-            }).reduce((a, b) => a + b, 0),
-            "vendor": openableLootDropMap["/items/small_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
-            }).reduce((a, b) => a + b, 0),
-        };
-
-        window.prices["/items/medium_treasure_chest"] = {
-            "ask": openableLootDropMap["/items/medium_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
-            }).reduce((a, b) => a + b, 0),
-            "bid": openableLootDropMap["/items/medium_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
-            }).reduce((a, b) => a + b, 0),
-            "vendor": openableLootDropMap["/items/medium_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
-            }).reduce((a, b) => a + b, 0),
-        };
-
-        window.prices["/items/large_treasure_chest"] = {
-            "ask": openableLootDropMap["/items/large_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].ask * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
-            }).reduce((a, b) => a + b, 0),
-            "bid": openableLootDropMap["/items/large_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].bid * item.dropRate * (item.maxCount + item.minCount) / 2 : 0;
-            }).reduce((a, b) => a + b, 0),
-            "vendor": openableLootDropMap["/items/large_treasure_chest"].map((item) => {
-                return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
-            }).reduce((a, b) => a + b, 0),
-        };
+        for (const chest of ["/items/small_treasure_chest", "/items/medium_treasure_chest", "/items/large_treasure_chest"]) {
+            // A chest's drops are priced by unitPrice, the one function every other drop goes through; a drop with no price at all is worth nothing.
+            const chestValue = (side) => openableLootDropMap[chest].map((item) => Math.max(0, unitPrice(window.prices, item.itemHrid, side)) * item.dropRate * (item.maxCount + item.minCount) / 2).reduce((a, b) => a + b, 0);
+            window.prices[chest] = {
+                "ask": chestValue('ask'),
+                "bid": chestValue('bid'),
+                "vendor": openableLootDropMap[chest].map((item) => {
+                    return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
+                }).reduce((a, b) => a + b, 0),
+            };
+        }
 
     } catch (error) {
         console.error(error);
