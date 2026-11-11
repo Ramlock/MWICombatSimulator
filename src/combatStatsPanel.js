@@ -89,7 +89,7 @@ export const percentCombatStats = [
 // src/numberFormat.js; each value carries its exact figure (hover title), so equal panels mean equal stats.
 export function getCombatStatsPanelValues(combatDetails) {
     const values = {};
-    values.attackInterval = numberHtml(combatDetails.combatStats.attackInterval / 1e9, "s");
+    values.attackInterval = numberHtml(combatDetails.combatStats.attackInterval / 1e9, "s", { minDecimals: 2 });
     levelStats.forEach((stat) => {
         values[stat] = numberHtml(combatDetails[stat]);
     });

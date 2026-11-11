@@ -153,6 +153,9 @@
             padding: 15px; /* Padding inside the box */
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Optional shadow for better visibility */
         }
+        /* Numbers from src/numberFormat.js: tabular figures, right-aligned in their cell, so the decimal points of a column line up. */
+        [data-num], [data-pct], [data-pct2] { font-variant-numeric: tabular-nums; }
+        td[data-num], td:has(> [data-num]), td:has(> [data-pct]), [id^="combatStat_"]:has(> [data-num]), [id^="combatStat_"]:has(> [data-pct]) { text-align: right; }
     </style>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
