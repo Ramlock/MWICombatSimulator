@@ -70,7 +70,7 @@ if (process.argv.includes('--skip-optimizer')) { try { fs.rmSync(tmp, { recursiv
 const run = (name, body) => {
     const d = mk(name);
     const a = R.buildArgs({ setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, prices: 'marketplace-2026-11-03.json' }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 },
-        levers: ['owned', 'abilities', 'books', 'abilitylevels'], stages: ['4x1'], keep: [1], swaps: false, z: 0, jobs: 2, ...body }, d).filter((x) => x !== '--low-priority');
+        levers: ['owned', 'abilities', 'books', 'abilitylevels'], unitHours: 1, confirmHours: 1, maxRounds: 3, lockRule: 'reading', readingStep: 8, swaps: false, z: 0, jobs: 2, ...body }, d).filter((x) => x !== '--low-priority');
     let out = '';
     try { out = execFileSync(process.execPath, [path.join(root, 'tools/whatif/optimize.mjs'), ...a], { encoding: 'utf8', timeout: 600000, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return { error: String(e.stderr || e.message).slice(0, 400) }; }
     return { out, res: JSON.parse(fs.readFileSync(path.join(d, 'result.json'), 'utf8')) };

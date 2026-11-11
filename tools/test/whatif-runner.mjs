@@ -282,7 +282,7 @@ const lastSnapIs = (dirName, res) => {
     return '';
 };
 const rb = await real.listen(0);
-const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], unitHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
+const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
 const r1 = await call(rb, 'POST', '/api/search', req);
 const id = r1.json.id, dir = path.join(tmp, 'real', id);
@@ -326,7 +326,7 @@ if (res) {
     check(res.steps.every((s) => { sum += s.cost; return Math.abs(s.runningSpend.Alpha - sum) < 1e-6; }), 'steps: Alpha\'s running spend is the sum of Alpha\'s steps');
     {   // basePerUser: the party base (mean over the last stage's base seeds, from the run store) over the party size.
         const lines = readFileSync(path.join(dir, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-        const baseKey = lines.find((l) => l.tag === 'base')?.key, h = res.rounds.unitHours, k = res.rounds.confirmSeeds * res.baseMult;
+        const baseKey = lines.find((l) => l.tag === 'base')?.key, h = res.rounds.confirmHours, k = res.rounds.confirmSeeds * res.baseMult;
         const vals = lines.filter((l) => l.tag === 'base' && l.key === baseKey && l.checkpoints.some((c) => c.simHours === h)).sort((a, b) => a.seed - b.seed).slice(0, k).map((l) => l.checkpoints.find((c) => c.simHours === h).party.profitAfterTaxPerDay);
         const party = vals.reduce((a, x) => a + x, 0) / vals.length;
         check(vals.length === k && Number.isFinite(res.basePerUser) && Math.abs(res.basePerUser * res.partySize - party) < 1e-6 * Math.max(1, Math.abs(party)), 'result: basePerUser is the party base over the last stage base seeds divided by the party size', `${res.basePerUser} x ${res.partySize} vs ${party} (${vals.length} of ${k})`);
@@ -353,7 +353,7 @@ if (res) {
     console.log(`     (${res.steps.length} steps, ${res.singles.length} singles, ${res.timing.runsThisCall} runs after the resume)`);
 }
 // A request with no snapshot: result.json says the committed file was used, and its date.
-const plainReq = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 }, levers: ['equip'], unitHours: 1, onlyCandidates: ['none'], z: 0, jobs: 2 };
+const plainReq = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 }, levers: ['equip'], unitHours: 1, confirmHours: 1, onlyCandidates: ['none'], z: 0, jobs: 2 };
 const p1 = await call(rb, 'POST', '/api/search', plainReq);
 const pf = (await wait(p1.json.id, (r) => r.state !== 'running')).r;
 if (pf.state !== 'done') console.log(JSON.stringify(pf).slice(0, 600));
@@ -363,7 +363,7 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
 // drink fillings, so this player has the pouch-less 1 slot of each: the stages stay small. Beta has no consumables to change.
 {
     const eater = { ...party[0], name: 'Alpha', food: { '/action_types/combat': ['/items/donut'].map((itemHrid) => ({ itemHrid })) }, drinks: { '/action_types/combat': ['/items/attack_coffee'].map((itemHrid) => ({ itemHrid })) } };
-    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'triggers'], probe: '1x1', unitHours: 1, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxSteps: 0, z: 0, jobs: 2 };
+    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'triggers'], probe: '1x1', unitHours: 1, confirmHours: 1, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxSteps: 0, z: 0, jobs: 2 };
     const f1 = await call(rb, 'POST', '/api/search', reqF);
     const ff = (await wait(f1.json.id, (r) => r.state !== 'running', 1800000)).r;
     if (ff.state !== 'done') console.log(JSON.stringify(ff).slice(0, 600));

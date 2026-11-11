@@ -58,11 +58,12 @@ export async function main(settings, seams) {
     const readMin = Number(arg('reading-min', 8)); // a leader with fewer reading seeds is shown as too few
     const lockRule = String(arg('lock-rule', 'both')); // 'both': reading seeds pass the pick check AND no contender reaches the leader; 'reading': the pick check only
     const maxRounds = Number(arg('max-rounds', 0)); // rounds per race (0 = no limit: the search ends by stop, --max-minutes, or when nothing can still help)
-    const finK = Number(arg('confirm-seeds', 16)); // seeds of the final confirmation (and of a trigger refinement's judgement), at unit-hours
+    const finK = Number(arg('confirm-seeds', 16)); // seeds of the pick check, the foods and drinks confirmation, the final confirmation (and a trigger refinement's judgement)
+    const finH = Number(arg('confirm-hours', 300)); // their hours per seed: the old last stage's, so a pick is measured as it was before the rounds search (the race itself runs at unit-hours)
     if (!(firstK >= 2 && roundSeeds >= 1 && leadersK >= 1 && pauseMult > 0 && coverage > 0 && coverage < 1 && readStep >= 0 && ['both', 'reading'].includes(lockRule))) throw new Error('rounds options: --first-seeds >= 2, --round-seeds >= 1, --leaders >= 1, --pause-mult > 0, 0 < --coverage < 1, --reading-step >= 0, --lock-rule both|reading');
     if (errorRule === 'unpaired' && firstK < 4) throw new Error('unpaired rule: at least 4 runs per variant (design 3.3)');
     const stages = [{ k: firstK, h: unitH }]; // the one fixed stage left: round 1, today's screen
-    const fin = { k: finK, h: unitH }; // the measurement of the pick checks, the confirmation and the trigger refinement
+    const fin = { k: finK, h: finH }; // the measurement of the pick checks, the confirmation and the trigger refinement
     const keep = [];
     const players = list(arg('players', 'Ramlock'));
     const maxUp = Number(arg('max-up', 3));
@@ -133,7 +134,7 @@ export async function main(settings, seams) {
     const pricesStamp = data.pricesTimestamp;
     const pricesMeta = { pricesTimestamp: Number.isFinite(pricesStamp) ? pricesStamp : null, pricesSource: keyOptions.prices.startsWith('tools/calibration/') ? 'committed' : 'snapshot' };
     const keyOf = (ops) => hash(JSON.stringify({ s: applyOps(setups0, ops), o: keyOptions })).slice(0, 16);
-    const allHours = [...new Set(stages.map((s) => s.h))].sort((a, b) => a - b);
+    const allHours = [...new Set([...stages.map((s) => s.h), fin.h])].sort((a, b) => a - b);
     let stoppedByTime = false;
     const wallLog = []; // per run actually made in this invocation
 
@@ -634,7 +635,7 @@ export async function main(settings, seams) {
     // ---- Search ----
     async function search() {
         const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
-        result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, maxRounds };
+        result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, confirmHours: finH, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
         const fillings = levers.has('consumables');
         partsTracker = createParts({ stages, keep, candidates: null, maxSteps, fillings });
