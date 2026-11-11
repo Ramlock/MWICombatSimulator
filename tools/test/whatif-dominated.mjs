@@ -61,7 +61,7 @@ const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 const loop = opt.slice(opt.indexOf('function candidatesFor'), opt.indexOf('// ---- Phase 2 levers'));
 check((opt.match(/isDominatedSwap\(/g) || []).length === 1 && /isDominatedSwap\(itemDetailMap\[it\.itemHrid\], it\.enhancementLevel, item, L\)/.test(loop), 'optimizer: only the market-swap loop checks dominance (not owned items, pairs or enhance)');
 check(/dominated\.push\(\{ id, player: p, slot, desc, from: \{ item: it\.itemHrid, level: it\.enhancementLevel \}, to: \{ item: item\.hrid, level: L \} \}\)/.test(loop) && /continue;/.test(loop.slice(loop.indexOf('dominated.push'))), 'optimizer: a dominated swap is listed (id, player, slot, desc, item pair) and skipped');
-check(/overBudget: \[\], dominated, skippedNoExport: \[\] \}/.test(opt), 'result.json: the dominated group');
+check(/overBudget: \[\], dominated, skippedNoExport: \[\], notConfirmed: \[\],/.test(opt), 'result.json: the dominated group');
 
 console.log(fails ? `${fails} FAILED` : 'all passed');
 process.exit(fails ? 1 : 0);

@@ -482,5 +482,27 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('cost 0: the confirmation line of a player who bought nothing says N/A; one who bought keeps the dash', lines.some((l) => l.endsWith('Alpha: gain 10 ± 2 per day, no cost')) && lines.some((l) => l.endsWith('Beta: gain 30 ± 5 per day, pays back in — days')), lines.join('|'));
     check('cost 0: an older confirmation with no running spend keeps the dash', plain(panel.renderResult({ ...res, confirmation: { ...res.confirmation, runningSpend: undefined } }, t)).includes('Alpha: gain 10 ± 2 per day, pays back in — days'));
 }
+// The pick check (sure.mjs): a step's fresh reading is a small second line inside each gain cell; the picks left out sit closed.
+{
+    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const step ={ id: 's', player: 'Alpha', desc: 'Ring one', lastStage: '8x300', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, sharedGainPerUser: 10, sharedSePerUser: 2, buyerNet: 30, buyerNetSe: 5, cost: 500, payback: 20, paybackOwn: 20, costPath: 'market', accepted: true, ops: [{ op: 'enhance', player: 'Alpha', slot: 'ring', delta: 1 }], fresh: { seeds: 32, seedFrom: 20001, seedTo: 20032, gain: 18, se: 5, gainPerUser: 9, sePerUser: 2.5, buyerNet: 25, buyerNetSe: 6, accepted: true } };
+    const plainStep = { ...step, id: 'p', desc: 'Ring two', fresh: undefined };
+    const out = panel.renderResult({ ...result, steps: [step, plainStep], notConfirmed: [] }, t);
+    const cells = (name) => { const tr = out.split('<tr').find((x) => x.includes(name)); return [...tr.matchAll(/<td([^>]*)>([^]*?)<\/td>/g)].map((m) => m[2]); };
+    const c1 = cells('Ring one'), c2 = cells('Ring two');
+    check('fresh: the party gain cell and the buyers gain cell each get a second line with their own fresh reading and the seeds', c1[3].includes('whatif-fresh') && plain(c1[3]).includes('fresh 9 ± 2.5, 32 seeds') && plain(c1[5]).includes('fresh 25 ± 6, 32 seeds'), JSON.stringify([c1[3], c1[5]]));
+    check('fresh: the error cells and a step without a reading have no second line; the existing columns keep their cells', !c1[4].includes('whatif-fresh') && !c1[6].includes('whatif-fresh') && !c2.some((c) => c.includes('whatif-fresh')) && plain(c1[3]).startsWith('10') && plain(c1[5]).startsWith('30'));
+    check('fresh: the legend line explains the second line, only when a step has one', out.includes(locales.en.result.freshLegend) && !panel.renderResult({ ...result, steps: [plainStep] }, t).includes(locales.en.result.freshLegend));
+    check('fresh: a gain within one error still reads no change and keeps its second line', plain(cells('Ring one').join('')).length > 0 && panel.renderResult({ ...result, steps: [{ ...step, gainPerUser: 1, sePerUser: 2 }] }, t).split('<tr').find((x) => x.includes('Ring one')).includes(locales.en.result.noChange + '<div class="whatif-fresh">'));
+    const nc = { ...step, id: 'n', desc: 'Ring three', step: 2, fresh: { seeds: 64, gainPerUser: 3, sePerUser: 2, buyerNet: 8, buyerNetSe: 5, accepted: false } };
+    const h2 = panel.renderResult({ ...result, steps: [step], notConfirmed: [nc, { ...nc, id: 'm', desc: 'Ring four', step: 3 }] }, t);
+    const i = h2.indexOf('id="whatIfNotConfirmed"');
+    check('not confirmed: a heading with its count and a toggle, the list closed by default and apart from the steps', h2.includes(locales.en.result.notConfirmed) && h2.includes('data-whatif-more="whatIfNotConfirmed"') && /<ul class="small whatif-more" id="whatIfNotConfirmed" hidden>/.test(h2) && h2.includes('Show the 2 not confirmed') && !h2.slice(0, h2.indexOf(locales.en.result.notConfirmed)).includes('Ring three'));
+    check('not confirmed: each row has the player, the change, its step, its fresh gain and error and the seeds', plain(h2.slice(i)).includes("Alpha, Ring three: at step 2, fresh runs: party gain 3 ± 2, buyer's gain 8 ± 5, 64 seeds") && plain(h2.slice(i)).includes('Ring four: at step 3'));
+    check('not confirmed: an EXP result shows the gain only', plain(panel.renderResult({ ...result, goal: 'exp', steps: [], notConfirmed: [{ ...nc, fresh: { seeds: 16, gainPerUser: 3, sePerUser: 2, accepted: false } }] }, t)).includes('at step 2, fresh runs: gain 3 ± 2, 16 seeds'));
+    check('not confirmed: an older result (no field) or an empty list shows nothing', !panel.renderResult(result, t).includes(locales.en.result.notConfirmed) && !panel.renderResult({ ...result, notConfirmed: [] }, t).includes(locales.en.result.notConfirmed));
+    const keys = ['freshLine', 'freshLegend', 'notConfirmed', 'notConfirmedNote', 'notConfirmedShow', 'notConfirmedHide', 'notConfirmedItem', 'notConfirmedItemExp'];
+    check('fresh: the pt and zh strings exist for every new key, differ from en and keep the placeholders', keys.every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales[l].result[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

@@ -22,7 +22,7 @@ const t = tIn('en');
 const plan = { stages: [{ k: 4, h: 50 }, { k: 4, h: 150 }, { k: 8, h: 300 }], keep: [10, 3], candidates: 40, maxSteps: 20 };
 const tr = createParts(plan);
 const kinds = (ps) => ps.map((p) => `${p.kind}${p.kind === 'confirmation' ? '' : p.index}:${p.state}`).join(' ');
-const P = 'steps0:waiting confirmation:waiting';
+const P = 'picks0:waiting steps0:waiting confirmation:waiting';
 
 const ps0 = () => createParts(plan).sync({ stage: 'screen', runsPlanned: 1, runsDone: 0 });
 let ps = tr.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 0, runsPlanned: 164, etaSeconds: 900 });
@@ -42,16 +42,16 @@ check('halving 1 running: candidates left on the row', ps[1].candidatesLeft === 
 ps = tr.sync({ stage: 'halving 2', candidatesLeft: 3, runsDone: 5, runsPlanned: 24, etaSeconds: 500 });
 check('halving 2 running', kinds(ps) === 'screen0:done halving1:done halving2:running ' + P && ps[1].runsDone === 36, kinds(ps));
 
-ps = tr.sync({ stage: 'greedy step 1', candidatesLeft: 3, runsDone: 1, runsPlanned: 24, etaSeconds: 100 });
-check('greedy step 1 added when it starts', kinds(ps) === 'screen0:done halving1:done halving2:done step1:running moreSteps1:waiting confirmation:waiting', kinds(ps));
+ps = tr.sync({ stage: 'greedy step 1', candidatesLeft: 3, runsDone: 1, runsPlanned: 24, etaSeconds: 100, picksPlanned: 32, picksDone: 32 });
+check('greedy step 1 added when it starts', kinds(ps) === 'screen0:done halving1:done halving2:done picks0:waiting step1:running moreSteps1:waiting confirmation:waiting', kinds(ps));
 ps = tr.sync({ stage: 'greedy step 2', candidatesLeft: 2, runsDone: 0, runsPlanned: 16, etaSeconds: 80 });
-check('greedy step 2 added, step 1 stays full', kinds(ps) === 'screen0:done halving1:done halving2:done step1:done step2:running moreSteps2:waiting confirmation:waiting' && ps[3].runsDone === 24, kinds(ps));
+check('greedy step 2 added, step 1 stays full', kinds(ps) === 'screen0:done halving1:done halving2:done picks0:waiting step1:done step2:running moreSteps2:waiting confirmation:waiting' && ps[4].runsDone === 24, kinds(ps));
 ps = tr.sync({ stage: 'confirmation', candidatesLeft: 0, runsDone: 2, runsPlanned: 16, etaSeconds: 40 });
-check('confirmation added after the steps', kinds(ps) === 'screen0:done halving1:done halving2:done step1:done step2:done confirmation:running', kinds(ps));
+check('confirmation added after the steps', kinds(ps) === 'screen0:done halving1:done halving2:done picks0:done step1:done step2:done confirmation:running', kinds(ps));
 const stopped = tr.sync({ stage: 'stopped', candidatesLeft: 0, runsDone: 2, runsPlanned: 16, etaSeconds: 40 });
 check('stopped mid-way: the rows stay as they were', kinds(stopped) === kinds(ps) && stopped.at(-1).runsDone === 2, kinds(stopped));
 ps = tr.sync({ stage: 'done', candidatesLeft: 0, runsDone: 16, runsPlanned: 16, etaSeconds: 0 });
-check('done: every row done', ps.every((p) => p.state === 'done') && ps.length === 6, kinds(ps));
+check('done: every row done', ps.every((p) => p.state === 'done') && ps.length === 7, kinds(ps));
 
 check('start: the steps row carries the plan max steps', ps0().find((p) => p.kind === 'steps').maxSteps === 20);
 {
@@ -72,9 +72,9 @@ tr2.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 0, runsPlanned: 164 })
 tr2.sync({ stage: 'halving 1', candidatesLeft: 10, runsDone: 0, runsPlanned: 36 });
 tr2.sync({ stage: 'halving 2', candidatesLeft: 3, runsDone: 0, runsPlanned: 24 });
 ps = tr2.sync({ stage: 'done', candidatesLeft: 0, runsDone: 24, runsPlanned: 24 });
-check('no step accepted: three rows, all done', kinds(ps) === 'screen0:done halving1:done halving2:done steps0:waiting confirmation:waiting', kinds(ps));
+check('no step accepted: three rows, all done', kinds(ps) === 'screen0:done halving1:done halving2:done picks0:waiting steps0:waiting confirmation:waiting', kinds(ps));
 check('probe before the screen: all rows waiting', kinds(createParts(plan).sync({ stage: 'probe' })) === 'screen0:waiting halving1:waiting halving2:waiting ' + P);
-check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, h: 50 }], keep: [], candidates: 5, maxSteps: 20 }).sync({ stage: 'screen', runsPlanned: 3, runsDone: 1 }).length === 3);
+check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, h: 50 }], keep: [], candidates: 5, maxSteps: 20 }).sync({ stage: 'screen', runsPlanned: 3, runsDone: 1 }).length === 4);
 
 // Stage F and Stage D (plan.fillings): two parts come first, the pool of the rest is unknown until setCandidates.
 {
@@ -91,6 +91,30 @@ check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, 
     check('fillings off: the plan has no foods or drinks parts', !tr.sync({ stage: 'foods' }).some((p) => p.kind === 'foods'));
     const fh = panel.renderProgress({ state: 'running', progress: { parts: q } }, t).replace(/<[^>]+>/g, '');
     check('panel: foods and drinks rows are labelled', fh.includes('Best foods') && fh.includes('Best drinks'), fh);
+}
+
+// The part "Confirming the picks": one row for the whole greedy phase, its counts the optimizer's (distinct runs, never dropping).
+{
+    const tp = createParts(plan);
+    const at = (stage, extra = {}) => tp.sync({ stage, runsPlanned: 4, runsDone: 0, candidatesLeft: 0, ...extra }).find((p) => p.kind === 'picks');
+    check('picks: waiting and empty before any check', at('halving 2').state === 'waiting' && at('halving 2').runsPlanned === 0);
+    let p = at('confirming picks', { picksPlanned: 32, picksDone: 10 });
+    check('picks: running with its counts while a pick is checked', p.state === 'running' && p.runsPlanned === 32 && p.runsDone === 10, JSON.stringify(p));
+    const all = tp.sync({ stage: 'confirming picks', runsPlanned: 4, runsDone: 0, picksPlanned: 32, picksDone: 10 });
+    check('picks: the row before it (a step row) is done while a pick is checked', all.filter((r) => r.state === 'running').length === 1, kinds(all));
+    p = at('confirming picks', { picksPlanned: 48, picksDone: 20 });
+    check('picks: planned grows with more seeds', p.runsPlanned === 48 && p.runsDone === 20);
+    p = at('confirming picks', { picksPlanned: 40, picksDone: 60 });
+    check('picks: planned never drops and done never exceeds it', p.runsPlanned === 48 && p.runsDone === 48, JSON.stringify(p));
+    p = at('greedy step 1', { picksPlanned: 48, picksDone: 48 });
+    check('picks: between two checks the row is grey with its counts', p.state === 'waiting' && p.runsDone === 48 && p.runsPlanned === 48, JSON.stringify(p));
+    p = at('confirming picks', { picksPlanned: 64, picksDone: 50 });
+    check('picks: running again at the next step', p.state === 'running' && p.runsPlanned === 64);
+    p = at('confirmation', { picksPlanned: 64, picksDone: 60 });
+    check('picks: done and full once the confirmation starts', p.state === 'done' && p.runsDone === 64, JSON.stringify(p));
+    const h = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'picks', index: 0, state: 'running', runsPlanned: 32, runsDone: 10, etaSeconds: 60 }, { kind: 'picks', index: 0, state: 'waiting', runsPlanned: 32, runsDone: 32 }] } }, t).replace(/<[^>]+>/g, '');
+    check('picks: the panel labels the row and shows its runs', h.includes('Confirming the picks') && h.includes('10 / 32 runs') && h.includes('32 / 32 runs'), h);
+    check('picks: pt and zh labels exist', ['pt', 'zh'].every((l) => locales[l].progress.partPicks && locales[l].progress.partPicks !== locales.en.progress.partPicks));
 }
 
 // The optimizer wires it into progress.json; the runner passes progress on unchanged.
@@ -129,7 +153,7 @@ check('old progress without parts: the single line unchanged', !old.includes('wh
 check('empty parts array: the single line', !panel.renderProgress({ state: 'running', progress: { stage: 'screen', parts: [], runsPlanned: 1, runsDone: 0 } }, t).includes('whatif-part'));
 
 // Strings in en, pt, zh.
-const keys = ['partOf', 'partSteps', 'partMoreSteps', 'partConfirmationWaiting', 'partScreen', 'partHalving', 'partStep', 'partConfirmation', 'optionsLeft', 'runsOf', 'upTo', 'timeLeft', 'done', 'secondsPerRunCap', 'elapsed'];
+const keys = ['partOf', 'partSteps', 'partMoreSteps', 'partConfirmationWaiting', 'partScreen', 'partHalving', 'partStep', 'partPicks', 'partConfirmation', 'optionsLeft', 'runsOf', 'upTo', 'timeLeft', 'done', 'secondsPerRunCap', 'elapsed'];
 for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`, keys.every((k) => typeof locales[l].progress[k] === 'string' && locales[l].progress[k].length), l);
 check('strings: placeholders match across languages', keys.every((k) => ['pt', 'zh'].every((l) => (locales[l].progress[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.progress[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
 const ptHtml = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'step', index: 2, state: 'running', runsPlanned: 4, runsDone: 1, etaSeconds: 9 }] } }, tIn('pt'));

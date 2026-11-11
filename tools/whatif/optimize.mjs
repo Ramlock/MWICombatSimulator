@@ -50,6 +50,8 @@
 //   --trigger-cands <json>       the user's own candidates, { "<player>": { "<owner hrid>": [[terms], ...] } };
 //                                they replace the generated ones for that owner
 //   --comdrop 20 --comexp 20 --tier 4 --zone /actions/combat/infernal_abyss
+// Pick check (tools/whatif/sure.mjs): each greedy pick is re-measured on fresh seeds (20001.., 16 per arm, up to 64) against the chain
+// before it joins; one that is not confirmed is left out (result.notConfirmed) and the next best is tried.
 // Every run is cached in <out>/runs.jsonl by (resulting setups, options, seed); a rerun with the same args
 // resumes. Results: <out>/result.json and <out>/result.md. Exit code 3 = stopped (by --max-minutes or a stop
 // request), rerun. Progress goes to <out>/progress.json and, when started with an IPC channel (the runner,
@@ -76,6 +78,7 @@ import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { createParts } from './progress.mjs';
+import { SURE_BLOCK, SURE_MAX, checkPick, firstConfirmed } from './sure.mjs';
 import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
@@ -113,6 +116,8 @@ const maxSteps = Number(arg('max-steps', 20));
 const jobs = Number(arg('jobs', os.availableParallelism()));
 const maxMinutes = Number(arg('max-minutes', Infinity));
 const confirmOffset = Number(arg('confirm-seed-offset', 10000));
+// The pick check (confirmPick): seeds above the final confirmation's block (10001..20000), blocks of SURE_BLOCK per arm, at most SURE_MAX.
+const sureOffset = confirmOffset + 10000;
 const setupsDir = arg('setups', undefined);
 const pricesFile = arg('prices', DEFAULT_PRICES);
 const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
@@ -181,6 +186,9 @@ process.on('message', (m) => { if (m === 'stop') { stopRequested = true; for (co
 // screen, a halving, a greedy step, the confirmation); later stages are not in etaSeconds (etaScope: 'stage').
 const progress = { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0, secondsPerRun: null, etaSeconds: null, etaScope: 'stage', elapsedSeconds: 0 };
 let batch = { hoursLeft: 0, wall: 0, done: 0 };
+// The runs of the pick checks, counted as distinct runs (a run is one arm on one seed; a run counted once is never counted again, a
+// cached run is done when it is counted): planned never drops and done never exceeds it. Shown as the part "Confirming the picks".
+const sure = { planned: 0, done: 0, counted: new Set() };
 let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
 function report(patch = {}) {
     Object.assign(progress, patch);
@@ -189,6 +197,7 @@ function report(patch = {}) {
     progress.secondsPerRun = batch.done ? batch.wall / batch.done : wallLog.length ? wall / wallLog.length : null;
     progress.etaSeconds = left <= 0 ? 0 : hours ? Math.round((wall / hours) * batch.hoursLeft / Math.min(jobs, left)) : null;
     progress.elapsedSeconds = Math.round((Date.now() - t0) / 1000);
+    if (sure.planned) { progress.picksPlanned = sure.planned; progress.picksDone = sure.done; }
     if (partsTracker) progress.parts = partsTracker.sync(progress);
     writeFileSync(path.join(OUT, 'progress.json'), JSON.stringify(progress));
     if (process.connected) process.send({ type: 'progress', progress });
@@ -227,6 +236,7 @@ async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
             put(rec);
             wallLog.push({ tag: t.tag, h: t.h, wallSeconds: res.wallSeconds });
             batch.hoursLeft -= t.h; batch.wall += res.wallSeconds; batch.done++;
+            if (t.tag === 'sure') sure.done++;
             report({ runsDone: progress.runsDone + 1 });
             feed();
         });
@@ -252,7 +262,7 @@ const seedsFor = (k, off = 0) => Array.from({ length: k }, (_, i) => off + i + 1
 function pick(ops, h, k, fresh = false) {
     const lo = fresh ? confirmOffset : 0;
     if (errorRule === 'paired') return seedsFor(k, lo);
-    const key = keyOf(ops), hi = fresh ? Infinity : confirmOffset;
+    const key = keyOf(ops), hi = fresh ? sureOffset : confirmOffset; // the pick checks' seeds (above sureOffset) are in neither block
     const ran = [...(seedIndex.get(key) || [])].filter((x) => x > lo && x <= hi).sort((a, b) => a - b);
     const out = ran.filter((x) => cache.get(key + '#' + x).byHours[h]).slice(0, k);
     let next = Math.max(lo, ...ran) + 1;
@@ -264,6 +274,46 @@ const req = (ops, h, k, tag, fresh = false) => pick(ops, h, k, fresh).map((seed)
 // on the same seeds"), so a base run the variant's seeds need that is not saved yet is run here. The base's own k x baseMult
 // seeds (the error) are requested separately.
 const reqPair = (baseOps, vOps, h, k, tag, fresh = false) => { const v = req(vOps, h, k, tag, fresh); return [...v, ...v.map((r) => ({ ops: baseOps, seed: r.seed, h, tag: 'base' }))]; };
+
+// ---- The pick check (his go 2026-11-11: confirm each pick before it joins the chain) ----
+// A pick is re-measured on fresh seeds (sureOffset + 1..) against the chain's state at that moment: the arm "chain so far" (baseOps)
+// and the arm "chain + this pick", the same seeds on both. The same seeds block serves every step, so one step's "chain + pick" arm
+// is the next step's "chain so far" arm and the run cache gives it for free.
+const sureSeeds = (k) => Array.from({ length: k }, (_, i) => sureOffset + i + 1);
+// The reading of k seeds per arm, by the search's own rules (the error rule, acceptBoth): the party's shared gain and the buyer's net.
+function freshRead(baseOps, c, k, h) {
+    const vOps = [...baseOps, ...c.ops], seeds = sureSeeds(k), n = setups0.length;
+    const vcp = seeds.map((s) => cpOf(vOps, s, h)), bcp = seeds.map((s) => cpOf(baseOps, s, h));
+    let gain, se, net, netSe, accepted;
+    if (goal === 'profit') {
+        ({ gain, se } = diffStat(vcp.map(lootOf), bcp.map(lootOf)));
+        ({ net, se: netSe } = buyerNet(vcp, bcp, c.player, n, errorRule, z));
+        accepted = acceptBoth(gain, se, net, netSe, z);
+    } else {
+        ({ gain, se } = diffStat(vcp.map(metric), bcp.map(metric)));
+        accepted = gain > 0 && gain >= z * se;
+    }
+    return { seeds: k, seedFrom: seeds[0], seedTo: seeds[k - 1], hours: h, gain, se, gainPerUser: gain / n, sePerUser: se / n, ...(goal === 'profit' ? { buyerNet: net, buyerNetSe: netSe } : {}), accepted };
+}
+// Runs the check (sure.mjs: 16 seeds per arm, more while the pick is between z/2 and z errors, up to 64). Returns { passed, fresh },
+// or null when the time limit or a stop ended the runs.
+async function confirmPick(baseOps, c, fin, stepNo) {
+    return checkPick(async (k) => {
+        const seeds = sureSeeds(k), vOps = [...baseOps, ...c.ops];
+        const reqs = seeds.flatMap((seed) => [{ ops: baseOps, seed, h: fin.h, tag: 'sure' }, { ops: vOps, seed, h: fin.h, tag: 'sure' }]);
+        for (const r of reqs) { // a run is planned once; a cached one is done at once
+            const id = keyOf(r.ops) + '#' + r.seed;
+            if (sure.counted.has(id)) continue;
+            sure.counted.add(id); sure.planned++;
+            if (cache.get(id)?.byHours[r.h]) sure.done++;
+        }
+        report({ stage: 'confirming picks', candidatesLeft: 0 });
+        if (!await ensure(reqs)) return null;
+        const fresh = freshRead(baseOps, c, k, fin.h);
+        console.log(`  step ${stepNo} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
+        return fresh;
+    }, { z, goal });
+}
 
 // ---- Candidates ----
 const COMBAT_SLOTS = ['head', 'body', 'legs', 'feet', 'hands', 'main_hand', 'two_hand', 'off_hand', 'pouch', 'back', 'neck', 'earrings', 'ring', 'trinket', 'charm'];
@@ -538,7 +588,7 @@ function bestEntry(kind, setup, chosen) {
 
 // ---- Search ----
 async function main() {
-    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated, skippedNoExport: [] };
+    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
     const fillings = levers.has('consumables');
@@ -599,12 +649,21 @@ async function main() {
     const guard = (list) => { const { kept, dropped } = dropChainStates(list, baseOps, keyOf, chain); if (dropped.length) console.log(`  ${dropped.length} candidate(s) lead back to a state already in the chain, dropped: ${dropped.map((c) => c.id).join(', ')}`); return kept; };
     for (let step = 0; step < maxSteps; step++) {
         const ok = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)).sort(rank); // paid from its own player's coin left
-        if (!ok.length) break;
-        const best = ok[0];
+        // The best pick joins only once it is confirmed on fresh seeds against the chain as it is now; one that is not is left out
+        // (result.notConfirmed, never tried again: it leaves the finalists) and the next best is tried. None left ends the chain.
+        const picked = await firstConfirmed(ok, (c) => confirmPick(baseOps, c, fin, step + 1));
+        if (picked === null) return stop(result);
+        for (const { cand, fresh } of picked.failed) {
+            result.notConfirmed.push({ ...row(cand), step: step + 1, fresh });
+            console.log(`step ${step + 1}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
+            finalists = finalists.filter((f) => f !== cand);
+        }
+        if (!picked.best) break;
+        const best = picked.best, bestFresh = picked.fresh;
         spent = pay(spent, best);
         baseOps = [...baseOps, ...best.ops];
         chain.add(keyOf(baseOps));
-        result.steps.push({ ...row(best), kind: best.kind, owner: best.owner, runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
+        result.steps.push({ ...row(best), fresh: bestFresh, kind: best.kind, owner: best.owner, runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
         console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
         // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
         const newBase = req(baseOps, fin.h, fin.k * baseMult, 'base');
@@ -680,7 +739,9 @@ async function mergeTriggerSteps(result, fin) {
         const cand = { id: last.id, kind: 'trigger', owner: last.owner, player: last.player, monotone: false, desc: later.reduce((d, j) => joinTriggerDesc(d, steps[j].desc), steps[i].desc), ops: last.ops, cost: { cost: 0, known: true, path: last.costPath, note: '' } };
         if (!await ensure([...req(prefix, fin.h, fin.k * baseMult, 'base'), ...reqPair(prefix, [...prefix, ...cand.ops], fin.h, fin.k, 'variant')])) return null;
         cand.est = estimate(prefix, cand, fin, fin.k * baseMult);
-        steps[i] = { ...row(cand), kind: 'trigger', owner: last.owner, runningCost: steps[i].runningCost, runningSpend: steps[i].runningSpend };
+        const chk = await confirmPick(prefix, cand, fin, i + 1); // the merged step's own fresh reading (the same routine as a pick's)
+        if (chk === null) return null;
+        steps[i] = { ...row(cand), fresh: chk.fresh, kind: 'trigger', owner: last.owner, runningCost: steps[i].runningCost, runningSpend: steps[i].runningSpend };
         for (const j of later) drop.add(j);
         console.log(`merged ${later.length + 1} trigger steps of ${last.owner.split('/').pop()} into one: ${cand.desc}, gain ${fmt(cand.est.gain)} ± ${fmt(cand.est.se)}`);
     }

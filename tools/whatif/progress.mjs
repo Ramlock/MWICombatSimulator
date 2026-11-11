@@ -28,6 +28,10 @@ export function createParts(plan) {
         }
         return pools;
     };
+    // The part "Confirming the picks" (optimize.mjs confirmPick): one row for the whole greedy phase, its runs counted by the optimizer
+    // as distinct runs (progress.picksPlanned / picksDone, never dropping): running while a pick is being checked, grey between two
+    // checks, done once the confirmation starts or the search ends. Not a row of `rows`: it comes back to running at every step.
+    const picks = { started: false, state: 'waiting', runsPlanned: 0, runsDone: 0 };
     const rows = []; // started parts, in order: { kind, index, runsPlanned, runsDone, candidatesLeft, etaSeconds, state }
     const parse = (stage) => {
         if (stage === 'screen') return { kind: 'screen', index: 0 };
@@ -43,7 +47,15 @@ export function createParts(plan) {
     return {
         setCandidates(n) { plan.candidates = n; },
         sync(progress) {
-            const key = parse(progress.stage);
+            const key = parse(progress.stage), confirming = progress.stage === 'confirming picks';
+            if (progress.picksPlanned !== undefined) {
+                picks.started = true;
+                picks.runsPlanned = Math.max(picks.runsPlanned, progress.picksPlanned);
+                picks.runsDone = Math.min(picks.runsPlanned, Math.max(picks.runsDone, progress.picksDone ?? 0));
+            }
+            if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
+            else if (progress.stage === 'confirmation' || progress.stage === 'done') { if (picks.started) picks.state = 'done'; }
+            else if (key && picks.started) picks.state = 'waiting';
             if (progress.stage === 'done') for (const r of rows) r.state = 'done';
             else if (key) {
                 for (const r of rows) if (!sameRow(r, key)) r.state = 'done';
@@ -67,6 +79,8 @@ export function createParts(plan) {
                 const r = rows.find((x) => x.kind === kind && x.index === si);
                 out.push(r ? { ...r } : waiting(kind, si, poolsOf()[si], stages[si].k));
             }
+            if (picks.state === 'done') picks.runsDone = picks.runsPlanned;
+            out.push({ kind: 'picks', index: 0, state: picks.state, runsPlanned: picks.runsPlanned, runsDone: picks.runsDone, etaSeconds: picks.state === 'running' ? (progress.etaSeconds ?? null) : picks.state === 'done' ? 0 : null });
             const steps = rows.filter((r) => r.kind === 'step'), conf = rows.find((r) => r.kind === 'confirmation');
             if (!steps.length) out.push({ kind: 'steps', index: 0, state: 'waiting', maxSteps });
             for (const r of steps) out.push({ ...r });

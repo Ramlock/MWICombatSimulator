@@ -3195,9 +3195,16 @@ const signedPlain = (v) => (v > 0 ? '+' : '') + (0,_numberFormat_js__WEBPACK_IMP
 const realValue = (v, se) => signedPlain(v) + ' ± ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(se);
 const noChange = (v, se, t) => `<span title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</span>`;
 // The two cells of a gain and its error: "no change" and "—" (both with the real value as title) when within one error.
-function gainPair(v, se, t) {
-    if (withinError(v, se)) { const title = ` title="${esc(realValue(v, se))}"`; return `<td class="num"${title}>${esc(t('result.noChange'))}</td><td class="num"${title}>—</td>`; }
-    return `<td class="num">${num(v)}</td><td class="num">± ${num(se)}</td>`;
+// `extra`: html for a second line inside the gain cell (a step's fresh reading, `freshLine`).
+function gainPair(v, se, t, extra = '') {
+    if (withinError(v, se)) { const title = ` title="${esc(realValue(v, se))}"`; return `<td class="num"${title}>${esc(t('result.noChange'))}${extra}</td><td class="num"${title}>—</td>`; }
+    return `<td class="num">${num(v)}${extra}</td><td class="num">± ${num(se)}</td>`;
+}
+// A step's fresh reading (the optimizer's pick check: the same change measured again on fresh seeds against the steps before it):
+// a small muted second line, "fresh 123K ± 40K, 32 seeds". Output only: gain, error and seeds are fields of `fresh`. '' with no reading.
+function freshLine(gain, se, fresh, t) {
+    if (!fresh || !Number.isFinite(gain) || !Number.isFinite(se)) return '';
+    return `<div class="whatif-fresh">${t('result.freshLine', { gain: num(gain), se: num(se), seeds: num(fresh.seeds) })}</div>`;
 }
 
 // slots: [{ id: "1", name: "<tab name>", json: "<the slot's setup JSON>" }] for the players in the search.
@@ -3336,12 +3343,13 @@ function renderParts(status, t) {
             : r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
             : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
+            : r.kind === 'picks' ? t('progress.partPicks')
             : r.kind === 'step' ? t('progress.partStep', { n: r.index })
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
             : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
         const left = (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
         let text = '', cls;
-        if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); cls = 'waiting'; }
+        if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); else if (r.kind === 'picks' && r.runsPlanned > 0) text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'waiting'; }
         else if (r.state === 'done') { text = fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + ' · ' + esc(t('progress.done')); cls = 'done'; }
         else {
             text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) });
@@ -3350,7 +3358,7 @@ function renderParts(status, t) {
         }
         // One icon column of equal width: a plain text glyph (︎ asks for the text form, never a colour emoji).
         const mark = { done: '✓', running: '▶︎', waiting: '○' }[cls];
-        const pct = r.state === 'done' ? 100 : r.state === 'running' && r.runsPlanned > 0 ? Math.min(100, Math.max(0, (r.runsDone / r.runsPlanned) * 100)) : 0;
+        const pct = r.state === 'done' ? 100 : (r.state === 'running' || (r.state === 'waiting' && r.kind === 'picks')) && r.runsPlanned > 0 ? Math.min(100, Math.max(0, (r.runsDone / r.runsPlanned) * 100)) : 0;
         return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}</span><div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div><span class="whatif-part-text">${text}</span></div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
@@ -3441,9 +3449,10 @@ const paybackCell = (row, t) => (row.payback === null || row.payback === undefin
 // The split of a row: the party's gain per user and its error, then the buyer's gain per day and its error (profit goal; "—" on the EXP
 // goal and on a result saved before the buyer's net). hasSplit: the row carries the buyer's split, so Payback is the buyer's.
 const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
-function gainCells(row, goalExp, t) {
-    const buyer = !goalExp && Number.isFinite(row.buyerNet);
-    return gainPair(row.gainPerUser, row.sePerUser, t) + (buyer ? gainPair(row.buyerNet, row.buyerNetSe, t) : '<td class="num">—</td><td class="num">—</td>');
+function gainCells(row, goalExp, t, withFresh = false) {
+    const buyer = !goalExp && Number.isFinite(row.buyerNet), f = withFresh ? row.fresh : null;
+    return gainPair(row.gainPerUser, row.sePerUser, t, freshLine(f?.gainPerUser, f?.sePerUser, f, t))
+        + (buyer ? gainPair(row.buyerNet, row.buyerNetSe, t, freshLine(f?.buyerNet, f?.buyerNetSe, f, t)) : '<td class="num">—</td><td class="num">—</td>');
 }
 // How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
 const pathCell = (s) => {
@@ -3520,11 +3529,12 @@ function renderResult(result, t, now = Date.now(), names = null) {
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-                gainCells(s, goalExp, t) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
+                gainCells(s, goalExp, t, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
         if (!goalExp) L.push(`<div class="small whatif-dim mb-2">${esc(t('result.gainLegend'))}</div>`);
+        if (result.steps.some((s) => s.fresh)) L.push(`<div class="small whatif-dim mb-2">${esc(t('result.freshLegend'))}</div>`);
     }
     const c = result.confirmation;
     if (c) {
@@ -3568,6 +3578,21 @@ function renderResult(result, t, now = Date.now(), names = null) {
             `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="whatIfOverBudget" data-show="${esc(t('result.overBudgetShow', { n }))}" data-hide="${esc(t('result.overBudgetHide', { n }))}">${esc(t('result.overBudgetShow', { n }))}</button>` +
             '<ul class="small whatif-more" id="whatIfOverBudget" hidden>' +
             result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`).join('') + '</ul>');
+    }
+    if (result.notConfirmed?.length) {
+        // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
+        const n = result.notConfirmed.length;
+        const gainText = (g, e) => num(g) + ' ± ' + num(e);
+        const item = (a) => {
+            const f = a.fresh || {};
+            const text = Number.isFinite(f.buyerNet) && !goalExp
+                ? t('result.notConfirmedItem', { step: num(a.step), partyGain: gainText(f.gainPerUser, f.sePerUser), buyerGain: gainText(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) })
+                : t('result.notConfirmedItemExp', { step: num(a.step), partyGain: gainText(f.gainPerUser, f.sePerUser), seeds: num(f.seeds) });
+            return `<li>${esc(a.player)}, ${shown(a)}: ${text}</li>`;
+        };
+        L.push(`<div class="fw-bold mt-3">${esc(t('result.notConfirmed'))} <span class="text-secondary fw-normal small">${esc(t('result.notConfirmedNote', { n }))}</span></div>` +
+            `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="whatIfNotConfirmed" data-show="${esc(t('result.notConfirmedShow', { n }))}" data-hide="${esc(t('result.notConfirmedHide', { n }))}">${esc(t('result.notConfirmedShow', { n }))}</button>` +
+            '<ul class="small whatif-more" id="whatIfNotConfirmed" hidden>' + result.notConfirmed.map(item).join('') + '</ul>');
     }
     if (result.dominated?.length) {
         // One line with the count and its toggle; the swaps the search skipped (no better on any stat) sit closed behind it.
@@ -9519,4 +9544,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.1c981387.js.map
+//# sourceMappingURL=bundle.7bb61d37.js.map

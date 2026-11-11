@@ -89,6 +89,7 @@ const notTheGameWord = {
     'whatIf.result.playerLine:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.playerLineNoChange:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.gainLegend:change': '"a mudança" is the noun (a change in the loot), not the verb Alterar of the game',
+    'whatIf.result.freshLegend:change': '"a mesma mudança" is the noun (a change), not the verb Alterar of the game',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;
