@@ -43,7 +43,7 @@ const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
 check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /finalists = guard\(finalists\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
-check((opt.match(/reqPair\(/g) || []).length === 3 &&/bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
+check((opt.match(/reqPair\(/g) || []).length === 4 &&/bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
 
 // ---- (1a) The cut between stages and the per-player choice (tools/whatif/pools.mjs) ----
 {
@@ -171,7 +171,7 @@ function call(base, method, p, body, headers = {}) {
     const u = new URL(p, base);
     return new Promise((resolve, reject) => {
         const data = body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body);
-        const req = http.request({ host: u.hostname, port: u.port, path: u.pathname, method, headers: { ...(data ? { 'Content-Type': 'application/json' } : {}), ...headers } }, (res) => {
+        const req = http.request({ host: u.hostname, port: u.port, path: u.pathname + u.search, method, headers: { ...(data ? { 'Content-Type': 'application/json' } : {}), ...headers } }, (res) => {
             const parts = [];
             res.on('data', (b) => parts.push(b));
             res.on('end', () => { const t = Buffer.concat(parts).toString('utf8'); let j = null; try { j = JSON.parse(t); } catch { /* not JSON */ } resolve({ status: res.statusCode, json: j, text: t, type: res.headers['content-type'] }); });
@@ -210,6 +210,19 @@ check(s2.status === 409 && s2.json.running === s1.json.id && s2.json.id === s1.j
 fakes[0].onProgress({ stage: 'screen', candidatesLeft: 7, runsDone: 3, runsPlanned: 10, secondsPerRun: 2.5, etaSeconds: 9 });
 const g1 = await call(base, 'GET', '/api/search/' + s1.json.id);
 check(g1.json.state === 'running' && g1.json.progress.runsDone === 3 && g1.json.progress.candidatesLeft === 7, 'progress: the optimizer\'s report is served while it runs');
+{   // The live report: each snapshot the optimizer sends is served with a version, only when newer than the caller's `since`.
+    const sid = s1.json.id;
+    check(!('partial' in g1.json) && !('partialVersion' in g1.json), 'live report: before the first snapshot the status carries none');
+    fakes[0].onPartial({ goal: 'profit', steps: [], best: { foods: {}, drinks: {} } });
+    const a = (await call(base, 'GET', '/api/search/' + sid)).json;
+    check(a.partial?.goal === 'profit' && Number.isInteger(a.partialVersion) && a.partialVersion > 0, 'live report: a snapshot is served with its version');
+    const same = (await call(base, 'GET', `/api/search/${sid}?since=${a.partialVersion}`)).json;
+    check(same.state === 'running' && !('partial' in same) && !('partialVersion' in same) && same.progress.runsDone === 3, 'live report: a poll with the current version gets the progress and no report');
+    fakes[0].onPartial({ goal: 'profit', steps: [{ id: 'x' }] });
+    const b = (await call(base, 'GET', `/api/search/${sid}?since=${a.partialVersion}`)).json;
+    check(b.partialVersion > a.partialVersion && b.partial.steps.length === 1, 'live report: a newer snapshot goes out to a caller with the older version');
+    check((await call(base, 'GET', `/api/search/${sid}?since=${b.partialVersion + 100}`)).json.partial === undefined && (await call(base, 'GET', `/api/search/${sid}?since=junk`)).json.partialVersion === b.partialVersion, 'live report: a version ahead of the runner gets none; a since that is not a number reads 0');
+}
 const st = await call(base, 'POST', `/api/search/${s1.json.id}/stop`);
 await sleep(50);
 const g2 = await call(base, 'GET', '/api/search/' + s1.json.id);
@@ -254,7 +267,19 @@ await fake.close();
 
 // ---- (4) A real optimizer run on a generic party ----
 // Beta has no coin: no paid change of Beta's may be screened or bought. Two short stages; 1 or 2 simulated hours.
-const real = R.createRunner({ resultsDir: path.join(tmp, 'real'), distDir: dist, lowPriority: false });
+// The real optimizer is forked as the runner does it; a wrapper keeps every snapshot it sends (fork number, folder, report), in order.
+const snaps = []; let forks = 0;
+const recLaunch = (a, d) => { const h = R.forkOptimizer(a, d), n = ++forks; let cb = null; Object.defineProperty(h, 'onPartial', { get: () => (r) => { snaps.push({ fork: n, dir: d, r }); cb?.(r); }, set: (f) => { cb = f; } }); return h; };
+const real = R.createRunner({ resultsDir: path.join(tmp, 'real'), distDir: dist, launch: recLaunch, lowPriority: false });
+// What only the end has: the snapshots do not carry it.
+const endOnly = ['timing', 'confirmation', 'skills', 'incomplete', 'stoppedBy'];
+const lastSnapIs = (dirName, res) => {
+    const mine = snaps.filter((s) => s.dir === dirName), last = mine.filter((s) => s.fork === mine.at(-1).fork).at(-1)?.r;
+    if (!last) return 'no snapshot';
+    const keys = new Set([...Object.keys(last), ...Object.keys(res)]);
+    for (const k of keys) if (!endOnly.includes(k) && JSON.stringify(last[k]) !== JSON.stringify(res[k])) return 'differs at ' + k;
+    return '';
+};
 const rb = await real.listen(0);
 const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], stages: ['4x2', '4x2'], keep: [4], maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
@@ -281,6 +306,17 @@ if (res) {
     check(res.options.pricesTimestamp === 1700000000 && res.options.pricesSource === 'snapshot' && res.options.prices.endsWith(id + '/' + R.MARKETPLACE_FILE) && existsSync(path.join(dir, R.MARKETPLACE_FILE)), 'result: the request\'s snapshot was used, its timestamp beside options.prices');
     check(res.overBudget.length > 0 && res.overBudget.every((c) => c.player === 'Beta' && c.cost > 0 && c.desc && c.id) && !res.candidateList.some((c) => res.overBudget.some((o) => o.id === c.id)), 'result: Beta\'s priced changes are listed as over budget (id, player, desc, cost), never screened');
     check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('## Priced, over budget, not ranked'), 'result.md: the over-budget list');
+    {   // The live report: the snapshots of the last fork (the resumed one), in the order the optimizer sent them.
+        const mine = snaps.filter((s) => s.dir === dir), lastFork = mine.at(-1)?.fork, seq = mine.filter((s) => s.fork === lastFork).map((s) => s.r);
+        const iPriced = seq.findIndex((r) => r.candidateList && r.basePerUser === undefined), iHalved = seq.findIndex((r) => Number.isFinite(r.basePerUser));
+        check(seq.length >= 2 + res.steps.length && iPriced >= 0 && iHalved > iPriced, 'live report: snapshots arrive in order: candidates priced, then the last halving, then one per step', `${seq.length} snapshots, priced at ${iPriced}, halved at ${iHalved}`);
+        check(seq.every((r, i) => i === 0 || (r.steps.length >= seq[i - 1].steps.length && r.notConfirmed.length >= seq[i - 1].notConfirmed.length)) && seq.slice(0, iHalved + 1).every((r) => r.steps.length === 0) && seq.every((r) => !('timeOnly' in r) && !('timing' in r) && !('confirmation' in r)), 'live report: steps and not-confirmed only grow; no step before the last halving; no timing or confirmation in a snapshot');
+        check(res.steps.every((s, k) => seq.some((r) => r.steps.length === k + 1 && JSON.stringify(r.steps[k]) === JSON.stringify(s))) && seq.every((r) => r.steps.every((s, k) => JSON.stringify(s) === JSON.stringify(res.steps[k]))), 'live report: every step appears the moment it is confirmed, final as it is in the result, and never changes after');
+        const diff = lastSnapIs(dir, res);
+        check(diff === '', 'live report: the last snapshot is the result without the confirmation, timing and skills', diff);
+        check(Object.keys(res).every((k) => k in seq.at(-1) || endOnly.includes(k)), 'live report: the result has no key the last snapshot lacks, except the end-only ones');
+        console.log(`     (live report: ${seq.length} snapshots in the resumed run)`);
+    }
     check(Array.isArray(res.dominated) && res.dominated.length === 0, 'result: the dominated group is present (empty: this search has no market swaps)');
     check(res.candidateList.every((c) => !c.id.startsWith('Beta:') || c.cost <= 0) && res.candidateList.some((c) => c.id.startsWith('Alpha:') && c.cost > 0), 'budget per player: Beta\'s paid changes are never screened, Alpha\'s are');
     check(res.singles.length > 0 && res.singles.every((s) => s.player && Array.isArray(s.ops) && s.ops.length && typeof s.accepted === 'boolean' && Math.abs(s.gainPerUser * 2 - s.gain) < 1e-6 && Math.abs(s.sePerUser * 2 - s.se) < 1e-6), 'rows: player, ops, accepted, gainPerUser and sePerUser (party figure / party size)');
@@ -337,6 +373,16 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
     check(dfills.length > 0 && dfills.every((s) => s.stage === 'drink' && s.hiddenFood === true && s.ops.length > 0 && s.ops.every((o) => o.op === 'drink')), 'Stage D: the drink fillings are rows flagged stage drink, hidden from the report, with drink ops only (no trigger op)');
     check(!ids.some((i) => /foodfill|drinkfill|^Alpha:(food|drink)\d/.test(i)) && singles.filter((s) => !s.stage).every((s) => !/foodfill|drinkfill/.test(s.id)), 'the rest of the search has no food or drink candidates');
     check(!ids.some((i) => /^Alpha:trig:/.test(i) && !fr.best.foods.Alpha.items.some((f) => i.startsWith('Alpha:trig:' + f.item.split('/').pop() + ':')) && !/toxic|entangle/.test(i)), 'the trigger candidates are built on the baseline: food owners are the baseline foods; there are no drink owners');
+    {   // The live report from the foods and drinks on: the foods first, then the drinks, then the priced candidates, then the last halving.
+        const fdir = path.join(tmp, 'real', f1.json.id), seq = snaps.filter((s) => s.dir === fdir).map((s) => s.r);
+        check(seq.length >= 4 && seq[0].best?.foods?.Alpha && !Object.keys(seq[0].best.drinks).length && !seq[0].candidateList && seq[1].best.drinks?.Alpha && !seq[1].candidateList, 'live report (foods): the first snapshot has the foods and no drinks, the second the drinks, neither has the candidates yet', seq.map((r) => Object.keys(r.best.foods).length + '/' + Object.keys(r.best.drinks).length + '/' + !!r.candidateList).join(' '));
+        check(seq[1].best.foods.Alpha && JSON.stringify(seq[1].best.foods.Alpha) === JSON.stringify(seq[0].best.foods.Alpha) && seq[1].baselineOps !== undefined, 'live report (foods): the foods stay as they were when the drinks arrive; the baseline ops are in the snapshot');
+        check(seq.some((r) => r.candidateList && r.basePerUser === undefined) && Number.isFinite(seq.at(-1).basePerUser), 'live report (foods): then the priced candidates, then the last halving');
+        check(['foods', 'drinks'].every((k) => { const e = fr.best[k].Alpha; return e.unchanged ? !('fresh' in e) : (e.fresh && e.fresh.seeds >= 16 && e.fresh.seeds <= 64 && e.fresh.seedFrom === 20001 && e.fresh.accepted === true); }), 'best: a changed filling carries its fresh reading (16 to 64 seeds from 20001, accepted); an unchanged one has none');
+        check((fr.notConfirmed || []).every((n) => ['food', 'drink'].includes(n.kind) && n.step === null && n.fresh && n.fresh.accepted === false), 'notConfirmed: a filling that failed has kind food or drink and no step');
+        const diff = lastSnapIs(fdir, fr);
+        check(diff === '', 'live report (foods): the last snapshot is the result without the confirmation, timing and skills', diff);
+    }
     const b = fr.best, be = (kind) => b[kind].Alpha;
     check(b && Object.keys(b.foods).join() === 'Alpha' && Object.keys(b.drinks).join() === 'Alpha', 'result.best: foods and drinks, one entry per searched player');
     check(be('foods').items.length === 1 && 'trigger' in be('foods').items[0] && (be('foods').items[0].trigger === null || typeof be('foods').items[0].trigger === 'string') && be('drinks').items.length === 1 && !('trigger' in be('drinks').items[0]), 'result.best: items in slot order, a food with its trigger text (or null), a drink without a trigger');

@@ -74,6 +74,11 @@ const bigResult = (() => {
 })();
 let serveBig = false;
 let serveOlder = false;
+// The live report: what the runner would serve as `partial` (with its version) while the search runs; `sinces` is what the window asked with.
+let live = null;
+const sinces = [];
+const foodsOnly = { goal: 'profit', budgets: { 'Player 1': 1000000 }, setups: [], steps: [], singles: [], notConfirmed: [], apart: [], overBudget: [], dominated: [], options: { zone: '/actions/combat/fly', tier: 0 },
+    best: { foods: { 'Player 1': { items: [{ item: '/items/donut', trigger: null }], gain: 120, se: 30, stage: '4x1', fresh: { seeds: 32, seedFrom: 20001, seedTo: 20032, gain: 110, se: 40, gainPerUser: 110, sePerUser: 40, buyerNet: 100, buyerNetSe: 30, accepted: true } } }, drinks: {} } };
 let search = null, received = null, polls = 0;
 const send = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.map': 'application/json' };
@@ -97,7 +102,9 @@ const server = http.createServer((req, res) => {
     if (m && search && m[1] === search.id) {
         if (m[2] && req.method === 'POST') { search.state = search.state === 'running' ? 'stopped' : 'running'; return send(res, 200, { state: search.state, progress: progress() }); }
         if (search.state === 'running' && ++polls >= 3 && !holdRunning) search.state = 'done';
-        return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : {}) });
+        const since = Number(url.searchParams.get('since')) || 0;
+        sinces.push(since);
+        return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : search.state === 'running' && live && live.version > since ? { partial: live.partial, partialVersion: live.version } : {}) });
     }
     if (url.pathname === '/api/results') return send(res, 200, search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : []);
     if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBig ? bigResult : serveOlder ? olderResult : result);
@@ -251,8 +258,19 @@ try {
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
     check('the progress bar has a dark track and a fill of its own in dark mode', await js(`(() => { const p = document.querySelector('#whatIfProgress .whatif-progress'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const t = getComputedStyle(p).backgroundColor, b = getComputedStyle(p.querySelector('.progress-bar')).backgroundColor; return lum(t) < 150 && t !== b && getComputedStyle(p).borderTopWidth !== '0px'; })()`));
     await shot('whatIfModal', 'whatif-progress.png');
+    // The live report: the runner's status carries the latest snapshot while the search runs; the window draws the same report from it.
+    const resultText = () => js(`document.getElementById('whatIfResult').textContent`);
+    check('live: no snapshot yet, no report', (await resultText()).trim() === '');
+    live = { partial: { ...foodsOnly, setups: result.setups }, version: 1 };
+    check('live: the foods alone are drawn as soon as they arrive, with the running mark, no steps heading, no "no steps" message, no totals', await until(`document.getElementById('whatIfResult').textContent.includes('Best foods')`) && await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('Running: the results fill in as the search goes.') && /Player 1: Donut/.test(t) && t.includes('fresh runs:') && !t.includes('Chosen changes, in order') && !t.includes('No change gains beyond') && !t.includes('Confirmed on fresh runs') && !t.includes('Apply'); })()`), (await resultText()).slice(0, 400));
+    check('live: the window asks for what is newer than what it drew', await (async () => { const t0 = Date.now(); while (Date.now() - t0 < 8000 && !sinces.includes(1)) await new Promise((r) => setTimeout(r, 200)); return sinces.includes(1); })() && sinces.every((s) => s === 0 || s === 1));
+    live = { partial: { ...foodsOnly, setups: result.setups, steps: [result.steps[0]], singles: result.singles, basePerUser: result.basePerUser, best: { foods: foodsOnly.best.foods, drinks: result.best.drinks } }, version: 2 };
+    check('live: a newer snapshot adds the step, headed "so far", the drinks too; still the running mark and no totals', await until(`document.getElementById('whatIfResult').textContent.includes('Chosen changes, in order')`) && await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('so far') && t.includes('Magic 1 → 2') && !t.includes('Stamina 1 → 2') && /Player 1: Attack Coffee/.test(t) && t.includes('Running: the results fill in') && !t.includes('Confirmed on fresh runs') && !t.includes('No change gains beyond'); })()`), (await resultText()).slice(0, 600));
+    await shot('whatIfModal', 'whatif-live.png');
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Stop stops it and offers Resume', await until(`document.getElementById('buttonWhatIfStop').textContent === 'Resume'`) && search.state === 'stopped');
+    check('live: a stopped search keeps its report on screen, marked Stopped', await until(`document.getElementById('whatIfResult').textContent.includes('Stopped: this is where the search got to.')`) && !(await resultText()).includes('Running: the results fill in') && (await resultText()).includes('Magic 1 → 2'));
+    live = null;
     holdRunning = false;
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Resume runs it to the end and the result shows', await until(`document.getElementById('whatIfResult').textContent.includes('Apply 1 to 2')`));
