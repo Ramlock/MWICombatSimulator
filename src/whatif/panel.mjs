@@ -25,7 +25,8 @@ export const LEVERS = [
 export const API = {
     version: '/api/version',
     search: '/api/search',
-    status: (id) => '/api/search/' + encodeURIComponent(id),
+    // since: the version of the live report the window has; the runner sends the report so far only when it has a newer one.
+    status: (id, since) => '/api/search/' + encodeURIComponent(id) + (since ? '?since=' + encodeURIComponent(since) : ''),
     stop: (id) => '/api/search/' + encodeURIComponent(id) + '/stop',
     results: '/api/results',
     result: (id) => '/api/results/' + encodeURIComponent(id),
@@ -318,7 +319,7 @@ const paybackTd = (row, goalExp, t) => { const html = buyerPayback(row, goalExp,
 // text of the runner, its game ids named like the trigger descs); a drink never does. A player the search left unchanged shows his
 // current items and "no change". Returns '' for a result without `best` (saved before the foods-first search) or with no player in it.
 const slugOf = (hrid) => String(hrid).split('/').pop();
-export function bestBlock(result, t, names = null) {
+export function bestBlock(result, t, names = null, running = false) {
     const best = result?.best;
     if (!best) return '';
     const lines = (kind, label) => {
@@ -338,13 +339,22 @@ export function bestBlock(result, t, names = null) {
                     party: withinError(e.gainPerUser, e.sePerUser) ? noChange(e.gainPerUser, e.sePerUser, t) : num(e.gainPerUser) + ' ± ' + num(e.sePerUser),
                     buyer: num(e.buyerNet) + ' ± ' + num(e.buyerNetSe) }) + '</span>' + supplyNote({ sharedGainPerUser: e.gainPerUser, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t)
                 : '';
-            return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}${gains}</div>`;
+            // The filling's own fresh reading (the pick check, whatif-runner.md): a second small muted line, like a step's.
+            const f = !e.unchanged ? e.fresh : null;
+            const fresh = f && Number.isFinite(f.gainPerUser) && Number.isFinite(f.sePerUser)
+                ? `<div class="whatif-fresh">${Number.isFinite(f.buyerNet) && Number.isFinite(e.buyerNet)
+                    ? t('result.freshBest', { partyGain: num(f.gainPerUser) + ' ± ' + num(f.sePerUser), buyerGain: num(f.buyerNet) + ' ± ' + num(f.buyerNetSe), seeds: num(f.seeds) })
+                    : t('result.freshBestExp', { partyGain: num(f.gainPerUser) + ' ± ' + num(f.sePerUser), seeds: num(f.seeds) })}</div>`
+                : '';
+            return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}${gains}${fresh}</div>`;
         });
         return `<div class="fw-bold mt-2">${esc(label)}</div>${rows.join('')}`;
     };
     const foods = lines('foods', t('result.bestFoods')), drinks = lines('drinks', t('result.bestDrinks'));
     if (!foods && !drinks) return '';
-    return `<div class="whatif-best">${foods}${drinks}<div class="small text-secondary mt-1">${esc(t('result.bestBaseline'))}</div></div>`;
+    // While the search runs the line waits for both groups: it says everything below is measured on the foods and drinks.
+    const baseline = running && !(foods && drinks) ? '' : `<div class="small text-secondary mt-1">${esc(t('result.bestBaseline'))}</div>`;
+    return `<div class="whatif-best">${foods}${drinks}${baseline}</div>`;
 }
 const colHead = (t) => [
     `<th class="num" title="${esc(t('col.partyGainTip'))}">${esc(t('col.partyGain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`,
@@ -352,9 +362,13 @@ const colHead = (t) => [
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
-export function renderResult(result, t, now = Date.now(), names = null) {
+// `running`: true, or 'stopped' for the last report of a search that stopped or failed: the result is the report so far of a search that is still going (a snapshot of the optimizer, the runner's `partial`): the
+// same report with a "running" mark; what only the end has (the totals) is not there to draw, "so far" follows the steps heading, and
+// the messages that say there is nothing ("no steps", "no change") are not shown, since the rows may simply not have come yet.
+export function renderResult(result, t, now = Date.now(), names = null, running = false) {
     if (!result) return '';
     const L = [];
+    if (running) L.push(`<div class="mb-2 small whatif-running">${esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running'))}</div>`);
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player));
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
@@ -365,10 +379,10 @@ export function renderResult(result, t, now = Date.now(), names = null) {
     const prices = pricesLine(result, t, now);
     if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
     const goalExp = result.goal === 'exp';
-    const bestHtml = bestBlock(result, t, names);
+    const bestHtml = bestBlock(result, t, names, running);
     if (bestHtml) L.push(bestHtml);
-    L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}</div>`);
-    if (!result.steps?.length) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`);
+    if (!running || result.steps?.length) L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
+    if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`); }
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
@@ -401,8 +415,10 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         }
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
-    L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
-    if (!result.singles?.length) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`);
+    const anySingles = (result.singles || []).some((s) => !s.hiddenFood);
+    if (!running || anySingles) L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
+    if (!result.singles?.length) { if (!running) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`); }
+    else if (running && !anySingles) { /* only the foods and drinks fillings are in so far: they are not a table */ }
     else {
         L.push('<table class="table table-sm whatif-table whatif-each"><thead><tr>' +
             [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
@@ -431,9 +447,11 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         const gainText = (g, e) => num(g) + ' ± ' + num(e);
         const item = (a) => {
             const f = a.fresh || {};
+            // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
+            const at = a.kind === 'food' ? t('result.notConfirmedAtFood') : a.kind === 'drink' ? t('result.notConfirmedAtDrink') : t('result.notConfirmedAtStep', { step: num(a.step) });
             const text = Number.isFinite(f.buyerNet) && !goalExp
-                ? t('result.notConfirmedItem', { step: num(a.step), partyGain: gainText(f.gainPerUser, f.sePerUser), buyerGain: gainText(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) })
-                : t('result.notConfirmedItemExp', { step: num(a.step), partyGain: gainText(f.gainPerUser, f.sePerUser), seeds: num(f.seeds) });
+                ? t('result.notConfirmedItem', { at, partyGain: gainText(f.gainPerUser, f.sePerUser), buyerGain: gainText(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) })
+                : t('result.notConfirmedItemExp', { at, partyGain: gainText(f.gainPerUser, f.sePerUser), seeds: num(f.seeds) });
             return `<li>${esc(a.player)}, ${shown(a)}: ${text}</li>`;
         };
         L.push(`<div class="fw-bold mt-3">${esc(t('result.notConfirmed'))} <span class="text-secondary fw-normal small">${esc(t('result.notConfirmedNote', { n }))}</span></div>` +

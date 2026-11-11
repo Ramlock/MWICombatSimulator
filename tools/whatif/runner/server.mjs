@@ -11,7 +11,8 @@
 //                                  levers, players, stages, keep, export?, ...the optimizer's own flags without the
 //                                  dashes }; answer { id }. One search at a time: 409 { error, running } otherwise.
 //                                  The id is a hash of the request, so the same request again resumes its run store.
-//   GET  /api/search/<id>          { state: running|stopped|done|error, progress, error?, result? }
+//   GET  /api/search/<id>[?since=<n>]  { state: running|stopped|done|error, progress, error?, result?, partial?, partialVersion? }; a running
+//                                  search carries its report so far (partial) and its version only when newer than `since`
 //   POST /api/search/<id>/stop     stops it (exit code 3, run store kept); on a stopped search, resumes it
 //   GET  /api/results              finished searches, newest first: [{ id, finished, goal, players }]
 //   GET  /api/results/<id>         one result.json
@@ -111,10 +112,10 @@ export function forkOptimizer(args, outDir) {
     c.stderr.on('data', (b) => { tail = (tail + b).slice(-4000); stamp('err')(b); });
     const handle = {
         pid: c.pid,
-        onProgress: null, onExit: null,
+        onProgress: null, onPartial: null, onExit: null,
         stop: () => { if (c.connected) c.send('stop'); },
     };
-    c.on('message', (m) => { if (m?.type === 'progress') handle.onProgress?.(m.progress); });
+    c.on('message', (m) => { if (m?.type === 'progress') handle.onProgress?.(m.progress); else if (m?.type === 'partial') handle.onPartial?.(m.result); });
     c.on('exit', (code) => { log.end(); handle.onExit?.(code, tail); });
     return handle;
 }
@@ -140,13 +141,16 @@ export function createRunner(opts = {}) {
     const searches = new Map(); // id -> { state, progress, error, handle }
     let running = null;
     let port = null;
+    let partialSeq = 0; // the version of the live report: one counter for the runner, up with every snapshot, so a new search is always newer than what a window saw
 
     const dirOf = (id) => { if (!/^[0-9a-f]{12}$/.test(id)) throw Object.assign(new Error('bad id'), { status: 404 }); return path.join(resultsDir, id); };
     const readJson = (f) => JSON.parse(readFileSync(f, 'utf8'));
-    function status(id) {
+    // `since`: the live report's version the caller has; the running status carries the latest snapshot (`partial`, `partialVersion`) only
+    // when it is newer (the report is big once the each-change-alone table is in it).
+    function status(id, since = 0) {
         const dir = dirOf(id), s = searches.get(id);
         const progress = s?.progress ?? (existsSync(path.join(dir, 'progress.json')) ? readJson(path.join(dir, 'progress.json')) : null);
-        if (s?.state === 'running') return { state: 'running', progress };
+        if (s?.state === 'running') return { state: 'running', progress, ...(s.partial && s.partialVersion > since ? { partial: s.partial, partialVersion: s.partialVersion } : {}) };
         if (existsSync(path.join(dir, 'result.json'))) return { state: 'done', progress, result: readJson(path.join(dir, 'result.json')) };
         if (s?.state === 'error') return { state: 'error', progress, error: s.error };
         if (existsSync(path.join(dir, 'request.json'))) return { state: 'stopped', progress };
@@ -164,6 +168,7 @@ export function createRunner(opts = {}) {
         running = id;
         s.handle = launch(args, dir);
         s.handle.onProgress = (p) => { s.progress = p; };
+        s.handle.onPartial = (r) => { s.partial = r; s.partialVersion = ++partialSeq; };
         s.handle.onExit = (code, tail) => {
             running = null;
             if (code === 0 && existsSync(path.join(dir, 'result.json'))) s.state = 'done';
@@ -217,7 +222,7 @@ export function createRunner(opts = {}) {
                 const r = start(await readBody(req));
                 return send(res, r.status, r.body);
             }
-            if (req.method === 'GET' && (m = /^\/api\/search\/([^/]+)$/.exec(p))) { const s = status(m[1]); return s ? send(res, 200, s) : send(res, 404, { error: 'no such search' }); }
+            if (req.method === 'GET' && (m = /^\/api\/search\/([^/]+)$/.exec(p))) { const s = status(m[1], Number(url.searchParams.get('since')) || 0); return s ? send(res, 200, s) : send(res, 404, { error: 'no such search' }); }
             if (req.method === 'POST' && (m = /^\/api\/search\/([^/]+)\/stop$/.exec(p))) {
                 const s = searches.get(m[1]);
                 // Stop on a stopped search resumes it from its own request (the window's Resume button); the same

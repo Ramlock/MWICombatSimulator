@@ -7,7 +7,9 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const { verdict, checkPick, firstConfirmed, SURE_BLOCK, SURE_MAX } = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
+const { verdict, checkPick, firstConfirmed, confirmFillings, SURE_BLOCK, SURE_MAX } = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
+const { refineTrigger } = await import(pathToFileURL(path.join(root, 'tools/whatif/refine.mjs')).href);
+const { joinTriggerDesc } = await import(pathToFileURL(path.join(root, 'tools/whatif/triggers.mjs')).href);
 const { acceptBoth } = await import(pathToFileURL(path.join(root, 'tools/whatif/buyer.mjs')).href);
 let failed = 0;
 const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL ') + name + (cond ? '' : ' ' + extra)); if (!cond) failed++; };
@@ -68,12 +70,58 @@ check('a stop ends the check: null', await checkPick(async () => null, { z, goal
     check('nothing accepted: an empty choice', (await firstConfirmed([], async () => { throw new Error('no'); })).best === null);
 }
 
+
+// firstConfirmed: onFail is called at once for each failed pick; a check may hand back the refined candidate that is shown and joins.
+{
+    const seen = [];
+    const r = await firstConfirmed([{ id: 'A' }, { id: 'B' }], async (c) => ({ passed: c.id === 'B', fresh: { id: c.id }, cand: { id: c.id + '*' } }), (f) => seen.push(f.cand.id + '/' + f.orig.id));
+    check('firstConfirmed: onFail gets the failed pick (the refined candidate and the original) as it fails; the refined one joins', seen.join() === 'A*/A' && r.best.id === 'B*' && r.orig.id === 'B' && r.failed.length === 1);
+}
+
+// Foods and drinks: each player's chosen filling is confirmed in party order, each against the baseline that holds the earlier players'.
+{
+    const mk = (id, player, ok = true) => ({ id, player, ops: [{ op: 'food', player, id }], est: { accepted: ok } });
+    // Pool in rank order. P1: f1 passes. P2: f2a fails, f2b (next best) passes. P3: both fail: unchanged. P4: nothing accepted.
+    const pool = [mk('f1', 'P1'), mk('f2a', 'P2'), mk('f3a', 'P3'), mk('f2b', 'P2'), mk('f3b', 'P3'), mk('f4', 'P4', false), mk('f2c', 'P2')];
+    const passes = new Set(['f1', 'f2b']), asked = [], failed = [];
+    const r = await confirmFillings(['P1', 'P2', 'P3', 'P4'], pool, [{ op: 'base' }], async (ops, c) => { asked.push(c.id + ':' + ops.map((o) => o.id ?? o.op).join('+')); return { passed: passes.has(c.id), fresh: { who: c.id } }; }, (f) => failed.push(f.cand.id));
+    check('fillings: a filling that passes joins; the next player is checked against a baseline holding it', r.chosen.P1.id === 'f1' && asked[0] === 'f1:base' && asked[1] === 'f2a:base+f1');
+    check('fillings: one that fails is replaced by the player\'s next best (f2b after f2a); the rest of his list is not tried', r.chosen.P2.id === 'f2b' && !asked.some((a) => a.startsWith('f2c')) && asked.includes('f2b:base+f1'));
+    check('fillings: a player none of whose fillings pass is unchanged (no entry); one with nothing accepted is never checked', !('P3' in r.chosen) && !('P4' in r.chosen) && !asked.some((a) => a.startsWith('f4')) && asked.filter((a) => a.startsWith('f3')).length === 2);
+    check('fillings: the failed ones are reported as they fail, in order; the ops of the confirmed ones make the new baseline in party order', failed.join() === 'f2a,f3a,f3b' && JSON.stringify(r.baseOps.map((o) => o.id ?? o.op)) === JSON.stringify(['base', 'f1', 'f2b']) && r.fresh.P2.who === 'f2b');
+    check('fillings: a stop ends the stage: null', await confirmFillings(['P1'], [mk('x', 'P1')], [], async () => null) === null);
+}
+
+// A trigger moved twice: refined before it joins, one row (200 -> 3000), confirmed as one change.
+{
+    // Candidates are { id, desc, ops, est:{accepted} }. The pick is 200 -> 4600. Round 1 offers 4600 -> 3000 (accepted) and 4600 -> 5200 (not);
+    // round 2 (from 3000) offers 3000 -> 3400 (not accepted): the refinement ends.
+    const cand = (id, desc, accepted, score = 1) => ({ id, kind: 'trigger', player: 'P', desc, ops: [{ op: 'trigger', id }], est: { accepted, score } });
+    const first = cand('t0', 'P rain trigger: all_enemies current_hp >= 200 -> 4600', true);
+    const rounds = [[cand('t1', 'P rain trigger: all_enemies current_hp >= 4600 -> 3000', true), cand('t1b', 'P rain trigger: all_enemies current_hp >= 4600 -> 5200', false)], [cand('t2', 'P rain trigger: all_enemies current_hp >= 3000 -> 3400', false)]];
+    const log = []; let round = 0;
+    const out = await refineTrigger(first, {
+        locals: (cur) => { log.push('locals ' + cur.id); return rounds[round++] || []; },
+        judge: async (cur, list) => { log.push('judge ' + cur.id + ' x' + list.length); return list; },
+        rank: (a, b) => b.est.score - a.est.score,
+        join: (cur, next) => ({ ...next, desc: joinTriggerDesc(cur.desc, next.desc), est: undefined }),
+    });
+    check('trigger refined: one candidate, the owner\'s trigger from its value in the chain to its final value', out.desc === 'P rain trigger: all_enemies current_hp >= 200 -> 3000' && out.id === 't1' && out.ops[0].id === 't1', out.desc);
+    check('trigger refined: rounds run until none is accepted (the pick, then 4600, then 3000)', log.join(' | ') === 'locals t0 | judge t0 x2 | locals t1 | judge t1 x1', log.join(' | '));
+    const same = await refineTrigger(first, { locals: () => [], judge: async () => { throw new Error('no runs'); }, rank: () => 0, join: () => { throw new Error('no join'); } });
+    check('trigger refined: nothing to try, or none accepted: the pick as it was', same === first && await refineTrigger(first, { locals: () => [cand('x', 'x', false)], judge: async (c, l) => l, rank: () => 0, join: () => { throw new Error('no join'); } }) === first);
+    check('trigger refined: a stop in the runs ends it: null', await refineTrigger(first, { locals: () => [cand('x', 'x', true)], judge: async () => null, rank: () => 0, join: () => null }) === null);
+}
+
 // How the optimizer wires it.
 const opt = fs.readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check('optimizer: fresh seeds start above the final confirmation\'s block (10001..20000)', /const sureOffset = confirmOffset \+ 10000;/.test(opt) && /sureSeeds = \(k\) => Array\.from\(\{ length: k \}, \(_, i\) => sureOffset \+ i \+ 1\)/.test(opt) && /hi = fresh \? sureOffset : confirmOffset/.test(opt));
 check('optimizer: both arms on the same fresh seeds, tagged sure', /\{ ops: baseOps, seed, h: fin\.h, tag: 'sure' \}, \{ ops: vOps, seed, h: fin\.h, tag: 'sure' \}/.test(opt));
-check('optimizer: the greedy step takes the first confirmed pick; failures go to notConfirmed with their step', /firstConfirmed\(ok, \(c\) => confirmPick\(baseOps, c, fin, step \+ 1\)\)/.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: step \+ 1, fresh \}\)/.test(opt) && /finalists = finalists\.filter\(\(f\) => f !== cand\)/.test(opt));
-check('optimizer: a step carries its fresh reading, the merged step its own', /result\.steps\.push\(\{ \.\.\.row\(best\), fresh: bestFresh,/.test(opt) && /steps\[i\] = \{ \.\.\.row\(cand\), fresh: chk\.fresh,/.test(opt));
+check('optimizer: the greedy step takes the first confirmed pick; failures go to notConfirmed with their step as they fail, and leave the finalists', /firstConfirmed\(ok, checkPickAt, /.test(opt) && /confirmPick\(baseOps, cand, fin, label\)/.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: step \+ 1, fresh \}\)/.test(opt) && /finalists = finalists\.filter\(\(f\) => f !== orig\)/.test(opt));
+check('optimizer: a trigger pick is refined before it is confirmed (refineTrigger), measured as one change against the chain, and nothing merges at the end', /cand = await refineAt\(baseOps, c, fin, visitedFor\(c\)\)/.test(opt) && /cand\.est = estimate\(baseOps, cand, fin/.test(opt) && !/mergeTriggerSteps/.test(opt) && !/if \(best\.kind === 'trigger'\) finalists\.push/.test(opt));
+check('optimizer: foods and drinks are confirmed per player on fresh seeds (confirmFillings); failures go to notConfirmed with kind food or drink, and best carries the fresh reading', /confirmFillings\(players, fpool, baseOps, /.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: null, kind: flag, fresh \}\)/.test(opt) && /bestEntry\(kind, after\.find\(\(s\) => s\.name === p\), chosen\[p\], got\.fresh\[p\]\)/.test(opt) && !/bestPerPlayer/.test(opt));
+check('optimizer: a step carries its fresh reading; result.steps is pushed to in one place', /result\.steps\.push\(\{ \.\.\.row\(best\), fresh: bestFresh,/.test(opt) && (opt.match(/result\.steps\.push\(/g) || []).length === 1);
+check('optimizer: five snapshot points (foods and drinks, candidates priced, last halving, a step, a failed pick), all through publish, one snapshot function', (opt.match(/publish\(result\);/g) || []).length === 5 && /process\.send\(\{ type: 'partial', result: snapshot\(result\) \}\)/.test(opt) && (opt.match(/function snapshot\(/g) || []).length === 1);
 check('optimizer: the progress counts distinct runs once, a cached run done at once, picksPlanned and picksDone in the progress', /sure\.counted\.has\(id\)/.test(opt) && /if \(cache\.get\(id\)\?\.byHours\[r\.h\]\) sure\.done\+\+/.test(opt) && /if \(t\.tag === 'sure'\) sure\.done\+\+/.test(opt) && /progress\.picksPlanned = sure\.planned/.test(opt));
 check('optimizer: the final confirmation block is unchanged (original base, seeds 10001.., tag confirm)', /pick\(\[\], fin\.h, fin\.k \* baseMult, true\), vs = pick\(baseOps, fin\.h, fin\.k, true\)/.test(opt));
 

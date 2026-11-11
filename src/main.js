@@ -4052,7 +4052,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, timer: null, result: null };
+const whatIf = { searchId: null, state: null, timer: null, result: null, resultRunning: false, partialVersion: 0 };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4232,9 +4232,19 @@ function whatIfNames() {
     return whatIfNamesFrom(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'));
 }
 
-function whatIfShowResult(result) {
+// `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
+// running mark. A lists the reader opened (the folds) stays open when one running report replaces another.
+function whatIfShowResult(result, running = false) {
+    const box = document.getElementById('whatIfResult');
+    const open = running && whatIf.resultRunning ? [...box.querySelectorAll('.whatif-more:not([hidden])')].map((e) => e.id) : [];
     whatIf.result = result;
-    document.getElementById('whatIfResult').innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames()) : '';
+    whatIf.resultRunning = running;
+    box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
+    for (const id of open) {
+        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more="${id}"]`);
+        if (body) body.hidden = false;
+        if (toggle) toggle.textContent = toggle.dataset.hide;
+    }
     whatIfShowDiff();
 }
 
@@ -4255,6 +4265,8 @@ function whatIfShowStatus(status) {
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
+    else if (status.state === 'running' && status.partial) { whatIf.partialVersion = status.partialVersion; whatIfShowResult(status.partial, true); }
+    else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done') whatIfLoadList();
 }
@@ -4266,10 +4278,11 @@ function whatIfStopWatching() {
 
 function whatIfWatch(id) {
     whatIf.searchId = id;
+    whatIf.partialVersion = 0; // the report so far is asked for again (the runner sends it only when newer than this)
     whatIfStopWatching();
     const poll = async () => {
         try {
-            const { ok, body } = await whatIfRequest(WHATIF_API.status(id));
+            const { ok, body } = await whatIfRequest(WHATIF_API.status(id, whatIf.partialVersion));
             if (ok) whatIfShowStatus(body);
             else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
         } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
@@ -4384,7 +4397,7 @@ async function initWhatIf() {
             more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
         }
     });
-    i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result); });
+    i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
 }
 // #endregion
 

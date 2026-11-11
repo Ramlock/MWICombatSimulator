@@ -504,5 +504,32 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const keys = ['freshLine', 'freshLegend', 'notConfirmed', 'notConfirmedNote', 'notConfirmedShow', 'notConfirmedHide', 'notConfirmedItem', 'notConfirmedItemExp'];
     check('fresh: the pt and zh strings exist for every new key, differ from en and keep the placeholders', keys.every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales[l].result[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
 }
+// The live report (his go 2026-11-11: the whole report unfolds as the search goes): the same renderer, with a running mark; a partial
+// result with only the foods, then with steps, then the final one. The foods and drinks carry their own fresh line.
+{
+    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const fresh = { seeds: 32, gainPerUser: 11, sePerUser: 3, buyerNet: 40, buyerNetSe: 6, accepted: true };
+    const foods = { Alpha: { items: [{ item: '/items/donut', trigger: null }], gain: 22, se: 6, gainPerUser: 11, sePerUser: 3, buyerNet: 40, buyerNetSe: 6, ownSuppliesPerDay: -29, stage: '8x300', fresh }, Beta: { items: [{ item: '/items/cake', trigger: null }], unchanged: true } };
+    const live0 = { goal: 'profit', budgets: { Alpha: 100 }, setups: [], options: { zone: '/actions/combat/fly', tier: 0 }, best: { foods, drinks: {} }, steps: [], singles: [{ id: 'hf', player: 'Alpha', desc: 'Alpha food', hiddenFood: true }], notConfirmed: [] };
+    const h0 = panel.renderResult(live0, t, undefined, null, true);
+    check('live: the running mark shows, with only the foods the foods group shows and nothing else of the table', h0.includes(locales.en.result.running) && h0.includes(locales.en.result.bestFoods) && !h0.includes(locales.en.result.bestDrinks) && !h0.includes('<table'));
+    check('live: no "no steps" and no "no singles" message and no steps heading while running; the baseline line waits for both groups', !h0.includes(locales.en.result.noSteps) && !h0.includes(locales.en.result.noSingles) && !h0.includes(locales.en.result.steps) && !h0.includes(locales.en.result.singles) && !h0.includes(locales.en.result.bestBaseline));
+    check('live: no totals line while running (the confirmation is not in a snapshot)', !h0.includes('Confirmed on fresh runs'));
+    check('live: the foods line has its own fresh second line (party and buyer, the seeds); an unchanged player has none', plain(h0).includes('Alpha: donut') && /Alpha: donut[^]*fresh runs: party gain 11 ± 3, buyer's gain 40 ± 6, 32 seeds/.test(plain(h0)) && h0.split('whatif-fresh').length === 2);
+    const step = { id: 's', player: 'Alpha', desc: 'Ring one', lastStage: '8x300', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, sharedGainPerUser: 10, sharedSePerUser: 2, buyerNet: 30, buyerNetSe: 5, ownSuppliesPerDay: -20, cost: 100, payback: 3, paybackOwn: 3, costPath: 'market', accepted: true, ops: [], fresh };
+    const live1 = { ...live0, best: { foods, drinks: { Alpha: { items: [{ item: '/items/attack_coffee' }], unchanged: true } } }, steps: [step], singles: [...live0.singles, { ...step, id: 'x', fresh: undefined }] };
+    const h1 = panel.renderResult(live1, t, undefined, null, true);
+    check('live: with steps the heading reads so far, the steps table and the each-change table draw, still no totals and no no-steps message', h1.includes(locales.en.result.steps + ' <span') && plain(h1).includes('· ' + locales.en.result.soFar) && h1.split('<table').length === 3 && !h1.includes('Confirmed on fresh runs') && !h1.includes(locales.en.result.noSteps) && h1.includes(locales.en.result.bestBaseline));
+    const done = panel.renderResult({ ...live1, confirmation: { gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, cost: 100, payback: 3, buyerByPlayer: { Alpha: { gain: 30, se: 5, payback: 3 } } } }, t);
+    check('live: the final report has no running mark and no so far, and the totals', !done.includes(locales.en.result.running) && !done.includes(locales.en.result.soFar) && done.includes('Confirmed on fresh runs'));
+    check('live: a stopped search keeps what it got, marked as stopped', panel.renderResult(live1, t, undefined, null, 'stopped').includes(locales.en.result.stoppedMark) && !panel.renderResult(live1, t, undefined, null, 'stopped').includes(locales.en.result.running));
+    check('live: a finished result with no steps still says so, and an EXP food line shows the party fresh gain only', panel.renderResult({ ...live0, best: undefined }, t).includes(locales.en.result.noSteps) && plain(panel.renderResult({ ...live0, goal: 'exp', best: { foods: { Alpha: { items: [{ item: '/items/donut' }], gain: 5, se: 1, gainPerUser: 5, sePerUser: 1, stage: '8x300', fresh: { seeds: 16, gainPerUser: 4, sePerUser: 1 } } }, drinks: {} } }, t, undefined, null, true)).includes('fresh runs: gain 4 ± 1, 16 seeds'));
+    // Not confirmed: a filling left out says where.
+    const nc = (kind, step) => ({ id: 'n' + kind, player: 'Alpha', desc: 'Alpha ' + kind + ' filling', kind, step, fresh: { seeds: 16, gainPerUser: 1, sePerUser: 2, buyerNet: 3, buyerNetSe: 4, accepted: false } });
+    const h = plain(panel.renderResult({ ...live1, notConfirmed: [nc('food', null), nc('drink', null), { ...nc(undefined, 4), kind: undefined }] }, t));
+    check('not confirmed: a filling is listed as left out in the foods or the drinks, a pick as at its step', h.includes('Alpha, food filling: in the foods, fresh runs: party gain 1 ± 2') && h.includes('Alpha, drink filling: in the drinks, fresh runs') && h.includes('at step 4, fresh runs'));
+    check('live: the pt and zh strings exist for every new key and keep the placeholders', ['running', 'stoppedMark', 'soFar', 'freshBest', 'freshBestExp', 'notConfirmedAtStep', 'notConfirmedAtFood', 'notConfirmedAtDrink', 'notConfirmedItem'].every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).every((ph) => locales[l].result[k].includes(ph)))));
+    check('live: the status URL carries the version the window has, none at 0', panel.API.status('a b', 0) === '/api/search/a%20b' && panel.API.status('x', 7) === '/api/search/x?since=7');
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

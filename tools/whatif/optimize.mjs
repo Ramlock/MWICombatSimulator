@@ -50,8 +50,11 @@
 //   --trigger-cands <json>       the user's own candidates, { "<player>": { "<owner hrid>": [[terms], ...] } };
 //                                they replace the generated ones for that owner
 //   --comdrop 20 --comexp 20 --tier 4 --zone /actions/combat/infernal_abyss
-// Pick check (tools/whatif/sure.mjs): each greedy pick is re-measured on fresh seeds (20001.., 16 per arm, up to 64) against the chain
-// before it joins; one that is not confirmed is left out (result.notConfirmed) and the next best is tried.
+// Pick check (tools/whatif/sure.mjs): each greedy pick, and each player's chosen food and drink filling, is re-measured on fresh seeds
+// (20001.., 16 per arm, up to 64) against the chain (the baseline so far) before it joins; one that is not confirmed is left out
+// (result.notConfirmed) and the next best is tried. A trigger pick is refined first (tools/whatif/refine.mjs), so its row is final.
+// Live report: with an IPC channel the optimizer sends { type: 'partial', result } at five points (after the foods, after the drinks,
+// after the candidates are priced, after the last halving, and after each confirmed step and each failed pick): snapshot().
 // Every run is cached in <out>/runs.jsonl by (resulting setups, options, seed); a rerun with the same args
 // resumes. Results: <out>/result.json and <out>/result.md. Exit code 3 = stopped (by --max-minutes or a stop
 // request), rerun. Progress goes to <out>/progress.json and, when started with an IPC channel (the runner,
@@ -70,7 +73,7 @@ import { DEFAULT_PRICES, buildDtos, root, measureNeed } from './engine.mjs';
 import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
-import { cutPool, bestPerPlayer, dropChainStates } from './pools.mjs';
+import { cutPool, dropChainStates } from './pools.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
@@ -78,7 +81,8 @@ import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { createParts } from './progress.mjs';
-import { SURE_BLOCK, SURE_MAX, checkPick, firstConfirmed } from './sure.mjs';
+import { SURE_BLOCK, SURE_MAX, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
+import { refineTrigger } from './refine.mjs';
 import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 
@@ -297,7 +301,7 @@ function freshRead(baseOps, c, k, h) {
 }
 // Runs the check (sure.mjs: 16 seeds per arm, more while the pick is between z/2 and z errors, up to 64). Returns { passed, fresh },
 // or null when the time limit or a stop ended the runs.
-async function confirmPick(baseOps, c, fin, stepNo) {
+async function confirmPick(baseOps, c, fin, label) {
     return checkPick(async (k) => {
         const seeds = sureSeeds(k), vOps = [...baseOps, ...c.ops];
         const reqs = seeds.flatMap((seed) => [{ ops: baseOps, seed, h: fin.h, tag: 'sure' }, { ops: vOps, seed, h: fin.h, tag: 'sure' }]);
@@ -310,7 +314,7 @@ async function confirmPick(baseOps, c, fin, stepNo) {
         report({ stage: 'confirming picks', candidatesLeft: 0 });
         if (!await ensure(reqs)) return null;
         const fresh = freshRead(baseOps, c, k, fin.h);
-        console.log(`  step ${stepNo} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
+        console.log(`  ${label} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
         return fresh;
     }, { z, goal });
 }
@@ -578,12 +582,12 @@ async function halve(cands, base, label, byPlayer) {
 }
 // One player's entry of result.best: his items in slot order after the stage (a food with the readable text of its trigger, null
 // when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
-function bestEntry(kind, setup, chosen) {
+function bestEntry(kind, setup, chosen, fresh) {
     const slots = (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x) => x?.itemHrid).filter(Boolean);
     const items = slots.map((item) => (kind === 'foods' ? { item, trigger: triggerText(effectiveTriggers(setup, item)) } : { item }));
     if (!chosen) return { items, unchanged: true };
     const e = chosen.est, n = setups0.length;
-    return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), ...(e.own ? { ownSuppliesPerDay: e.own.gain } : {}), stage: e.stage };
+    return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), ...(e.own ? { ownSuppliesPerDay: e.own.gain } : {}), stage: e.stage, ...(fresh ? { fresh } : {}) };
 }
 
 // ---- Search ----
@@ -604,16 +608,25 @@ async function main() {
             const fc = players.flatMap((p) => (kind === 'foods' ? foodStageCands(setupsNow, p) : drinkStageCands(setupsNow, p)));
             const fpool = await halve(fc, baseOps, kind, true);
             if (!fpool) return stop(result);
-            const chosen = bestPerPlayer(fpool, players); // fpool is in rankAcceptedFirst order
-            for (const p of players) if (chosen[p]) baseOps = [...baseOps, ...chosen[p].ops];
-            const after = applyOps(setups0, baseOps);
-            for (const p of players) result.best[kind][p] = bestEntry(kind, after.find((s) => s.name === p), chosen[p]);
+            // Each player's best filling (his first accepted one in rankAcceptedFirst order) is confirmed on fresh seeds, in party order,
+            // against the baseline that already holds the earlier players' confirmed fillings; one that fails is replaced by his next
+            // best, none left leaves him unchanged (confirmFillings in sure.mjs).
             const flag = kind === 'foods' ? 'food' : 'drink';
+            const got = await confirmFillings(players, fpool, baseOps, (ops, c) => confirmPick(ops, c, fin, kind), ({ cand, fresh }) => {
+                result.notConfirmed.push({ ...row(cand), step: null, kind: flag, fresh });
+                console.log(`${kind}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
+            });
+            if (!got) return stop(result);
+            const chosen = got.chosen;
+            baseOps = got.baseOps;
+            const after = applyOps(setups0, baseOps);
+            for (const p of players) result.best[kind][p] = bestEntry(kind, after.find((s) => s.name === p), chosen[p], got.fresh[p]);
             result.singles.push(...fc.map((c) => ({ ...row(c), stage: flag, hiddenFood: true })));
             console.log(`${kind}: ${players.map((p) => `${p} ${chosen[p] ? chosen[p].desc.slice(p.length + 1) : 'unchanged'}`).join('; ')}`);
+            result.baselineOps = baseOps;
+            result.drinkPruning = drinkStats;
+            publish(result); // snapshot 1 (foods) and 2 (drinks)
         }
-        result.baselineOps = baseOps;
-        result.drinkPruning = drinkStats;
     }
     if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(baseOps); }
     const setupsBase = applyOps(setups0, baseOps);
@@ -627,6 +640,7 @@ async function main() {
     cands.sort((a, b) => (b.monotone - a.monotone));
     result.candidates = cands.length;
     result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
+    publish(result); // snapshot 3: the candidates are priced (over-budget list, unknown costs, skipped swaps, the count)
     console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${dominated.length} swaps skipped (no better on any stat)`);
 
     // The rest of the search runs on the baseline (baseOps: the chosen foods and drinks): screen, then halvings, with the free
@@ -639,6 +653,7 @@ async function main() {
     if (!await ensure(req([], fin.h, fin.k * baseMult, 'base'))) return stop(result);
     { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
     result.singles = [...cands.map((c) => row(c)).sort((a, b) => (a.lastStage === b.lastStage ? (b.score - a.score) : (b.stageIndex - a.stageIndex))), ...result.singles];
+    publish(result); // snapshot 4: the last halving is done (each change alone, the base)
 
     // Greedy stacking on the finalists.
     let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
@@ -647,17 +662,53 @@ async function main() {
     // The chain guard (pools.mjs dropChainStates): no candidate may lead back to a state the search has already been in.
     const chain = new Set([keyOf([]), keyOf(baseOps)]);
     const guard = (list) => { const { kept, dropped } = dropChainStates(list, baseOps, keyOf, chain); if (dropped.length) console.log(`  ${dropped.length} candidate(s) lead back to a state already in the chain, dropped: ${dropped.map((c) => c.id).join(', ')}`); return kept; };
+    // The trigger refinement (refine.mjs): the owner's local candidates against the chain with the trigger as it stands, never to a state
+    // the search has been in (the chain) or the refinement has been in.
+    const visitedFor = (c) => new Set([...chain, keyOf([...baseOps, ...c.ops])]);
+    const refineAt = (chainOps, c, fin, visited) => refineTrigger(c, {
+        locals: (cur) => {
+            const at = [...chainOps, ...cur.ops];
+            const all = localCands(applyOps(setups0, at).find((x) => x.name === c.player), c.player, probeStore, c.owner);
+            const { kept, dropped } = dropChainStates(all, at, keyOf, visited);
+            if (dropped.length) console.log(`  ${dropped.length} refinement(s) of ${c.owner.split('/').pop()} lead back to a state already visited, dropped`);
+            return kept;
+        },
+        judge: async (cur, list) => {
+            const at = [...chainOps, ...cur.ops];
+            if (!await ensure([...req(at, fin.h, fin.k * baseMult, 'base'), ...list.flatMap((l) => reqPair(at, [...at, ...l.ops], fin.h, fin.k, 'variant'))])) return null;
+            for (const l of list) l.est = estimate(at, l, fin, fin.k * baseMult);
+            return list;
+        },
+        rank,
+        join: (cur, next) => { visited.add(keyOf([...chainOps, ...next.ops])); return { ...next, desc: joinTriggerDesc(cur.desc, next.desc), est: undefined, history: undefined }; },
+    });
     for (let step = 0; step < maxSteps; step++) {
         const ok = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)).sort(rank); // paid from its own player's coin left
         // The best pick joins only once it is confirmed on fresh seeds against the chain as it is now; one that is not is left out
-        // (result.notConfirmed, never tried again: it leaves the finalists) and the next best is tried. None left ends the chain.
-        const picked = await firstConfirmed(ok, (c) => confirmPick(baseOps, c, fin, step + 1));
-        if (picked === null) return stop(result);
-        for (const { cand, fresh } of picked.failed) {
+        // (result.notConfirmed, never tried again: it leaves the finalists) and the next best is tried. None left ends the chain. A trigger
+        // pick is refined first, so the row that is confirmed and shown is the owner's trigger from its value in the chain to its final one.
+        const label = `step ${step + 1}`;
+        const checkPickAt = async (c) => {
+            let cand = c;
+            if (c.kind === 'trigger') {
+                cand = await refineAt(baseOps, c, fin, visitedFor(c));
+                if (cand === null) return null;
+                if (cand !== c) { // the refined change is measured against the chain as one change (the figures the row shows)
+                    if (!await ensure([...req(baseOps, fin.h, fin.k * baseMult, 'base'), ...reqPair(baseOps, [...baseOps, ...cand.ops], fin.h, fin.k, 'variant')])) return null;
+                    cand.est = estimate(baseOps, cand, fin, fin.k * baseMult);
+                    console.log(`  ${label}: ${c.desc} refined to ${cand.desc}, gain ${fmt(cand.est.gain)} ± ${fmt(cand.est.se)}`);
+                }
+            }
+            const r = await confirmPick(baseOps, cand, fin, label);
+            return r && { ...r, cand };
+        };
+        const picked = await firstConfirmed(ok, checkPickAt, ({ cand, orig, fresh }) => {
             result.notConfirmed.push({ ...row(cand), step: step + 1, fresh });
-            console.log(`step ${step + 1}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
-            finalists = finalists.filter((f) => f !== cand);
-        }
+            console.log(`${label}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
+            finalists = finalists.filter((f) => f !== orig);
+            publish(result); // snapshot 5: a failed pick
+        });
+        if (picked === null) return stop(result);
         if (!picked.best) break;
         const best = picked.best, bestFresh = picked.fresh;
         spent = pay(spent, best);
@@ -665,34 +716,25 @@ async function main() {
         chain.add(keyOf(baseOps));
         result.steps.push({ ...row(best), fresh: bestFresh, kind: best.kind, owner: best.owner, runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
         console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
+        publish(result); // snapshot 5: a confirmed step; the row is final
         // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
         const newBase = req(baseOps, fin.h, fin.k * baseMult, 'base');
         // Re-screen the survivors on the new base, rebuilt from the new setup (a survivor whose change no longer
         // applies drops out). The accepted change's equipment slots get fresh candidates from the new item, as in
         // phase 1; the other groups it touched keep only their survivors, so a loadout step does not re-add dozens.
         const setupsNow = applyOps(setups0, baseOps), touched = new Set(best.groups);
-        const survivors = new Set(finalists.filter((c) => c !== best).map((c) => c.id));
+        const survivors = new Set(finalists.filter((c) => c !== picked.orig).map((c) => c.id));
         finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && affordable(c, budgets, spent) && (
             c.groups.some((g) => touched.has(g)) && c.kind === 'equip' && (best.kind === 'equip' || best.kind === 'owned')
                 ? (c.monotone || !onlyCands || onlyCands.includes(c.id))
                 : c.groups.some((g) => touched.has(g)) && (c.kind === 'trigger' || c.kind === 'food-fill') ? false // stale: built on the owner's old list / old foods
-                    : (survivors.has(c.id) && c.id !== best.id)));
-        // Coordinate-wise rounds (3.5 item 3): the changed owner's terms get local candidates around the new values.
-        if (best.kind === 'trigger') finalists.push(...localCands(setupsNow.find((x) => x.name === best.player), best.player, probeStore, best.owner));
+                    : (survivors.has(c.id) && c.id !== best.id && c.id !== picked.orig.id)));
+        // (The owner's coordinate-wise rounds ran before the pick was confirmed: refineTrigger.)
         finalists = guard(finalists);
         report({ stage: `greedy step ${step + 1}`, candidatesLeft: finalists.length });
         if (!await ensure([...newBase, ...finalists.flatMap((c) => reqPair(baseOps, [...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
         logCandidates(step + 2, finalists);
-    }
-
-    // One trigger, one step: when the greedy rounds moved one owner's trigger more than once (200 -> 4600, later 4600 -> 3000), the
-    // chosen changes show one step for it, 200 -> 3000, at the first one's place, measured as that one step (the end state is the
-    // same: a trigger op carries the owner's whole list). Its figures are measured here, on the state just before that place.
-    {
-        const merged = await mergeTriggerSteps(result, fin);
-        if (merged === null) return stop(result);
-        if (merged) baseOps = [...result.baselineOps, ...result.steps.flatMap((s) => s.ops)];
     }
 
     // One confirmation on fresh seeds (3.3): the original base against the final result (the chosen foods and drinks and every
@@ -726,28 +768,16 @@ function row(c) {
     const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, sharedSeSamePerUser: est.shared.seSame / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
     return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
 }
-// Merges the steps that moved the same owner's trigger (see main). Returns true when it merged, false when there was nothing to
-// merge, null when the time limit stopped the measuring.
-async function mergeTriggerSteps(result, fin) {
-    const steps = result.steps, drop = new Set();
-    for (let i = 0; i < steps.length; i++) {
-        if (drop.has(i) || steps[i].kind !== 'trigger') continue;
-        const later = steps.map((s, j) => (j > i && s.kind === 'trigger' && s.player === steps[i].player && s.owner === steps[i].owner ? j : -1)).filter((j) => j >= 0);
-        if (!later.length) continue;
-        const last = steps[later.at(-1)];
-        const prefix = [...result.baselineOps, ...steps.slice(0, i).filter((_, j) => !drop.has(j)).flatMap((s) => s.ops)];
-        const cand = { id: last.id, kind: 'trigger', owner: last.owner, player: last.player, monotone: false, desc: later.reduce((d, j) => joinTriggerDesc(d, steps[j].desc), steps[i].desc), ops: last.ops, cost: { cost: 0, known: true, path: last.costPath, note: '' } };
-        if (!await ensure([...req(prefix, fin.h, fin.k * baseMult, 'base'), ...reqPair(prefix, [...prefix, ...cand.ops], fin.h, fin.k, 'variant')])) return null;
-        cand.est = estimate(prefix, cand, fin, fin.k * baseMult);
-        const chk = await confirmPick(prefix, cand, fin, i + 1); // the merged step's own fresh reading (the same routine as a pick's)
-        if (chk === null) return null;
-        steps[i] = { ...row(cand), fresh: chk.fresh, kind: 'trigger', owner: last.owner, runningCost: steps[i].runningCost, runningSpend: steps[i].runningSpend };
-        for (const j of later) drop.add(j);
-        console.log(`merged ${later.length + 1} trigger steps of ${last.owner.split('/').pop()} into one: ${cand.desc}, gain ${fmt(cand.est.gain)} ± ${fmt(cand.est.se)}`);
-    }
-    if (!drop.size) return false;
-    result.steps = steps.filter((_, j) => !drop.has(j));
-    return true;
+// The report as it stands (his go 2026-11-11: the whole report unfolds live): one function builds it, the live snapshots and the final
+// result both come from it (the final result is the last snapshot plus the parts only the end has: the confirmation, the skills
+// report, the timing). A copy of the arrays the search still appends to; `timeOnly` is the search's own working list, never reported.
+function snapshot(result) {
+    const { timeOnly, ...rest } = result;
+    return { ...rest, steps: [...result.steps], notConfirmed: [...result.notConfirmed], skippedNoExport: skippedGroup() };
+}
+// Sends the snapshot to the runner over the IPC channel (nothing to do on a command line, where there is none).
+function publish(result) {
+    if (process.connected) process.send({ type: 'partial', result: snapshot(result) });
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -759,8 +789,7 @@ function timing(result) {
 }
 function stop(result) {
     timing(result); result.incomplete = true; result.stoppedBy = stopRequested ? 'stop request' : '--max-minutes';
-    result.skippedNoExport = skippedGroup();
-    writeFileSync(path.join(OUT, 'partial.json'), JSON.stringify(result, null, 1));
+    writeFileSync(path.join(OUT, 'partial.json'), JSON.stringify(snapshot(result), null, 1));
     report({ stage: 'stopped' });
     console.log(`stopped by ${result.stoppedBy}; rerun the same command to resume`);
     process.exit(3);
@@ -775,9 +804,7 @@ function done(result) {
         result.skills = sk.json;
         skillLines = sk.lines;
     }
-    delete result.timeOnly;
-    result.skippedNoExport = skippedGroup();
-    writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(result, null, 1));
+    writeFileSync(path.join(OUT, 'result.json'), JSON.stringify(snapshot(result), null, 1));
     const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
     // The cost path as the report shows it: the note without the upper-bound caveat (the "≤" on the cost carries that).
     const pathMd = (s) => { const note = (s.note || '').replace('; upper bound (XP inside the level unknown)', ''); return s.costPath + (note ? ' (' + note + ')' : ''); };

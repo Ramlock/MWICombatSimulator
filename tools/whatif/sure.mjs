@@ -29,16 +29,39 @@ export async function checkPick(measure, { z, goal, block = SURE_BLOCK, max = SU
     }
 }
 
-// The greedy step's choice: `ok` is the accepted, affordable candidates in rank order; each is checked in turn (`check(c)` returns
-// { passed, fresh } or null) until one passes. Returns { best, fresh, failed: [{ cand, fresh }] }, best null when none passed, or null
-// when a check was stopped.
-export async function firstConfirmed(ok, check) {
+// The choice among ranked candidates: `ok` is the accepted, affordable candidates in rank order; each is checked in turn (`check(c)`
+// returns { passed, fresh } or null, and may add `cand` when what is checked is a refined version of `c`, the one that is shown and
+// joins) until one passes. `onFail({ cand, orig, fresh })` is called at once for each pick that fails. Returns { best, orig, fresh,
+// failed: [{ cand, orig, fresh }] }, best null when none passed, or null when a check was stopped.
+export async function firstConfirmed(ok, check, onFail) {
     const failed = [];
-    for (const cand of ok) {
-        const r = await check(cand);
+    for (const orig of ok) {
+        const r = await check(orig);
         if (r === null) return null;
-        if (r.passed) return { best: cand, fresh: r.fresh, failed };
-        failed.push({ cand, fresh: r.fresh });
+        const cand = r.cand ?? orig;
+        if (r.passed) return { best: cand, orig, fresh: r.fresh, failed };
+        failed.push({ cand, orig, fresh: r.fresh });
+        onFail?.({ cand, orig, fresh: r.fresh });
     }
-    return { best: null, fresh: null, failed };
+    return { best: null, orig: null, fresh: null, failed };
+}
+
+// Foods and drinks (one stage): each player's chosen filling is confirmed like a step's pick, in party order, each against the baseline
+// that already holds the earlier players' confirmed fillings. `pool` is the stage's pool in rank order; a player's candidates are his
+// accepted ones. `check(baseOps, c)` is the pick check ({ passed, fresh } or null on a stop). A filling that fails is passed to
+// `onFail({ cand, fresh })` and the player's next best is tried; none left leaves him unchanged (no entry in `chosen`).
+// Returns { baseOps, chosen: { <player>: cand }, fresh: { <player>: reading } }, or null when a check was stopped.
+export async function confirmFillings(players, pool, baseOps, check, onFail) {
+    const chosen = {}, fresh = {};
+    let ops = baseOps;
+    for (const p of players) {
+        const mine = pool.filter((c) => c.player === p && c.est.accepted);
+        if (!mine.length) continue;
+        const picked = await firstConfirmed(mine, (c) => check(ops, c), onFail);
+        if (picked === null) return null;
+        if (!picked.best) continue;
+        chosen[p] = picked.best; fresh[p] = picked.fresh;
+        ops = [...ops, ...picked.best.ops];
+    }
+    return { baseOps: ops, chosen, fresh };
 }
