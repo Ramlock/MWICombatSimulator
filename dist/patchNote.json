@@ -1,4 +1,15 @@
 {
+    "2026-11-10":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "A chart above the all-zones results: each map is a dot, with XP per hour on one axis and profit per day on the other. Pick Total or one skill's XP, and the party average or one player. The dots joined by the line are the maps no other map beats on both; hover a dot for the map, tier, both figures and deaths per hour, and click it to jump to that map's rows in the table",
+            "Every price lookup (drops, consumables and a chest's contents) now takes the same fallback: the side you chose, else the other side, else the vendor price. With today's market no number changes",
+            "What-if window: Chosen changes and Each change alone show the party's gain and the buyer's own gain, each with its error, then cost, payback days, how it is bought and Apply. The window uses the width of the screen and has no horizontal bar at 1920, 1600 and 1366 wide",
+            "What-if search: foods are searched as whole fillings, one food per type sized to the party's HP and MP need, with one food row per player. A change is accepted when both the party's gain and the buyer's own net are above 0 beyond their errors"
+        ]
+    },
     "2026-11-09":
     {
         "fork": "Ramlock",

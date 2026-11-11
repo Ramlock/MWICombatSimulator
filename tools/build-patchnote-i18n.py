@@ -8,6 +8,12 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = json.load(open(os.path.join(root, 'patchNote.json'), encoding='utf-8'))
 
 ZH = {
+    "2026-11-10": [
+        "全区域结果上方新增图表：每张地图是一个点，一个坐标轴为每小时经验，另一个为每日利润。可选择总经验或某一技能的经验，以及队伍平均或某位玩家。连线上的点是没有其他地图在两项上都胜过的地图；悬停可查看地图、难度、两项数值和每小时死亡次数，点击可跳转到表格中该地图的行",
+        "所有价格查询（掉落、消耗品和宝箱内容物）现在采用相同的回退顺序：所选一侧，否则另一侧，否则商店价格。按当前市场，数值不变",
+        "假设分析窗口：“选定的改动”和“单项改动”显示队伍收益和购买者自己的收益及各自的误差，随后是成本、回本天数、购买方式和应用。窗口使用整个屏幕宽度，在1920、1600和1366宽度下均没有水平滚动条",
+        "假设分析搜索：食物按完整搭配搜索，每种类型一种食物，按队伍的生命值和法力值需求确定，每位玩家一行食物。当队伍收益和购买者自己的净收益都在误差范围之上大于0时，才接受该改动",
+    ],
     "2026-11-09": [
         "为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮",
         "每位玩家的结果中新增内容（位于“法力值耗尽”下方）：“触发条件等待”显示每个技能在已就绪时被其各个触发条件阻止的时间占比，以及因前面的技能法力值耗尽而未轮到它的时间占比（法力值不足的技能会阻止其后的技能）。结果不变",
@@ -172,6 +178,12 @@ EN = [
 ]
 
 PT = [
+    [
+        "Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, com EXP por hora em um eixo e lucro por dia no outro. Escolha o total ou a EXP de uma habilidade, e a média do grupo ou um jogador. Os pontos ligados pela linha são os mapas que nenhum outro mapa supera nos dois; passe o mouse sobre um ponto para ver o mapa, o nível, os dois valores e as mortes por hora, e clique nele para ir às linhas desse mapa na tabela",
+        "Toda busca de preço (drops, consumíveis e o conteúdo de um baú) agora usa o mesmo plano B: o lado escolhido, senão o outro lado, senão o preço de vendedor. Com o mercado de hoje, nenhum número muda",
+        "Janela E se: Alterações escolhidas e Cada alteração isolada mostram o ganho do grupo e o ganho do próprio comprador, cada um com seu erro, depois custo, dias para se pagar, como é comprado e Aplicar. A janela usa a largura da tela e não tem barra horizontal em 1920, 1600 e 1366 de largura",
+        "Busca E se: as comidas são buscadas como combinações completas, uma comida por tipo, dimensionada pela necessidade de HP e MP do grupo, com uma linha de comida por jogador. Uma alteração é aceita quando o ganho do grupo e o líquido do próprio comprador estão acima de 0 além dos seus erros",
+    ],
     [
         "Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se",
         "Novo nos resultados de cada jogador, abaixo de Ficou sem mana: Retido por gatilho mostra, para cada técnica, quanto do tempo cada condição dos seus gatilhos de combate a segurou quando ela estava pronta, e quanto do tempo uma técnica anterior sem mana impediu que ela fosse alcançada (uma técnica sem mana impede as técnicas depois dela). Os resultados não mudam",
