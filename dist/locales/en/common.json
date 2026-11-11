@@ -166,11 +166,11 @@
             },
             "consumables": {
                 "name": "Food and drinks",
-                "desc": "swap, drop or fill each food and drink slot with one sold on the market"
+                "desc": "find the best foods and the best drinks first (every slot of each), then measure everything else on top of them"
             },
             "pairs": {
                 "name": "Food and drink pairs",
-                "desc": "change two food or drink slots together, each to another tier of its type"
+                "desc": "no longer needed: the food and drink search already tries whole combinations of every slot"
             },
             "owned": {
                 "name": "Items you own",
@@ -239,6 +239,10 @@
             "partMoreSteps": "More greedy steps: up to {{n}} more",
             "partConfirmationWaiting": "Confirmation: only if a step is accepted",
             "partScreen": "Screen",
+
+            "partFoods": "Best foods",
+
+            "partDrinks": "Best drinks",
             "partHalving": "Halving {{n}}",
             "partStep": "Greedy step {{n}}",
             "partConfirmation": "Confirmation",
@@ -262,6 +266,14 @@
             "perUserDay": "per user per day",
             "playerLine": "{{player}}: gain {{gain}} ± {{se}} per day, pays back in {{payback}} days",
             "oldSplit": "Saved before the per-player gain lines: run the search again to see them.",
+            "noChange": "no change",
+            "playerLineNoChange": "{{player}}: gain {{gain}} per day, pays back in {{payback}} days",
+            "playerLineFree": "{{player}}: gain {{gain}} ± {{se}} per day, no cost, nothing to pay back",
+            "playerLineFreeNoChange": "{{player}}: gain {{gain}} per day, no cost, nothing to pay back",
+            "noCost": "no cost, nothing to pay back",
+            "bestFoods": "Best foods",
+            "bestDrinks": "Best drinks",
+            "bestBaseline": "Everything below is measured on top of these foods and drinks.",
             "singles": "Each change alone",
             "singlesNote": "(against the setup the search started from; grey = not a clear gain for both the party and the buyer)",
             "noSingles": "No changes were measured.",
@@ -284,7 +296,7 @@
             "player": "Player",
             "change": "Change",
             "partyGain": "Party gain per player/day",
-            "partyGainTip": "How much more the average player makes per day with this change, after everyone's food and drink are paid.",
+            "partyGainTip": "How much more the group's shared loot is worth per day per player with this change, before anyone's own food and drink.",
             "buyerGain": "Buyer's gain per day",
             "buyerGainTip": "How much more the player who pays for this change makes per day, after their own food and drink are paid. Payback is the cost divided by this.",
             "se": "± error",

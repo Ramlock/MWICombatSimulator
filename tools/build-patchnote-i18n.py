@@ -13,6 +13,7 @@ ZH = {
         "所有价格查询（掉落、消耗品和宝箱内容物）现在采用相同的回退顺序：所选一侧，否则另一侧，否则商店价格。按当前市场，数值不变",
         "假设分析窗口：“选定的改动”和“单项改动”显示队伍收益和购买者自己的收益及各自的误差，随后是成本、回本天数、购买方式和应用。窗口使用整个屏幕宽度，在1920、1600和1366宽度下均没有水平滚动条",
         "假设分析搜索：食物按完整搭配搜索，每种类型一种食物，按队伍的生命值和法力值需求确定，每位玩家一行食物。当队伍收益和购买者自己的净收益都在误差范围之上大于0时，才接受该改动",
+        "假设分析搜索：先确定食物和饮品，其余内容在此基础上搜索。窗口在选定的改动上方显示最佳食物和最佳饮品；每项改动的收益是在相同的模拟运行上与基准比较得出的；应用时会先放入这些食物和饮品",
     ],
     "2026-11-09": [
         "为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮",
@@ -183,6 +184,7 @@ PT = [
         "Toda busca de preço (drops, consumíveis e o conteúdo de um baú) agora usa o mesmo plano B: o lado escolhido, senão o outro lado, senão o preço de vendedor. Com o mercado de hoje, nenhum número muda",
         "Janela E se: Alterações escolhidas e Cada alteração isolada mostram o ganho do grupo e o ganho do próprio comprador, cada um com seu erro, depois custo, dias para se pagar, como é comprado e Aplicar. A janela usa a largura da tela e não tem barra horizontal em 1920, 1600 e 1366 de largura",
         "Busca E se: as comidas são buscadas como combinações completas, uma comida por tipo, dimensionada pela necessidade de HP e MP do grupo, com uma linha de comida por jogador. Uma alteração é aceita quando o ganho do grupo e o líquido do próprio comprador estão acima de 0 além dos seus erros",
+        "Busca E se: comidas e bebidas são decididas primeiro e todo o resto é buscado em cima delas. A janela mostra Melhores comidas e Melhores bebidas acima das alterações escolhidas, o ganho de cada alteração é medido contra a base nas mesmas execuções, e Aplicar coloca essas comidas e bebidas primeiro",
     ],
     [
         "Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se",

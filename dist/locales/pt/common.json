@@ -166,11 +166,11 @@
             },
             "consumables": {
                 "name": "Comidas e bebidas",
-                "desc": "trocar, tirar ou preencher cada slot de comida e bebida com um item vendido no mercado"
+                "desc": "achar primeiro as melhores comidas e as melhores bebidas (todos os espaços de cada), e medir todo o resto em cima delas"
             },
             "pairs": {
                 "name": "Pares de comidas e bebidas",
-                "desc": "alterar dois espaços de comida ou bebida juntos, cada um para outro nível do seu tipo"
+                "desc": "não é mais preciso: a busca de comidas e bebidas já testa combinações inteiras de todos os espaços"
             },
             "owned": {
                 "name": "Itens que você tem",
@@ -239,6 +239,8 @@
             "partMoreSteps": "Mais passos gulosos: até {{n}} a mais",
             "partConfirmationWaiting": "Confirmação: só se um passo for aceito",
             "partScreen": "Triagem",
+            "partFoods": "Melhores comidas",
+            "partDrinks": "Melhores bebidas",
             "partHalving": "Corte {{n}}",
             "partStep": "Passo guloso {{n}}",
             "partConfirmation": "Confirmação",
@@ -262,6 +264,14 @@
             "perUserDay": "por usuário por dia",
             "playerLine": "{{player}}: ganho {{gain}} ± {{se}} por dia, retorno em {{payback}} dias",
             "oldSplit": "Salvo antes das linhas de ganho por jogador: execute a busca de novo para vê-las.",
+            "noChange": "sem alteração",
+            "playerLineNoChange": "{{player}}: ganho {{gain}} por dia, retorno em {{payback}} dias",
+            "playerLineFree": "{{player}}: ganho {{gain}} ± {{se}} por dia, sem custo, nada a recuperar",
+            "playerLineFreeNoChange": "{{player}}: ganho {{gain}} por dia, sem custo, nada a recuperar",
+            "noCost": "sem custo, nada a recuperar",
+            "bestFoods": "Melhores comidas",
+            "bestDrinks": "Melhores bebidas",
+            "bestBaseline": "Tudo abaixo é medido em cima dessas comidas e bebidas.",
             "singles": "Cada alteração sozinha",
             "singlesNote": "(contra o setup de onde a busca partiu; cinza = ganho não claro para o grupo e para o comprador)",
             "noSingles": "Nenhuma mudança foi medida.",
@@ -284,7 +294,7 @@
             "player": "Jogador",
             "change": "Alterar",
             "partyGain": "Ganho do grupo por jogador/dia",
-            "partyGainTip": "Quanto a mais o jogador médio ganha por dia com esta alteração, depois de pagas a comida e a bebida de todos.",
+            "partyGainTip": "Quanto a mais o loot compartilhado do grupo vale por dia por jogador com esta alteração, antes da comida e da bebida de cada um.",
             "buyerGain": "Ganho do comprador por dia",
             "buyerGainTip": "Quanto a mais ganha por dia o jogador que paga esta alteração, depois de paga a comida e a bebida dele. O retorno é o custo dividido por este valor.",
             "se": "± erro",
