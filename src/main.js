@@ -15,7 +15,7 @@ import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
-import { cellValue, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers } from "./numberFormat.js";
+import { cellValue, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers, alignNumberColumns } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -667,6 +667,12 @@ function updateCombatStatsUI() {
     for (const [stat, value] of Object.entries(getCombatStatsPanelValues(unit.combatDetails))) {
         document.getElementById("combatStat_" + stat).innerHTML = value;
     }
+    alignNumbers();
+}
+
+// Lines the numbers of every column up (one number of decimals per column, src/numberFormat.js); run after a table or list renders.
+function alignNumbers() {
+    alignNumberColumns(document);
 }
 
 // #endregion
@@ -1487,7 +1493,8 @@ function showSimulationResult(simResult) {
     window.noRngProfit = window.noRngRevenue - window.expenses;
     setNumberText(document.getElementById('noRngProfitSpan'), window.noRngProfit);
     setNumberText(document.getElementById('noRngProfitPreview'), window.noRngProfit);
-    
+    alignNumbers();
+
     // 显示战斗图表
     if (document.getElementById('hpMpVisualizationToggle').checked) {
         renderCombatCharts(simResult);
@@ -2098,7 +2105,7 @@ function updateAllSimsModal(data) {
 
         tableBody.appendChild(row);
     });
-
+    alignNumbers();
 }
 
 let currentSortColumn = null;
@@ -4245,6 +4252,7 @@ function whatIfShowResult(result, running = false) {
         if (body) body.hidden = false;
         if (toggle) toggle.textContent = toggle.dataset.hide;
     }
+    alignNumbers();
     whatIfShowDiff();
 }
 
@@ -4261,6 +4269,7 @@ function whatIfShowDiff() {
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     document.getElementById('whatIfProgress').innerHTML = whatIfRenderProgress(status, whatIfT);
+    alignNumbers();
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
@@ -5095,6 +5104,7 @@ document.addEventListener("input", (e) => {
         window.noRngProfit = window.noRngRevenue - window.expenses;
         setNumberText(document.getElementById('noRngProfitSpan'), window.noRngProfit);
         setNumberText(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+        alignNumbers();
     }
 });
 
