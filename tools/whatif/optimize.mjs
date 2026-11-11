@@ -119,7 +119,7 @@ const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comex
 const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
 const combatStyleDetailMap = await json('combatStyleDetailMap.json');
 const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
-const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : [x.trim()])));
+const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS.filter((l) => l !== 'abilitylevels' && l !== 'books') : [x.trim()])));
 for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
 // --export: the old single character export (an object with its `name`), or a map { "<player name>": <that player's export> }.
 // Levers that need a player's export never block a search: that player is skipped by the lever (result.skippedNoExport).

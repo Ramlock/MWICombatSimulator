@@ -40,7 +40,7 @@ check('request: the export map rides along as sent', JSON.stringify(panel.search
 check('paste: an object with an inventory or learned abilities is a character export', panel.parseExport(JSON.stringify(exA)).ok && panel.parseExport('{"learnedAbilities":[]}').ok && panel.parseExport('{"inventory":[]}').ok);
 check('paste: anything else is not', ['', 'hello', '[]', '{}', '{"name":"x"}', '{"inventory":3}', 'null', '5'].every((x) => !panel.parseExport(x).ok));
 check('status: kept shows the export\'s own name', panel.exportStatus({ kept: exA, text: '' }, ['owned'], t) === 'kept (Alpha)');
-check('status: none names the ticked levers that need it, in the window\'s names', panel.exportStatus({ kept: null, text: '' }, ['equip', 'owned', 'books', 'abilitylevels'], t) === 'no export: skipped by Items you own, New abilities');
+check('status: none names the ticked levers that need it, in the window\'s names', panel.exportStatus({ kept: null, text: '' }, ['equip', 'owned', 'books', 'abilitylevels'], t) === 'no export: skipped by Items you own');
 check('status: none with no such lever ticked has nothing extra', panel.exportStatus({ kept: null, text: '' }, ['equip', 'abilitylevels'], t) === 'no export');
 check('status: a bad paste says so, even over a kept export', panel.exportStatus({ kept: exA, text: 'nope' }, [], t) === 'not a character export: not kept');
 check('status: one key per player name', panel.exportKey('Alpha') !== panel.exportKey('Beta') && panel.exportKey('Alpha').includes('Alpha'));

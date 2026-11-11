@@ -8,7 +8,8 @@ import { numberHtml, formatNumber } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
 
 // The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
-// Labyrinth are not levers. `def` = checked by default (the optimizer's own default is equip only).
+// Labyrinth are not levers. Books (ability levels, new abilities) are left out until the long-term model can say what
+// waiting for the XP is worth (the optimizer keeps both levers, see tools/whatif/levers/houses.mjs). `def` = checked by default (the optimizer's own default is equip only).
 export const LEVERS = [
     { id: 'equip', def: true },
     { id: 'consumables' },
@@ -18,8 +19,6 @@ export const LEVERS = [
     { id: 'order' },
     { id: 'triggers' },
     { id: 'houses' },
-    { id: 'abilitylevels' },
-    { id: 'books' },
     { id: 'skills' },
 ];
 
@@ -70,7 +69,7 @@ export function searchBody({ slots, goal, budgets, levers, zone, tier, marketpla
 // The character export (the userscript's "Copy character export"): a JSON object with an inventory or a learned-ability list.
 // The levers that skip a player with none (the optimizer's skippedNoExport). Ability levels are not among them: without
 // the export they keep their labelled upper-bound cost.
-export const EXPORT_LEVERS = ['owned', 'abilities', 'books'];
+export const EXPORT_LEVERS = ['owned', 'abilities'];
 export const exportKey = (name) => 'whatIfExport:' + name;
 export function parseExport(text) {
     try {
