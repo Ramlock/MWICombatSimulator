@@ -304,7 +304,7 @@
             "overPaybackHide": "隐藏这 {{n}} 项回本太慢的改动",
             "overPaybackDays": "{{days}} 天回本",
             "overPaybackNever": "没有可回本的收益",
-            "notConfirmed": "新种子下未能确认",
+            "notConfirmed": "未能确认",
             "notConfirmedNote": "（{{n}} 项未列入所选改动：新的模拟没有确认它们）",
             "notConfirmedShow": "显示这 {{n}} 项未确认",
             "notConfirmedHide": "隐藏这 {{n}} 项未确认",

@@ -305,7 +305,7 @@
             "overPaybackHide": "Hide the {{n}} that pay back too slowly",
             "overPaybackDays": "pays back in {{days}} days",
             "overPaybackNever": "no gain to pay it back",
-            "notConfirmed": "Not confirmed on fresh seeds",
+            "notConfirmed": "Not confirmed",
             "notConfirmedNote": "({{n}} left out of the chosen changes: the fresh runs did not confirm them)",
             "notConfirmedShow": "Show the {{n}} not confirmed",
             "notConfirmedHide": "Hide the {{n}} not confirmed",

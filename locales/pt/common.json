@@ -303,7 +303,7 @@
             "overPaybackHide": "Ocultar as {{n}} de retorno lento demais",
             "overPaybackDays": "se paga em {{days}} dias",
             "overPaybackNever": "sem ganho para se pagar",
-            "notConfirmed": "Não confirmadas em sementes novas",
+            "notConfirmed": "Não confirmadas",
             "notConfirmedNote": "({{n}} fora das mudanças escolhidas: as execuções novas não as confirmaram)",
             "notConfirmedShow": "Mostrar as {{n}} não confirmadas",
             "notConfirmedHide": "Ocultar as {{n}} não confirmadas",
