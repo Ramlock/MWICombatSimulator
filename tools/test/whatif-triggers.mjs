@@ -135,5 +135,14 @@ check(T.effectiveTriggers({ triggerMap: {} }, '/items/star_fruit_gummy')[0].cond
     check(dropChainStates([fresh], [], keyOf, chain).kept.length === 1 && dropChainStates([{ id: 'orig', ops: [opA] }], [], keyOf, chain).dropped.length === 1, 'a state not yet in the chain is kept; the original base is in the chain');
 }
 
+// ---- (4) One trigger, one step: the merged text of a trigger moved twice ----
+{
+    const a = 'Player 3 rain_of_arrows trigger: all_enemies current_hp >= 200 -> 4600', b = 'Player 3 rain_of_arrows trigger: all_enemies current_hp >= 4600 -> 3000';
+    check(T.joinTriggerDesc(a, b) === 'Player 3 rain_of_arrows trigger: all_enemies current_hp >= 200 -> 3000', 'merged trigger text: 200 -> 4600 then 4600 -> 3000 reads 200 -> 3000');
+    check(T.joinTriggerDesc(T.joinTriggerDesc(a, b), 'Player 3 rain_of_arrows trigger: all_enemies current_hp >= 3000 -> 2500') === 'Player 3 rain_of_arrows trigger: all_enemies current_hp >= 200 -> 2500', 'a third move folds in the same way');
+    const other = 'Player 3 rain_of_arrows trigger: add all_enemies number_of_active_units >= 2';
+    check(T.joinTriggerDesc(a, other) === a + '; then ' + other, 'texts that do not chain keep both, joined with "then"');
+}
+
 console.log(fails ? `${fails} failed` : 'all passed');
 process.exit(fails ? 1 : 0);

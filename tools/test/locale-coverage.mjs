@@ -91,6 +91,7 @@ const notTheGameWord = {
     'whatIf.result.playerLineFree:back': '"nothing to pay back" is the verb phrase (nada a recuperar), not the Back equipment slot (Costas)',
     'whatIf.result.playerLineFreeNoChange:back': '"nothing to pay back" is the verb phrase (nada a recuperar), not the Back equipment slot (Costas)',
     'whatIf.result.noCost:back': '"nothing to pay back" is the verb phrase (nada a recuperar), not the Back equipment slot (Costas)',
+    'whatIf.result.gainLegend:change': '"a mudança" is the noun (a change in the loot), not the verb Alterar of the game',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;

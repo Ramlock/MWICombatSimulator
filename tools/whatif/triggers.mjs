@@ -189,3 +189,14 @@ export function mergeProbes(stores) {
     }
     return out;
 }
+
+// The text of a merged trigger step: "A trigger: term 200 -> 4600" then "A trigger: term 4600 -> 3000" read "A trigger: term 200 -> 3000".
+export const joinTriggerDesc = (a, b) => {
+    const split = (d) => { const m = /^(.*? trigger: )(.*) -> (.+)$/.exec(d); return m && { head: m[1], from: m[2], to: m[3] }; };
+    const A = split(a), B = split(b);
+    if (A && B && A.head === B.head) {
+        const fa = /^(.*) (\S+)$/.exec(A.from), fb = /^(.*) (\S+)$/.exec(B.from);
+        if ((fa && fb && fa[1] === fb[1] && fb[2] === A.to) || B.from === A.to) return `${A.head}${A.from} -> ${B.to}`;
+    }
+    return `${a}; then ${b}`;
+};

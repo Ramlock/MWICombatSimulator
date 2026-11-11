@@ -43,7 +43,7 @@ const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
 check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /finalists = guard\(finalists\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
-check((opt.match(/reqPair\(/g) || []).length === 2 && /bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
+check((opt.match(/reqPair\(/g) || []).length === 3 &&/bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
 
 // ---- (1a) The cut between stages and the per-player choice (tools/whatif/pools.mjs) ----
 {

@@ -159,7 +159,7 @@ const result = {
     const exp = panel.renderResult({ ...full, goal: 'exp' }, t), expRow = rowsOf(tablesOf(exp)[0])[0];
     check('cells: on the EXP goal the buyer cells are dashes and the party pair shows', expRow[3] === '1500' && expRow[4] === '± 300' && expRow[5] === '—' && expRow[6] === '—' && expRow[7] === '1000000' && expRow[8] === '333.3', JSON.stringify(expRow));
     const conf = html.slice(html.indexOf('Confirmed on fresh runs'), html.indexOf(locales.en.result.singles));
-    check('confirmation: the first line shows the party gain ± error per user per day and the cost, no party payback beside the player lines', plain(conf.split('</div>')[0]) === 'Confirmed on fresh runs: 2900 ± 450 per user per day, Cost ≤ 1600000', plain(conf.split('</div>')[0]));
+    check('confirmation: the first line shows the party gain ± error per user per day and the cost, no party payback beside the player lines', plain(conf.split('</div>')[0]) === "Confirmed on fresh runs, party gain (the shared loot, before anyone's food and drink): 2900 ± 450 per user per day, Cost ≤ 1600000", plain(conf.split('</div>')[0]));
     check('confirmation: one line per player with gain ± error and payback, a dash for none, same font size as the line above', plain(conf.split('</div>')[1]) === 'Alpha: gain 1100 ± 80 per day, pays back in ≤ 12.5 days' && plain(conf.split('</div>')[2]) === 'Beta: gain 600 ± 90 per day, pays back in — days' && conf.split('</div>').slice(1, 3).every((d) => d.startsWith('<div class="mb-1">')) && !/\bsmall\b/.test(conf), conf);
     const zero = JSON.parse(JSON.stringify(full));
     Object.assign(zero.confirmation, { cost: 0, buyerByPlayer: { Alpha: { gain: 5, se: 1, payback: 0 }, Beta: { gain: 6, se: 1, payback: 31.5 } } });
@@ -173,6 +173,20 @@ const result = {
     check('confirmation: an older result (no buyerByPlayer) keeps its party payback and shows the run-again line, small', old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && old.includes('<div class="mb-1 small whatif-dim">') && !old.includes('pays back in'));
     check('strings: the new keys exist in en, pt, zh; the removed ones are gone from all three', ['partyGain', 'partyGainTip', 'buyerGain', 'buyerGainTip'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].col[k] === 'string' && locales[l].col[k] !== '')) && ['en', 'pt', 'zh'].every((l) => typeof locales[l].result.playerLine === 'string' && ['{{player}}', '{{gain}}', '{{se}}', '{{payback}}'].every((p) => locales[l].result.playerLine.includes(p)) &&
         ['gain', 'ownSupplies', 'ownSuppliesTip', 'spent', 'stage'].every((k) => !(k in locales[l].col)) && ['ownLine', 'budgets', 'helpsParty', 'helpsPartyHint'].every((k) => !(k in locales[l].result))) && locales.pt.col.partyGain !== locales.en.col.partyGain && locales.pt.result.playerLine !== locales.en.result.playerLine);
+    // The two gain figures are explained on screen: a legend under the steps, the confirmation named as the party gain, each player's
+    // line split into his loot share and the food and drink he saved; a skill level (time only) has no Apply button.
+    {
+        const rs = JSON.parse(JSON.stringify(full));
+        Object.assign(rs.confirmation, { sharedGainPerUser: 2900, ownSuppliesByPlayer: { Alpha: -1200, Beta: 300 } });
+        rs.singles.push({ id: 'sk', player: 'Alpha', desc: 'Alpha ranged 153 -> 155', lastStage: '4x50', gain: 10, se: 1, gainPerUser: 5, sePerUser: 1, cost: 0, payback: null, costPath: 'time (levelled by combat; days in the skill-level table)', accepted: true, timeOnly: true, ops: [] });
+        const h2 = panel.renderResult(rs, t), lines = h2.slice(h2.indexOf('Confirmed on fresh runs')).split('</div>').map(plain);
+        check('legend: the steps table is followed by the line saying what party gain and the buyer gain are', h2.includes(locales.en.result.gainLegend) && h2.indexOf(locales.en.result.gainLegend) > h2.indexOf('</table>') && h2.indexOf(locales.en.result.gainLegend) < h2.indexOf('Confirmed on fresh runs'));
+        check('confirmation: a player line adds the loot share and the food and drink saved (or bought more)', lines.some((l) => l.includes('Alpha: gain 1100 ± 80 per day, pays back in ≤ 12.5 days (2900 loot share + 1200 food and drink saved)')) && lines.some((l) => l.includes('Beta: gain 600 ± 90') && l.includes('(2900 loot share - 300 more food and drink bought)')), lines.join('|'));
+        check('confirmation: an older result without the split fields shows no split note', !plain(panel.renderResult(full, t)).includes('loot share'));
+        const skillIdx = rs.singles.length - 1;
+        check('singles: a time-only row (a skill level) has no Apply button, the others keep theirs', !h2.includes(`data-whatif-apply="single:${skillIdx}"`) && h2.includes('data-whatif-apply="single:0"'));
+        check('strings: the new keys exist in en, pt, zh', ['confirmedParty', 'gainLegend', 'playerSplitSaved', 'playerSplitMore'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && ['{{loot}}', '{{amount}}'].every((p) => ['en', 'pt', 'zh'].every((l) => locales[l].result.playerSplitSaved.includes(p) && locales[l].result.playerSplitMore.includes(p))));
+    }
 }
 {
     check('opsFor: steps 1..n in order', JSON.stringify(panel.opsFor(result, 'steps:2')) === JSON.stringify([...result.steps[0].ops, ...result.steps[1].ops]));
@@ -430,7 +444,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const negRow = cellsOf('neg');
     check('no change: a negative within 1 error shows the words too (Each change alone)', negRow[2].html === nc && /title="[^"]*-[^"]*"/.test(negRow[2].attrs));
     check('no change: 288 against 242 is beyond 1 error and shows the number', cellsOf('big')[2].html.includes('data-num="288"'));
-    check('no change: the confirmation line shows the words, titled; the per-player lines too, and a clear one keeps its numbers', /Confirmed on fresh runs: <b><span title="[^"]*">no change<\/span><\/b>/.test(html) && /Alpha: gain <span title="[^"]*">no change<\/span> per day/.test(html) && /Beta: gain <span data-num="600"/.test(html));
+    check('no change: the confirmation line shows the words, titled; the per-player lines too, and a clear one keeps its numbers', /Confirmed on fresh runs, party gain \(the shared loot, before anyone's food and drink\): <b><span title="[^"]*">no change<\/span><\/b>/.test(html) && /Alpha: gain <span title="[^"]*">no change<\/span> per day/.test(html) && /Beta: gain <span data-num="600"/.test(html));
 }
 // ---- Best foods and drinks block (result.best), the baseline line and the cost-0 wording ----
 {

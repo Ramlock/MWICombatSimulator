@@ -271,6 +271,13 @@ export function localizeDesc(desc, names, players = [], dropPlayer = null) {
     return head + swap(rest, ITEMS_ETC, names);
 }
 
+// The split of a player's confirmed gain: his share of the party's loot gain plus the food and drink he saved (or spent more on).
+// `c.ownSuppliesByPlayer[p]` is the change in his own supplies spend (below 0 = saved); an older result has neither field: no note.
+const supplyNote = (c, p, t) => {
+    const loot = c?.sharedGainPerUser, own = c?.ownSuppliesByPlayer?.[p];
+    if (!Number.isFinite(loot) || !Number.isFinite(own)) return '';
+    return ` <span class="whatif-dim">(${t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: num(loot), amount: num(Math.abs(own)) })})</span>`;
+};
 // A cost cell: "≤" when the cost is only an upper bound.
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
 // In the confirmation lines, a payback that is not a number above 0 (a saved 0 means nothing was bought) is missing.
@@ -290,6 +297,8 @@ const pathCell = (s) => {
     const note = String(s.note || '').replace('; upper bound (XP inside the level unknown)', '');
     return `<td class="wrap">${esc(s.costPath)}${note ? ' (' + esc(note) + ')' : ''}</td>`;
 };
+// A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
+const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath || ''));
 const buyerPayback = (row, goalExp, t) => (goalExp || !hasSplit(row) ? paybackCell(row, t) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound, cost: row.cost }, t));
 // The Payback cell: the words of a free change (class whatif-free) may wrap, so a narrow window gives the room to the Change column.
 const paybackTd = (row, goalExp, t) => { const html = buyerPayback(row, goalExp, t); return `<td class="num${html === esc(t('result.noCost')) ? ' whatif-free' : ''}">${html}</td>`; };
@@ -354,13 +363,14 @@ export function renderResult(result, t, now = Date.now(), names = null) {
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
+        if (!goalExp) L.push(`<div class="small whatif-dim mb-2">${esc(t('result.gainLegend'))}</div>`);
     }
     const c = result.confirmation;
     if (c) {
         // With the per-player lines the party payback is dropped (each line has its own buyer's payback); an older result keeps it.
         const perPlayer = !goalExp && !!c.buyerByPlayer;
         const bound = (result.steps || []).some(upper) ? 'upper' : undefined;
-        L.push(`<div class="mb-2">${esc(t('result.confirmed'))}: <b>${withinError(c.gainPerUser, c.sePerUser) ? noChange(c.gainPerUser, c.sePerUser, t) : num(c.gainPerUser) + ' ± ' + num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+        L.push(`<div class="mb-2">${esc(t(goalExp ? 'result.confirmed' : 'result.confirmedParty'))}: <b>${withinError(c.gainPerUser, c.sePerUser) ? noChange(c.gainPerUser, c.sePerUser, t) : num(c.gainPerUser) + ' ± ' + num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
             `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}` +
             (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: bound, cost: c.cost }, t)}`) + '</div>');
         if (perPlayer) for (const [p, b] of Object.entries(c.buyerByPlayer)) {
@@ -370,7 +380,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
             const line = free ? t(flat ? 'result.playerLineFreeNoChange' : 'result.playerLineFree', { player: esc(p), gain: flat ? noChange(b.gain, b.se, t) : num(b.gain), se: num(b.se) })
                 : flat ? t('result.playerLineNoChange', { player: esc(p), gain: noChange(b.gain, b.se, t), payback })
                     : t('result.playerLine', { player: esc(p), gain: num(b.gain), se: num(b.se), payback });
-            L.push(`<div class="mb-1">${line}</div>`);
+            L.push(`<div class="mb-1">${line}${supplyNote(c, p, t)}</div>`);
         }
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
@@ -382,7 +392,7 @@ export function renderResult(result, t, now = Date.now(), names = null) {
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
             gainCells(s, goalExp, t) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
-            `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td></tr>`;
+            (isTimeOnly(s) ? '<td></td>' : `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td>`) + '</tr>';
         const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.hiddenFood); // hiddenFood: a food row the search left out (one food row per player)
         const weak = rows.filter(([s]) => !s.accepted);
         L.push('<tbody>' + rows.filter(([s]) => s.accepted).map(([s, i]) => row(s, i)).join('') + '</tbody>');

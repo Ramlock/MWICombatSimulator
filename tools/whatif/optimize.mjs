@@ -69,7 +69,7 @@ import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { cutPool, bestPerPlayer, dropChainStates } from './pools.mjs';
-import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText } from './triggers.mjs';
+import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { runParty } from './engine.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -604,7 +604,7 @@ async function main() {
         spent = pay(spent, best);
         baseOps = [...baseOps, ...best.ops];
         chain.add(keyOf(baseOps));
-        result.steps.push({ ...row(best), runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
+        result.steps.push({ ...row(best), kind: best.kind, owner: best.owner, runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
         console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
         // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
         const newBase = req(baseOps, fin.h, fin.k * baseMult, 'base');
@@ -625,6 +625,15 @@ async function main() {
         if (!await ensure([...newBase, ...finalists.flatMap((c) => reqPair(baseOps, [...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
         for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
         logCandidates(step + 2, finalists);
+    }
+
+    // One trigger, one step: when the greedy rounds moved one owner's trigger more than once (200 -> 4600, later 4600 -> 3000), the
+    // chosen changes show one step for it, 200 -> 3000, at the first one's place, measured as that one step (the end state is the
+    // same: a trigger op carries the owner's whole list). Its figures are measured here, on the state just before that place.
+    {
+        const merged = await mergeTriggerSteps(result, fin);
+        if (merged === null) return stop(result);
+        if (merged) baseOps = [...result.baselineOps, ...result.steps.flatMap((s) => s.ops)];
     }
 
     // One confirmation on fresh seeds (3.3): the original base against the final result (the chosen foods and drinks and every
@@ -656,7 +665,28 @@ const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: 
 function row(c) {
     const est = c.est, n = setups0.length;
     const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, sharedSeSamePerUser: est.shared.seSame / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
-    return { ...split, id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+    return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+}
+// Merges the steps that moved the same owner's trigger (see main). Returns true when it merged, false when there was nothing to
+// merge, null when the time limit stopped the measuring.
+async function mergeTriggerSteps(result, fin) {
+    const steps = result.steps, drop = new Set();
+    for (let i = 0; i < steps.length; i++) {
+        if (drop.has(i) || steps[i].kind !== 'trigger') continue;
+        const later = steps.map((s, j) => (j > i && s.kind === 'trigger' && s.player === steps[i].player && s.owner === steps[i].owner ? j : -1)).filter((j) => j >= 0);
+        if (!later.length) continue;
+        const last = steps[later.at(-1)];
+        const prefix = [...result.baselineOps, ...steps.slice(0, i).filter((_, j) => !drop.has(j)).flatMap((s) => s.ops)];
+        const cand = { id: last.id, kind: 'trigger', owner: last.owner, player: last.player, monotone: false, desc: later.reduce((d, j) => joinTriggerDesc(d, steps[j].desc), steps[i].desc), ops: last.ops, cost: { cost: 0, known: true, path: last.costPath, note: '' } };
+        if (!await ensure([...req(prefix, fin.h, fin.k * baseMult, 'base'), ...reqPair(prefix, [...prefix, ...cand.ops], fin.h, fin.k, 'variant')])) return null;
+        cand.est = estimate(prefix, cand, fin, fin.k * baseMult);
+        steps[i] = { ...row(cand), kind: 'trigger', owner: last.owner, runningCost: steps[i].runningCost, runningSpend: steps[i].runningSpend };
+        for (const j of later) drop.add(j);
+        console.log(`merged ${later.length + 1} trigger steps of ${last.owner.split('/').pop()} into one: ${cand.desc}, gain ${fmt(cand.est.gain)} ± ${fmt(cand.est.se)}`);
+    }
+    if (!drop.size) return false;
+    result.steps = steps.filter((_, j) => !drop.has(j));
+    return true;
 }
 const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
 const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -709,10 +739,11 @@ function done(result) {
     }
     L.push('## Changes, in order', '', '| # | Change | Party gain per user | ± se | Buyer\'s gain per day | ± se | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|---|---|');
     result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`));
+    L.push('', "Party gain: the change in the group's shared loot per player per day, before anyone's food and drink. Buyer's gain: that player's share of it plus the change in what they spend on their own food and drink, so a free change can show no party gain and still pay the player by saving food and drink.");
     if (result.confirmation) {
         const c = result.confirmation;
-        L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): party gain ${Math.abs(c.gainPerUser) < c.sePerUser ? `no change (${signed(c.gainPerUser)} ± ${fmt(c.sePerUser)})` : `${fmt(c.gainPerUser)} ± ${fmt(c.sePerUser)}`} per user per day (${unit()}), cost ${fmt(c.cost)}${c.buyerByPlayer ? '' : c.payback == null && c.cost === 0 ? `, ${NO_COST}` : `, payback ${c.payback?.toFixed(1) ?? '-'} days`}.`);
-        if (c.buyerByPlayer) { L.push(''); for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`- ${p}: gain ${Math.abs(b.gain) < b.se ? `no change (${signed(b.gain)} ± ${fmt(b.se)})` : `${fmt(b.gain)} ± ${fmt(b.se)}`} per day, ${b.payback == null && c.runningSpend?.[p] === 0 ? NO_COST : `pays back in ${b.payback?.toFixed(1) ?? '-'} days`}`); }
+        L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): party gain (the shared loot, before anyone's food and drink) ${Math.abs(c.gainPerUser) < c.sePerUser ? `no change (${signed(c.gainPerUser)} ± ${fmt(c.sePerUser)})` : `${fmt(c.gainPerUser)} ± ${fmt(c.sePerUser)}`} per user per day (${unit()}), cost ${fmt(c.cost)}${c.buyerByPlayer ? '' : c.payback == null && c.cost === 0 ? `, ${NO_COST}` : `, payback ${c.payback?.toFixed(1) ?? '-'} days`}.`);
+        if (c.buyerByPlayer) { L.push(''); for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`- ${p}: gain ${Math.abs(b.gain) < b.se ? `no change (${signed(b.gain)} ± ${fmt(b.se)})` : `${fmt(b.gain)} ± ${fmt(b.se)}`} per day (${Number.isFinite(c.sharedGainPerUser) && Number.isFinite(c.ownSuppliesByPlayer?.[p]) ? (c.ownSuppliesByPlayer[p] <= 0 ? `${fmt(c.sharedGainPerUser)} loot share + ${fmt(-c.ownSuppliesByPlayer[p])} food and drink saved` : `${fmt(c.sharedGainPerUser)} loot share - ${fmt(c.ownSuppliesByPlayer[p])} more food and drink bought`) : 'loot share and own food and drink'}), ${b.payback == null && c.runningSpend?.[p] === 0 ? NO_COST : `pays back in ${b.payback?.toFixed(1) ?? '-'} days`}`); }
     }
     L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Party gain per user | ± se | Buyer\'s gain per day | ± se | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|---|---|');
     const rowMd = (s) => `| ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${pathMd(s)} |`;
