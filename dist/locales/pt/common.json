@@ -255,6 +255,21 @@
             "secondsPerRunCap": "Segundos por execução",
             "elapsed": "decorrido"
         },
+        "rounds": {
+            "title": "Rodadas da busca",
+            "round": "rodada",
+            "simHours": "horas simuladas",
+            "contending": "em disputa",
+            "paused": "pausadas",
+            "refuted": "descartadas",
+            "coverage": "faixas a {{pct}}%",
+            "pool": { "free": "Mudanças grátis", "paid": "Mudanças pagas" },
+            "poolCounts": "{{contending}} em disputa, {{paused}} pausadas",
+            "col": { "candidate": "Mudança", "cost": "Custo", "seeds": "Sementes (busca / leitura)", "reading": "Ganho por usuário", "range": "Faixa", "buyerNet": "Ganho do comprador", "payback": "Dias de retorno", "status": "Estado" },
+            "status": { "contending": "em disputa", "paused": "pausada", "confirmed": "confirmada", "refuted": "descartada" },
+            "tooFew": "poucas sementes de leitura ({{n}})",
+            "none": "ainda sem líderes"
+        },
         "result": {
             "goal": "Objetivo",
             "zone": "Zona: {{zone}}, nível {{tier}}",

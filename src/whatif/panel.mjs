@@ -221,6 +221,35 @@ export function renderParts(status, t) {
     return html;
 }
 
+// The search rounds (the runner's `round` record, one per round of the search that keeps refining): a round counter, the contention counts and,
+// per pool, the table of its current leaders. Output only: every figure is a field of the record (the figure and its range are the leader's
+// reading seeds', the runner/optimizer computed them); a leader with too few reading seeds says so. `names`: the game names (namesFrom), or null.
+export function renderRounds(round, t, names = null) {
+    if (!round || !Array.isArray(round.pools)) return '';
+    const who = (p) => p;
+    const players = [...new Set(round.pools.flatMap((p) => (p.leaders || []).map((l) => l.player).filter(Boolean)))];
+    const c = round.candidates || {};
+    const head = [
+        `<b>${esc(t('rounds.title'))}</b>`,
+        `${esc(t('rounds.round'))} <span data-rounds="round">${num(round.round)}</span>`,
+        `${esc(t('rounds.simHours'))} ${num(round.simHours)}`,
+        `${esc(t('rounds.contending'))} <span data-rounds="contending">${num(c.contending)}</span>`,
+        `${esc(t('rounds.paused'))} <span data-rounds="paused">${num(c.paused)}</span>`,
+        ...(c.refuted ? [`${esc(t('rounds.refuted'))} ${num(c.refuted)}`] : []),
+        `${esc(t('rounds.coverage', { pct: Math.round((round.coverage ?? 0) * 100) }))}`,
+    ].join(' · ');
+    const tables = round.pools.map((p) => {
+        const [owner, kind] = String(p.key).includes(':') ? String(p.key).split(':') : [null, p.key];
+        const title = (owner ? who(owner) + ' · ' : '') + t('rounds.pool.' + kind) + ' · ' + t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
+        const rows = (p.leaders || []).map((l) => {
+            const range = l.tooFew || l.low === null ? `<span class="whatif-dim">${esc(t('rounds.tooFew', { n: l.readingSeeds }))}</span>` : `${num(l.low)} – ${num(l.high)}`;
+            return `<tr data-status="${esc(l.status)}"><td class="chg">${esc(localizeDesc(l.desc, names, players))}</td><td class="num">${num(l.cost)}</td><td class="num">${num(l.seeds)} / ${num(l.readingSeeds)}</td><td class="num">${l.tooFew ? '—' : num(l.reading)}</td><td class="num">${range}</td><td class="num">${l.tooFew ? '—' : num(l.buyerNet)}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${esc(t('rounds.status.' + l.status))}</td></tr>`;
+        }).join('');
+        return `<div class="whatif-sec"><div class="small"><b>${esc(title)}</b></div><table class="whatif-table"><thead><tr><th>${esc(t('rounds.col.candidate'))}</th><th class="num">${esc(t('rounds.col.cost'))}</th><th class="num">${esc(t('rounds.col.seeds'))}</th><th class="num">${esc(t('rounds.col.reading'))}</th><th class="num">${esc(t('rounds.col.range'))}</th><th class="num">${esc(t('rounds.col.buyerNet'))}</th><th class="num">${esc(t('rounds.col.payback'))}</th><th>${esc(t('rounds.col.status'))}</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
+    }).join('');
+    return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
+}
+
 // Seconds as h:mm:ss (a clock reading of the runner's figure, not a new figure).
 export function duration(s) {
     const x = Math.max(0, Math.round(Number(s)));

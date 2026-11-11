@@ -3229,6 +3229,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   renderParts: () => (/* binding */ renderParts),
 /* harmony export */   renderProgress: () => (/* binding */ renderProgress),
 /* harmony export */   renderResult: () => (/* binding */ renderResult),
+/* harmony export */   renderRounds: () => (/* binding */ renderRounds),
 /* harmony export */   searchBody: () => (/* binding */ searchBody),
 /* harmony export */   searchRequest: () => (/* binding */ searchRequest),
 /* harmony export */   stepsOps: () => (/* binding */ stepsOps),
@@ -3459,6 +3460,35 @@ function renderParts(status, t) {
     let html = `<div class="whatif-parts"><div class="mb-1"><b>${title}</b></div>${rowsHtml}${small.length ? `<div class="small mt-1">${small.join(' · ')}</div>` : ''}</div>`;
     if (status.state === 'error' && status.error) html += `<div class="text-danger">${esc(status.error)}</div>`;
     return html;
+}
+
+// The search rounds (the runner's `round` record, one per round of the search that keeps refining): a round counter, the contention counts and,
+// per pool, the table of its current leaders. Output only: every figure is a field of the record (the figure and its range are the leader's
+// reading seeds', the runner/optimizer computed them); a leader with too few reading seeds says so. `names`: the game names (namesFrom), or null.
+function renderRounds(round, t, names = null) {
+    if (!round || !Array.isArray(round.pools)) return '';
+    const who = (p) => p;
+    const players = [...new Set(round.pools.flatMap((p) => (p.leaders || []).map((l) => l.player).filter(Boolean)))];
+    const c = round.candidates || {};
+    const head = [
+        `<b>${esc(t('rounds.title'))}</b>`,
+        `${esc(t('rounds.round'))} <span data-rounds="round">${num(round.round)}</span>`,
+        `${esc(t('rounds.simHours'))} ${num(round.simHours)}`,
+        `${esc(t('rounds.contending'))} <span data-rounds="contending">${num(c.contending)}</span>`,
+        `${esc(t('rounds.paused'))} <span data-rounds="paused">${num(c.paused)}</span>`,
+        ...(c.refuted ? [`${esc(t('rounds.refuted'))} ${num(c.refuted)}`] : []),
+        `${esc(t('rounds.coverage', { pct: Math.round((round.coverage ?? 0) * 100) }))}`,
+    ].join(' · ');
+    const tables = round.pools.map((p) => {
+        const [owner, kind] = String(p.key).includes(':') ? String(p.key).split(':') : [null, p.key];
+        const title = (owner ? who(owner) + ' · ' : '') + t('rounds.pool.' + kind) + ' · ' + t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
+        const rows = (p.leaders || []).map((l) => {
+            const range = l.tooFew || l.low === null ? `<span class="whatif-dim">${esc(t('rounds.tooFew', { n: l.readingSeeds }))}</span>` : `${num(l.low)} – ${num(l.high)}`;
+            return `<tr data-status="${esc(l.status)}"><td class="chg">${esc(localizeDesc(l.desc, names, players))}</td><td class="num">${num(l.cost)}</td><td class="num">${num(l.seeds)} / ${num(l.readingSeeds)}</td><td class="num">${l.tooFew ? '—' : num(l.reading)}</td><td class="num">${range}</td><td class="num">${l.tooFew ? '—' : num(l.buyerNet)}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${esc(t('rounds.status.' + l.status))}</td></tr>`;
+        }).join('');
+        return `<div class="whatif-sec"><div class="small"><b>${esc(title)}</b></div><table class="whatif-table"><thead><tr><th>${esc(t('rounds.col.candidate'))}</th><th class="num">${esc(t('rounds.col.cost'))}</th><th class="num">${esc(t('rounds.col.seeds'))}</th><th class="num">${esc(t('rounds.col.reading'))}</th><th class="num">${esc(t('rounds.col.range'))}</th><th class="num">${esc(t('rounds.col.buyerNet'))}</th><th class="num">${esc(t('rounds.col.payback'))}</th><th>${esc(t('rounds.col.status'))}</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
+    }).join('');
+    return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
 }
 
 // Seconds as h:mm:ss (a clock reading of the runner's figure, not a new figure).
@@ -8558,8 +8588,13 @@ function whatIfShowStatus(status) {
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
+    // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
+    // last one stays on show when the search stops or is done (the result carries it too).
+    if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
+    else if (status.state === 'done' && status.result?.round) whatIf.round = status.result.round;
+    document.getElementById('whatIfRounds').innerHTML = whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : '';
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
-    else if (status.state === 'running' && status.partial) { whatIf.partialVersion = status.partialVersion; whatIfShowResult(status.partial, true); }
+    else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done') whatIfLoadList();
@@ -8573,6 +8608,7 @@ function whatIfStopWatching() {
 function whatIfWatch(id) {
     whatIf.searchId = id;
     whatIf.partialVersion = 0; // the report so far is asked for again (the runner sends it only when newer than this)
+    whatIf.round = null;
     whatIfStopWatching();
     const poll = async () => {
         try {
@@ -9715,4 +9751,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.b60864b7.js.map
+//# sourceMappingURL=bundle.8a77837c.js.map

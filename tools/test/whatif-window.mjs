@@ -78,6 +78,12 @@ let serveOlder = false;
 // The live report: what the runner would serve as `partial` (with its version) while the search runs; `sinces` is what the window asked with.
 let live = null;
 const sinces = [];
+// The search rounds: what the runner would serve as `round` (with its version, on the same counter).
+let rounds = null;
+const roundRec = (n, contending, lo, hi) => ({ round: n, stage: 'main', simHours: 450 * n, coverage: 0.99, candidates: { total: 60, contending, paused: 60 - contending, refuted: 0, locked: 0 },
+    pools: [{ key: 'free', size: 30, contending: Math.ceil(contending / 2), paused: 30 - Math.ceil(contending / 2), leaders: [
+        { id: 'a', player: 'Player 1', desc: 'Magic 1 -> 2', cost: 0, seeds: 4 * n, readingSeeds: 16, tooFew: false, status: 'contending', reading: 1000, low: lo, high: hi, buyerNet: 800, payback: null },
+        { id: 'b', player: 'Player 1', desc: 'Stamina 1 -> 2', cost: 500000, seeds: 4, readingSeeds: 2, tooFew: true, status: 'paused', reading: 700, low: null, high: null, buyerNet: null, payback: null }] }] });
 const foodsOnly = { goal: 'profit', budgets: { 'Player 1': 1000000 }, setups: [], steps: [], singles: [], notConfirmed: [], apart: [], overBudget: [], dominated: [], options: { zone: '/actions/combat/fly', tier: 0 },
     best: { foods: { 'Player 1': { items: [{ item: '/items/donut', trigger: null }], gain: 120, se: 30, stage: '4x1', fresh: { seeds: 32, seedFrom: 20001, seedTo: 20032, gain: 110, se: 40, gainPerUser: 110, sePerUser: 40, buyerNet: 100, buyerNetSe: 30, accepted: true } } }, drinks: {} } };
 let search = null, received = null, polls = 0;
@@ -105,7 +111,7 @@ const server = http.createServer((req, res) => {
         if (search.state === 'running' && ++polls >= 3 && !holdRunning) search.state = 'done';
         const since = Number(url.searchParams.get('since')) || 0;
         sinces.push(since);
-        return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : search.state === 'running' && live && live.version > since ? { partial: live.partial, partialVersion: live.version } : {}) });
+        return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : search.state === 'running' && live && live.version > since ? { partial: live.partial, partialVersion: live.version } : {}), ...(search.state === 'running' && rounds && rounds.version > since ? { round: rounds.round, roundVersion: rounds.version } : {}) });
     }
     if (url.pathname === '/api/results') return send(res, 200, search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : []);
     if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBig ? bigResult : serveOlder ? olderResult : result);
@@ -272,10 +278,22 @@ try {
     live = { partial: { ...foodsOnly, setups: result.setups, steps: [result.steps[0]], singles: result.singles, basePerUser: result.basePerUser, best: { foods: foodsOnly.best.foods, drinks: result.best.drinks } }, version: 2 };
     check('live: a newer snapshot adds the step, headed "so far", the drinks too; still the running mark and no totals', await until(`document.getElementById('whatIfResult').textContent.includes('Chosen changes, in order')`) && await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('so far') && t.includes('Magic 1 → 2') && !t.includes('Stamina 1 → 2') && /Player 1: Attack Coffee/.test(t) && t.includes('Running: the results fill in') && !t.includes('Confirmed on fresh runs') && !t.includes('No change gains beyond'); })()`), (await resultText()).slice(0, 600));
     await shot('whatIfModal', 'whatif-live.png');
+    // The search rounds: under the live report, a round counter, contention counts and the table of the leaders; it follows a newer round.
+    const roundsText = () => js(`document.getElementById('whatIfRounds').textContent`);
+    check('rounds: no round yet, nothing drawn', (await roundsText()).trim() === '');
+    rounds = { round: roundRec(3, 40, 900, 1100), version: 3 };
+    check('rounds: the section shows the round counter, the contention counts and the leaders with their range', await until(`document.querySelector('#whatIfRounds [data-rounds="round"]')?.textContent === '3'`) && await js(`(() => { const e = document.getElementById('whatIfRounds'); const t = e.textContent; return e.querySelector('[data-rounds="contending"]').textContent === '40' && e.querySelector('[data-rounds="paused"]').textContent === '20' && t.includes('Search rounds') && t.includes('Magic 1 -> 2') && /900\\s*–\\s*1,100/.test(t) && t.includes('too few reading seeds'); })()`), (await roundsText()).slice(0, 500));
+    check('rounds: the section sits under the live report', await js(`(() => { const r = document.getElementById('whatIfResult'), s = document.getElementById('whatIfRounds'); return !!(r.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING); })()`));
+    check('rounds: the window asks for what is newer than the round it drew', await (async () => { const t0 = Date.now(); while (Date.now() - t0 < 8000 && !sinces.includes(3)) await new Promise((r) => setTimeout(r, 200)); return sinces.includes(3); })());
+    rounds = { round: roundRec(4, 25, 950, 1050), version: 4 };
+    check('rounds: a newer round replaces the counter, the counts and the range', await until(`document.querySelector('#whatIfRounds [data-rounds="round"]')?.textContent === '4'`) && await js(`(() => { const e = document.getElementById('whatIfRounds'); return e.querySelector('[data-rounds="contending"]').textContent === '25' && /950\\s*–\\s*1,050/.test(e.textContent) && !/900\\s*–\\s*1,100/.test(e.textContent); })()`), (await roundsText()).slice(0, 500));
+    check('rounds: dark mode (no white table), no scroll axis of its own, one table per pool', await js(`(() => { const e = document.getElementById('whatIfRounds'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const cs = getComputedStyle(e.querySelector('table')); const ov = [e, ...e.querySelectorAll('*')].every((x) => { const o = getComputedStyle(x); return !/(auto|scroll)/.test(o.overflowX + o.overflowY); }); return ov && lum(getComputedStyle(e.querySelector('table td')).color) > 300 && e.querySelectorAll('table').length === 1 && cs.backgroundColor !== 'rgb(255, 255, 255)'; })()`));
+    await shot('whatIfModal', 'whatif-rounds.png');
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Stop stops it and offers Resume', await until(`document.getElementById('buttonWhatIfStop').textContent === 'Resume'`) && search.state === 'stopped');
     check('live: a stopped search keeps its report on screen, marked Stopped', await until(`document.getElementById('whatIfResult').textContent.includes('Stopped: this is where the search got to.')`) && !(await resultText()).includes('Running: the results fill in') && (await resultText()).includes('Magic 1 → 2'));
     live = null;
+    rounds = null;
     holdRunning = false;
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Resume runs it to the end and the result shows', await until(`document.getElementById('whatIfResult').textContent.includes('Apply 1 to 2')`));

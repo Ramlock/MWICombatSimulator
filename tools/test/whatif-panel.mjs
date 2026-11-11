@@ -233,6 +233,25 @@ const result = {
     check('progress: an error shows its text', panel.renderProgress({ state: 'error', progress: {}, error: 'bad <x>' }, t).includes('bad &lt;x&gt;'));
 }
 
+// The search rounds: output only, every figure a field of the record.
+{
+    const leader = (o) => ({ id: 'x', player: 'Player 1', desc: 'Magic 1 -> 2', cost: 1500000, seeds: 12, readingSeeds: 16, tooFew: false, status: 'contending', reading: 1234, low: 1100, high: 1368, buyerNet: 900, payback: 12.5, ...o });
+    const rec = { round: 7, stage: 'main', simHours: 3450, coverage: 0.99, candidates: { total: 120, contending: 31, paused: 80, refuted: 2, locked: 0 },
+        pools: [
+            { key: 'free', size: 40, contending: 10, paused: 30, leaders: [leader({ desc: 'Alpha <books> 30 -> 40', cost: 0, payback: null }), leader({ id: 'y', desc: 'Few seeds', readingSeeds: 3, tooFew: true, reading: 999, low: null, high: null, status: 'paused' })] },
+            { key: 'Player 2:paid', size: 80, contending: 21, paused: 50, leaders: [] },
+        ] };
+    const html = panel.renderRounds(rec, t);
+    check('rounds: nothing without a record', panel.renderRounds(null, t) === '' && panel.renderRounds({}, t) === '');
+    check('rounds: the round counter, the contention counts and the dropped count', html.includes('data-rounds="round"><span data-num="7"') && html.includes('data-rounds="contending"><span data-num="31"') && html.includes('data-rounds="paused"><span data-num="80"') && html.includes('data-num="2"') && html.includes(t('rounds.coverage', { pct: 99 })));
+    check('rounds: a leader shows its figure and its range, both from the record', html.includes('data-num="1234"') && html.includes('data-num="1100"') && html.includes('data-num="1368"'));
+    check('rounds: a leader with too few reading seeds is shown as such, with no figure', html.includes(t('rounds.tooFew', { n: 3 })) && !html.includes('data-num="999"'));
+    check('rounds: a pool per key, the player named in a per-player pool, the empty pool says none', html.includes('Player 2 · ') && html.includes(t('rounds.none')) && (html.match(/<table class="whatif-table"/g) || []).length === 2);
+    check('rounds: no payback is a dash, never NaN or undefined', !html.includes('NaN') && !html.includes('undefined') && !html.includes('null'));
+    check('rounds: text is escaped', html.includes('&lt;books&gt;') && !html.includes('<books>'));
+    check('rounds: no buttons or inputs (output only)', !/<(button|input|select|textarea)/.test(html));
+}
+
 // Strings: every key the window uses (rendered above, plus main.js and index.html) exists in en, pt and zh.
 for (const m of read('src/main.js').matchAll(/whatIfT\('([\w.]+)'[,)]/g)) used.add(m[1]);
 for (const m of read('index.html').matchAll(/data-i18n="common:whatIf\.([\w.]+)"/g)) used.add(m[1]);
@@ -275,6 +294,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('names: an owned item, a skill and the ability order',
         L('en', 'Beta ring ring_of_rare_find +3 -> owned ring_of_rare_find +5') === `Beta ${en.equipmentTypeNames['/equipment_types/ring']} ${en.itemNames['/items/ring_of_rare_find']} +3 -> owned ${en.itemNames['/items/ring_of_rare_find']} +5` &&
         L('en', 'Alpha magic 60 -> 61') === 'Alpha Magic 60 -> 61' && L('en', 'Alpha ability order poke, fireball') === 'Alpha ability order Poke, Fireball', L('en', 'Alpha ability order poke, fireball'));
+    check('rounds: a leader\'s change reads in the game names, the player kept in front', panel.renderRounds({ round: 1, pools: [{ key: 'free', size: 1, contending: 1, paused: 0, leaders: [{ player: 'Alpha', desc: 'Alpha drink 1 stamina_coffee -> empty', cost: 0, seeds: 4, readingSeeds: 8, status: 'contending', reading: 5, low: 1, high: 9 }] }] }, t, N.en).includes(`Alpha drink 1 ${en.itemNames['/items/stamina_coffee']} -&gt; empty`));
     check('names: a drink swap, "empty" stays', L('en', 'Alpha drink 1 stamina_coffee -> empty') === `Alpha drink 1 ${en.itemNames['/items/stamina_coffee']} -> empty`, L('en', 'Alpha drink 1 stamina_coffee -> empty'));
     check('names: a house room is written as its English name and shown in the page\'s language',
         L('en', 'Alpha Dairy Barn 3 -> 4') === 'Alpha Dairy Barn 3 -> 4' && L('pt', 'Alpha Dairy Barn 3 -> 4') === `Alpha ${pt.houseRoomNames['/house_rooms/dairy_barn']} 3 -> 4` && pt.houseRoomNames['/house_rooms/dairy_barn'] !== 'Dairy Barn');

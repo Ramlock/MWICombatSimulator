@@ -1,5 +1,5 @@
-// The what-if search, as a function (docs/codebase/whatif-runner.md): successive halving of every single change, greedy stacking with a pick check
-// on fresh seeds, one confirmation. It was tools/whatif/optimize.mjs; that file is now the Node shell (command line, files, forked run processes).
+// The what-if search, as a function (docs/codebase/whatif-runner.md): rounds that keep refining every single change still in contention (two pools,
+// K leaders each, readings on fresh seeds for the leaders), greedy stacking with a pick check on fresh seeds, one confirmation. It was tools/whatif/optimize.mjs; that file is now the Node shell (command line, files, forked run processes).
 // This file imports no fs, process, os or child_process, so any shell can drive it. A shell hands it:
 //   settings  { flags, argsText, jobs, pricesFile, pricesKey, setupsDir }: the flags as data (options.mjs; the flags are listed in optimize.mjs),
 //             the command line for the report, the run processes to use, the price snapshot's name (opaque; the run processes read it) and
@@ -8,7 +8,7 @@
 //     data   { setups, market, pricesTimestamp, exportData, userTrig }: the party, the price snapshot, the exporter JSON, the user's trigger candidates
 //     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json and probe.json
 //     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once kill() ended it
-//     sink   progress(p), partial(snapshot), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
+//     sink   progress(p), partial(snapshot), round(r), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
 //     stop   { requested }: true once the user asked to stop
 //     hash   sha1 hex of a text (the run keys)
 //     sim    { runParty, measureNeed, buildDtos, Trigger }: the engine's own functions and Trigger class
@@ -18,14 +18,15 @@ import { makePricer, TAX_LABEL } from './prices.mjs';
 import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
-import { cutPool, dropChainStates } from './pools.mjs';
+import { dropChainStates } from './pools.mjs';
+import { tMult, dfOf, contention, anyHope, separated, bounds } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { createParts } from './progress.mjs';
-import { SURE_BLOCK, SURE_MAX, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
+import { SURE_BLOCK, SURE_MAX, verdict, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
 import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
 import { refineTrigger } from './refine.mjs';
 import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
@@ -44,9 +45,25 @@ export async function main(settings, seams) {
     const errorRule = arg('error', 'unpaired'); // design revision 6 (main c2ed824), his pick 23:27 BRT
     const baseMult = Number(arg('base-mult', errorRule === 'unpaired' ? 4 : 1));
     const z = Number(arg('z', 2));
-    const stages = String(arg('stages', '4x50,4x150,8x300')).split(',').map((s) => { const [k, h] = s.split('x').map(Number); return { k, h }; });
-    const keep = list(arg('keep', '40,10')).map(Number);
-    if (errorRule === 'unpaired' && stages.some((s) => s.k < 4)) throw new Error('unpaired rule: at least 4 runs per variant at every stage (design 3.3)');
+    // The search that keeps refining (anytime-search-design.md). Every number below is a named option with the design's proposed value;
+    // none is decided (the report lists them as open). Unit of work: one seed of `unit-hours` (50). Round 1 gives every candidate
+    // `first-seeds` (4) seeds; each later round gives every candidate still in contention `round-seeds` more.
+    const unitH = Number(arg('unit-hours', 50));
+    const firstK = Number(arg('first-seeds', 4));
+    const roundSeeds = Number(arg('round-seeds', 1));
+    const leadersK = Number(arg('leaders', 10)); // K leaders per pool
+    const pauseMult = Number(arg('pause-mult', 3)); // errors: a candidate is paused when its upper bound at this many errors is below the leaders' line
+    const coverage = Number(arg('coverage', 0.99)); // the displayed range is a t range at this coverage
+    const readStep = Number(arg('reading-step', 2)); // reading seeds added per leader per round (0 = none)
+    const readMin = Number(arg('reading-min', 8)); // a leader with fewer reading seeds is shown as too few
+    const lockRule = String(arg('lock-rule', 'both')); // 'both': reading seeds pass the pick check AND no contender reaches the leader; 'reading': the pick check only
+    const maxRounds = Number(arg('max-rounds', 0)); // rounds per race (0 = no limit: the search ends by stop, --max-minutes, or when nothing can still help)
+    const finK = Number(arg('confirm-seeds', 16)); // seeds of the final confirmation (and of a trigger refinement's judgement), at unit-hours
+    if (!(firstK >= 2 && roundSeeds >= 1 && leadersK >= 1 && pauseMult > 0 && coverage > 0 && coverage < 1 && readStep >= 0 && ['both', 'reading'].includes(lockRule))) throw new Error('rounds options: --first-seeds >= 2, --round-seeds >= 1, --leaders >= 1, --pause-mult > 0, 0 < --coverage < 1, --reading-step >= 0, --lock-rule both|reading');
+    if (errorRule === 'unpaired' && firstK < 4) throw new Error('unpaired rule: at least 4 runs per variant (design 3.3)');
+    const stages = [{ k: firstK, h: unitH }]; // the one fixed stage left: round 1, today's screen
+    const fin = { k: finK, h: unitH }; // the measurement of the pick checks, the confirmation and the trigger refinement
+    const keep = [];
     const players = list(arg('players', 'Ramlock'));
     const maxUp = Number(arg('max-up', 3));
     const swapsOn = arg('swaps', true) !== false;
@@ -491,23 +508,118 @@ export async function main(settings, seams) {
     const rankFirst = (a, b) => rankAcceptedFirst(a.est, b.est);
     const logCandidates = (n, list) => { for (const c of list) console.log(`  step ${n} candidate: ${c.desc}, gain ${fmt(c.est.gain)} ± ${fmt(c.est.se)}, buyer ${fmt(c.est.net)} ± ${fmt(c.est.netSe)}, ${c.est.accepted ? 'accepted' : c.est.judged ? 'refused (' + c.est.judged + ')' : 'not accepted'}`); };
 
-    // ---- Stages ----
-    // Screen and halvings of one pool of candidates against `base` (ops of the baseline so far): each stage runs the base and the
-    // pool at that stage's seeds and hours, estimates, sorts accepted rows first and cuts. `label` names the stage for the progress
-    // (null: screen / halving n). Returns the pool after the last stage, sorted, or null when the time limit stopped it.
-    async function halve(cands, base, label, byPlayer) {
-        let pool = cands;
-        // The base runs alongside the screen, so the cores are not idle while it runs.
-        const baseReq = stages.flatMap((st) => req(base, st.h, st.k * baseMult, 'base'));
-        for (let si = 0; si < stages.length; si++) {
-            const st = stages[si];
-            report({ stage: label ?? (si === 0 ? 'screen' : `halving ${si}`), candidatesLeft: pool.length });
-            if (!await ensure([...(si === 0 ? baseReq : []), ...pool.flatMap((c) => reqPair(base, [...base, ...c.ops], st.h, st.k, 'variant'))])) return null;
-            for (const c of pool) { c.est = estimate(base, c, st, st.k * baseMult); (c.history ||= []).push(c.est); }
-            pool.sort(rankFirst); // accepted rows first, so the cut to the next stage keeps the ones that can be taken
-            if (si < stages.length - 1) pool = cutPool(pool, keep[si] ?? pool.length, byPlayer);
+    // ---- Rounds (anytime-search-design.md) ----
+    // One race of a set of candidates against `base` (ops of the baseline so far). Round 1 gives every candidate `firstK` seeds of
+    // `unitH` hours (today's screen); each later round gives every candidate that is not paused `roundSeeds` more, plus the base's
+    // `baseMult` times as many. After the new seeds: every candidate's figure is estimate() at its own seed count (no second formula),
+    // the contention test runs on every candidate (rounds.mjs: two pools, K leaders each, pause below the leaders' lowest lower bound at
+    // `pauseMult` errors, a paused one resumes by itself), and the current leaders get `readStep` more READING seeds (sureSeeds: from
+    // sureOffset + 1, the pick check's block, never used to choose): the figure shown as a result and its t range come only from those.
+    // A round record goes out through outSink.round. The race ends with a lock (the leader's reading seeds pass the pick check's accept
+    // rule, and with lockRule 'both' no contender's upper bound reaches its lower bound), with nothing left that could help (no upper
+    // bound above 0), or at --max-rounds; a stop or the time limit returns null. `byPlayer`: Stage F / D, one race per player inside
+    // the same rounds, each player ends when his own leader locks. Returns { locked, leaders }: locked is a Map player -> candidate
+    // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
+    let roundNo = 0, liveCands = null, lastRound = null;
+    const haveSeeds = (ops, seeds, h) => { const key = keyOf(ops); return seeds.every((s) => cache.get(key + '#' + s)?.byHours[h]); };
+    // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached).
+    function readCount(base, c, h) {
+        const vOps = [...base, ...c.ops], bk = keyOf(base), vk = keyOf(vOps);
+        let k = 0;
+        while (k < 4096 && cache.get(bk + '#' + (sureOffset + k + 1))?.byHours[h] && cache.get(vk + '#' + (sureOffset + k + 1))?.byHours[h]) k++;
+        return k;
+    }
+    // The figure and range of a leader from its k reading seeds: the search's own error rule (freshRead) and an ordinary t range at `coverage`.
+    function readingOf(base, c, k, h) {
+        const f = freshRead(base, c, k, h), n = setups0.length;
+        const vOps = [...base, ...c.ops], seeds = sureSeeds(k);
+        const vcp = seeds.map((s) => cpOf(vOps, s, h)), bcp = seeds.map((s) => cpOf(base, s, h));
+        const party = goal === 'profit' ? lootOf : metric;
+        const m1 = tMult(coverage, dfOf(vcp.map(party), bcp.map(party), errorRule));
+        const out = { k, figure: f.gainPerUser, low: f.gainPerUser - m1 * f.sePerUser, high: f.gainPerUser + m1 * f.sePerUser, accepted: f.accepted };
+        if (goal === 'profit') {
+            const q = (cp) => lootOf(cp) / n - suppliesOf(cp, c.player);
+            const m2 = tMult(coverage, dfOf(vcp.map(q), bcp.map(q), errorRule));
+            Object.assign(out, { net: f.buyerNet, netLow: f.buyerNet - m2 * f.buyerNetSe, netHigh: f.buyerNet + m2 * f.buyerNetSe, payback: f.buyerNet > 0 && c.cost.cost > 0 ? paybackDays(c.cost.cost, f.buyerNet) : null });
         }
-        return pool;
+        return out;
+    }
+    // today's pick check (sure.mjs verdict) on the reading seeds already in the cache, block by block: 'wait' (the seeds are not all
+    // there), 'pass', or 'fail' (slow: it would have passed but pays back past the limit). Runs nothing, so the same rule is applied
+    // again by confirmPick later from the same cache.
+    function peekCheck(base, c, h) {
+        for (let k = SURE_BLOCK; k <= SURE_MAX; k += SURE_BLOCK) {
+            const seeds = sureSeeds(k);
+            if (!haveSeeds(base, seeds, h) || !haveSeeds([...base, ...c.ops], seeds, h)) return { verdict: 'wait' };
+            const fresh = freshRead(base, c, k, h), v = verdict(fresh, k, { z, goal, max: SURE_MAX });
+            if (v === 'more') continue;
+            const slow = v === 'pass' && overPaybackLimit(c.cost.cost, fresh.buyerNet, payLimit);
+            return { verdict: v === 'pass' && !slow ? 'pass' : 'fail', fresh, slow };
+        }
+        return { verdict: 'wait' };
+    }
+    async function race(cands, base, { stage, byPlayer, onRefute }) {
+        const H = unitH, bk = keyOf(base), n = setups0.length;
+        liveCands = cands;
+        for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; }
+        const lockedBy = new Map(); // player (or '*') -> candidate
+        const sinceStart = roundNo;
+        for (;;) {
+            roundNo++;
+            const active = cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player)));
+            const todo = active.filter((c) => c.status !== 'paused');
+            for (const c of todo) c.k = c.k ? c.k + roundSeeds : firstK;
+            const maxK = Math.max(...active.map((c) => c.k), 0);
+            report({ stage, candidatesLeft: todo.length });
+            if (!await ensure([...req(base, H, maxK * baseMult, 'base'), ...todo.flatMap((c) => reqPair(base, [...base, ...c.ops], H, c.k, 'variant'))])) return null;
+            for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
+            const cont = contention(active, { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst });
+            const leaders = cont.pools.flatMap((p) => p.leaders);
+            if (readStep > 0 && leaders.length) {
+                const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
+                report({ stage, candidatesLeft: leaders.length });
+                if (!await ensure(reqs)) return null;
+            }
+            // Readings, the pick check on them, the refuted, the locks.
+            const read = new Map(), peek = new Map();
+            for (const c of leaders) {
+                const k = readCount(base, c, H);
+                read.set(c, k >= 2 ? readingOf(base, c, k, H) : null);
+                peek.set(c, peekCheck(base, c, H));
+            }
+            for (const c of leaders) {
+                const p = peek.get(c);
+                if (p.verdict === 'fail') { c.refuted = true; onRefute?.(c, p); }
+            }
+            const live = leaders.filter((c) => !c.refuted);
+            const rows = (p) => p.leaders.map((c) => {
+                const r = read.get(c), tooFew = !r || r.k < readMin, st = peek.get(c).verdict === 'pass' ? 'confirmed' : c.status;
+                return { id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, seeds: c.k, readingSeeds: r ? r.k : 0, tooFew, status: c.refuted ? 'refuted' : st,
+                    screen: goal === 'profit' ? c.est.net / n : c.est.gain / n,
+                    reading: tooFew ? null : r.figure, low: tooFew ? null : r.low, high: tooFew ? null : r.high,
+                    buyerNet: tooFew || r.net === undefined ? null : r.net, netLow: tooFew || r.net === undefined ? null : r.netLow, netHigh: tooFew || r.net === undefined ? null : r.netHigh,
+                    payback: tooFew ? null : r.payback ?? null };
+            });
+            const wallH = wallLog.reduce((a, r) => a + r.h, 0);
+            const rec = { round: roundNo, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal,
+                candidates: { total: cands.length, contending: cont.contending, paused: cont.paused, refuted: cands.filter((c) => c.refuted).length, locked: lockedBy.size },
+                pools: cont.pools.map((p) => ({ key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, leaders: rows(p) })) };
+            lastRound = rec;
+            outSink.round(rec);
+            const top = rec.pools.map((p) => { const l = p.leaders[0]; return l ? `${p.key} ${l.desc.slice(0, 48)} ${l.tooFew ? `(${l.readingSeeds} reading seeds, too few)` : `${fmt(l.reading)} [${fmt(l.low)}, ${fmt(l.high)}] n=${l.readingSeeds}`}` : `${p.key} none`; }).join('; ');
+            console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] round ${roundNo} ${stage}: ${cont.contending} in contention, ${cont.paused} paused, ${rec.candidates.refuted} refuted, ${rec.simHours} sim h; ${top}`);
+            // Locks: the leader's reading seeds pass the pick check (peek) and, with lockRule 'both', nobody in its pool reaches its lower bound.
+            const sepOpts = { goal, mult: pauseMult, byPlayer };
+            const ready = (c) => !c.timeOnly && peek.get(c).verdict === 'pass' && (lockRule === 'reading' || separated(c, active, sepOpts));
+            if (byPlayer) {
+                for (const p of players) if (!lockedBy.has(p)) { const c = live.filter((x) => x.player === p).sort(rankFirst).find(ready); if (c) lockedBy.set(p, c); }
+            } else {
+                const c = live.sort(rank).find(ready);
+                if (c) lockedBy.set('*', c);
+            }
+            const settled = byPlayer ? players.every((p) => lockedBy.has(p) || !anyHope(cands.filter((c) => c.player === p && !c.timeOnly), goal, pauseMult)) : lockedBy.size > 0 || !anyHope(cands.filter((c) => !c.timeOnly), goal, pauseMult);
+            if (settled || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
+        }
     }
     // One player's entry of result.best: his items in slot order after the stage (a food with the readable text of its trigger, null
     // when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
@@ -522,7 +634,7 @@ export async function main(settings, seams) {
     // ---- Search ----
     async function search() {
         const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
-        const fin = stages[stages.length - 1];
+        result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
         const fillings = levers.has('consumables');
         partsTracker = createParts({ stages, keep, candidates: null, maxSteps, fillings });
@@ -535,16 +647,21 @@ export async function main(settings, seams) {
             for (const kind of ['foods', 'drinks']) {
                 const setupsNow = applyOps(setups0, baseOps);
                 const fc = players.flatMap((p) => (kind === 'foods' ? foodStageCands(setupsNow, p) : drinkStageCands(setupsNow, p)));
-                const fpool = await halve(fc, baseOps, kind, true);
-                if (!fpool) return stop(result);
-                // Each player's best filling (his first accepted one in rankAcceptedFirst order) is confirmed on fresh seeds, in party order,
-                // each alone against the stage's start (not the earlier players' confirmed fillings); one that fails is replaced by his next
-                // best, none left leaves him unchanged (confirmFillings in sure.mjs). baseOps then holds every confirmed filling.
                 const flag = kind === 'foods' ? 'food' : 'drink';
+                const refute = (c, p) => { // a leader that failed the pick check on its reading seeds leaves the race (as a failed pick does today)
+                    result.notConfirmed.push({ ...row(c), step: null, kind: flag, fresh: p.fresh });
+                    console.log(`${kind}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`);
+                };
+                const res = await race(fc, baseOps, { stage: kind, byPlayer: true, onRefute: refute });
+                if (!res) return stop(result);
+                // Each player's locked filling (his leader whose reading seeds passed the pick check) is confirmed on fresh seeds, in party order,
+                // each alone against the stage's start (not the earlier players' confirmed fillings); the runs are the reading seeds, already
+                // in the cache. None locked leaves him unchanged (confirmFillings in sure.mjs). baseOps then holds every confirmed filling.
+                const fpool = [...res.locked.values()];
                 const got = await confirmFillings(players, fpool, baseOps, (ops, c) => confirmPick(ops, c, fin, kind), ({ cand, fresh }) => {
                     result.notConfirmed.push({ ...row(cand), step: null, kind: flag, fresh });
                     console.log(`${kind}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
-                });
+                }, () => true);
                 if (!got) return stop(result);
                 const chosen = got.chosen;
                 baseOps = got.baseOps;
@@ -572,22 +689,13 @@ export async function main(settings, seams) {
         publish(result); // snapshot 3: the candidates are priced (over-budget list, unknown costs, skipped swaps, the count)
         console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${dominated.length} swaps skipped (no better on any stat)`);
 
-        // The rest of the search runs on the baseline (baseOps: the chosen foods and drinks): screen, then halvings, with the free
-        // and the paid candidates kept as two pools at each cut.
+        // The rest of the search runs on the baseline (baseOps: the chosen foods and drinks): a race of every candidate (rounds, two
+        // pools, K leaders each) until a pick locks, then the pick joins the baseline and the race goes on from the new baseline.
         partsTracker.setCandidates(cands.length);
-        const pool = await halve(cands, baseOps, null, false);
-        if (!pool) return stop(result);
-        // The original base (no food or drink change), per user, in the goal's unit: the mean over the base seeds of the last stage.
-        // The rows below are measured against the baseline, this figure stays the original base.
-        if (!await ensure(req([], fin.h, fin.k * baseMult, 'base'))) return stop(result);
-        { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
-        result.singles = [...cands.map((c) => row(c)).sort((a, b) => (a.lastStage === b.lastStage ? (b.score - a.score) : (b.stageIndex - a.stageIndex))), ...result.singles];
-        publish(result); // snapshot 4: the last halving is done (each change alone, the base)
-
-        // Greedy stacking on the finalists.
-        let finalists = pool.filter((c) => !c.timeOnly); // time-only levers (skill levels) are shown, never bought
-        result.timeOnly = cands.filter((c) => c.timeOnly);
-        logCandidates(1, finalists);
+        result.timeOnly = cands.filter((c) => c.timeOnly); // time-only levers (skill levels) are shown, never bought
+        let cur = cands, singlesDone = false;
+        const dead = new Set(); // ids of picks that failed their check: never tried again
+        // Greedy stacking on the race's winners.
         // The chain guard (pools.mjs dropChainStates): no candidate may lead back to a state the search has already been in.
         const chain = new Set([keyOf([]), keyOf(baseOps)]);
         const guard = (list) => { const { kept, dropped } = dropChainStates(list, baseOps, keyOf, chain); if (dropped.length) console.log(`  ${dropped.length} candidate(s) lead back to a state already in the chain, dropped: ${dropped.map((c) => c.id).join(', ')}`); return kept; };
@@ -611,18 +719,31 @@ export async function main(settings, seams) {
             rank,
             join: (cur, next) => { visited.add(keyOf([...chainOps, ...next.ops])); return { ...next, desc: joinTriggerDesc(cur.desc, next.desc), est: undefined, history: undefined }; },
         });
-        for (let step = 0; step < maxSteps; step++) {
-            const eligible = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)); // paid from its own player's coin left
-            // One that pays back in more than the limit (the search reading: cost over the buyer's net) is not eligible; each is listed once.
-            const slow = eligible.filter((c) => overPaybackLimit(c.cost.cost, c.est.net, payLimit));
-            const listed = result.overPayback.length;
-            for (const c of slow) if (!result.overPayback.some((x) => x.id === c.id)) result.overPayback.push({ ...row(c), paybackDays: paybackDays(c.cost.cost, c.est.net) });
-            if (result.overPayback.length > listed) publish(result); // a new one is on the report the moment it is found
-            const ok = eligible.filter((c) => !slow.includes(c)).sort(rank);
-            // The best pick joins only once it is confirmed on fresh seeds against the chain as it is now; one that is not is left out
-            // (result.notConfirmed, never tried again: it leaves the finalists) and the next best is tried. None left ends the chain. A trigger
-            // pick is refined first, so the row that is confirmed and shown is the owner's trigger from its value in the chain to its final one.
+        for (let step = 0; step <= maxSteps;) { // (the race runs once more after the last step, so the leaders are the ones for the final base; no pick joins past maxSteps)
             const label = `step ${step + 1}`;
+            // A leader that fails the pick check on its reading seeds leaves the race: one that pays back past the limit is listed once
+            // (result.overPayback), any other is a pick that is not confirmed (result.notConfirmed, never tried again).
+            const refuteStep = (c, p) => {
+                if (p.slow) { if (!result.overPayback.some((x) => x.id === c.id)) result.overPayback.push({ ...row(c), paybackDays: paybackDays(c.cost.cost, p.fresh.buyerNet) }); }
+                else { dead.add(c.id); result.notConfirmed.push({ ...row(c), step: step + 1, fresh: p.fresh }); console.log(`${label}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`); }
+                publish(result);
+            };
+            const res = await race(cur, baseOps, { stage: step === 0 ? 'screen' : `greedy step ${step}`, byPlayer: false, onRefute: refuteStep });
+            if (!res) return stop(result);
+            if (!singlesDone) {
+                singlesDone = true;
+                // The original base (no food or drink change), per user, in the goal's unit: the mean over the base seeds of the confirmation's block.
+                // The rows below are measured against the baseline, this figure stays the original base.
+                if (!await ensure(req([], fin.h, fin.k * baseMult, 'base'))) return stop(result);
+                { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
+                result.singles = [...cands.filter((c) => c.est).sort(rank).map((c) => row(c)), ...result.singles];
+                publish(result); // snapshot 4: the first race has a pick (each change alone, the base)
+            }
+            logCandidates(step + 1, res.leaders.filter((c) => !c.timeOnly).slice(0, 5));
+            // The locked pick joins only once it is confirmed on fresh seeds against the chain as it is now (the same cache as its reading
+            // seeds); one that is not is left out (result.notConfirmed, never tried again). No lock ends the chain. A trigger pick is refined
+            // first, so the row that is confirmed and shown is the owner's trigger from its value in the chain to its final one.
+            const ok = res.locked && step < maxSteps ? [res.locked] : [];
             const checkPickAt = async (c) => {
                 let cand = c;
                 if (c.kind === 'trigger') {
@@ -637,14 +758,16 @@ export async function main(settings, seams) {
                 const r = await confirmPick(baseOps, cand, fin, label);
                 return r && { ...r, cand };
             };
+            if (!ok.length) break;
             const picked = await firstConfirmed(ok, checkPickAt, ({ cand, orig, fresh }) => {
                 result.notConfirmed.push({ ...row(cand), step: step + 1, fresh });
                 console.log(`${label}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
-                finalists = finalists.filter((f) => f !== orig);
+                dead.add(orig.id);
+                cur = cur.filter((f) => f !== orig);
                 publish(result); // snapshot 5: a failed pick
             });
             if (picked === null) return stop(result);
-            if (!picked.best) break;
+            if (!picked.best) continue; // not confirmed: it left the race, the race goes on without it
             const best = picked.best, bestFresh = picked.fresh;
             spent = pay(spent, best);
             baseOps = [...baseOps, ...best.ops];
@@ -652,24 +775,19 @@ export async function main(settings, seams) {
             result.steps.push({ ...row(best), fresh: bestFresh, kind: best.kind, owner: best.owner, runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } });
             console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
             publish(result); // snapshot 5: a confirmed step; the row is final
-            // The accepted variant's runs are the new base; seeds it lacks for the base count are run now.
-            const newBase = req(baseOps, fin.h, fin.k * baseMult, 'base');
-            // Re-screen the survivors on the new base, rebuilt from the new setup (a survivor whose change no longer
+            step++;
+            // The race restarts on the new base with the survivors, rebuilt from the new setup (a survivor whose change no longer
             // applies drops out). The accepted change's equipment slots get fresh candidates from the new item, as in
             // phase 1; the other groups it touched keep only their survivors, so a loadout step does not re-add dozens.
             const setupsNow = applyOps(setups0, baseOps), touched = new Set(best.groups);
-            const survivors = new Set(finalists.filter((c) => c !== picked.orig).map((c) => c.id));
-            finalists = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => c.cost.known && affordable(c, budgets, spent) && (
+            const survivors = new Set(cur.filter((c) => c !== picked.orig && !c.timeOnly).map((c) => c.id));
+            cur = players.flatMap((p) => allCandidates(setupsNow, p)).filter((c) => !dead.has(c.id) && c.cost.known && affordable(c, budgets, spent) && (
                 c.groups.some((g) => touched.has(g)) && c.kind === 'equip' && (best.kind === 'equip' || best.kind === 'owned')
                     ? (c.monotone || !onlyCands || onlyCands.includes(c.id))
                     : c.groups.some((g) => touched.has(g)) && (c.kind === 'trigger' || c.kind === 'food-fill') ? false // stale: built on the owner's old list / old foods
                         : (survivors.has(c.id) && c.id !== best.id && c.id !== picked.orig.id)));
             // (The owner's coordinate-wise rounds ran before the pick was confirmed: refineTrigger.)
-            finalists = guard(finalists);
-            report({ stage: `greedy step ${step + 1}`, candidatesLeft: finalists.length });
-            if (!await ensure([...newBase, ...finalists.flatMap((c) => reqPair(baseOps, [...baseOps, ...c.ops], fin.h, fin.k, 'variant'))])) return stop(result);
-            for (const c of finalists) c.est = estimate(baseOps, c, fin, fin.k * baseMult);
-            logCandidates(step + 2, finalists);
+            cur = guard(cur).filter((c) => !c.timeOnly);
         }
 
         // One confirmation on fresh seeds (3.3): the original base against the final result (the chosen foods and drinks and every
@@ -722,7 +840,11 @@ export async function main(settings, seams) {
         result.timing = { wallMinutes: (Date.now() - t0) / 60000, runsThisCall: wallLog.length, coreHoursThisCall: wallLog.reduce((a, r) => a + r.wallSeconds, 0) / 3600, simHoursThisCall: wallLog.reduce((a, r) => a + r.h, 0), coreHoursAllRuns: runs.reduce((a, r) => a + r.wallSeconds, 0) / 3600, simHoursAllRuns: runs.reduce((a, r) => a + r.hours, 0) };
         result.timing.secondsPerSimHour = result.timing.simHoursAllRuns ? result.timing.coreHoursAllRuns * 3600 / result.timing.simHoursAllRuns : null;
     }
+    // The report at a stop is the leaders as they stand: the last round (result.round) and, when the first race has not ended, every
+    // candidate's figure so far as the single changes.
     function stop(result) {
+        if (lastRound) result.round = lastRound;
+        if (liveCands && !result.singles.some((s) => !s.hiddenFood)) result.singles = [...liveCands.filter((c) => c.est).sort(rank).map((c) => row(c)), ...result.singles];
         timing(result); result.incomplete = true; result.stoppedBy = stopSignal.requested ? 'stop request' : '--max-minutes';
         outSink.stopped(snapshot(result));
         report({ stage: 'stopped' });
@@ -730,16 +852,17 @@ export async function main(settings, seams) {
         return { stopped: true }; // the shell exits with code 3
     }
     function done(result) {
+        if (lastRound) result.round = lastRound;
         timing(result);
         let skillLines = [];
         if (levers.has('skills')) {
-            const fin = stages.at(-1), bk = keyOf([]);
+            const bk = keyOf([]);
             const baseCps = pick([], fin.h, fin.k * baseMult).map((s) => cache.get(bk + '#' + s)?.byHours[fin.h]).filter(Boolean);
             const sk = skillReport({ singles: result.singles, cands: result.timeOnly, setups: setups0, players, baseCps, names: setups0.map((s) => s.name), left: skillOpts.left, reqList: abilitySlotsLevelRequirementList, items: itemDetailMap, styles: combatStyleDetailMap, goal, fmt });
             result.skills = sk.json;
             skillLines = sk.lines;
         }
-        const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Stages ${result.stages.join(', ')}, keep ${keep.join(', ')}. Costs ${TAX_LABEL} on every sale.`, ''];
+        const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Rounds: ${firstK} seeds of ${unitH} h for every candidate, then ${roundSeeds} more per round for those not paused; ${leadersK} leaders per pool, paused below the leaders' lower bound at ${pauseMult} errors, ranges at ${(coverage * 100).toFixed(0)}% coverage. Costs ${TAX_LABEL} on every sale.`, ''];
         // The cost path as the report shows it: the note without the upper-bound caveat (the "≤" on the cost carries that).
         const pathMd = (s) => { const note = (s.note || '').replace('; upper bound (XP inside the level unknown)', ''); return s.costPath + (note ? ' (' + note + ')' : ''); };
         // A gain within one error of zero reads "no change" with the real value in brackets (a file has no hover), its error "-".

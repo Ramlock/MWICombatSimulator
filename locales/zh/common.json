@@ -256,6 +256,21 @@
             "secondsPerRunCap": "每次运行秒数",
             "elapsed": "已用时间"
         },
+        "rounds": {
+            "title": "搜索轮次",
+            "round": "轮",
+            "simHours": "模拟小时",
+            "contending": "仍在竞争",
+            "paused": "已暂停",
+            "refuted": "已淘汰",
+            "coverage": "区间覆盖率 {{pct}}%",
+            "pool": { "free": "免费改动", "paid": "付费改动" },
+            "poolCounts": "{{contending}} 个在竞争，{{paused}} 个已暂停",
+            "col": { "candidate": "改动", "cost": "成本", "seeds": "种子（搜索 / 读数）", "reading": "每人收益", "range": "区间", "buyerNet": "买家收益", "payback": "回本天数", "status": "状态" },
+            "status": { "contending": "在竞争", "paused": "已暂停", "confirmed": "已确认", "refuted": "已淘汰" },
+            "tooFew": "读数种子太少（{{n}}）",
+            "none": "暂无领先者"
+        },
         "result": {
             "goal": "目标",
             "zone": "区域：{{zone}}，难度 {{tier}}",

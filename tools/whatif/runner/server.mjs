@@ -2,8 +2,10 @@
 // simulator (dist/) at / and the search interface under /api/, and runs the optimizer (tools/whatif/optimize.mjs) at
 // the lowest priority on every core. Code doc: docs/codebase/whatif-runner.md.
 //
-// Usage: node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>]
+// Usage: node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>] [--demo-runs <runs.jsonl>] [--demo-prices <marketplace.json>]
 //   --port 0 picks a free port. --results defaults to <home>/MWI-WhatIf/results (never inside the repo).
+//   --demo-runs: that run file is read into every search's run store (the optimizer's --cache-from); --demo-prices: that price snapshot
+//   replaces the request's own. Both are off by default and meant for showing a search from saved runs.
 //
 // Interface (JSON over HTTP):
 //   GET  /api/version              { runner, engine }
@@ -11,8 +13,9 @@
 //                                  levers, players, stages, keep, export?, ...the optimizer's own flags without the
 //                                  dashes }; answer { id }. One search at a time: 409 { error, running } otherwise.
 //                                  The id is a hash of the request, so the same request again resumes its run store.
-//   GET  /api/search/<id>[?since=<n>]  { state: running|stopped|done|error, progress, error?, result?, partial?, partialVersion? }; a running
-//                                  search carries its report so far (partial) and its version only when newer than `since`
+//   GET  /api/search/<id>[?since=<n>]  { state: running|stopped|done|error, progress, error?, result?, partial?, partialVersion?, round?, roundVersion? }; a running
+//                                  search carries its report so far (partial) and its version only when newer than `since`, and the latest
+//                                  search round (round, roundVersion) the same way (one counter, one `since`)
 //   POST /api/search/<id>/stop     stops it (exit code 3, run store kept); on a stopped search, resumes it
 //   GET  /api/results              finished searches, newest first: [{ id, finished, goal, players }]
 //   GET  /api/results/<id>         one result.json
@@ -37,7 +40,8 @@ export const DEFAULT_RESULTS = path.join(os.homedir(), 'MWI-WhatIf', 'results');
 
 // The optimizer's flags a request may set (camelCase or dashed). --out, --setups, --export and --prices are set by
 // the runner itself; --cache-from is not offered (it reads arbitrary files).
-const PASS = ['players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'max-payback', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
+// The rounds options (unit-hours ... confirm-seeds) are the search's named options; `stages` and `keep` are still accepted and ignored by the search.
+const PASS = ['unit-hours', 'first-seeds', 'round-seeds', 'leaders', 'pause-mult', 'coverage', 'reading-step', 'reading-min', 'lock-rule', 'max-rounds', 'confirm-seeds', 'players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'max-payback', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
 const dashed = (k) => k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
 const RESERVED = new Set(['setups', 'options', 'budgets', 'export', 'prices', 'marketplace', 'triggerCands', 'trigger-cands']);
 const SAFE_NAME = /^[^\\/:*?"<>|\r\n]+$/;
@@ -56,7 +60,11 @@ export function pricesPath(name) {
 
 // The request as optimizer arguments; writes the setups (and the exporter JSON, the user's trigger candidates) into
 // the search's own folder. Throws on a malformed request.
-export function buildArgs(body, outDir) {
+// `demo` (the runner's --demo-runs / --demo-prices, both off by default): { runs: <runs.jsonl path>, prices: <marketplace.json path> }.
+// demo.runs is passed as --cache-from (the optimizer reads it into its run store, never writes it); demo.prices replaces the request's
+// price snapshot and is used in place (the run keys hold the price file's path relative to the checkout, so saved runs hit only
+// when that path is the one they were made with).
+export function buildArgs(body, outDir, demo = {}) {
     if (!body || typeof body !== 'object') throw new Error('body must be a JSON object');
     const setups = body.setups;
     if (!Array.isArray(setups) || !setups.length || setups.some((s) => !s || typeof s.name !== 'string' || !SAFE_NAME.test(s.name) || !s.player)) throw new Error('setups: a list of setups, each with a name and a player');
@@ -67,7 +75,9 @@ export function buildArgs(body, outDir) {
     const args = ['--out', outDir, '--setups', setupsDir, '--low-priority'];
     const flags = { ...(body.options || {}), ...body };
     const market = body.options?.marketplace;
-    if (market != null) {
+    if (demo.runs) args.push('--cache-from', demo.runs);
+    if (demo.prices) args.push('--prices', demo.prices);
+    else if (market != null) {
         // The window's market snapshot (delivery design section 3): saved once in the search's folder and used from
         // there; a resume finds it and keeps it (the run cache's key holds the price file, so it must not change).
         if (body.options.prices != null) throw new Error('options: prices or marketplace, not both');
@@ -112,10 +122,10 @@ export function forkOptimizer(args, outDir) {
     c.stderr.on('data', (b) => { tail = (tail + b).slice(-4000); stamp('err')(b); });
     const handle = {
         pid: c.pid,
-        onProgress: null, onPartial: null, onExit: null,
+        onProgress: null, onPartial: null, onRound: null, onExit: null,
         stop: () => { if (c.connected) c.send('stop'); },
     };
-    c.on('message', (m) => { if (m?.type === 'progress') handle.onProgress?.(m.progress); else if (m?.type === 'partial') handle.onPartial?.(m.result); });
+    c.on('message', (m) => { if (m?.type === 'progress') handle.onProgress?.(m.progress); else if (m?.type === 'partial') handle.onPartial?.(m.result); else if (m?.type === 'round') handle.onRound?.(m.round); });
     c.on('exit', (code) => { log.end(); handle.onExit?.(code, tail); });
     return handle;
 }
@@ -150,7 +160,8 @@ export function createRunner(opts = {}) {
     function status(id, since = 0) {
         const dir = dirOf(id), s = searches.get(id);
         const progress = s?.progress ?? (existsSync(path.join(dir, 'progress.json')) ? readJson(path.join(dir, 'progress.json')) : null);
-        if (s?.state === 'running') return { state: 'running', progress, ...(s.partial && s.partialVersion > since ? { partial: s.partial, partialVersion: s.partialVersion } : {}) };
+        // The search rounds (`round`, the latest round record, `roundVersion`) are served the same way, on the same counter and the same `since`.
+        if (s?.state === 'running') return { state: 'running', progress, ...(s.partial && s.partialVersion > since ? { partial: s.partial, partialVersion: s.partialVersion } : {}), ...(s.round && s.roundVersion > since ? { round: s.round, roundVersion: s.roundVersion } : {}) };
         if (existsSync(path.join(dir, 'result.json'))) return { state: 'done', progress, result: readJson(path.join(dir, 'result.json')) };
         if (s?.state === 'error') return { state: 'error', progress, error: s.error };
         if (existsSync(path.join(dir, 'request.json'))) return { state: 'stopped', progress };
@@ -161,7 +172,7 @@ export function createRunner(opts = {}) {
         const id = searchId(body), dir = dirOf(id);
         if (existsSync(path.join(dir, 'result.json'))) return { status: 200, body: { id } }; // finished already
         mkdirSync(dir, { recursive: true });
-        const args = buildArgs(body, dir);
+        const args = buildArgs(body, dir, { runs: opts.demoRuns, prices: opts.demoPrices });
         writeFileSync(path.join(dir, 'request.json'), JSON.stringify(body));
         const s = { state: 'running', progress: { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0, secondsPerRun: null, etaSeconds: null }, error: null };
         searches.set(id, s);
@@ -169,6 +180,7 @@ export function createRunner(opts = {}) {
         s.handle = launch(args, dir);
         s.handle.onProgress = (p) => { s.progress = p; };
         s.handle.onPartial = (r) => { s.partial = r; s.partialVersion = ++partialSeq; };
+        s.handle.onRound = (r) => { s.round = r; s.roundVersion = ++partialSeq; };
         s.handle.onExit = (code, tail) => {
             running = null;
             if (code === 0 && existsSync(path.join(dir, 'result.json'))) s.state = 'done';
@@ -258,7 +270,7 @@ export function createRunner(opts = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i < 0 ? d : process.argv[i + 1]; };
-    const r = createRunner({ resultsDir: arg('results', DEFAULT_RESULTS), distDir: arg('dist', undefined) });
+    const r = createRunner({ resultsDir: arg('results', DEFAULT_RESULTS), distDir: arg('dist', undefined), demoRuns: arg('demo-runs', undefined), demoPrices: arg('demo-prices', undefined) });
     const url = await r.listen(Number(arg('port', 8787)));
     console.log(`${new Date().toISOString()} What-if runner ${url} (results: ${path.resolve(arg('results', DEFAULT_RESULTS))}, lowest priority)`);
 }

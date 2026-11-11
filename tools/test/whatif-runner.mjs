@@ -40,10 +40,10 @@ spent = B.pay(spent, cand('A', 60));
 check(spent.A === 60 && spent.B === 0 && !B.affordable(cand('A', 41), budgets, spent) && B.affordable(cand('A', 40), budgets, spent), 'pay: running spend per player; what is left shrinks for that player only');
 check(B.pay(spent, cand('A', -30)).A === 60, 'pay: a sale never refunds a budget');
 const opt = readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
-check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
+check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 1 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
-check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /finalists = guard\(finalists\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
-check((opt.match(/reqPair\(/g) || []).length === 4 &&/bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
+check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /cur = guard\(cur\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
+check((opt.match(/reqPair\(/g) || []).length === 3 &&/bsSame = vSeeds\.map/.test(opt) && /mean\(v\) - mean\(bSame\)/.test(opt) && /gain on the same seeds/.test(opt) && !/base on \$\{baseMult\}x/.test(opt), 'optimizer: the variant\'s requests (stages, greedy steps) carry the base on the same seeds; the estimate and the confirmation take the gain against the base on the variant\'s seeds; the report says so');
 
 // ---- (1a) The cut between stages and the per-player choice (tools/whatif/pools.mjs) ----
 {
@@ -273,7 +273,7 @@ const snaps = []; let forks = 0;
 const recLaunch = (a, d) => { const h = R.forkOptimizer(a, d), n = ++forks; let cb = null; Object.defineProperty(h, 'onPartial', { get: () => (r) => { snaps.push({ fork: n, dir: d, r }); cb?.(r); }, set: (f) => { cb = f; } }); return h; };
 const real = R.createRunner({ resultsDir: path.join(tmp, 'real'), distDir: dist, launch: recLaunch, lowPriority: false });
 // What only the end has: the snapshots do not carry it.
-const endOnly = ['timing', 'confirmation', 'skills', 'incomplete', 'stoppedBy'];
+const endOnly = ['timing', 'confirmation', 'skills', 'incomplete', 'stoppedBy', 'round']; // (`round`: the last search round, which goes out on its own feed)
 const lastSnapIs = (dirName, res) => {
     const mine = snaps.filter((s) => s.dir === dirName), last = mine.filter((s) => s.fork === mine.at(-1).fork).at(-1)?.r;
     if (!last) return 'no snapshot';
@@ -282,7 +282,7 @@ const lastSnapIs = (dirName, res) => {
     return '';
 };
 const rb = await real.listen(0);
-const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], stages: ['4x2', '4x2'], keep: [4], maxUp: 2, swaps: false, z: 0, jobs: 2 };
+const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], unitHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
 const r1 = await call(rb, 'POST', '/api/search', req);
 const id = r1.json.id, dir = path.join(tmp, 'real', id);
@@ -326,7 +326,7 @@ if (res) {
     check(res.steps.every((s) => { sum += s.cost; return Math.abs(s.runningSpend.Alpha - sum) < 1e-6; }), 'steps: Alpha\'s running spend is the sum of Alpha\'s steps');
     {   // basePerUser: the party base (mean over the last stage's base seeds, from the run store) over the party size.
         const lines = readFileSync(path.join(dir, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-        const baseKey = lines.find((l) => l.tag === 'base')?.key, h = Number(res.stages.at(-1).split('x')[1]), k = Number(res.stages.at(-1).split('x')[0]) * res.baseMult;
+        const baseKey = lines.find((l) => l.tag === 'base')?.key, h = res.rounds.unitHours, k = res.rounds.confirmSeeds * res.baseMult;
         const vals = lines.filter((l) => l.tag === 'base' && l.key === baseKey && l.checkpoints.some((c) => c.simHours === h)).sort((a, b) => a.seed - b.seed).slice(0, k).map((l) => l.checkpoints.find((c) => c.simHours === h).party.profitAfterTaxPerDay);
         const party = vals.reduce((a, x) => a + x, 0) / vals.length;
         check(vals.length === k && Number.isFinite(res.basePerUser) && Math.abs(res.basePerUser * res.partySize - party) < 1e-6 * Math.max(1, Math.abs(party)), 'result: basePerUser is the party base over the last stage base seeds divided by the party size', `${res.basePerUser} x ${res.partySize} vs ${party} (${vals.length} of ${k})`);
@@ -337,7 +337,7 @@ if (res) {
         const lines = readFileSync(path.join(dir, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
         check(res.steps.every((s) => s.fresh && s.fresh.seeds >= 16 && s.fresh.seeds <= 64 && s.fresh.seeds % 16 === 0 && s.fresh.seedFrom === 20001 && s.fresh.seedTo === 20000 + s.fresh.seeds && [s.fresh.gainPerUser, s.fresh.sePerUser, s.fresh.buyerNet, s.fresh.buyerNetSe].every(Number.isFinite) && s.fresh.accepted === true), 'pick check: every step carries its fresh reading (gain, error, buyer net per user, 16 to 64 seeds from 20001) and it was accepted');
         check(Array.isArray(res.notConfirmed) && res.notConfirmed.every((n) => n.desc && n.id && Number.isInteger(n.step) && n.step >= 1 && n.fresh && n.fresh.accepted === false && Number.isFinite(n.fresh.gainPerUser)) && res.pickCheck.firstSeed === 20001, 'pick check: notConfirmed is a list of rows with their step and fresh reading; the rule is in the result');
-        check(lines.every((l) => (l.tag === 'sure') === (l.seed > 20000) && (l.tag !== 'confirm' || (l.seed > 10000 && l.seed <= 20000)) && (l.seed <= 10000 || l.tag === 'sure' || l.tag === 'confirm')) && lines.every((l) => l.tag !== 'sure' || (l.seed <= 20064 && l.checkpoints.some((c) => c.simHours === Number(res.stages.at(-1).split('x')[1])))), 'pick check: its runs are tagged sure on seeds 20001..20064 only; the search seeds and the final confirmation seeds stay in their own blocks');
+        check(lines.every((l) => ((l.tag === 'sure' || l.tag === 'read') === (l.seed > 20000)) && (l.tag !== 'confirm' || (l.seed > 10000 && l.seed <= 20000)) && (l.seed <= 10000 || l.tag === 'sure' || l.tag === 'read' || l.tag === 'confirm')) && lines.every((l) => (l.tag !== 'sure' && l.tag !== 'read') || (l.seed <= 20200 && l.checkpoints.some((c) => c.simHours === res.rounds.unitHours))), 'pick check: its runs and the leaders\' reading runs are tagged sure or read on seeds from 20001 only; the search seeds and the final confirmation seeds stay in their own blocks');
         const picks = fin.trace.map((p) => p?.parts?.find((r) => r.kind === 'picks')).filter(Boolean);
         check(picks.length > 0 && picks.every((r, i) => i === 0 || (r.runsPlanned >= picks[i - 1].runsPlanned)) && picks.every((r) => r.runsDone <= r.runsPlanned) && (res.steps.length === 0 || fin.r.progress.parts.find((r) => r.kind === 'picks').state === 'done'), 'pick check: the progress has the picks row, planned never drops, done never exceeds it, done at the end');
         console.log(`     (pick check: ${res.steps.length} confirmed, ${res.notConfirmed.length} not confirmed, ${lines.filter((l) => l.tag === 'sure').length} runs on fresh seeds, ${lines.filter((l) => l.tag === 'sure').reduce((a, l) => a + l.wallSeconds, 0).toFixed(1)} core-seconds for ${lines.filter((l) => l.tag === 'sure').reduce((a, l) => a + l.hours, 0)} sim hours)`);
@@ -353,7 +353,7 @@ if (res) {
     console.log(`     (${res.steps.length} steps, ${res.singles.length} singles, ${res.timing.runsThisCall} runs after the resume)`);
 }
 // A request with no snapshot: result.json says the committed file was used, and its date.
-const plainReq = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 }, levers: ['equip'], stages: ['4x1'], keep: [1], onlyCandidates: ['none'], z: 0, jobs: 2 };
+const plainReq = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 }, levers: ['equip'], unitHours: 1, onlyCandidates: ['none'], z: 0, jobs: 2 };
 const p1 = await call(rb, 'POST', '/api/search', plainReq);
 const pf = (await wait(p1.json.id, (r) => r.state !== 'running')).r;
 if (pf.state !== 'done') console.log(JSON.stringify(pf).slice(0, 600));
@@ -363,7 +363,7 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
 // drink fillings, so this player has the pouch-less 1 slot of each: the stages stay small. Beta has no consumables to change.
 {
     const eater = { ...party[0], name: 'Alpha', food: { '/action_types/combat': ['/items/donut'].map((itemHrid) => ({ itemHrid })) }, drinks: { '/action_types/combat': ['/items/attack_coffee'].map((itemHrid) => ({ itemHrid })) } };
-    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'triggers'], probe: '1x1', stages: ['4x1'], keep: [1], maxSteps: 0, z: 0, jobs: 2 };
+    const reqF = { setups: [eater, party[1]], players: ['Alpha'], options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0 }, goal: 'profit', budgets: { Alpha: 0 }, levers: ['consumables', 'triggers'], probe: '1x1', unitHours: 1, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxSteps: 0, z: 0, jobs: 2 };
     const f1 = await call(rb, 'POST', '/api/search', reqF);
     const ff = (await wait(f1.json.id, (r) => r.state !== 'running', 1800000)).r;
     if (ff.state !== 'done') console.log(JSON.stringify(ff).slice(0, 600));

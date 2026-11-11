@@ -56,11 +56,11 @@ export async function firstConfirmed(ok, check, onFail) {
 // him unchanged (no entry in `chosen`).
 // Returns { baseOps, chosen: { <player>: cand }, fresh: { <player>: reading } }, or null when a check was stopped; its baseOps is
 // the given baseOps extended with every chosen filling's ops, which the rest of the search is measured on.
-export async function confirmFillings(players, pool, baseOps, check, onFail) {
+export async function confirmFillings(players, pool, baseOps, check, onFail, isOk = (c) => c.est.accepted) {
     const chosen = {}, fresh = {};
     let ops = baseOps;
     for (const p of players) {
-        const mine = pool.filter((c) => c.player === p && c.est.accepted);
+        const mine = pool.filter((c) => c.player === p && isOk(c));
         if (!mine.length) continue;
         const picked = await firstConfirmed(mine, (c) => check(baseOps, c), onFail);
         if (picked === null) return null;

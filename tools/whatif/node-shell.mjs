@@ -3,7 +3,7 @@
 //   data   the party's setups, the price snapshot, the exporter JSON, the user's trigger candidates (loadNodeData)
 //   store  runs.jsonl and --cache-from files, and the small cache files <out>/need.json and <out>/probe.json (createNodeStore)
 //   pool   forked run processes (batch.mjs --child), one engine run per task, at this process's priority (createNodePool)
-//   sink   progress.json, partial.json, result.json, result.md, and the IPC messages to the runner (createNodeSink)
+//   sink   progress.json, partial.json, rounds.jsonl, result.json, result.md, and the IPC messages to the runner (createNodeSink)
 //   stop   { requested }, set by the runner's 'stop' message (optimize.mjs)
 //   hash   sha1 of a text (run keys)
 //   sim    the engine's own functions (engine.mjs) and the Trigger class
@@ -85,6 +85,11 @@ export function createNodeSink(out) {
             if (process.connected) process.send({ type: 'progress', progress: p });
         },
         partial(snapshot) { if (process.connected) process.send({ type: 'partial', result: snapshot }); },
+        // One search round (rounds.jsonl, one line each, and the IPC message `round`).
+        round(r) {
+            appendFileSync(path.join(out, 'rounds.jsonl'), JSON.stringify(r) + '\n');
+            if (process.connected) process.send({ type: 'round', round: r });
+        },
         stopped(snapshot) { writeFileSync(path.join(out, 'partial.json'), JSON.stringify(snapshot, null, 1)); },
         // result.json and result.md; returns the markdown file's path (the log line names it).
         final(snapshot, markdown) {

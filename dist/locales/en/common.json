@@ -257,6 +257,21 @@
             "secondsPerRunCap": "Seconds per run",
             "elapsed": "elapsed"
         },
+        "rounds": {
+            "title": "Search rounds",
+            "round": "round",
+            "simHours": "simulated hours",
+            "contending": "in contention",
+            "paused": "paused",
+            "refuted": "dropped",
+            "coverage": "ranges at {{pct}}%",
+            "pool": { "free": "Free changes", "paid": "Paid changes" },
+            "poolCounts": "{{contending}} in contention, {{paused}} paused",
+            "col": { "candidate": "Change", "cost": "Cost", "seeds": "Seeds (search / reading)", "reading": "Gain per user", "range": "Range", "buyerNet": "Buyer's gain", "payback": "Payback days", "status": "Status" },
+            "status": { "contending": "in contention", "paused": "paused", "confirmed": "confirmed", "refuted": "dropped" },
+            "tooFew": "too few reading seeds ({{n}})",
+            "none": "no leaders yet"
+        },
         "result": {
             "goal": "Goal",
             "zone": "Zone: {{zone}}, tier {{tier}}",
