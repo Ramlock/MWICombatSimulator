@@ -3525,10 +3525,11 @@ function localizeDesc(desc, names, players = [], dropPlayer = null) {
 
 // The split of a player's confirmed gain: his share of the party's loot gain plus the food and drink he saved (or spent more on).
 // `c.ownSuppliesByPlayer[p]` is the change in his own supplies spend (below 0 = saved); an older result has neither field: no note.
-const supplyNote = (c, p, t) => {
+// The loot share is the party's gain per user: when that reads as no change (inside its error `se`, or under `floor`) the note says so too.
+const supplyNote = (c, p, t, se, floor) => {
     const loot = c?.sharedGainPerUser, own = c?.ownSuppliesByPlayer?.[p];
     if (!Number.isFinite(loot) || !Number.isFinite(own)) return '';
-    return ` <span class="whatif-dim">(${t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: num(loot), amount: num(Math.abs(own)) })})</span>`;
+    return ` <span class="whatif-dim">(${t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: isNoChange(loot, se, floor) ? noChange(loot, se, t) : num(loot), amount: num(Math.abs(own)) })})</span>`;
 };
 // A cost cell: "≤" when the cost is only an upper bound.
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
@@ -3589,7 +3590,7 @@ function bestBlock(result, t, names = null, running = false, floor = null) {
             // On the EXP goal there is no buyer's gain: the party's figure alone.
             const gains = e.unchanged ? ''
                 : Number.isFinite(net) ? ' · <span class="whatif-dim">' + t('result.bestGain', { party: figure(gain, gainSe, t, floor), buyer: figure(net, netSe, t, floor) }) + '</span>'
-                    + supplyNote({ sharedGainPerUser: gain, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t)
+                    + supplyNote({ sharedGainPerUser: gain, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t, gainSe, floor)
                 : result.goal === 'exp' && Number.isFinite(gain) ? ' · <span class="whatif-dim">' + t('result.bestGainExp', { party: figure(gain, gainSe, t, floor) }) + '</span>'
                 : '';
             return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}${gains}</div>`;
@@ -3666,7 +3667,7 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
             const line = free ? t(flat ? 'result.playerLineFreeNoChange' : 'result.playerLineFree', { player: esc(p), gain: flat ? noChange(b.gain, b.se, t) : num(b.gain), se: num(b.se) })
                 : flat ? t('result.playerLineNoChange', { player: esc(p), gain: noChange(b.gain, b.se, t), payback })
                     : t('result.playerLine', { player: esc(p), gain: num(b.gain), se: num(b.se), payback });
-            L.push(`<div class="mb-1">${line}${supplyNote(c, p, t)}</div>`);
+            L.push(`<div class="mb-1">${line}${supplyNote(c, p, t, c.sePerUser, floor)}</div>`);
         }
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
@@ -9714,4 +9715,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.22631bfe.js.map
+//# sourceMappingURL=bundle.b60864b7.js.map
