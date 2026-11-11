@@ -19171,7 +19171,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ns: ['translation', 'common'],
             defaultNS: 'translation',
             backend: {
-                loadPath: 'locales/{{lng}}/common.json?v=39a31269'
+                loadPath: 'locales/{{lng}}/common.json?v=1c981387'
             },
             interpolation: {
                 escapeValue: !1

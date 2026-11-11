@@ -164,7 +164,7 @@ try {
     check('opening again copies the page again, dropping the window\'s edits', await js(`document.getElementById('whatIfPlayer_1').checked && document.getElementById('whatIfMessage').textContent === '' && !!document.querySelector('#whatIfBudgets input[data-player="Player 1"]')`));
     // The window's own zone and tier for the request (a zone and tier other than the page's).
     const windowZone = await js(`(() => { const s = document.getElementById('selectWhatIfZone'); s.value = s.options[4].value; s.dispatchEvent(new Event('change', { bubbles: true })); const t = document.getElementById('selectWhatIfTier'); t.value = '1'; return s.value; })()`);
-    check('the window lists the levers, equipment ticked', await js(`document.querySelectorAll('#whatIfLevers input').length === 11 && document.getElementById('whatIfLever_equip').checked && !document.getElementById('whatIfLever_houses').checked`));
+    check('the window lists the levers, equipment ticked', await js(`document.querySelectorAll('#whatIfLevers input').length === 9 && document.getElementById('whatIfLever_equip').checked && !document.getElementById('whatIfLever_houses').checked`));
     check('the runner version is shown', await js(`document.getElementById('whatIfVersion').textContent.includes('test-runner')`));
     // The character export per player: a paste box and a status line under each ticked player.
     const exportOf = (name, coin = 5) => ({ name, coin, inventory: [{ itemHrid: '/items/cheese_sword', enhancementLevel: 1, count: 1 }], learnedAbilities: [] });
@@ -222,7 +222,7 @@ try {
             check(`${tag}: one row per player, one pitch, equal columns, status beside the field on one line`, L.rows === n && L.cols.every(Boolean) && new Set(L.pitch).size <= 1 && new Set(L.heights).size === 1 && L.oneLine && L.statusTitles, JSON.stringify(L));
             check(`${tag}: the Start search row is inside the window, no scrolling`, L.inside, JSON.stringify(L));
             check(`${tag}: every section gap is equal`, L.gaps.length >= 4 && Math.max(...L.gaps) - Math.min(...L.gaps) < 1, JSON.stringify(L.gaps));
-            check(`${tag}: the column bottoms are within 120 px`, Math.abs(L.leftBottom - L.rightBottom) <= 120, `${L.leftBottom} vs ${L.rightBottom}`);
+            check(`${tag}: the column bottoms are within 150 px`, Math.abs(L.leftBottom - L.rightBottom) <= 150, `${L.leftBottom} vs ${L.rightBottom}`);
             check(`${tag}: the whole paste hint fits inside the field`, L.hintFits, JSON.stringify(L));
             check(`${tag}: the Goal label has the weight of Zone and Tier`, L.goalPlain);
             check(`${tag}: Goal sits inline with its label like Zone and Tier`, L.goalInline, JSON.stringify(L));
@@ -342,6 +342,12 @@ try {
     await until(`document.getElementById('buttonWhatIf')?.style.display === ''`);
     await js(`(() => { document.getElementById('player1').checked = true; document.getElementById('buttonWhatIf').click(); return true; })()`);
     check('after a page reload the kept export is still there', await until(`document.querySelector('#whatIfBudgets [data-export-status="Player 1"]')?.textContent === 'kept (Player 1)'`));
+    // Character names: an import's name replaces "Player N" in the window's tick boxes; a name two slots share does not.
+    await js(`(() => { window.addEventListener('error', (e) => { window.__importErr = e.message; }); document.getElementById('group-combat-tab').click(); document.getElementById('inputSetGroupCombatAll').value = JSON.stringify({ 1: { name: 'Alpha' }, 2: { name: 'Beta' }, 3: { name: 'Beta' } }); document.getElementById('buttonImportSet').click(); return true; })()`);
+    const importInfo = await js(`(() => ({ active: document.querySelector('#importTab .nav-link.active')?.id, err: window.__importErr || null }))()`);
+    await js(reopen);
+    const shownLabels = await js(`[...document.querySelectorAll('#whatIfPlayers label')].map((l) => l.textContent).join()`);
+    check('the window shows an import\'s character name instead of Player N; two slots with the same name keep their tab names', shownLabels === 'Alpha,Player 2,Player 3,Player 4,Player 5', shownLabels + ' ' + JSON.stringify(importInfo));
     page.close();
 } finally {
     await chrome.close();

@@ -4058,14 +4058,24 @@ const whatIf = { searchId: null, state: null, timer: null, result: null };
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
 function whatIfSlots(onlySelected) {
     savePreviousPlayer(currentPlayerTabId);
-    const tabs = document.querySelectorAll('#playerTab .nav-link');
+    const names = whatIfPlayerNames();
     const selected = new Set([...document.querySelectorAll('#whatIfPlayers input:checked')].map((c) => c.value));
     const slots = [];
-    for (let i = 1; i <= tabs.length; i++) {
+    for (let i = 1; i <= names.length; i++) {
         if (onlySelected && !selected.has(String(i))) continue;
-        slots.push({ id: String(i), name: tabs[i - 1].textContent.trim(), json: playerDataMap[i] });
+        slots.push({ id: String(i), name: names[i - 1], json: playerDataMap[i] });
     }
     return slots;
+}
+
+// The name each player tab is shown under in the window and in the search: the character name the slot's import carried
+// (its `name`), else the tab's own text. A name two slots share, or an empty one, falls back to the tab's text.
+function whatIfPlayerNames() {
+    const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
+    const own = tabs.map((_, i) => {
+        try { const n = JSON.parse(playerDataMap[i + 1] || 'null')?.name; return typeof n === 'string' ? n.trim() : ''; } catch { return ''; }
+    });
+    return tabs.map((tab, i) => (own[i] && own.indexOf(own[i]) === own.lastIndexOf(own[i]) ? own[i] : tab.textContent.trim()));
 }
 
 // The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. Copied
@@ -4073,6 +4083,8 @@ function whatIfSlots(onlySelected) {
 // window's own picks are kept. Nothing here writes to the page.
 function whatIfRenderChoices(fromPage) {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
+    savePreviousPlayer(currentPlayerTabId);
+    const shownNames = whatIfPlayerNames();
     const players = document.getElementById('whatIfPlayers');
     const ticked = new Set(fromPage
         ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
@@ -4092,7 +4104,7 @@ function whatIfRenderChoices(fromPage) {
         const label = document.createElement('label');
         label.className = 'form-check-label';
         label.htmlFor = input.id;
-        label.textContent = tab.textContent.trim();
+        label.textContent = shownNames[index];
         label.title = label.textContent;
         row.append(input, label);
         players.append(row);
@@ -4567,6 +4579,12 @@ function doGroupImport() {
 function doSoloImport() {
     let importSet = document.getElementById("inputSetSolo").value;
     importSet = JSON.parse(importSet);
+    // The character's name goes with the slot (the what-if window and search show it instead of "Player N").
+    if (typeof importSet.name === "string" && importSet.name.trim()) {
+        try {
+            playerDataMap[currentPlayerTabId] = JSON.stringify({ ...(JSON.parse(playerDataMap[currentPlayerTabId] || "null") ?? {}), name: importSet.name.trim() });
+        } catch (err) { /* the slot keeps its tab name */ }
+    }
     // A kind missing from the import is unknown, never empty: it leaves what the sim already holds for it
     // (docs/proposals/what-if.md 4.4 item 2; the MWICS Exporter leaves out each kind switched off).
     const importPlayer = importSet.player ?? {};
@@ -4773,6 +4791,11 @@ function savePreviousPlayer(playerId) {
         guildBuffs: player.guildBuffs,
         achievements: player.achievements
     };
+    // The slot's character name (carried by an import) is not on the screen; keep what the slot held.
+    try {
+        const slotName = JSON.parse(playerDataMap[playerId] || "null")?.name;
+        if (typeof slotName === "string" && slotName) state = { name: slotName, ...state };
+    } catch (err) { /* a slot with no saved data has no name */ }
     try {
         playerDataMap[playerId] = JSON.stringify(state);
     } catch (err) {
