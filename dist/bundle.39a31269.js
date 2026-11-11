@@ -3449,6 +3449,8 @@ function gainCells(row, goalExp, t) {
 // How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
 const pathCell = (s) => {
     const note = String(s.note || '').replace('; upper bound (XP inside the level unknown)', '');
+    // A skill level (cost path "time ..."): the word "time", the runner's full text on hover.
+    if (/^time\b/.test(String(s.costPath || ''))) return `<td title="${esc(s.costPath)}">time</td>`;
     return `<td class="wrap">${esc(s.costPath)}${note ? ' (' + esc(note) + ')' : ''}</td>`;
 };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
@@ -3476,7 +3478,13 @@ function bestBlock(result, t, names = null) {
                 return esc(name) + (x.trigger ? ' (' + esc(names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
             });
             const text = items.length ? items.join(', ') : '—';
-            return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}</div>`;
+            // A changed line says what the change is worth: the party's gain, the buyer's gain and (when saved) its split.
+            const gains = !e.unchanged && Number.isFinite(e.buyerNet)
+                ? ' · <span class="whatif-dim">' + t('result.bestGain', {
+                    party: withinError(e.gainPerUser, e.sePerUser) ? noChange(e.gainPerUser, e.sePerUser, t) : num(e.gainPerUser) + ' ± ' + num(e.sePerUser),
+                    buyer: num(e.buyerNet) + ' ± ' + num(e.buyerNetSe) }) + '</span>' + supplyNote({ sharedGainPerUser: e.gainPerUser, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t)
+                : '';
+            return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}${gains}</div>`;
         });
         return `<div class="fw-bold mt-2">${esc(label)}</div>${rows.join('')}`;
     };
@@ -9489,4 +9497,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.0b485b1d.js.map
+//# sourceMappingURL=bundle.39a31269.js.map

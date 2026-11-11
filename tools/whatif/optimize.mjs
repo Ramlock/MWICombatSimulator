@@ -533,7 +533,7 @@ function bestEntry(kind, setup, chosen) {
     const items = slots.map((item) => (kind === 'foods' ? { item, trigger: triggerText(effectiveTriggers(setup, item)) } : { item }));
     if (!chosen) return { items, unchanged: true };
     const e = chosen.est, n = setups0.length;
-    return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), stage: e.stage };
+    return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), ...(e.own ? { ownSuppliesPerDay: e.own.gain } : {}), stage: e.stage };
 }
 
 // ---- Search ----
@@ -724,7 +724,7 @@ function done(result) {
     const signed = (v) => (v > 0 ? '+' : '') + fmt(v);
     const gainMd = (v, se) => (Number.isFinite(v) && Number.isFinite(se) && Math.abs(v) < se ? `no change (${signed(v)} ± ${fmt(se)}) | -` : `${fmt(v)} | ${fmt(se)}`);
     const buyerMd = (s) => (Number.isFinite(s.buyerNet) ? gainMd(s.buyerNet, s.buyerNetSe) : '- | -');
-    const NO_COST = 'no cost, nothing to pay back'; // a cost of exactly 0 has nothing to pay back (a cost above 0 with no gain keeps "-")
+    const NO_COST = 'N/A'; // a cost of exactly 0 has nothing to pay back (a cost above 0 with no gain keeps "-")
     const paybackMd = (s) => (s.paybackOwn !== undefined ? s.paybackOwn : s.payback)?.toFixed(1) ?? (s.cost === 0 ? NO_COST : '-');
     // Best foods and drinks: one line per player, items in slot order, a food's trigger in brackets; a player left unchanged says so.
     const bestKinds = [['foods', 'Best foods'], ['drinks', 'Best drinks']].filter(([k]) => Object.keys(result.best?.[k] || {}).length);
@@ -732,7 +732,7 @@ function done(result) {
         L.push('## Best foods and drinks', '');
         for (const [kind, label] of bestKinds) {
             L.push(`### ${label}`, '');
-            for (const [p, e] of Object.entries(result.best[kind])) L.push(`- ${p}: ${e.items.map((x) => x.item.split('/').pop() + (x.trigger ? ` (${x.trigger})` : '')).join(', ') || 'none'}${e.unchanged ? ' (no change)' : ''}`);
+            for (const [p, e] of Object.entries(result.best[kind])) L.push(`- ${p}: ${e.items.map((x) => x.item.split('/').pop() + (x.trigger ? ` (${x.trigger})` : '')).join(', ') || 'none'}${e.unchanged ? ' (no change)' : Number.isFinite(e.buyerNet) ? ` (party gain ${fmt(e.gainPerUser)} ± ${fmt(e.sePerUser)}, buyer's gain ${fmt(e.buyerNet)} ± ${fmt(e.buyerNetSe)} per day${Number.isFinite(e.ownSuppliesPerDay) ? `; ${fmt(e.gainPerUser)} loot share ${e.ownSuppliesPerDay <= 0 ? `+ ${fmt(-e.ownSuppliesPerDay)} food and drink saved` : `- ${fmt(e.ownSuppliesPerDay)} more food and drink bought`}` : ''})` : ''}`);
             L.push('');
         }
         L.push('Everything below is measured on top of these foods and drinks.', '');

@@ -169,7 +169,7 @@ const result = {
     zeroOld.confirmation = { ...zeroOld.confirmation, cost: 5, payback: 0 };
     check('confirmation: a party payback of 0 on a cost above 0 (older result) shows "Payback days —", a payback above 0 shows the number', /Payback days —<\/div>/.test(panel.renderResult(zeroOld, t)) && !/Payback days <span data-num="0"/.test(panel.renderResult(zeroOld, t)));
     zeroOld.confirmation = { ...zeroOld.confirmation, cost: 0, payback: 0 };
-    check('confirmation: the same on a cost of exactly 0 says no cost, nothing to pay back (older result)', panel.renderResult(zeroOld, t).includes('Payback days no cost, nothing to pay back</div>'));
+    check('confirmation: the same on a cost of exactly 0 says N/A (older result)', panel.renderResult(zeroOld, t).includes('Payback days N/A</div>'));
     check('confirmation: an older result (no buyerByPlayer) keeps its party payback and shows the run-again line, small', old.includes('data-num="275.9"') && old.includes(locales.en.result.oldSplit) && old.includes('<div class="mb-1 small whatif-dim">') && !old.includes('pays back in'));
     check('strings: the new keys exist in en, pt, zh; the removed ones are gone from all three', ['partyGain', 'partyGainTip', 'buyerGain', 'buyerGainTip'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].col[k] === 'string' && locales[l].col[k] !== '')) && ['en', 'pt', 'zh'].every((l) => typeof locales[l].result.playerLine === 'string' && ['{{player}}', '{{gain}}', '{{se}}', '{{payback}}'].every((p) => locales[l].result.playerLine.includes(p)) &&
         ['gain', 'ownSupplies', 'ownSuppliesTip', 'spent', 'stage'].every((k) => !(k in locales[l].col)) && ['ownLine', 'budgets', 'helpsParty', 'helpsPartyHint'].every((k) => !(k in locales[l].result))) && locales.pt.col.partyGain !== locales.en.col.partyGain && locales.pt.result.playerLine !== locales.en.result.playerLine);
@@ -462,6 +462,13 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('best: without names the ids show as they came (item slug, trigger text)', plain(panel.renderResult(withBest, t)).includes('Alpha: donut (self current_hp <= 60), cake'));
     check('best: an older result without best shows no block and does not fail', !panel.renderResult(result, t).includes(locales.en.result.bestFoods) && !panel.renderResult({ ...result, best: undefined }, t, undefined, nm).includes(locales.en.result.bestBaseline));
     check('best: an empty best (consumables off) shows no block', !panel.renderResult({ ...result, best: { foods: {}, drinks: {} } }, t).includes(locales.en.result.bestFoods));
+    {
+        const bestG = { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], gainPerUser: -13, sePerUser: 49, buyerNet: 2204, buyerNetSe: 44, ownSuppliesPerDay: -2217 }, Beta: { items: [{ item: '/items/gummy', trigger: null }], gainPerUser: 500, sePerUser: 50, buyerNet: 900, buyerNetSe: 40 }, Gamma: { items: [{ item: '/items/cake', trigger: null }], unchanged: true } }, drinks: {} };
+        const txt = plain(panel.renderResult({ ...result, best: bestG }, t, undefined, nm));
+        check('best: a changed line says the party gain (no change inside one error), the buyer gain and the saved split', txt.includes('Alpha: Donut · party gain ' + locales.en.result.noChange + ", buyer's gain 2204 ± 44 per day (-13 loot share + 2217 food and drink saved)"), txt);
+        check('best: a changed line without the saved figure shows the two gains only; an unchanged one shows none', txt.includes("Beta: Gummy · party gain 500 ± 50, buyer's gain 900 ± 40 per day") && !txt.includes('Beta: Gummy · party gain 500 ± 50, buyer\'s gain 900 ± 40 per day (') && txt.includes('Gamma: Cake · ' + locales.en.result.noChange) && !txt.includes('Gamma: Cake · ' + locales.en.result.noChange + ' ·'), txt);
+        check('best: the pt and zh bestGain strings exist and differ from en', ['pt', 'zh'].every((l) => typeof locales[l].result.bestGain === 'string' && locales[l].result.bestGain !== locales.en.result.bestGain));
+    }
     check('best: the pt and zh strings exist for every new key', ['bestFoods', 'bestDrinks', 'bestBaseline', 'noCost', 'playerLineFree', 'playerLineFreeNoChange'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && locales.pt.result.bestBaseline !== locales.en.result.bestBaseline);
     // Cost-0 wording: the Payback cell and the per-player lines; a cost above 0 with no gain keeps the dash.
     const free = { id: 'f', player: 'Alpha', desc: 'Ring free', lastStage: '8x300', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, sharedGainPerUser: 10, sharedSePerUser: 2, buyerNet: 10, buyerNetSe: 2, cost: 0, payback: null, paybackOwn: null, costPath: 'market', accepted: true, ops: [] };
@@ -469,10 +476,10 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const res = { ...result, steps: [free, paid], singles: [free, paid], confirmation: { gainPerUser: 10, sePerUser: 2, cost: 500, runningSpend: { Alpha: 0, Beta: 500 }, buyerByPlayer: { Alpha: { gain: 10, se: 2, payback: null }, Beta: { gain: 30, se: 5, payback: null } } } };
     const out = panel.renderResult(res, t);
     const payOf = (id) => { const tr = out.split('<tr').find((x) => x.includes('Ring ' + id)); return [...tr.matchAll(/<td([^>]*)>([^]*?)<\/td>/g)].map((m) => m[2]); };
-    check('cost 0: the Payback cell of a free change says no cost, nothing to pay back (steps and each alone)', payOf('free')[8] === locales.en.result.noCost && out.split(locales.en.result.noCost).length - 1 >= 2, JSON.stringify(payOf('free')));
+    check('cost 0: the Payback cell of a free change says N/A (steps and each alone)', payOf('free')[8] === locales.en.result.noCost && out.split(locales.en.result.noCost).length - 1 >= 2, JSON.stringify(payOf('free')));
     check('cost 0: a cost above 0 with no positive gain keeps the dash', payOf('paid')[8] === '—');
     const lines = out.split('</div>').map(plain);
-    check('cost 0: the confirmation line of a player who bought nothing says no cost, nothing to pay back; one who bought keeps the dash', lines.some((l) => l.endsWith('Alpha: gain 10 ± 2 per day, no cost, nothing to pay back')) && lines.some((l) => l.endsWith('Beta: gain 30 ± 5 per day, pays back in — days')), lines.join('|'));
+    check('cost 0: the confirmation line of a player who bought nothing says N/A; one who bought keeps the dash', lines.some((l) => l.endsWith('Alpha: gain 10 ± 2 per day, no cost')) && lines.some((l) => l.endsWith('Beta: gain 30 ± 5 per day, pays back in — days')), lines.join('|'));
     check('cost 0: an older confirmation with no running spend keeps the dash', plain(panel.renderResult({ ...res, confirmation: { ...res.confirmation, runningSpend: undefined } }, t)).includes('Alpha: gain 10 ± 2 per day, pays back in — days'));
 }
 console.log(failed ? `${failed} failed` : 'all passed');
