@@ -63,7 +63,6 @@
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
         .whatif-part { display: grid; grid-template-columns: 1.5em minmax(10em, 24em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
         .whatif-part-waiting { opacity: 0.6; }
-        .whatif-fresh { font-size: 0.75em; opacity: 0.7; font-weight: normal; }
         .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
         .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .whatif-part-text { text-align: right; white-space: nowrap; }
@@ -154,6 +153,9 @@
             padding: 15px; /* Padding inside the box */
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Optional shadow for better visibility */
         }
+        /* Numbers from src/numberFormat.js: tabular figures, right-aligned in their cell, so the decimal points of a column line up. */
+        [data-num], [data-pct], [data-pct2] { font-variant-numeric: tabular-nums; }
+        td[data-num], td:has(> [data-num]), td:has(> [data-pct]), [id^="combatStat_"]:has(> [data-num]), [id^="combatStat_"]:has(> [data-pct]) { text-align: right; }
     </style>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1818,6 +1820,12 @@
                         <div class="col-md-7">
                             <div class="fw-bold" data-i18n="common:whatIf.levers">What to search</div>
                             <div id="whatIfLevers"></div>
+                            <div class="whatif-sec mt-2">
+                                <div class="row g-1">
+                                    <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days, 0 = no limit)</label>
+                                    <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="365" class="form-control form-control-sm"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -2203,10 +2211,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=3ade6032"></script>
+    <script src="js/i18n.js?v=22631bfe"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.3ade6032.js" type="module"></script>
+    <script src="bundle.22631bfe.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">

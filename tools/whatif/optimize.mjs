@@ -22,6 +22,9 @@
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
 //   --budget <coin> | --export <exporter JSON>   budget: typed, else `coin` of the exporter JSON (3.1); every
 //                                player's budget unless --budgets names that player
+//   --max-payback <days>         default 365, 0 = no limit (profit goal): a change whose buyer's payback (cost over the buyer's gain per day) is over this
+//                                is not chosen: not eligible at its step (result.overPayback), and a pick whose fresh reading is over it fails the
+//                                pick check (result.notConfirmed). A free change always passes.
 //   --budgets A=1.5M,B=200K      a budget per player (budgets.mjs): each change is paid from its own player's coin,
 //                                each step records every player's running spend (result.json steps[].runningSpend)
 //   --low-priority               run this process and every run process at the lowest priority (Windows: idle class)
@@ -82,6 +85,7 @@ import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './b
 import { isDominatedSwap } from './dominated.mjs';
 import { createParts } from './progress.mjs';
 import { SURE_BLOCK, SURE_MAX, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
+import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
 import { refineTrigger } from './refine.mjs';
 import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
@@ -142,6 +146,8 @@ else if (Object.keys(budgetList).length) budgetSource = 'per player';
 else throw new Error('--budget, --budgets or --export required');
 if (Object.keys(budgetList).length && budget != null) budgetSource = `per player, else ${budgetSource}`;
 const budgets = resolveBudgets(players, budgetList, budget ?? NaN);
+const maxPayback = Number(arg('max-payback', 365));
+if (!(maxPayback >= 0)) throw new Error('--max-payback: a number of days, 0 for no limit');
 if (arg('low-priority', false) === true) os.setPriority(os.constants.priority.PRIORITY_LOW);
 
 const [probeK, probeH] = String(arg('probe', '1x50')).split('x').map(Number);
@@ -257,7 +263,9 @@ const cpOf = (ops, seed, h) => cache.get(keyOf(ops) + '#' + seed).byHours[h];
 const diffStat = (vs, bs, same) => diffStatBy(vs, bs, errorRule, same);
 // The buyer's own payback in days: the price over (his share of the loot gain per user minus the change in his own supplies
 // spend); null unless that net and the price are above 0.
-const paybackOwnOf = (cost, sharedPerUser, supplies) => { const net = sharedPerUser - supplies; return goal === 'profit' && cost > 0 && net > 0 ? cost / net : null; };
+const paybackOwnOf = (cost, sharedPerUser, supplies) => (goal === 'profit' ? paybackDays(cost, sharedPerUser - supplies) : null);
+// The payback limit the picks are held to: the profit goal only (the other goals have no buyer's gain); 0 = none.
+const payLimit = goal === 'profit' ? maxPayback : 0;
 const seedsFor = (k, off = 0) => Array.from({ length: k }, (_, i) => off + i + 1);
 // Seeds of k samples of a setup at h hours. Paired: the fixed list 1..k (approved 3.3). Unpaired (delta 4, his point
 // 23:14 BRT): any k runs of that setup that reach h, the lowest seeds first, and for the rest the next seeds that
@@ -316,7 +324,7 @@ async function confirmPick(baseOps, c, fin, label) {
         const fresh = freshRead(baseOps, c, k, fin.h);
         console.log(`  ${label} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
         return fresh;
-    }, { z, goal });
+    }, { z, goal, cost: c.cost.cost, maxPayback: payLimit });
 }
 
 // ---- Candidates ----
@@ -592,7 +600,7 @@ function bestEntry(kind, setup, chosen, fresh) {
 
 // ---- Search ----
 async function main() {
-    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers] }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], dominated, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
+    const result = { args: process.argv.slice(2).join(' '), goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
     const fin = stages[stages.length - 1];
     let baseOps = [], spent = zeroSpend(budgets);
     const fillings = levers.has('consumables');
@@ -609,8 +617,8 @@ async function main() {
             const fpool = await halve(fc, baseOps, kind, true);
             if (!fpool) return stop(result);
             // Each player's best filling (his first accepted one in rankAcceptedFirst order) is confirmed on fresh seeds, in party order,
-            // against the baseline that already holds the earlier players' confirmed fillings; one that fails is replaced by his next
-            // best, none left leaves him unchanged (confirmFillings in sure.mjs).
+            // each alone against the stage's start (not the earlier players' confirmed fillings); one that fails is replaced by his next
+            // best, none left leaves him unchanged (confirmFillings in sure.mjs). baseOps then holds every confirmed filling.
             const flag = kind === 'foods' ? 'food' : 'drink';
             const got = await confirmFillings(players, fpool, baseOps, (ops, c) => confirmPick(ops, c, fin, kind), ({ cand, fresh }) => {
                 result.notConfirmed.push({ ...row(cand), step: null, kind: flag, fresh });
@@ -683,7 +691,13 @@ async function main() {
         join: (cur, next) => { visited.add(keyOf([...chainOps, ...next.ops])); return { ...next, desc: joinTriggerDesc(cur.desc, next.desc), est: undefined, history: undefined }; },
     });
     for (let step = 0; step < maxSteps; step++) {
-        const ok = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)).sort(rank); // paid from its own player's coin left
+        const eligible = finalists.filter((c) => c.est.accepted && affordable(c, budgets, spent)); // paid from its own player's coin left
+        // One that pays back in more than the limit (the search reading: cost over the buyer's net) is not eligible; each is listed once.
+        const slow = eligible.filter((c) => overPaybackLimit(c.cost.cost, c.est.net, payLimit));
+        const listed = result.overPayback.length;
+        for (const c of slow) if (!result.overPayback.some((x) => x.id === c.id)) result.overPayback.push({ ...row(c), paybackDays: paybackDays(c.cost.cost, c.est.net) });
+        if (result.overPayback.length > listed) publish(result); // a new one is on the report the moment it is found
+        const ok = eligible.filter((c) => !slow.includes(c)).sort(rank);
         // The best pick joins only once it is confirmed on fresh seeds against the chain as it is now; one that is not is left out
         // (result.notConfirmed, never tried again: it leaves the finalists) and the next best is tried. None left ends the chain. A trigger
         // pick is refined first, so the row that is confirmed and shown is the owner's trigger from its value in the chain to its final one.
@@ -773,7 +787,7 @@ function row(c) {
 // report, the timing). A copy of the arrays the search still appends to; `timeOnly` is the search's own working list, never reported.
 function snapshot(result) {
     const { timeOnly, ...rest } = result;
-    return { ...rest, steps: [...result.steps], notConfirmed: [...result.notConfirmed], skippedNoExport: skippedGroup() };
+    return { ...rest, steps: [...result.steps], notConfirmed: [...result.notConfirmed], overPayback: [...result.overPayback], skippedNoExport: skippedGroup() };
 }
 // Sends the snapshot to the runner over the IPC channel (nothing to do on a command line, where there is none).
 function publish(result) {

@@ -144,7 +144,7 @@ export function foodFillCands(p, { items, market, baseline, triggerMap, need, ke
     const cands = plan.left.map((fill) => {
         const slots = placeFilling(fill, baseline, info), changed = slots.map((s, i) => (s !== baseline[i] ? i : -1)).filter((i) => i >= 0);
         const trig = inheritTriggers(p, slots, baseline, info, triggerMap);
-        const part = (i) => { const t = trig.find((x) => x.slot === i); return `${baseline[i] ? short(baseline[i]) : 'empty'} -> ${short(slots[i])}${t ? ` (trigger of ${short(t.donor)} kept)` : ''}`; };
+        const part = (i) => { const t = trig.find((x) => x.slot === i); return `${baseline[i] ? short(baseline[i]) : 'empty'} -> ${short(slots[i])}${t ? (t.donor === baseline[i] ? ' (trigger kept)' : ` (trigger copied from ${short(t.donor)})`) : ''}`; };
         return {
             id: `${p}:foodfill=${slots.map((s) => (s ? short(s) : 'none')).join('+')}`, kind: 'food-fill', groups: changed.map((i) => `${p}:food${i}`), player: p, monotone: false,
             desc: `${p} food: ${changed.map(part).join(', ')}`,

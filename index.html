@@ -63,7 +63,6 @@
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
         .whatif-part { display: grid; grid-template-columns: 1.5em minmax(10em, 24em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
         .whatif-part-waiting { opacity: 0.6; }
-        .whatif-fresh { font-size: 0.75em; opacity: 0.7; font-weight: normal; }
         .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
         .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .whatif-part-text { text-align: right; white-space: nowrap; }
@@ -1821,6 +1820,12 @@
                         <div class="col-md-7">
                             <div class="fw-bold" data-i18n="common:whatIf.levers">What to search</div>
                             <div id="whatIfLevers"></div>
+                            <div class="whatif-sec mt-2">
+                                <div class="row g-1">
+                                    <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days, 0 = no limit)</label>
+                                    <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="365" class="form-control form-control-sm"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">

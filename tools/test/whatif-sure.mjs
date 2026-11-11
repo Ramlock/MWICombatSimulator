@@ -78,17 +78,17 @@ check('a stop ends the check: null', await checkPick(async () => null, { z, goal
     check('firstConfirmed: onFail gets the failed pick (the refined candidate and the original) as it fails; the refined one joins', seen.join() === 'A*/A' && r.best.id === 'B*' && r.orig.id === 'B' && r.failed.length === 1);
 }
 
-// Foods and drinks: each player's chosen filling is confirmed in party order, each against the baseline that holds the earlier players'.
+// Foods and drinks: each player's chosen filling is confirmed in party order, each alone against the original baseline (never the earlier players').
 {
     const mk = (id, player, ok = true) => ({ id, player, ops: [{ op: 'food', player, id }], est: { accepted: ok } });
     // Pool in rank order. P1: f1 passes. P2: f2a fails, f2b (next best) passes. P3: both fail: unchanged. P4: nothing accepted.
     const pool = [mk('f1', 'P1'), mk('f2a', 'P2'), mk('f3a', 'P3'), mk('f2b', 'P2'), mk('f3b', 'P3'), mk('f4', 'P4', false), mk('f2c', 'P2')];
     const passes = new Set(['f1', 'f2b']), asked = [], failed = [];
     const r = await confirmFillings(['P1', 'P2', 'P3', 'P4'], pool, [{ op: 'base' }], async (ops, c) => { asked.push(c.id + ':' + ops.map((o) => o.id ?? o.op).join('+')); return { passed: passes.has(c.id), fresh: { who: c.id } }; }, (f) => failed.push(f.cand.id));
-    check('fillings: a filling that passes joins; the next player is checked against a baseline holding it', r.chosen.P1.id === 'f1' && asked[0] === 'f1:base' && asked[1] === 'f2a:base+f1');
-    check('fillings: one that fails is replaced by the player\'s next best (f2b after f2a); the rest of his list is not tried', r.chosen.P2.id === 'f2b' && !asked.some((a) => a.startsWith('f2c')) && asked.includes('f2b:base+f1'));
+    check('fillings: a filling that passes joins the result; the next player is still checked alone against the original baseline', r.chosen.P1.id === 'f1' && asked[0] === 'f1:base' && asked[1] === 'f2a:base');
+    check('fillings: one that fails is replaced by the player\'s next best (f2b after f2a); the rest of his list is not tried', r.chosen.P2.id === 'f2b' && !asked.some((a) => a.startsWith('f2c')) && asked.includes('f2b:base') && asked.every((a) => a.endsWith(':base')));
     check('fillings: a player none of whose fillings pass is unchanged (no entry); one with nothing accepted is never checked', !('P3' in r.chosen) && !('P4' in r.chosen) && !asked.some((a) => a.startsWith('f4')) && asked.filter((a) => a.startsWith('f3')).length === 2);
-    check('fillings: the failed ones are reported as they fail, in order; the ops of the confirmed ones make the new baseline in party order', failed.join() === 'f2a,f3a,f3b' && JSON.stringify(r.baseOps.map((o) => o.id ?? o.op)) === JSON.stringify(['base', 'f1', 'f2b']) && r.fresh.P2.who === 'f2b');
+    check('fillings: the failed ones are reported as they fail, in order; the returned baseOps is the original extended with the confirmed ones in party order', failed.join() === 'f2a,f3a,f3b' && JSON.stringify(r.baseOps.map((o) => o.id ?? o.op)) === JSON.stringify(['base', 'f1', 'f2b']) && r.fresh.P2.who === 'f2b');
     check('fillings: a stop ends the stage: null', await confirmFillings(['P1'], [mk('x', 'P1')], [], async () => null) === null);
 }
 
@@ -121,8 +121,24 @@ check('optimizer: the greedy step takes the first confirmed pick; failures go to
 check('optimizer: a trigger pick is refined before it is confirmed (refineTrigger), measured as one change against the chain, and nothing merges at the end', /cand = await refineAt\(baseOps, c, fin, visitedFor\(c\)\)/.test(opt) && /cand\.est = estimate\(baseOps, cand, fin/.test(opt) && !/mergeTriggerSteps/.test(opt) && !/if \(best\.kind === 'trigger'\) finalists\.push/.test(opt));
 check('optimizer: foods and drinks are confirmed per player on fresh seeds (confirmFillings); failures go to notConfirmed with kind food or drink, and best carries the fresh reading', /confirmFillings\(players, fpool, baseOps, /.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: null, kind: flag, fresh \}\)/.test(opt) && /bestEntry\(kind, after\.find\(\(s\) => s\.name === p\), chosen\[p\], got\.fresh\[p\]\)/.test(opt) && !/bestPerPlayer/.test(opt));
 check('optimizer: a step carries its fresh reading; result.steps is pushed to in one place', /result\.steps\.push\(\{ \.\.\.row\(best\), fresh: bestFresh,/.test(opt) && (opt.match(/result\.steps\.push\(/g) || []).length === 1);
-check('optimizer: five snapshot points (foods and drinks, candidates priced, last halving, a step, a failed pick), all through publish, one snapshot function', (opt.match(/publish\(result\);/g) || []).length === 5 && /process\.send\(\{ type: 'partial', result: snapshot\(result\) \}\)/.test(opt) && (opt.match(/function snapshot\(/g) || []).length === 1);
+check('optimizer: six snapshot points (foods and drinks, candidates priced, last halving, a new over-payback change, a step, a failed pick), all through publish, one snapshot function', (opt.match(/publish\(result\);/g) || []).length === 6 && /process\.send\(\{ type: 'partial', result: snapshot\(result\) \}\)/.test(opt) && (opt.match(/function snapshot\(/g) || []).length === 1);
 check('optimizer: the progress counts distinct runs once, a cached run done at once, picksPlanned and picksDone in the progress', /sure\.counted\.has\(id\)/.test(opt) && /if \(cache\.get\(id\)\?\.byHours\[r\.h\]\) sure\.done\+\+/.test(opt) && /if \(t\.tag === 'sure'\) sure\.done\+\+/.test(opt) && /progress\.picksPlanned = sure\.planned/.test(opt));
 check('optimizer: the final confirmation block is unchanged (original base, seeds 10001.., tag confirm)', /pick\(\[\], fin\.h, fin\.k \* baseMult, true\), vs = pick\(baseOps, fin\.h, fin\.k, true\)/.test(opt));
+
+// The payback limit (his picks 2026-11-11: 365 days by default, 0 = none): a fresh reading over it fails the pick like any other failure.
+{
+    const { paybackDays, overPaybackLimit } = await import(pathToFileURL(path.join(root, 'src/whatif/payback.mjs')).href);
+    check('payback: cost over the buyer\'s gain per day; none for a free change or a gain that is not above 0', paybackDays(3000, 10) === 300 && paybackDays(0, 10) === null && paybackDays(3000, 0) === null && paybackDays(3000, -4) === null && paybackDays(3000, undefined) === null);
+    check('limit: over it is out (500 days > 365), at it passes (365), 0 or none disables it', overPaybackLimit(5000, 10, 365) === true && overPaybackLimit(3650, 10, 365) === false && overPaybackLimit(5000, 10, 0) === false && overPaybackLimit(5000, 10, undefined) === false);
+    check('limit: a free change always passes; a change with a cost and no positive buyer gain is over the limit', overPaybackLimit(0, 10, 365) === false && overPaybackLimit(0, -10, 365) === false && overPaybackLimit(5000, 0, 365) === true && overPaybackLimit(5000, -3, 365) === true && overPaybackLimit(5000, undefined, 365) === true);
+    const read = (buyerNet) => async () => ({ accepted: true, gain: 100, se: 5, buyerNet, buyerNetSe: 2 });
+    check('pick check: a fresh reading over the limit fails the pick, with its reading kept', (await checkPick(read(10), { z, goal, cost: 5000, maxPayback: 365 })).passed === false && (await checkPick(read(10), { z, goal, cost: 5000, maxPayback: 365 })).fresh.buyerNet === 10);
+    check('pick check: under the limit, a free change, no limit (0) and no cost given all pass; a cost with no positive fresh buyer gain fails', (await checkPick(read(10), { z, goal, cost: 3000, maxPayback: 365 })).passed && (await checkPick(read(10), { z, goal, cost: 0, maxPayback: 365 })).passed && (await checkPick(read(10), { z, goal, cost: 5000, maxPayback: 0 })).passed && (await checkPick(read(10), { z, goal })).passed && !(await checkPick(read(0), { z, goal, cost: 5000, maxPayback: 365 })).passed);
+    const r = await firstConfirmed(['slow', 'fast'], async (c) => checkPick(read(10), { z, goal, cost: c === 'slow' ? 5000 : 1000, maxPayback: 365 }).then((x) => ({ ...x, cand: c })));
+    check('pick check: the slow pick goes to the failures and the next best is tried (firstConfirmed)', r.best === 'fast' && r.failed.length === 1 && r.failed[0].cand === 'slow');
+    check('optimizer: --max-payback (default 365, 0 = no limit) is read once; the profit goal only; saved in options as maxPaybackDays', /const maxPayback = Number\(arg\('max-payback', 365\)\);/.test(opt) && /const payLimit = goal === 'profit' \? maxPayback : 0;/.test(opt) && /maxPaybackDays: maxPayback/.test(opt));
+    check('optimizer: the chain picks only candidates within the limit by the search reading; each over it is listed once by id in result.overPayback with its days', /overPaybackLimit\(c\.cost\.cost, c\.est\.net, payLimit\)/.test(opt) && /!result\.overPayback\.some\(\(x\) => x\.id === c\.id\)\) result\.overPayback\.push\(\{ \.\.\.row\(c\), paybackDays: paybackDays\(c\.cost\.cost, c\.est\.net\) \}\)/.test(opt) && /overPayback: \[\.\.\.result\.overPayback\]/.test(opt));
+    check('optimizer: the pick check (steps and foods, one confirmPick) carries the cost and the limit', /\}, \{ z, goal, cost: c\.cost\.cost, maxPayback: payLimit \}\);/.test(opt));
+}
 
 process.exit(failed ? 1 : 0);

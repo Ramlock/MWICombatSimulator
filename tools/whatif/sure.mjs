@@ -6,6 +6,8 @@
 // on another. A pick that is accepted passes; one whose deciding figure is under z errors but at least z/2 errors gets another block
 // of seeds per arm, up to `max`; below z/2 errors, or still not accepted at `max`, it fails.
 
+import { overPaybackLimit } from '../../src/whatif/payback.mjs';
+
 export const SURE_BLOCK = 16, SURE_MAX = 64;
 
 export const deciding = (reading, goal) => (goal === 'profit' ? { v: reading.buyerNet, se: reading.buyerNetSe } : { v: reading.gain, se: reading.se });
@@ -19,13 +21,14 @@ export function verdict(reading, k, { z, goal, max = SURE_MAX }) {
 }
 
 // Measures at `block` seeds, then more while the verdict says so. Returns { passed, fresh } or null when `measure` returns null
-// (a stop or the time limit ended its runs).
-export async function checkPick(measure, { z, goal, block = SURE_BLOCK, max = SURE_MAX }) {
+// (a stop or the time limit ended its runs). `maxPayback` (days, 0 or none = no limit) with the pick's `cost`: a pick whose fresh
+// reading pays back in more than that many days (cost over the fresh buyer's gain) fails like any other (overPaybackLimit).
+export async function checkPick(measure, { z, goal, block = SURE_BLOCK, max = SURE_MAX, cost, maxPayback }) {
     for (let k = block; ; k += block) {
         const fresh = await measure(k);
         if (fresh === null) return null;
         const v = verdict(fresh, k, { z, goal, max });
-        if (v !== 'more') return { passed: v === 'pass', fresh };
+        if (v !== 'more') return { passed: v === 'pass' && !overPaybackLimit(cost, fresh.buyerNet, maxPayback), fresh };
     }
 }
 
@@ -46,18 +49,20 @@ export async function firstConfirmed(ok, check, onFail) {
     return { best: null, orig: null, fresh: null, failed };
 }
 
-// Foods and drinks (one stage): each player's chosen filling is confirmed like a step's pick, in party order, each against the baseline
-// that already holds the earlier players' confirmed fillings. `pool` is the stage's pool in rank order; a player's candidates are his
-// accepted ones. `check(baseOps, c)` is the pick check ({ passed, fresh } or null on a stop). A filling that fails is passed to
-// `onFail({ cand, fresh })` and the player's next best is tried; none left leaves him unchanged (no entry in `chosen`).
-// Returns { baseOps, chosen: { <player>: cand }, fresh: { <player>: reading } }, or null when a check was stopped.
+// Foods and drinks (one stage): each player's chosen filling is confirmed like a step's pick, in party order, each alone against
+// the original setup (`baseOps`, the stage's start), never against the earlier players' confirmed fillings. `pool` is the stage's
+// pool in rank order; a player's candidates are his accepted ones. `check(baseOps, c)` is the pick check ({ passed, fresh } or null
+// on a stop). A filling that fails is passed to `onFail({ cand, fresh })` and the player's next best is tried; none left leaves
+// him unchanged (no entry in `chosen`).
+// Returns { baseOps, chosen: { <player>: cand }, fresh: { <player>: reading } }, or null when a check was stopped; its baseOps is
+// the given baseOps extended with every chosen filling's ops, which the rest of the search is measured on.
 export async function confirmFillings(players, pool, baseOps, check, onFail) {
     const chosen = {}, fresh = {};
     let ops = baseOps;
     for (const p of players) {
         const mine = pool.filter((c) => c.player === p && c.est.accepted);
         if (!mine.length) continue;
-        const picked = await firstConfirmed(mine, (c) => check(ops, c), onFail);
+        const picked = await firstConfirmed(mine, (c) => check(baseOps, c), onFail);
         if (picked === null) return null;
         if (!picked.best) continue;
         chosen[p] = picked.best; fresh[p] = picked.fresh;

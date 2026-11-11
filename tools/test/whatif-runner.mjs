@@ -147,6 +147,7 @@ check(at('out') === argDir && at('setups') === path.join(argDir, 'setups') && ar
 check(readFileSync(path.join(argDir, 'setups', 'party.txt'), 'utf8') === 'Alpha\nBeta\n' && JSON.parse(readFileSync(path.join(argDir, 'setups', 'Beta.json'), 'utf8')).name === 'Beta', 'buildArgs: each setup written, party.txt in order');
 check(at('budgets') === 'Alpha=1000000,Beta=0' && at('players') === 'Alpha,Beta' && at('levers') === 'equip' && at('stages') === '4x1,4x1' && at('keep') === '2' && at('max-up') === '1' && args.includes('--no-swaps'), 'buildArgs: budgets, players default to the party, lists, camelCase flags, false as --no-');
 check(at('zone') === '/actions/combat/fly' && at('tier') === '0' && at('comdrop') === '0' && at('prices') === path.join(root, 'tools', 'calibration', 'marketplace-2026-11-03.json'), 'buildArgs: options, the price snapshot by name');
+check(!R.buildArgs({ setups: party }, argDir).includes('--max-payback') && R.buildArgs({ setups: party, maxPayback: 0 }, argDir).join(' ').includes('--max-payback 0') && R.buildArgs({ setups: party, maxPayback: 365 }, argDir).join(' ').includes('--max-payback 365'), 'buildArgs: the payback limit passes to the search as --max-payback (0 = no limit), and is left to its default when the request has none');
 check(throws(() => R.buildArgs({ setups: party, cacheFrom: 'x' }, argDir)) && throws(() => R.buildArgs({ setups: party, out: 'x' }, argDir)), 'buildArgs: an option the runner does not offer throws (out, cache-from)');
 check(throws(() => R.buildArgs({ setups: party, options: { prices: '../../secret.json' } }, argDir)) && throws(() => R.buildArgs({ setups: party, options: { prices: 'nope.json' } }, argDir)), 'buildArgs: a price file outside the snapshots throws');
 check(throws(() => R.buildArgs({ setups: [{ ...party[0], name: '../x' }] }, argDir)) && throws(() => R.buildArgs({ setups: [] }, argDir)) && throws(() => R.buildArgs({ setups: party, budgets: { 'A,B': 1 } }, argDir)), 'buildArgs: bad setup names, no setups, a bad budget name throw');
@@ -313,7 +314,7 @@ if (res) {
         check(seq.every((r, i) => i === 0 || (r.steps.length >= seq[i - 1].steps.length && r.notConfirmed.length >= seq[i - 1].notConfirmed.length)) && seq.slice(0, iHalved + 1).every((r) => r.steps.length === 0) && seq.every((r) => !('timeOnly' in r) && !('timing' in r) && !('confirmation' in r)), 'live report: steps and not-confirmed only grow; no step before the last halving; no timing or confirmation in a snapshot');
         check(res.steps.every((s, k) => seq.some((r) => r.steps.length === k + 1 && JSON.stringify(r.steps[k]) === JSON.stringify(s))) && seq.every((r) => r.steps.every((s, k) => JSON.stringify(s) === JSON.stringify(res.steps[k]))), 'live report: every step appears the moment it is confirmed, final as it is in the result, and never changes after');
         const diff = lastSnapIs(dir, res);
-        check(diff === '', 'live report: the last snapshot is the result without the confirmation, timing and skills', diff);
+        check(diff === '', 'live report: the last snapshot is the result without the confirmation, timing and skills ' + diff);
         check(Object.keys(res).every((k) => k in seq.at(-1) || endOnly.includes(k)), 'live report: the result has no key the last snapshot lacks, except the end-only ones');
         console.log(`     (live report: ${seq.length} snapshots in the resumed run)`);
     }
@@ -381,7 +382,7 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
         check(['foods', 'drinks'].every((k) => { const e = fr.best[k].Alpha; return e.unchanged ? !('fresh' in e) : (e.fresh && e.fresh.seeds >= 16 && e.fresh.seeds <= 64 && e.fresh.seedFrom === 20001 && e.fresh.accepted === true); }), 'best: a changed filling carries its fresh reading (16 to 64 seeds from 20001, accepted); an unchanged one has none');
         check((fr.notConfirmed || []).every((n) => ['food', 'drink'].includes(n.kind) && n.step === null && n.fresh && n.fresh.accepted === false), 'notConfirmed: a filling that failed has kind food or drink and no step');
         const diff = lastSnapIs(fdir, fr);
-        check(diff === '', 'live report (foods): the last snapshot is the result without the confirmation, timing and skills', diff);
+        check(diff === '', 'live report (foods): the last snapshot is the result without the confirmation, timing and skills ' + diff);
     }
     const b = fr.best, be = (kind) => b[kind].Alpha;
     check(b && Object.keys(b.foods).join() === 'Alpha' && Object.keys(b.drinks).join() === 'Alpha', 'result.best: foods and drinks, one entry per searched player');

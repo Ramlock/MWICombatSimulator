@@ -89,7 +89,13 @@ const notTheGameWord = {
     'whatIf.result.playerLine:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.playerLineNoChange:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.gainLegend:change': '"a mudança" is the noun (a change in the loot), not the verb Alterar of the game',
-    'whatIf.result.freshLegend:change': '"a mesma mudança" is the noun (a change), not the verb Alterar of the game',
+    'whatIf.result.overPayback:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.overPaybackNote:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.overPaybackShow:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.overPaybackHide:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.overPaybackDays:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.overPaybackNever:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
+    'whatIf.result.bestGainExp:party': 'the placeholder is named party; the text is "gain {{value}}", no game party (grupo) is meant',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;

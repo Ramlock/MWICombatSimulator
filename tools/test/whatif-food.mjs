@@ -103,7 +103,7 @@ check(c && !tops(c).some((o) => o.hrid === mo1) && c.ops.filter((o) => o.op === 
 c = withTrig({ [mi1]: T1 }, [hi2, mi1, mo1]);
 check(c && tops(c).length === 0, 'triggers: a donor with no entry in the triggerMap adds nothing');
 c = withTrig({ [hi1]: T1 }, [ho1, mi1, mo1]);
-check(c && same(tops(c), [{ op: 'trigger', player: 'P', hrid: ho1, triggers: T1 }]) && /ho1 \(trigger of hi1 kept\)/.test(c.desc), 'triggers: no baseline food of the type: the unused baseline food that restores the same resource is the donor');
+check(c && same(tops(c), [{ op: 'trigger', player: 'P', hrid: ho1, triggers: T1 }]) && /ho1 \(trigger kept\)/.test(c.desc), 'triggers: no baseline food of the type: the unused baseline food that restores the same resource is the donor');
 c = withTrig({ [mi1]: T1 }, [ho1, mi1, mo1]);
 check(c && tops(c).length === 0, 'triggers: the resource donor is an HP food, not an MP one (no entry for it: nothing)');
 // Donor already used by a same-type food: the resource donor must be unused. Baseline [hi1, ho1, mi1]; filling hi2 + ho2 + mo1? (mo1 new, resource mp: mi1 is unused)
@@ -116,9 +116,12 @@ check(f3 && same(tops(f3), [{ op: 'trigger', player: 'P', hrid: hi2, triggers: T
 
 // ---- Id and description ----
 c = withTrig({ [hi1]: T1, [mi1]: null }, [hi2, mi2, mo1]);
-check(c.id === 'P:foodfill=hi2+mi2+mo1' && c.desc === 'P food: hi1 -> hi2 (trigger of hi1 kept), mi1 -> mi2 (trigger of mi1 kept)' && same(c.groups, ['P:food0', 'P:food1']), 'id in slot order, desc old -> new per changed slot with the donor, groups per changed slot', c.desc);
+check(c.id === 'P:foodfill=hi2+mi2+mo1' && c.desc === 'P food: hi1 -> hi2 (trigger kept), mi1 -> mi2 (trigger kept)' && same(c.groups, ['P:food0', 'P:food1']), 'id in slot order, desc old -> new per changed slot with the donor, groups per changed slot', c.desc);
 c = F.foodFillCands('P', { items, market, baseline: [hi1, null, mo1], triggerMap: {}, need: small }).cands.find((x) => x.id === 'P:foodfill=hi1+mi1+mo1');
 check(c && c.desc === 'P food: empty -> mi1' && same(c.groups, ['P:food1']) && same(c.ops, [{ op: 'food', player: 'P', index: 1, item: mi1 }]), 'an empty slot is filled: "empty -> food", one food op');
+// A donor that is the item the slot held before says "kept" (above); one from another slot says it was copied from that food.
+c = F.foodFillCands('P', { items, market, baseline: [hi1, null, mo1], triggerMap: { [hi1]: T1 }, need: small }).cands.find((x) => x.id === 'P:foodfill=hi1+ho1+mo1');
+check(c && c.desc === 'P food: empty -> ho1 (trigger copied from hi1)' && same(tops(c), [{ op: 'trigger', player: 'P', hrid: ho1, triggers: T1 }]), 'description: a trigger taken from the food of another slot says copied from it, not kept', c && c.desc);
 // Sorted by the filling's cost for the baseline need, cheapest first.
 r = cands([hi1, mi1, mo1], { hp: 3000, mp: 3000 });
 const perHour = (id) => { const names = id.replace('P:foodfill=', '').split('+'); return F.fillingCostPerHour(names.map((n) => '/items/' + n), F.foodTable(items, market), { hp: 3000, mp: 3000 }); };

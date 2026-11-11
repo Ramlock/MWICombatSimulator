@@ -108,7 +108,7 @@ const percentCombatStats = [
 // src/numberFormat.js; each value carries its exact figure (hover title), so equal panels mean equal stats.
 function getCombatStatsPanelValues(combatDetails) {
     const values = {};
-    values.attackInterval = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(combatDetails.combatStats.attackInterval / 1e9, "s");
+    values.attackInterval = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(combatDetails.combatStats.attackInterval / 1e9, "s", { minDecimals: 2 });
     levelStats.forEach((stat) => {
         values[stat] = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_0__.numberHtml)(combatDetails[stat]);
     });
@@ -2364,7 +2364,10 @@ function getImportedGuildBuffs(importSet) {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   MAX_COLUMN_DECIMALS: () => (/* binding */ MAX_COLUMN_DECIMALS),
+/* harmony export */   alignNumberColumns: () => (/* binding */ alignNumberColumns),
 /* harmony export */   cellValue: () => (/* binding */ cellValue),
+/* harmony export */   decimalsNeeded: () => (/* binding */ decimalsNeeded),
 /* harmony export */   exactNumber: () => (/* binding */ exactNumber),
 /* harmony export */   exactUnit: () => (/* binding */ exactUnit),
 /* harmony export */   formatNumber: () => (/* binding */ formatNumber),
@@ -2382,24 +2385,30 @@ __webpack_require__.r(__webpack_exports__);
 // Display formatting for numbers shown in the simulator UI. Display only: stored data, exports, URLs and the
 // import/export formats keep full precision and never go through this module.
 //
-// Rules: at most 4 significant figures (trailing zeros dropped). From 10000 up, suffixes k, M, B, T (123.5k, 1.235M).
-// Below 10000, whole numbers show in full with a thousands separator (1,234); decimals show at 4 significant figures.
-// Percentages take the same rules plus a percent sign. ISO mode (the page's ISO toggle) separates the percent sign
-// ("1.79 %") and groups thousands with a space ("1 234"); off, it is "1.79%" and "1,234". The ISO gaps are
+// Rules: whole numbers with at least 2 significant figures. The largest suffix (k, M, B, T) whose whole-number mantissa
+// still has 2 or more digits is used, and a mantissa up to 9999 is allowed: 9,999 stays, 10,000 is 10k, 111,111 is 111k,
+// 1,111,111 is 1,111k, 11,111,111 is 11M. Below 10 a value that is not whole shows the fewest decimals that give it 2
+// significant figures (5.3, 0.42, 0.042). Values of 10 and up are whole.
+// A column of numbers shares one number of decimals (alignNumberColumns), so the points line up; `decimals` renders a value
+// with exactly that many. Percentages take the same rules plus a percent sign. ISO mode (the page's ISO toggle) separates the
+// percent sign ("1.79 %") and groups thousands with a space ("1 234"); off, it is "1.79%" and "1,234". The ISO gaps are
 // no-break spaces (U+00A0), so "100 %" never wraps onto two lines in a narrow column.
 
 const SUFFIXES = [
-    { base: 1e12, suffix: "T" },
-    { base: 1e9, suffix: "B" },
-    { base: 1e6, suffix: "M" },
     { base: 1e3, suffix: "k" },
+    { base: 1e6, suffix: "M" },
+    { base: 1e9, suffix: "B" },
+    { base: 1e12, suffix: "T" },
 ];
 
-const SIG_FIGS = 4;
-const SUFFIX_FROM = 10000;
+const MAX_WHOLE_MANTISSA = 9999;
+const MIN_SIG_FIGS = 2;
+const MAX_COLUMN_DECIMALS = 3;
+const PERCENT_MIN_DECIMALS = 1;
 
 // Page-wide settings, set from the UI (the ISO toggle). Pure calls can pass their own options instead:
-// { iso } overrides the toggle, { thousandsSeparator } overrides the separator the mode implies.
+// { iso } overrides the toggle, { thousandsSeparator } overrides the separator the mode implies,
+// { decimals } fixes the decimals of the (mantissa of the) text.
 const numberFormatSettings = {
     iso: false,
 };
@@ -2416,26 +2425,41 @@ function groupThousands(integerText, separator) {
     return integerText.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
 }
 
-function roundSig(abs) {
-    return Number(abs.toPrecision(SIG_FIGS));
-}
-
-function withSuffix(abs) {
+// The suffix a magnitude is written with: none while it rounds to at most 9999, else the smallest suffix whose rounded
+// mantissa is at most 9999 (the last, T, takes anything).
+function pickScale(abs) {
+    if (Math.round(abs) <= MAX_WHOLE_MANTISSA) return { base: 1, suffix: "" };
     for (let i = 0; i < SUFFIXES.length; i++) {
         const { base, suffix } = SUFFIXES[i];
-        if (abs < base) continue;
-        const scaled = roundSig(abs / base);
-        // Rounding can carry into the next suffix (999950 -> 1000k -> 1M).
-        if (scaled >= 1000 && i > 0) {
-            return String(roundSig(abs / SUFFIXES[i - 1].base)) + SUFFIXES[i - 1].suffix;
-        }
-        return String(scaled) + suffix;
+        if (i === SUFFIXES.length - 1 || Math.round(abs / base) <= MAX_WHOLE_MANTISSA) return { base, suffix };
     }
-    return String(roundSig(abs));
+}
+
+// Decimals a magnitude needs on its own: none from 10 up (and for whole numbers), else the fewest that give 2 significant figures.
+function ownDecimals(abs) {
+    if (abs === 0 || abs >= 10 || Number.isInteger(abs) || pickScale(abs).base !== 1) return 0;
+    const rounded = Number(abs.toPrecision(MIN_SIG_FIGS));
+    if (rounded >= 10) return 0;
+    const places = Math.max(0, MIN_SIG_FIGS - 1 - Math.floor(Math.log10(rounded)));
+    const text = rounded.toFixed(places);
+    return text.includes(".") ? text.replace(/0+$/, "").replace(/\.$/, "").split(".")[1]?.length ?? 0 : 0;
+}
+
+// The decimals a value asks of its column: its own, at least `minDecimals`, at most MAX_COLUMN_DECIMALS.
+function decimalsNeeded(value, minDecimals = 0) {
+    const number = typeof value === "string" ? Number(value) : value;
+    if (typeof number !== "number" || !Number.isFinite(number)) return 0;
+    return Math.min(MAX_COLUMN_DECIMALS, Math.max(ownDecimals(Math.abs(number)), minDecimals));
+}
+
+function mantissaText(abs, decimals, separator) {
+    const fixed = abs.toFixed(decimals);
+    const [integerText, fraction] = fixed.split(".");
+    return groupThousands(integerText, separator) + (fraction === undefined ? "" : "." + fraction);
 }
 
 // The display text of a number. Non-numbers and non-finite values pass through as text.
-// ISO mode spaces the magnitude letter like a unit ("301.6 k", "1.031 M", "1.2 B"; no-break space). B and T stay the
+// ISO mode spaces the magnitude letter like a unit ("301 k", "1 031 k", "12 B"; no-break space). B and T stay the
 // game's letters rather than SI G and T.
 function formatNumber(value, options = {}) {
     const text = formatNumberAttached(value, options);
@@ -2446,19 +2470,19 @@ function formatNumberAttached(value, options) {
     const separator = options.thousandsSeparator ?? (isIso(options) ? " " : ",");
     const number = typeof value === "string" ? Number(value) : value;
     if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
-    if (number === 0) return "0";
 
-    const sign = number < 0 ? "-" : "";
     const abs = Math.abs(number);
-
-    if (abs >= SUFFIX_FROM) return sign + withSuffix(abs);
-    if (Number.isInteger(abs)) return sign + groupThousands(String(abs), separator);
-
-    const rounded = roundSig(abs);
-    if (rounded >= SUFFIX_FROM) return sign + withSuffix(rounded);
-    if (rounded === 0) return "0";
-    if (rounded >= 1000) return sign + groupThousands(String(rounded), separator);
-    return sign + String(rounded);
+    const { base, suffix } = pickScale(abs);
+    const decimals = options.decimals ?? ownDecimals(abs);
+    let shown;
+    if (base === 1 && options.decimals === undefined && decimals > 0) {
+        // Under 10 with a fraction: 2 significant figures, trailing zeros dropped (5.04 is 5).
+        shown = mantissaText(Number(abs.toPrecision(MIN_SIG_FIGS)), decimals, separator);
+    } else {
+        shown = mantissaText(abs / base, decimals, separator);
+    }
+    const isZero = Number(shown.replaceAll(separator, "")) === 0;
+    return (number < 0 && !isZero ? "-" : "") + shown + suffix;
 }
 
 // A value already in percent units (12.5 for 12.5%).
@@ -2502,9 +2526,14 @@ function escapeAttribute(text) {
 
 // HTML for innerHTML sites: the display text with the exact value on hover. `unit` is appended to both.
 // The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
-function numberHtml(value, unit = "") {
-    return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '" title="' +
-        escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
+// `minDecimals` (data-min) is the least decimals the column pass gives this kind of number (attack interval: 2).
+function numberHtml(value, unit = "", options = {}) {
+    return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '"' + minAttribute(options.minDecimals) +
+        ' title="' + escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
+}
+
+function minAttribute(minDecimals) {
+    return minDecimals > 0 ? ' data-min="' + minDecimals + '"' : "";
 }
 
 // A percentage with exactly two decimals ("94.10%"), for rows that must line up; the raw value rides along (data-pct2).
@@ -2513,9 +2542,10 @@ function percentFixedHtml(value) {
         Number(value).toFixed(2) + percentSign() + "</span>";
 }
 
-function percentHtml(value) {
-    return '<span data-pct="' + escapeAttribute(String(value)) + '" title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' +
-        formatPercent(value) + "</span>";
+// A percentage column shows at least one decimal (the column pass honours `minDecimals`, default 1).
+function percentHtml(value, options = {}) {
+    return '<span data-pct="' + escapeAttribute(String(value)) + '"' + minAttribute(options.minDecimals ?? PERCENT_MIN_DECIMALS) +
+        ' title="' + escapeAttribute(exactNumber(value) + percentSign()) + '">' + formatPercent(value) + "</span>";
 }
 
 // For textContent sites: sets the display text and the hover title on an element.
@@ -2534,10 +2564,64 @@ function cellValue(cell) {
     return Number(raw);
 }
 
-// Re-formats every number this module rendered under `root`, after the settings change.
+const NUMBER_SELECTOR = "[data-num], [data-pct]";
+
+function renderSpan(element, decimals) {
+    const options = decimals === undefined ? {} : { decimals };
+    if (element.dataset.pct !== undefined) element.textContent = formatPercent(element.dataset.pct, options);
+    else element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "", options);
+}
+
+function indexIn(parent, child) {
+    return Array.prototype.indexOf.call(parent.children, child);
+}
+
+// Where a rendered number sits: the cell (a table cell, or a direct child of a `.row`), its container (the table, or the
+// parent of the rows) and the cell's index in its row. A number outside both has no column.
+function columnOf(element) {
+    for (let cell = element; cell.parentElement; cell = cell.parentElement) {
+        const parent = cell.parentElement;
+        if (parent.tagName === "TR") {
+            let container = parent.parentElement;
+            while (container && container.tagName !== "TABLE") container = container.parentElement;
+            return { cell, container: container ?? parent.parentElement, index: indexIn(parent, cell) };
+        }
+        if (String(parent.className ?? "").split(/\s+/).includes("row")) return { cell, container: parent.parentElement, index: indexIn(parent, cell) };
+    }
+    return null;
+}
+
+// Every column of numbers under `root` shares one number of decimals, so the points line up: the most any cell of the
+// column needs (its own for a value under 10, the kind's minimum), at most MAX_COLUMN_DECIMALS. A column is the same
+// position in the rows of one table (or of the `.row`s under one parent); plain numbers, percentages and each unit are
+// groups of their own, and a second number in one cell is its own group. Run it after a table renders and after the ISO toggle.
+function alignNumberColumns(root) {
+    const groups = new Map();
+    const perCell = new Map();
+    root.querySelectorAll(NUMBER_SELECTOR).forEach((element) => {
+        const column = columnOf(element);
+        if (!column) return;
+        const inCell = perCell.get(column.cell) ?? 0;
+        perCell.set(column.cell, inCell + 1);
+        const kind = element.dataset.pct !== undefined ? "%" : "n" + (element.dataset.unit ?? "");
+        const byKey = groups.get(column.container) ?? new Map();
+        groups.set(column.container, byKey);
+        const key = column.index + "/" + inCell + "/" + kind;
+        const members = byKey.get(key) ?? [];
+        byKey.set(key, members);
+        members.push(element);
+    });
+    for (const byKey of groups.values()) {
+        for (const members of byKey.values()) {
+            const decimals = Math.max(...members.map((e) => decimalsNeeded(e.dataset.pct ?? e.dataset.num, Number(e.dataset.min ?? 0))));
+            members.forEach((element) => renderSpan(element, decimals));
+        }
+    }
+}
+
+// Re-formats every number this module rendered under `root`, after the settings change, then lines the columns up.
 function refreshFormattedNumbers(root) {
     root.querySelectorAll("[data-num]").forEach((element) => {
-        element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "");
         element.title = exactUnit(element.dataset.num, element.dataset.unit ?? "");
     });
     root.querySelectorAll("[data-pct2]").forEach((element) => {
@@ -2545,9 +2629,10 @@ function refreshFormattedNumbers(root) {
         element.title = exactNumber(element.dataset.pct2) + percentSign();
     });
     root.querySelectorAll("[data-pct]").forEach((element) => {
-        element.textContent = formatPercent(element.dataset.pct);
         element.title = exactNumber(element.dataset.pct) + percentSign();
     });
+    root.querySelectorAll(NUMBER_SELECTOR).forEach((element) => renderSpan(element));
+    alignNumberColumns(root);
 }
 
 
@@ -3152,11 +3237,13 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./applyOps.mjs */ "./src/whatif/applyOps.mjs");
 /* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../numberFormat.js */ "./src/numberFormat.js");
 /* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../marketplace.mjs */ "./src/marketplace.mjs");
+/* harmony import */ var _payback_mjs__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./payback.mjs */ "./src/whatif/payback.mjs");
 // The What-if window's logic, DOM-free so it is tested in Node (tools/test/whatif-panel.mjs). The window talks to the
 // local runner (docs/codebase/whatif-window.md): it sends the page's setup and the search settings, shows the runner's
 // progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
+
 
 
 
@@ -3189,24 +3276,25 @@ const API = {
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.numberHtml)(v) : '—');
 const upper = (row) => row?.costBound === 'upper';
-// A gain within one error of zero is read as "no change" (a player is not used to error margins): the word, with the real value
-// ("+288K ± 242K") as its hover title. Strictly inside one error; exactly one error shows the number.
-const withinError = (v, se) => typeof v === 'number' && Number.isFinite(v) && typeof se === 'number' && Number.isFinite(se) && Math.abs(v) < se;
+// A figure is read as "no change" (a player is not used to error margins) when it is strictly inside one error, or smaller than
+// `floor` (the size floor: result.basePerUser / 10000, worked out once in renderResult and passed down; null = no floor). The word
+// replaces the value and its error, so they never show on different scales; the real value ("+288K ± 242K") is its hover title.
+// Exactly one error shows the number. This is the one helper for the rule: every place that shows a value with its error goes through it.
+const isNoChange = (v, se, floor) => Number.isFinite(v) && ((Number.isFinite(se) && Math.abs(v) < se) || (Number.isFinite(floor) && Math.abs(v) < floor));
 const signedPlain = (v) => (v > 0 ? '+' : '') + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(v);
-const realValue = (v, se) => signedPlain(v) + ' ± ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(se);
+const realValue = (v, se) => signedPlain(v) + (Number.isFinite(se) ? ' ± ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(se) : '');
 const noChange = (v, se, t) => `<span title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</span>`;
-// The two cells of a gain and its error: "no change" and "—" (both with the real value as title) when within one error.
-// `extra`: html for a second line inside the gain cell (a step's fresh reading, `freshLine`).
-function gainPair(v, se, t, extra = '') {
-    if (withinError(v, se)) { const title = ` title="${esc(realValue(v, se))}"`; return `<td class="num"${title}>${esc(t('result.noChange'))}${extra}</td><td class="num"${title}>—</td>`; }
-    return `<td class="num">${num(v)}${extra}</td><td class="num">± ${num(se)}</td>`;
+// One figure in a line of text: "no change", or "<value> ± <error>".
+const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(v) + ' ± ' + num(se));
+// The two cells of a gain and its error: "no change" and "—" (both with the real value as title) when it reads as no change.
+function gainPair(v, se, t, floor) {
+    if (isNoChange(v, se, floor)) { const title = ` title="${esc(realValue(v, se))}"`; return `<td class="num"${title}>${esc(t('result.noChange'))}</td><td class="num"${title}>—</td>`; }
+    return `<td class="num">${num(v)}</td><td class="num">± ${num(se)}</td>`;
 }
-// A step's fresh reading (the optimizer's pick check: the same change measured again on fresh seeds against the steps before it):
-// a small muted second line, "fresh 123K ± 40K, 32 seeds". Output only: gain, error and seeds are fields of `fresh`. '' with no reading.
-function freshLine(gain, se, fresh, t) {
-    if (!fresh || !Number.isFinite(gain) || !Number.isFinite(se)) return '';
-    return `<div class="whatif-fresh">${t('result.freshLine', { gain: num(gain), se: num(se), seeds: num(fresh.seeds) })}</div>`;
-}
+// A chosen change or filling shows its fresh reading (the optimizer's pick check: the same change measured again on fresh seeds
+// against what was chosen before it) in place of the search's own: [value, error] of a pair of fields from `fresh` when it has both,
+// else from `row` (an older result with no fresh reading, and a row that has none). Output only: every figure is a field.
+const reading = (fresh, row, valueKey, errorKey) => (Number.isFinite(fresh?.[valueKey]) && Number.isFinite(fresh?.[errorKey]) ? [fresh[valueKey], fresh[errorKey]] : [row[valueKey], row[errorKey]]);
 
 // slots: [{ id: "1", name: "<tab name>", json: "<the slot's setup JSON>" }] for the players in the search.
 // The setups the runner gets: each slot's JSON with its name, in the optimizer's setup format.
@@ -3216,7 +3304,7 @@ function pageSetups(slots) {
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports }) {
+function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
@@ -3225,6 +3313,8 @@ function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exp
     const body = { setups, options, goal, budgets, levers, players: setups.map((s) => s.name) };
     // exports: { "<player name>": that player's character export }, only for players that have one.
     if (exports && Object.keys(exports).length) body.export = exports;
+    // The payback limit in days (0 = no limit): the runner passes it to the search as --max-payback.
+    if (maxPayback !== undefined && maxPayback !== null && maxPayback !== '') body.maxPayback = Number(maxPayback);
     return body;
 }
 
@@ -3450,10 +3540,10 @@ const paybackCell = (row, t) => (row.payback === null || row.payback === undefin
 // The split of a row: the party's gain per user and its error, then the buyer's gain per day and its error (profit goal; "—" on the EXP
 // goal and on a result saved before the buyer's net). hasSplit: the row carries the buyer's split, so Payback is the buyer's.
 const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
-function gainCells(row, goalExp, t, withFresh = false) {
-    const buyer = !goalExp && Number.isFinite(row.buyerNet), f = withFresh ? row.fresh : null;
-    return gainPair(row.gainPerUser, row.sePerUser, t, freshLine(f?.gainPerUser, f?.sePerUser, f, t))
-        + (buyer ? gainPair(row.buyerNet, row.buyerNetSe, t, freshLine(f?.buyerNet, f?.buyerNetSe, f, t)) : '<td class="num">—</td><td class="num">—</td>');
+// withFresh: a chosen change, whose row shows its fresh reading.
+function gainCells(row, goalExp, t, floor, withFresh = false) {
+    const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
+    return gainPair(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainPair(net, netSe, t, floor) : '<td class="num">—</td><td class="num">—</td>');
 }
 // How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
 const pathCell = (s) => {
@@ -3464,16 +3554,22 @@ const pathCell = (s) => {
 };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
 const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath || ''));
-const buyerPayback = (row, goalExp, t) => (goalExp || !hasSplit(row) ? paybackCell(row, t) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound, cost: row.cost }, t));
+// A chosen change (withFresh) with a fresh reading and a cost: the cost over the fresh buyer's gain (paybackDays, the search's own helper);
+// with no cost or no positive buyer's gain, or any other row, what the row says.
+const buyerPayback = (row, goalExp, t, withFresh = false) => {
+    const days = withFresh && !goalExp ? (0,_payback_mjs__WEBPACK_IMPORTED_MODULE_3__.paybackDays)(row.cost, row.fresh?.buyerNet) : null;
+    if (days !== null) return paybackCell({ payback: days, costBound: row.costBound, cost: row.cost }, t);
+    return goalExp || !hasSplit(row) ? paybackCell(row, t) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound, cost: row.cost }, t);
+};
 // The Payback cell: the words of a free change (class whatif-free) may wrap, so a narrow window gives the room to the Change column.
-const paybackTd = (row, goalExp, t) => { const html = buyerPayback(row, goalExp, t); return `<td class="num${html === esc(t('result.noCost')) ? ' whatif-free' : ''}">${html}</td>`; };
+const paybackTd = (row, goalExp, t, withFresh = false) => { const html = buyerPayback(row, goalExp, t, withFresh); return `<td class="num${html === esc(t('result.noCost')) ? ' whatif-free' : ''}">${html}</td>`; };
 
 // ---- Best foods and drinks (result.best) ----
 // One line per player: "<player>: A, B, C" in slot order. A food shows its trigger in parentheses when it has one (the readable
 // text of the runner, its game ids named like the trigger descs); a drink never does. A player the search left unchanged shows his
 // current items and "no change". Returns '' for a result without `best` (saved before the foods-first search) or with no player in it.
 const slugOf = (hrid) => String(hrid).split('/').pop();
-function bestBlock(result, t, names = null, running = false) {
+function bestBlock(result, t, names = null, running = false, floor = null) {
     const best = result?.best;
     if (!best) return '';
     const lines = (kind, label) => {
@@ -3487,20 +3583,16 @@ function bestBlock(result, t, names = null, running = false) {
                 return esc(name) + (x.trigger ? ' (' + esc(names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
             });
             const text = items.length ? items.join(', ') : '—';
-            // A changed line says what the change is worth: the party's gain, the buyer's gain and (when saved) its split.
-            const gains = !e.unchanged && Number.isFinite(e.buyerNet)
-                ? ' · <span class="whatif-dim">' + t('result.bestGain', {
-                    party: withinError(e.gainPerUser, e.sePerUser) ? noChange(e.gainPerUser, e.sePerUser, t) : num(e.gainPerUser) + ' ± ' + num(e.sePerUser),
-                    buyer: num(e.buyerNet) + ' ± ' + num(e.buyerNetSe) }) + '</span>' + supplyNote({ sharedGainPerUser: e.gainPerUser, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t)
+            // A changed line says what the change is worth: the party's gain, the buyer's gain and (when saved) its split. The figures are
+            // the filling's fresh reading (the pick check, whatif-runner.md) when it has one, else the search's own (an older result).
+            const [gain, gainSe] = reading(e.fresh, e, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(e.fresh, e, 'buyerNet', 'buyerNetSe');
+            // On the EXP goal there is no buyer's gain: the party's figure alone.
+            const gains = e.unchanged ? ''
+                : Number.isFinite(net) ? ' · <span class="whatif-dim">' + t('result.bestGain', { party: figure(gain, gainSe, t, floor), buyer: figure(net, netSe, t, floor) }) + '</span>'
+                    + supplyNote({ sharedGainPerUser: gain, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t)
+                : result.goal === 'exp' && Number.isFinite(gain) ? ' · <span class="whatif-dim">' + t('result.bestGainExp', { party: figure(gain, gainSe, t, floor) }) + '</span>'
                 : '';
-            // The filling's own fresh reading (the pick check, whatif-runner.md): a second small muted line, like a step's.
-            const f = !e.unchanged ? e.fresh : null;
-            const fresh = f && Number.isFinite(f.gainPerUser) && Number.isFinite(f.sePerUser)
-                ? `<div class="whatif-fresh">${Number.isFinite(f.buyerNet) && Number.isFinite(e.buyerNet)
-                    ? t('result.freshBest', { partyGain: num(f.gainPerUser) + ' ± ' + num(f.sePerUser), buyerGain: num(f.buyerNet) + ' ± ' + num(f.buyerNetSe), seeds: num(f.seeds) })
-                    : t('result.freshBestExp', { partyGain: num(f.gainPerUser) + ' ± ' + num(f.sePerUser), seeds: num(f.seeds) })}</div>`
-                : '';
-            return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}${gains}${fresh}</div>`;
+            return `<div class="whatif-best-line">${esc(p)}: ${text}${e.unchanged ? ' · <span class="whatif-dim">' + esc(t('result.noChange')) + '</span>' : ''}${gains}</div>`;
         });
         return `<div class="fw-bold mt-2">${esc(label)}</div>${rows.join('')}`;
     };
@@ -3509,6 +3601,14 @@ function bestBlock(result, t, names = null, running = false) {
     // While the search runs the line waits for both groups: it says everything below is measured on the foods and drinks.
     const baseline = running && !(foods && drinks) ? '' : `<div class="small text-secondary mt-1">${esc(t('result.bestBaseline'))}</div>`;
     return `<div class="whatif-best">${foods}${drinks}${baseline}</div>`;
+}
+// A closed list: a bold heading with a small note, one toggle link, and the items (html of <li>s) hidden behind it. The over-budget,
+// pays-back-too-slowly and not-confirmed lists are this one renderer; `key` names their locale keys: <key>, <key>Note, <key>Show, <key>Hide.
+function closedList(key, id, items, note, t) {
+    const n = items.length;
+    return `<div class="fw-bold mt-3">${esc(t('result.' + key))} <span class="text-secondary fw-normal small">${esc(t('result.' + key + 'Note', { n, ...note }))}</span></div>` +
+        `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="${id}" data-show="${esc(t('result.' + key + 'Show', { n }))}" data-hide="${esc(t('result.' + key + 'Hide', { n }))}">${esc(t('result.' + key + 'Show', { n }))}</button>` +
+        `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 }
 const colHead = (t) => [
     `<th class="num" title="${esc(t('col.partyGainTip'))}">${esc(t('col.partyGain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`,
@@ -3533,7 +3633,9 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
     const prices = pricesLine(result, t, now);
     if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
     const goalExp = result.goal === 'exp';
-    const bestHtml = bestBlock(result, t, names, running);
+    // The size floor of the "no change" rule, worked out once here and passed down to every figure with an error.
+    const floor = Number.isFinite(result.basePerUser) ? result.basePerUser / 10000 : null;
+    const bestHtml = bestBlock(result, t, names, running, floor);
     if (bestHtml) L.push(bestHtml);
     if (!running || result.steps?.length) L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`); }
@@ -3543,24 +3645,23 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-                gainCells(s, goalExp, t, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
+                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
         if (!goalExp) L.push(`<div class="small whatif-dim mb-2">${esc(t('result.gainLegend'))}</div>`);
-        if (result.steps.some((s) => s.fresh)) L.push(`<div class="small whatif-dim mb-2">${esc(t('result.freshLegend'))}</div>`);
     }
     const c = result.confirmation;
     if (c) {
         // With the per-player lines the party payback is dropped (each line has its own buyer's payback); an older result keeps it.
         const perPlayer = !goalExp && !!c.buyerByPlayer;
         const bound = (result.steps || []).some(upper) ? 'upper' : undefined;
-        L.push(`<div class="mb-2">${esc(t(goalExp ? 'result.confirmed' : 'result.confirmedParty'))}: <b>${withinError(c.gainPerUser, c.sePerUser) ? noChange(c.gainPerUser, c.sePerUser, t) : num(c.gainPerUser) + ' ± ' + num(c.sePerUser)}</b> ${esc(t('result.perUserDay'))}, ` +
+        L.push(`<div class="mb-2">${esc(t(goalExp ? 'result.confirmed' : 'result.confirmedParty'))}: <b>${figure(c.gainPerUser, c.sePerUser, t, floor)}</b> ${esc(t('result.perUserDay'))}, ` +
             `${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}` +
             (perPlayer ? '' : `, ${esc(t('col.payback'))} ${paybackCell({ payback: confirmedPayback(c.payback), costBound: bound, cost: c.cost }, t)}`) + '</div>');
         if (perPlayer) for (const [p, b] of Object.entries(c.buyerByPlayer)) {
             // A player who bought nothing (his running spend is exactly 0) has nothing to pay back: the free wording, not a dash.
-            const free = c.runningSpend?.[p] === 0, flat = withinError(b.gain, b.se);
+            const free = c.runningSpend?.[p] === 0, flat = isNoChange(b.gain, b.se, floor);
             const payback = paybackCell({ payback: confirmedPayback(b.payback), costBound: bound });
             const line = free ? t(flat ? 'result.playerLineFreeNoChange' : 'result.playerLineFree', { player: esc(p), gain: flat ? noChange(b.gain, b.se, t) : num(b.gain), se: num(b.se) })
                 : flat ? t('result.playerLineNoChange', { player: esc(p), gain: noChange(b.gain, b.se, t), payback })
@@ -3578,7 +3679,7 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
             [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-            gainCells(s, goalExp, t) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
+            gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
             (isTimeOnly(s) ? '<td></td>' : `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td>`) + '</tr>';
         const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.hiddenFood); // hiddenFood: a food row the search left out (one food row per player)
         const weak = rows.filter(([s]) => !s.accepted);
@@ -3589,28 +3690,25 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
     }
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
-        const n = result.overBudget.length;
-        L.push(`<div class="fw-bold mt-3">${esc(t('result.overBudget'))} <span class="text-secondary fw-normal small">${esc(t('result.overBudgetNote', { n }))}</span></div>` +
-            `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="whatIfOverBudget" data-show="${esc(t('result.overBudgetShow', { n }))}" data-hide="${esc(t('result.overBudgetHide', { n }))}">${esc(t('result.overBudgetShow', { n }))}</button>` +
-            '<ul class="small whatif-more" id="whatIfOverBudget" hidden>' +
-            result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`).join('') + '</ul>');
+        L.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`), {}, t));
+    }
+    if (result.overPayback?.length) {
+        // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
+        const days = (a) => (Number.isFinite(a.paybackDays) ? t('result.overPaybackDays', { days: num(a.paybackDays) }) : esc(t('result.overPaybackNever')));
+        L.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}, ${days(a)}</li>`), { days: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(result.options?.maxPaybackDays) }, t));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
-        const n = result.notConfirmed.length;
-        const gainText = (g, e) => num(g) + ' ± ' + num(e);
         const item = (a) => {
             const f = a.fresh || {};
             // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
             const at = a.kind === 'food' ? t('result.notConfirmedAtFood') : a.kind === 'drink' ? t('result.notConfirmedAtDrink') : t('result.notConfirmedAtStep', { step: num(a.step) });
             const text = Number.isFinite(f.buyerNet) && !goalExp
-                ? t('result.notConfirmedItem', { at, partyGain: gainText(f.gainPerUser, f.sePerUser), buyerGain: gainText(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) })
-                : t('result.notConfirmedItemExp', { at, partyGain: gainText(f.gainPerUser, f.sePerUser), seeds: num(f.seeds) });
+                ? t('result.notConfirmedItem', { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor), buyerGain: figure(f.buyerNet, f.buyerNetSe, t, floor) })
+                : t('result.notConfirmedItemExp', { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor) });
             return `<li>${esc(a.player)}, ${shown(a)}: ${text}</li>`;
         };
-        L.push(`<div class="fw-bold mt-3">${esc(t('result.notConfirmed'))} <span class="text-secondary fw-normal small">${esc(t('result.notConfirmedNote', { n }))}</span></div>` +
-            `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="whatIfNotConfirmed" data-show="${esc(t('result.notConfirmedShow', { n }))}" data-hide="${esc(t('result.notConfirmedHide', { n }))}">${esc(t('result.notConfirmedShow', { n }))}</button>` +
-            '<ul class="small whatif-more" id="whatIfNotConfirmed" hidden>' + result.notConfirmed.map(item).join('') + '</ul>');
+        L.push(closedList('notConfirmed', 'whatIfNotConfirmed', result.notConfirmed.map(item), {}, t));
     }
     if (result.dominated?.length) {
         // One line with the count and its toggle; the swaps the search skipped (no better on any stat) sit closed behind it.
@@ -3705,6 +3803,35 @@ function renderDiff(diff, t, names = null) {
     return `<div class="whatif-warn">${esc(t('diff.title'))}<ul class="mb-0">${shown}${more}</ul></div>`;
 }
 const fmtRaw = (v) => (v === null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+
+/***/ }),
+
+/***/ "./src/whatif/payback.mjs":
+/*!********************************!*\
+  !*** ./src/whatif/payback.mjs ***!
+  \********************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   overPaybackLimit: () => (/* binding */ overPaybackLimit),
+/* harmony export */   paybackDays: () => (/* binding */ paybackDays)
+/* harmony export */ });
+// The buyer's payback, in one place: the report window (src/whatif/panel.mjs) and the search (tools/whatif/optimize.mjs,
+// tools/whatif/sure.mjs) both read it from here, so the figure shown and the figure the limit is checked on are the same.
+
+// The payback in days: the cost over the buyer's gain per day. null unless both are above 0 (a free change has nothing to pay back,
+// a change with no positive buyer's gain never does).
+const paybackDays = (cost, buyerNet) => (Number.isFinite(cost) && cost > 0 && Number.isFinite(buyerNet) && buyerNet > 0 ? cost / buyerNet : null);
+
+// Whether a change pays back too slowly for the limit (days; 0, null or undefined = no limit). A free change (cost 0) always passes;
+// a change with a cost and no positive buyer's gain has no payback and is over the limit.
+function overPaybackLimit(cost, buyerNet, limit) {
+    if (!(limit > 0) || !(cost > 0)) return false;
+    const days = paybackDays(cost, buyerNet);
+    return days === null || days > limit;
+}
 
 
 /***/ }),
@@ -4824,6 +4951,12 @@ function updateCombatStatsUI() {
     for (const [stat, value] of Object.entries((0,_combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_14__.getCombatStatsPanelValues)(unit.combatDetails))) {
         document.getElementById("combatStat_" + stat).innerHTML = value;
     }
+    alignNumbers();
+}
+
+// Lines the numbers of every column up (one number of decimals per column, src/numberFormat.js); run after a table or list renders.
+function alignNumbers() {
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.alignNumberColumns)(document);
 }
 
 // #endregion
@@ -5644,7 +5777,8 @@ function showSimulationResult(simResult) {
     window.noRngProfit = window.noRngRevenue - window.expenses;
     (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
     (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
-    
+    alignNumbers();
+
     // 显示战斗图表
     if (document.getElementById('hpMpVisualizationToggle').checked) {
         renderCombatCharts(simResult);
@@ -6255,7 +6389,7 @@ function updateAllSimsModal(data) {
 
         tableBody.appendChild(row);
     });
-
+    alignNumbers();
 }
 
 let currentSortColumn = null;
@@ -8402,6 +8536,7 @@ function whatIfShowResult(result, running = false) {
         if (body) body.hidden = false;
         if (toggle) toggle.textContent = toggle.dataset.hide;
     }
+    alignNumbers();
     whatIfShowDiff();
 }
 
@@ -8418,6 +8553,7 @@ function whatIfShowDiff() {
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     document.getElementById('whatIfProgress').innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.renderProgress)(status, whatIfT);
+    alignNumbers();
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
@@ -8458,6 +8594,8 @@ async function whatIfStart() {
         if (input.value === '' || !Number.isFinite(value) || value < 0) { whatIfMessage(whatIfT('badBudget', { player: input.dataset.player })); return; }
         budgets[input.dataset.player] = value;
     }
+    const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
+    if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) { whatIfMessage(whatIfT('badMaxPayback')); return; }
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
     const exports = {};
@@ -8467,7 +8605,7 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.searchRequest)({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__.fetchMarketplace)());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
@@ -9252,6 +9390,7 @@ document.addEventListener("input", (e) => {
         window.noRngProfit = window.noRngRevenue - window.expenses;
         (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
         (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+        alignNumbers();
     }
 });
 
@@ -9575,4 +9714,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.3ade6032.js.map
+//# sourceMappingURL=bundle.22631bfe.js.map

@@ -4310,6 +4310,8 @@ async function whatIfStart() {
         if (input.value === '' || !Number.isFinite(value) || value < 0) { whatIfMessage(whatIfT('badBudget', { player: input.dataset.player })); return; }
         budgets[input.dataset.player] = value;
     }
+    const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
+    if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) { whatIfMessage(whatIfT('badMaxPayback')); return; }
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
     const exports = {};
@@ -4319,7 +4321,7 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports,
+    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
