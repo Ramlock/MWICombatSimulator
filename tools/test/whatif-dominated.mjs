@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+await import(pathToFileURL(path.join(root, 'tools/whatif/engine.mjs')).href); // registers the loader hooks dominated.mjs needs
 const D = await import(pathToFileURL(path.join(root, 'tools/whatif/dominated.mjs')).href);
 const { default: items } = await import(new URL('file:///' + path.join(root, 'src/combatsimulator/data/itemDetailMap.json').replace(/\\/g, '/')).href);
 const table = JSON.parse(readFileSync(path.join(root, 'src/combatsimulator/data/enhancementLevelTotalBonusMultiplierTable.json'), 'utf8'));
@@ -57,7 +58,7 @@ check(!dom(WW, 0, wep('wfocus', { stabDamage: 0.4, focusTraining: '/skills/melee
 }
 
 // The optimizer: market swaps only, recorded in result.json `dominated`, never offered.
-const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
+const opt = readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
 const loop = opt.slice(opt.indexOf('function candidatesFor'), opt.indexOf('// ---- Phase 2 levers'));
 check((opt.match(/isDominatedSwap\(/g) || []).length === 1 && /isDominatedSwap\(itemDetailMap\[it\.itemHrid\], it\.enhancementLevel, item, L\)/.test(loop), 'optimizer: only the market-swap loop checks dominance (not owned items, pairs or enhance)');
 check(/dominated\.push\(\{ id, player: p, slot, desc, from: \{ item: it\.itemHrid, level: it\.enhancementLevel \}, to: \{ item: item\.hrid, level: L \} \}\)/.test(loop) && /continue;/.test(loop.slice(loop.indexOf('dominated.push'))), 'optimizer: a dominated swap is listed (id, player, slot, desc, item pair) and skipped');

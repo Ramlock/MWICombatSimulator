@@ -118,7 +118,7 @@ check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, 
 }
 
 // The optimizer wires it into progress.json; the runner passes progress on unchanged.
-check('optimizer: createParts after the candidates, parts in progress', /partsTracker = createParts\(/.test(read('tools/whatif/optimize.mjs')) && /progress\.parts = partsTracker\.sync\(progress\)/.test(read('tools/whatif/optimize.mjs')));
+check('optimizer: createParts after the candidates, parts in progress', /partsTracker = createParts\(/.test(read('tools/whatif/core.mjs')) && /progress\.parts = partsTracker\.sync\(progress\)/.test(read('tools/whatif/core.mjs')));
 check('runner: progress object is passed through whole (no field picked)', /s\.handle\.onProgress = \(p\) => \{ s\.progress = p; \}/.test(read('tools/whatif/runner/server.mjs')));
 
 // Panel: one row per part, the right classes and texts.

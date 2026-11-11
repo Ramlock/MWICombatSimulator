@@ -2,6 +2,20 @@
 
 `tools/whatif/runner/server.mjs`: a local web server that serves the built simulator and runs the what-if optimizer (`tools/whatif/optimize.mjs`) for it, at the lowest operating-system priority on every core. Test: `tools/test/whatif-runner.mjs`.
 
+## Core and shell
+
+The search is one function, `main(settings, seams)` in `tools/whatif/core.mjs`, which imports no `fs`, `process`, `os` or `child_process` (nor does anything it imports: the game tables are static JSON imports, the engine's `Equipment` a static import in `dominated.mjs`). `tools/whatif/optimize.mjs` is the Node shell: it turns the command line into flags (`options.mjs`: `parseFlags`, `makeArg`), loads the data, and hands the core the Node side of each seam from `tools/whatif/node-shell.mjs`. The shell imports `engine.mjs` first (it registers the loader hooks) and the core after it. A test of the search code reads `core.mjs` as text (the search no longer runs on import).
+
+| Seam | Core sees | Node shell |
+|---|---|---|
+| `data` | `{ setups, market, pricesTimestamp, exportData, userTrig }` | `loadNodeData`: `readParty`, the price snapshot file, `--export`, `--trigger-cands` |
+| `store` | `load()` (every saved record), `put(record)`, `readAux(name)`, `writeAux(name, value)` | `createNodeStore`: `--cache-from` files then `<out>/runs.jsonl` (appended per run); `<out>/need.json`, `<out>/probe.json` |
+| `pool` | `run(task)` resolves with the run's result or `null` once killed | `createNodePool`: forked `batch.mjs --child` processes (made on demand, kept for the search, at this process's priority); `kill()` on a stop |
+| `sink` + `stop` | `progress(p)`, `partial(snapshot)`, `stopped(snapshot)`, `final(snapshot, markdown)`; `stop.requested` | `createNodeSink`: `progress.json`, `partial.json`, `result.json`, `result.md` and the IPC messages; the `'stop'` message sets `stop.requested` |
+| `hash`, `sim` | `hash(text)`; `sim = { runParty, measureNeed, buildDtos, Trigger }` | `sha1`; the real functions of `engine.mjs` and `src/combatsimulator/trigger.js` |
+
+The core keeps the loaded records in memory (the estimates read them synchronously); `main` resolves with `{ stopped }` and the shell exits with code 3 when it is true.
+
 ## Starting it
 
 `node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>]`

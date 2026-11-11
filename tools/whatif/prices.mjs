@@ -8,16 +8,13 @@
 // - Upgrade own +M to +N: the cheaper of (market) buy +N and sell +M, and (own mirror) mirror the owned item up one
 //   level at a time, each step costing a mirror plus a bought copy one level below the owned item.
 // - A Mirror win below +10 is flagged: his words, "Below +10 the PMirror is rarely if ever worth the total cost".
-import { readFileSync } from 'node:fs';
-import { DEFAULT_PRICES, MARKET_TAX } from './engine.mjs';
 
+export const MARKET_TAX = 0.04; // the engine's number too: engine.mjs re-exports it
 export const MIRROR = '/items/philosophers_mirror';
 export const TAX_LABEL = 'after 4% market tax';
 const MIRROR_CHECK_BELOW = 10;
 
-export function loadMarket(file = DEFAULT_PRICES) {
-    return JSON.parse(readFileSync(file, 'utf8')).marketData;
-}
+// loadMarket (the file read) is in node-shell.mjs: this file has no file access, so the search core can use it in any shell.
 
 export function makePricer(market) {
     const entry = (hrid, lvl) => market[hrid]?.[String(lvl)];

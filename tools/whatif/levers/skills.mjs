@@ -6,7 +6,7 @@
 // time spent away from the primary income: hours away x base profit per hour; for levelling by combat that is 0 hours.
 // Also reported: the days to reach the Intelligence level that opens the 5th ability slot, for a player below it.
 // The level timing and the experience table are charm.mjs's (levelExperienceTable.json).
-import { XP, MAX_LEVEL, toNext, candidates as charmCandidates } from '../charm.mjs';
+import { XP, MAX_LEVEL, toNext, candidates as charmCandidates } from '../charm-lib.mjs';
 
 // Experience left to the next level, typed per player: "P1:stamina=300.5K,magic=7.25M;P2:attack=1.2M".
 // Suffixes K, M, B (x1e3, 1e6, 1e9). Returns { player: { skill: experience left } }.

@@ -2,7 +2,8 @@
 // market tax, the cheaper of the market (buy +N, sell the current item) and the Mirror path (prices.mjs).
 // Usage: node tools/whatif/price-upgrades.mjs [--player Ramlock] [--max-up 3] [--prices <marketplace.json>] [--setups <dir>]
 import { readParty } from './variants.mjs';
-import { loadMarket, makePricer, TAX_LABEL } from './prices.mjs';
+import { makePricer, TAX_LABEL } from './prices.mjs';
+import { loadMarket } from './node-shell.mjs';
 import { DEFAULT_PRICES } from './engine.mjs';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i < 0 ? d : process.argv[i + 1]; };

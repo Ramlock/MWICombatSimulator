@@ -15,17 +15,15 @@
 // - books: an ability not learned (needs the exporter's learnedAbilities) learned into each open slot (slot 0 takes
 //   special abilities only) at each level in --book-levels (default 1): the first book learns it at level 1, XP 0
 //   (Combat.md:11; learned abilities at level 1 show experience 0 in the export), duplicates add their XP.
-import { readFileSync } from 'node:fs';
+import xpTable from '../levelExperienceTable.json' with { type: 'json' };
+import houseRoomDetailMap from '../../../src/combatsimulator/data/houseRoomDetailMap.json' with { type: 'json' };
+import itemDetailMap from '../../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
+import abilityDetailMap from '../../../src/combatsimulator/data/abilityDetailMap.json' with { type: 'json' };
+import abilitySlotsLevelRequirementList from '../../../src/combatsimulator/data/abilitySlotsLevelRequirementList.json' with { type: 'json' };
 
 // The game's experience table, as charm.mjs reads it (read here, not imported: engine.mjs imports this file).
-export const XP = JSON.parse(readFileSync(new URL('../levelExperienceTable.json', import.meta.url), 'utf8')).table;
+export const XP = xpTable.table;
 export const MAX_LEVEL = XP.length;
-
-const data = (f) => JSON.parse(readFileSync(new URL('../../../src/combatsimulator/data/' + f, import.meta.url), 'utf8'));
-const houseRoomDetailMap = data('houseRoomDetailMap.json');
-const itemDetailMap = data('itemDetailMap.json');
-const abilityDetailMap = data('abilityDetailMap.json');
-const abilitySlotsLevelRequirementList = data('abilitySlotsLevelRequirementList.json');
 
 const short = (h) => h.split('/').pop();
 const COIN = '/items/coin';

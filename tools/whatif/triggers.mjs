@@ -6,16 +6,11 @@
 // How a trigger works (src/combatsimulator/trigger.js, ability.js:196-213, consumable.js:66-83): an owner (an
 // ability, food or drink) is checked only when off cooldown; its terms are ANDed; an empty list always fires.
 // The owner's triggers are the player's triggerMap entry, else the game's defaultCombatTriggers.
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const data = (f) => JSON.parse(readFileSync(path.join(root, 'src/combatsimulator/data', f), 'utf8'));
-export const conditionMap = data('combatTriggerConditionDetailMap.json');
-const dependencyMap = data('combatTriggerDependencyDetailMap.json');
-const abilityDetailMap = data('abilityDetailMap.json');
-const itemDetailMap = data('itemDetailMap.json');
+import conditionMap from '../../src/combatsimulator/data/combatTriggerConditionDetailMap.json' with { type: 'json' };
+import dependencyMap from '../../src/combatsimulator/data/combatTriggerDependencyDetailMap.json' with { type: 'json' };
+import abilityDetailMap from '../../src/combatsimulator/data/abilityDetailMap.json' with { type: 'json' };
+import itemDetailMap from '../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
+export { conditionMap };
 
 const P = '/combat_trigger_';
 export const GE = P + 'comparators/greater_than_equal', LE = P + 'comparators/less_than_equal';

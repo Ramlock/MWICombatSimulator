@@ -8,10 +8,9 @@
 //   4. every non-stat field is equal on both: in combatStats, the fields below (not stats), and every
 //      equipmentDetail field other than the stat and bonus maps, `type` (equal by construction) and
 //      `levelRequirements` (already filtered by the optimizer's requirement check).
-import { root } from './engine.mjs'; // registers the JSON loader hooks before the engine's own module is imported
-import path from 'node:path';
-
-const { default: Equipment } = await import(new URL('file:///' + path.join(root, 'src/combatsimulator/equipment.js').replace(/\\/g, '/')).href);
+// The engine's Equipment class is a static import of src/. In Node the loader hooks (engine.mjs) must be registered before this file is
+// loaded: the Node shell and the tests import engine.mjs first. A bundler needs nothing.
+import Equipment from '../../src/combatsimulator/equipment.js';
 
 export const NON_STAT_COMBAT_FIELDS = ['combatStyleHrids', 'damageType', 'attackInterval', 'primaryTraining', 'focusTraining'];
 const SKIPPED_DETAIL_FIELDS = new Set(['type', 'levelRequirements', 'combatStats', 'noncombatStats', 'combatEnhancementBonuses', 'noncombatEnhancementBonuses']);

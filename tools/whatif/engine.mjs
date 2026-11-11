@@ -23,7 +23,8 @@ const { default: combatMonsterDetailMap } = await import(src('combatsimulator/da
 const { default: openableLootDropMap } = await import(src('combatsimulator/data/openableLootDropMap.json'));
 
 export const ONE_HOUR = 3600 * 1e9;
-export const MARKET_TAX = 0.04;
+import { MARKET_TAX } from './prices.mjs';
+export { MARKET_TAX };
 export const DEFAULT_PRICES = path.join(root, 'tools', 'calibration', 'marketplace-2026-11-03.json');
 
 // Seeded Math.random, as tools/calibration/run.mjs:37-51.

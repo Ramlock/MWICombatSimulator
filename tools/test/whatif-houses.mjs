@@ -59,7 +59,7 @@ const aleOther = H.abilityLevelCands(setup, 'P', { steps: [1], buy: flat, learne
 check(aleOther[0].cost.costBound === 'upper', 'an export at another level is not used: upper bound');
 check(hc.every((c) => !('costBound' in c.cost)), 'house costs are exact: no costBound');
 // The optimizer's rows copy the mark (row() in optimize.mjs, read as text: the module runs a search on import).
-const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
+const opt = readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
 check(/costBound: c\.cost\.costBound/.test(opt) && (opt.match(/costBound === 'upper' \? '≤ '/g) || []).length === 3, 'optimizer: row copies costBound, both tables and the over-budget list print ≤');
 check(applyOps([setup], al[1].ops)[0].abilities[1].level === 13, 'ability level op raises the slot');
 const noBook = H.abilityLevelCands(setup, 'P', { steps: [1], buy: () => Infinity });

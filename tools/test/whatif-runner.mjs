@@ -39,7 +39,7 @@ let spent = B.zeroSpend(budgets);
 spent = B.pay(spent, cand('A', 60));
 check(spent.A === 60 && spent.B === 0 && !B.affordable(cand('A', 41), budgets, spent) && B.affordable(cand('A', 40), budgets, spent), 'pay: running spend per player; what is left shrinks for that player only');
 check(B.pay(spent, cand('A', -30)).A === 60, 'pay: a sale never refunds a budget');
-const opt = readFileSync(path.join(root, 'tools/whatif/optimize.mjs'), 'utf8');
+const opt = readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
 check(!/budget - spent|cost <= budget\b/.test(opt) && (opt.match(/affordable\(c, budgets, spent\)/g) || []).length === 2 && /affordable\(c, budgets, null\)/.test(opt), 'optimizer: the screen, the greedy step and the rebuild all check per payer');
 
 check(/dropChainStates\(list, baseOps, keyOf, chain\)/.test(opt) && /chain\.add\(keyOf\(baseOps\)\)/.test(opt) && /finalists = guard\(finalists\)/.test(opt) && /new Set\(\[keyOf\(\[\]\), keyOf\(baseOps\)\]\)/.test(opt), 'optimizer: the chain guard holds the original base and the baseline, adds each accepted state and filters the finalists before they are estimated');
