@@ -1,0 +1,97 @@
+// Test: the what-if rules on a synthetic simulation (tools/whatif/synthetic.mjs, scenario tools/test/synthetic/scenario.json). Every change the core builds
+// from the scenario's party and prices has a known true gain, cost and noise, so the rule has a known answer in each case: a clear winner, a loser, a tied
+// pair, a change under the 1% bar, a paid change that fails the payback limit, one that passes, a pick that fails the fresh-run check, a player whose profit
+// is zero or below. Two parts: the elimination rule (rounds.mjs eliminate, pure) on the scenario's true numbers, and the whole search (core.mjs main) on the
+// synthetic pool, with no page. The same scenario drives a real-page run (runner `--synthetic`).
+// Usage: node tools/test/whatif-synthetic.mjs        Exit code 0 on pass, 1 on fail.
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const imp = (f) => import(pathToFileURL(path.join(root, f)).href);
+const { loadScenario, runSynthetic, applyScenarioToRequest, checkpointFor, createSyntheticPool } = await imp('tools/whatif/synthetic.mjs');
+const { eliminate } = await imp('tools/whatif/rounds.mjs');
+const { makePricer } = await imp('tools/whatif/prices.mjs');
+let failed = 0;
+const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL ') + name + (cond ? '' : ' ' + extra)); if (!cond) failed++; };
+const scenario = loadScenario(path.join(root, 'tools/test/synthetic/scenario.json'));
+const n = scenario.players.length, M = scenario.model, PAY = 365;
+
+// ---- The scenario itself ----
+check('scenario: generic names, no coin in any setup, a price snapshot with a timestamp', scenario.players.map((p) => p.name).join() === 'Alice,Bob,Cara' && scenario.players.every((p) => !('coin' in p) && !('coin' in p.player)) && Number.isFinite(scenario.market.timestamp));
+{
+    const a = checkpointFor(scenario, { variant: 'v', seed: 7, ops: [] }, 50), b = checkpointFor(scenario, { variant: 'v', seed: 7, ops: [] }, 50), c = checkpointFor(scenario, { variant: 'v', seed: 8, ops: [] }, 50);
+    check('checkpoint: seeded (same task, same numbers; another seed, another)', JSON.stringify(a) === JSON.stringify(b) && JSON.stringify(a) !== JSON.stringify(c));
+    const up = checkpointFor(scenario, { variant: 'w', seed: 7, ops: [{ op: 'enhance', player: 'Alice', slot: 'body', delta: 2 }] }, 50);
+    const loot = (cp) => cp.party.profitAfterTaxPerDay + cp.party.consumablesPerDay;
+    check('checkpoint: the party loot is the profit after tax plus its consumables, and an op adds its true gain (up to the noise)', Math.abs(loot(up) - M.lootPerDay - 150_000) < 6 * M.lootSd50 && Math.abs(loot(a) - M.lootPerDay) < 6 * M.lootSd50);
+    const fresh = (seed) => loot(checkpointFor(scenario, { variant: 'z', seed, ops: [{ op: 'enhance', player: 'Bob', slot: 'body', delta: 2 }] }, 50));
+    const mean = (f, from) => Array.from({ length: 60 }, (_, i) => f(from + i)).reduce((x, y) => x + y, 0) / 60;
+    check('checkpoint: a search-seed bonus is on the search seeds (<= 10000) only: Bob body +2 reads +145K there, ~0 on seeds above', mean(fresh, 1) - M.lootPerDay > 100_000 && Math.abs(mean(fresh, 20001) - M.lootPerDay) < 20_000);
+    const pool = createSyntheticPool(scenario), r = await pool.run({ variant: 'v', seed: 1, ops: [], checkpoints: [50, 300] });
+    check('pool: answers { variant, seed, wallSeconds, checkpoints } with one checkpoint per hour asked; kill() makes it answer null', r.variant === 'v' && r.seed === 1 && r.checkpoints.map((c) => c.simHours).join() === '50,300' && (pool.kill(), await pool.run({ variant: 'v', seed: 2, ops: [], checkpoints: [50] })) === null);
+    const body = applyScenarioToRequest({ goal: 'exp', options: { prices: 'x', zone: 'z' }, levers: ['all'] }, scenario);
+    check('request: the scenario\'s party, prices, budgets and levers replace the window\'s; the id follows the scenario', body.setups === scenario.players && body.options.marketplace === scenario.market && !('prices' in body.options) && body.options.zone === 'z' && body.goal === 'profit' && body.levers.join() === 'equip,consumables' && body.budgets === scenario.budgets && typeof body.synthetic === 'string');
+}
+
+// ---- Part 1: the elimination rule on the scenario's true numbers ----
+const pricer = makePricer(scenario.market.marketData);
+const eff = (player, slot, delta) => scenario.effects.find((e) => e.match.op === 'enhance' && e.match.player === player && e.match.slot === slot && e.match.delta === delta);
+const cand = (player, slot, delta, se = 200) => {
+    const item = scenario.players.find((p) => p.name === player).player.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + slot);
+    const cost = pricer.upgrade(item.itemHrid, item.enhancementLevel, item.enhancementLevel + delta).cost, e = eff(player, slot, delta);
+    return { id: `${player}:${slot}+${delta}`, player, cost: { cost }, monotone: true, est: { net: e.loot / n, netSe: se } }; // the true buyer's gain per user (no supplies change on a plain enhance)
+};
+const bars = new Map(scenario.players.map((p) => [p.name, 0.01 * (M.lootPerDay / n - M.supplies[p.name])]));
+const outOf = (list, mult = 3) => { eliminate(list, { goal: 'profit', mult, bars, payLimit: PAY }); return Object.fromEntries(list.map((c) => [c.id, c.out])); };
+{
+    check('zero-or-below player: Cara spends more than her share of the loot, so her bar is not above 0 (no bar)', M.supplies.Cara > M.lootPerDay / n && !(bars.get('Cara') > 0) && bars.get('Alice') > 0 && bars.get('Bob') > 0);
+    const out = outOf([cand('Alice', 'body', 2), cand('Alice', 'head', 1), cand('Alice', 'head', 3), cand('Alice', 'legs', 1), cand('Cara', 'head', 1)]);
+    check('rule: a clear winner is not out', out['Alice:body+2'] === undefined);
+    check('rule: a loser is out: an enhancement cannot lose (monotone), so it reads 0, below the bar and below the winner lower end', out['Alice:legs+1'] === 'bar');
+    check('rule: a change under the 1% bar (3K a user, bar 8.5K) is cut by the bar', out['Alice:head+1'] === 'bar');
+    check('rule: a paid change that cannot pay back in 365 days even at its upper end is cut by the payback limit', out['Alice:head+3'] === 'payback');
+    const tie = outOf([cand('Bob', 'head', 1, 1200), cand('Bob', 'head', 2, 1200)]);
+    check('rule: a tied pair (same true gain, ranges 3.6K wide each way, best-case gap under Bob\'s bar) ends on the higher one (shorter payback) and the other is tied', tie['Bob:head+1'] === undefined && tie['Bob:head+2'] === 'tied');
+    const wide = outOf([cand('Bob', 'head', 1, 8000), cand('Bob', 'head', 2, 8000)]);
+    check('rule: the same pair with wide ranges is not a tie (the error margins are inside the ends)', wide['Bob:head+1'] === undefined && wide['Bob:head+2'] === undefined);
+    const cara = outOf([cand('Cara', 'head', 1)]);
+    check('rule: a player with no bar is never cut by it (Cara\'s 1K a user change stays standing)', cara['Cara:head+1'] === undefined);
+    const pass = outOf([cand('Alice', 'body', 2)]);
+    check('rule: a paid change that pays back inside the limit (1M for 50K a user a day = 20 days) stays', pass['Alice:body+2'] === undefined);
+}
+
+// ---- Part 2: the whole search on the synthetic pool ----
+const t0 = Date.now();
+const run = await runSynthetic(scenario);
+const res = run.result, steps = res.steps, step = (i) => steps[i];
+const opsOf = (s) => (s.ops ?? s.est?.ops ?? []);
+const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"${player}","slot":"${slot}","delta":${delta}`);
+console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length} rounds, ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+check('search: finished by itself, not stopped; no real engine run was asked for (the trigger lever is off)', run.outcome.stopped === false && res.options.levers.join() === 'equip,consumables');
+check('search: a clear winner is the first step (Alice body +2)', hasOp(step(0), 'Alice', 'body', 2), JSON.stringify(step(0).desc ?? step(0).id));
+check('search: every step pays back inside 365 days and was confirmed on fresh seeds', steps.length >= 2 && steps.every((s) => s.fresh && s.fresh.accepted && (s.payback === undefined || s.payback === null || s.payback <= PAY + 1)), JSON.stringify(steps.map((s) => s.payback)));
+check('search: the losers (Alice legs) are never taken', !steps.some((s) => hasOp(s, 'Alice', 'legs', 1) || hasOp(s, 'Alice', 'legs', 2) || hasOp(s, 'Alice', 'legs', 3)));
+check('search: the change under the 1% bar (Alice head +1) and the one past the payback limit (Alice head +3) are never taken', !steps.some((s) => hasOp(s, 'Alice', 'head', 1) || hasOp(s, 'Alice', 'head', 3)));
+check('search: the tied pair gives one step on Bob\'s head, not both at once', steps.filter((s) => s.player === 'Bob' && /head/.test(JSON.stringify(s.desc ?? ''))).length >= 1 && hasOp(step(1), 'Bob', 'head', 1));
+const failed1 = res.notConfirmed.find((x) => hasOp(x, 'Bob', 'body', 2));
+check('search: the pick that looks good on the search seeds and fails on fresh ones (Bob body +2) is refuted and listed with its fresh reading', !!failed1 && failed1.fresh && failed1.fresh.accepted === false && !steps.some((s) => hasOp(s, 'Bob', 'body', 2)));
+check('search: the paying change of the player with a profit at zero or below (Cara body +2) can still be taken', steps.some((s) => hasOp(s, 'Cara', 'body', 2)));
+const foods = res.best.foods, drinks = res.best.drinks;
+check('search: foods and drinks decided first, per player: Alice and Bob have a winner, Cara (every filling loses for her) is unchanged', !foods.Alice.unchanged && !foods.Bob.unchanged && foods.Cara.unchanged && !drinks.Alice.unchanged && !drinks.Bob.unchanged && drinks.Cara.unchanged);
+check('search: both stages ended by their own lock, nobody pressed a button', !res.endedByUser.foods && !res.endedByUser.drinks);
+check('search: the pick check names the player among those checked (player 1 of 2, player 2 of 2) on the foods and drinks rows', [...run.seen.checkingWho].includes('foods 1 of 2') && [...run.seen.checkingWho].includes('foods 2 of 2') && [...run.seen.checkingWho].includes('drinks 2 of 2'), JSON.stringify([...run.seen.checkingWho]));
+check('search: the projection ("about N more rounds to separate") had a number while two or three changes stood', [...run.seen.separate].some((x) => Number.isFinite(x) && x >= 1), JSON.stringify([...run.seen.separate]));
+const run2 = await runSynthetic(scenario);
+check('search: seeded and deterministic (a second run takes the same steps, picks and number of runs)', JSON.stringify(run2.result.steps.map((s) => s.id ?? s.desc)) === JSON.stringify(steps.map((s) => s.id ?? s.desc)) && run2.runs === run.runs && JSON.stringify(run2.result.best) === JSON.stringify(res.best));
+
+// ---- The two buttons ----
+{
+    const press = (stage, round, mode) => (rec, stop) => { if (rec.stage === stage && rec.round === round) stop.done = mode; };
+    const skip = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 3, 'skip') });
+    check('button: Skip on the foods stage ends it after that round with nothing taken ("ended by you after round 3")', skip.result.endedByUser.foods === 3 && Object.values(skip.result.best.foods).every((e) => e.unchanged) && skip.rounds.filter((r) => r.stage === 'foods').length === 3);
+    const accept = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('drinks', 8, 'accept') });
+    check('button: Accept current winner on the drinks stage ends it after that round, taking the best leader of each pool that has a clear positive reading, then the pick check decides it', accept.result.endedByUser.drinks === 8 && accept.rounds.filter((r) => r.stage === 'drinks').length === 8 && !accept.result.best.drinks.Alice.unchanged);
+}
+
+process.exit(failed ? 1 : 0);

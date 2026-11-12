@@ -46,6 +46,7 @@
 //   --only-candidates a,b        restrict to these candidate ids (a pilot)
 //   --max-steps 20  --jobs <n>  --max-minutes <n> (stop issuing runs after n minutes; rerun resumes)
 //   --confirm-seed-offset 10000  --setups <dir>  --prices <marketplace.json>
+//   --synthetic <scenario.json>  test tooling: runs come from the scenario (tools/whatif/synthetic.mjs), not the engine; give it the scenario's setups and prices
 //   --cache-from <runs.jsonl,...> earlier searches' run caches, read only (runs are keyed by setup, so any match counts)
 //   Triggers (design 3.5): --probe 1x50 (base seeds x sim hours the counter records; kept in <out>/probe.json)
 //   --trigger-owners toxic_pollen,star_fruit_gummy   search only these owners' triggers (hrid or its last part;
@@ -77,6 +78,7 @@ import { parseFlags, makeArg } from './options.mjs';
 import { loadNodeData, createNodeStore, createNodePool, createNodeSink, sha1 } from './node-shell.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 const { main } = await import('./core.mjs');
+import { loadScenario, createSyntheticPool, syntheticSim } from './synthetic.mjs';
 
 const argv = process.argv.slice(2);
 const flags = parseFlags(argv), arg = makeArg(flags);
@@ -87,7 +89,9 @@ if (arg('low-priority', false) === true) os.setPriority(os.constants.priority.PR
 const pricesFile = arg('prices', DEFAULT_PRICES), setupsDir = arg('setups', undefined);
 
 const stop = { requested: false, done: false };
-const pool = createNodePool();
+// --synthetic <scenario.json> (test tooling, tools/whatif/synthetic.mjs): the run pool and measureNeed are answered from the scenario, the rest is real.
+const scenario = arg('synthetic', null) ? loadScenario(arg('synthetic')) : null;
+const pool = scenario ? createSyntheticPool(scenario, { confirmOffset: Number(arg('confirm-seed-offset', 10000)) }) : createNodePool();
 // 'stop' ends the search; { done: 'accept' | 'skip' } (the window's two stage buttons) only asks the race stage running now to end after its round.
 process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m?.done === 'accept' || m?.done === 'skip') stop.done = m.done; });
 const settings = {
@@ -100,7 +104,7 @@ const seams = {
     store: createNodeStore(OUT, arg('cache-from', null)),
     pool, stop, hash: sha1,
     sink: createNodeSink(OUT),
-    sim: { runParty, measureNeed, buildDtos, Trigger },
+    sim: scenario ? syntheticSim({ runParty, measureNeed, buildDtos, Trigger }, scenario) : { runParty, measureNeed, buildDtos, Trigger },
 };
 const outcome = await main(settings, seams);
 pool.kill();

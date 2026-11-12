@@ -2,7 +2,7 @@
 // simulator (dist/) at / and the search interface under /api/, and runs the optimizer (tools/whatif/optimize.mjs) at
 // the lowest priority on every core. Code doc: docs/codebase/whatif-runner.md.
 //
-// Usage: node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>] [--demo-runs <runs.jsonl>] [--demo-prices <marketplace.json>]
+// Usage: node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>] [--demo-runs <runs.jsonl>] [--demo-prices <marketplace.json>] [--synthetic <scenario.json>]
 //   --port 0 picks a free port. --results defaults to <home>/MWI-WhatIf/results (never inside the repo).
 //   --demo-runs: that run file is read into every search's run store (the optimizer's --cache-from); --demo-prices: that price snapshot
 //   replaces the request's own. Both are off by default and meant for showing a search from saved runs.
@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, createWriteStream, createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isMarketplace } from '../../../src/marketplace.mjs';
+import { loadScenario, applyScenarioToRequest } from '../synthetic.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, '..', '..', '..');
@@ -43,7 +44,7 @@ export const DEFAULT_RESULTS = path.join(os.homedir(), 'MWI-WhatIf', 'results');
 // The rounds options (unit-hours ... confirm-seeds, confirm-hours) are the search's named options; `stages` and `keep` are still accepted and ignored by the search.
 const PASS = ['unit-hours', 'first-seeds', 'round-seeds', 'leaders', 'pause-mult', 'coverage', 'reading-step', 'reading-min', 'lock-rule', 'max-rounds', 'confirm-seeds', 'confirm-hours', 'players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'max-payback', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
 const dashed = (k) => k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
-const RESERVED = new Set(['setups', 'options', 'budgets', 'export', 'prices', 'marketplace', 'triggerCands', 'trigger-cands']);
+const RESERVED = new Set(['synthetic', 'setups', 'options', 'budgets', 'export', 'prices', 'marketplace', 'triggerCands', 'trigger-cands']);
 const SAFE_NAME = /^[^\\/:*?"<>|\r\n]+$/;
 
 const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
@@ -146,6 +147,7 @@ export function createRunner(opts = {}) {
     const resultsDir = path.resolve(opts.resultsDir || DEFAULT_RESULTS);
     const distDir = path.resolve(opts.distDir || path.join(ROOT, 'dist'));
     const launch = opts.launch || forkOptimizer;
+    const synthFile = opts.synthetic ? path.resolve(opts.synthetic) : null, scenario = synthFile ? loadScenario(synthFile) : null; // the runner's --synthetic <scenario.json>
     mkdirSync(resultsDir, { recursive: true });
     if (opts.lowPriority !== false) os.setPriority(os.constants.priority.PRIORITY_LOW);
     const version = { runner: RUNNER_VERSION + (gitVersion() ? '+' + gitVersion() : ''), engine: engineVersion(distDir) };
@@ -168,7 +170,9 @@ export function createRunner(opts = {}) {
         if (existsSync(path.join(dir, 'request.json'))) return { state: 'stopped', progress };
         return null;
     }
-    function start(body) {
+    function start(body0) {
+        // --synthetic (test tooling): the scenario's party and prices replace the window's request, the optimizer is told to answer its runs from the scenario.
+        const body = scenario ? applyScenarioToRequest(body0, scenario) : body0;
         if (running) return { status: 409, body: { error: 'a search is running', id: running, running } }; // the window reads id
         const id = searchId(body), dir = dirOf(id);
         if (existsSync(path.join(dir, 'result.json'))) return { status: 200, body: { id } }; // finished already
@@ -178,6 +182,7 @@ export function createRunner(opts = {}) {
         const s = { state: 'running', progress: { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0, secondsPerRun: null, etaSeconds: null }, error: null };
         searches.set(id, s);
         running = id;
+        if (scenario) args.push('--synthetic', synthFile);
         s.handle = launch(args, dir);
         s.handle.onProgress = (p) => { s.progress = p; };
         s.handle.onPartial = (r) => { s.partial = r; s.partialVersion = ++partialSeq; };
@@ -279,7 +284,7 @@ export function createRunner(opts = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i < 0 ? d : process.argv[i + 1]; };
-    const r = createRunner({ resultsDir: arg('results', DEFAULT_RESULTS), distDir: arg('dist', undefined), demoRuns: arg('demo-runs', undefined), demoPrices: arg('demo-prices', undefined) });
+    const r = createRunner({ resultsDir: arg('results', DEFAULT_RESULTS), distDir: arg('dist', undefined), demoRuns: arg('demo-runs', undefined), demoPrices: arg('demo-prices', undefined), synthetic: arg('synthetic', undefined) });
     const url = await r.listen(Number(arg('port', 8787)));
     console.log(`${new Date().toISOString()} What-if runner ${url} (results: ${path.resolve(arg('results', DEFAULT_RESULTS))}, lowest priority)`);
 }
