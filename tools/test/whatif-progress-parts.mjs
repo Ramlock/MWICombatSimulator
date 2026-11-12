@@ -187,7 +187,7 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
         const seen = new Map();
         for (const mm of html.matchAll(/<div class="whatif-part whatif-part-(\w+)(?: whatif-part-race)?" data-kind="(\w+)"[^>]*>([^]*?)(?:<span class="whatif-part-text">([^]*?)<\/span>)?<\/div>/g)) {
             const key = mm[2] + '#' + (seen.set(mm[2], (seen.get(mm[2]) ?? 0) + 1), seen.get(mm[2]));
-            const w = mm[3].match(/width: ([\d.]+)%/), isRace = mm[3].includes('whatif-no-bar');
+            const w = mm[3].match(/width: ([\d.]+)%/), isRace = mm[1] === 'running' && mm[3].includes('whatif-no-bar'); // the stage that runs now (a done or halted race row has no bar either, but its counters are final)
             if (w) { if (widths.has(key) && Number(w[1]) < widths.get(key)) bad.push(`${key} bar ${widths.get(key)} -> ${w[1]} at ${JSON.stringify(m)}`); widths.set(key, Number(w[1])); }
             if (isRace && mm[3].includes('progress-bar')) bad.push(`${key} race row has a bar`);
             if (isRace) {
@@ -230,6 +230,30 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
 // Strings in en, pt, zh.
 const keys =['partOf', 'partSteps', 'partMoreSteps', 'partConfirmationWaiting', 'partScreen', 'partHalving', 'partStep', 'partPicks', 'partConfirmation', 'optionsLeft', 'runsOf', 'upTo', 'timeLeft', 'done', 'secondsPerRunCap', 'elapsed'];
 for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`, keys.every((k) => typeof locales[l].progress[k] === 'string' && locales[l].progress[k].length), l);
+// A race stage that has ended (stageEnded) is a done row with the last round record's counts, whatever message comes next (the pick checks keep
+// reporting the same stage name); a stage that stopped is not ended.
+{
+    const tp = createParts({ stages: [{ k: 4, h: 50 }, { k: 4, h: 150 }], keep: [10], candidates: 473, maxSteps: 20 });
+    const during = { stage: 'screen', round: 1, phase: 'reading', runsDone: 5, runsPlanned: 40, candidatesLeft: 20, stageContending: 473, stagePaused: 0, stageDropped: 0, stageRuns: 900, stageSimHours: 45000 };
+    const live = tp.sync(during).find((r) => r.kind === 'screen');
+    check('ended stage: while it runs the row is running with the counts it was given', live.state === 'running' && live.contending === 473 && live.paused === 0);
+    const ended = { ...during, stageContending: 271, stagePaused: 202, stageRuns: 986, stageSimHours: 49000, stageEnded: 'screen' };
+    const row = tp.sync(ended).find((r) => r.kind === 'screen');
+    check('ended stage: the row is done with the last round record counts (271 in the running, 202 set aside), not the first look ones', row.state === 'done' && row.contending === 271 && row.paused === 202 && row.runs === 986 && row.simHours === 49000, JSON.stringify(row));
+    // The pick checks go on reporting the same stage name: the row stays done.
+    const later = tp.sync({ ...ended, runsDone: 9, runsPlanned: 40 }).find((r) => r.kind === 'screen');
+    check('ended stage: later messages of the same stage name (the pick checks) keep it done', later.state === 'done' && later.contending === 271);
+    const html = panel.renderParts({ state: 'running', progress: { parts: tp.sync({ ...ended, runsDone: 12, runsPlanned: 40 }) } }, t);
+    const rowHtml = html.split('<div class="whatif-part ').slice(1).find((r) => r.includes('data-kind="screen"'));
+    const rowText = rowHtml.replace(/<[^>]*>/g, '');
+    check('ended stage: drawn as a finished round, 271 and 202, no running word, no done button', rowText.includes('round 1 finished') && rowText.includes('271 still in the running') && rowText.includes('202 set aside') && !rowText.includes('round 1 running') && !rowHtml.includes('data-whatif-done'), rowText);
+    // The next stage takes its own row; the ended one is not touched by it.
+    const next = tp.sync({ stage: 'greedy step 1', round: 1, phase: 'search', runsDone: 1, runsPlanned: 9, candidatesLeft: 9, stageContending: 9, stagePaused: 0, stageDropped: 0, stageRuns: 1, stageSimHours: 1, stageEnded: 'screen' });
+    check('ended stage: the next stage row is running even while the old stageEnded is still in the record', next.find((r) => r.kind === 'step').state === 'running' && next.find((r) => r.kind === 'screen').state === 'done');
+    const cs = read('tools/whatif/core.mjs');
+    const flat = cs.split(/[\r\n ]+/).join(' ');
+    check('core: the progress record takes the round record counts at each round, and the stage end only when it ends (not on a stop)', flat.includes('stageCont = { contending: cont.contending, paused: cont.paused }; report();') && flat.includes('Object.assign(progress, stageCtx(), { stageEnded: stage }); report(); return { locked:') && cs.split('stageEnded: stage').length === 2);
+}
 check('strings: placeholders match across languages', keys.every((k) => ['pt', 'zh'].every((l) => (locales[l].progress[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.progress[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
 const ptHtml = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'step', index: 2, state: 'running', runsPlanned: 4, runsDone: 1, etaSeconds: 9 }] } }, tIn('pt'));
 check('strings: pt renders without a missing key', !ptHtml.includes('#'), ptHtml);

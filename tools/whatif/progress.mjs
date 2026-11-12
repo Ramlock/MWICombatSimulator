@@ -64,7 +64,9 @@ export function createParts(plan) {
                 for (const r of rows) if (!sameRow(r, key)) r.state = 'done';
                 let row = rows.find((r) => sameRow(r, key));
                 if (!row) { row = { ...key, state: 'running', runsPlanned: 0, runsDone: 0, candidatesLeft: null, etaSeconds: null }; rows.push(row); }
-                row.state = 'running';
+                // A race stage that has ended (progress.stageEnded names it) is done whatever message comes next: pick checks and the like.
+                const ended = progress.stageEnded ? parse(progress.stageEnded) : null;
+                row.state = ended && sameRow(row, ended) ? 'done' : 'running';
                 row.runsPlanned = progress.runsPlanned ?? 0;
                 row.runsDone = progress.runsDone ?? 0;
                 row.candidatesLeft = progress.candidatesLeft ?? null;

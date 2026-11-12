@@ -123,7 +123,9 @@ const server = http.createServer((req, res) => {
 });
 let holdRunning = true;
 let raceProgress = false; // true: the progress message of a race stage in a late round (round 12, 10 ruled out), the long label and counters of the real run
-const progress = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }] } : {}) });
+let raceDone = false; // true: the finished Screen race row of the real run (round 1 finished, 473 in the running, the pick checks still going)
+const progress0 = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }] } : {}) });
+const progress = () => { const p = progress0(); if (raceDone) p.parts = [{ kind: 'screen', index: 0, state: 'done', runsPlanned: 986, runsDone: 986, candidatesLeft: 473, etaSeconds: 0, round: 1, phase: 'reading', contending: 473, paused: 0, dropped: 0, runs: 986, simHours: 49000 }, { kind: 'picks', index: 0, state: 'running', runsPlanned: 40, runsDone: 12, fill: 0.3, etaSeconds: 60 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }]; return p; };
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
 
@@ -297,6 +299,16 @@ try {
         const fitRow = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), btn = l.querySelector('[data-whatif-done]'), edge = body.getBoundingClientRect().right; return { noOverflow: body.scrollWidth <= body.clientWidth, labelWraps: getComputedStyle(l).whiteSpace === 'normal' && l.scrollWidth <= l.clientWidth + 1, textWraps: !x && /ruled out/.test(l.textContent) && !!btn && l.getBoundingClientRect().right <= edge + 0.5 && btn.getBoundingClientRect().right <= edge + 0.5, ellipsis: getComputedStyle(l).textOverflow === 'ellipsis' && getComputedStyle(l).overflow !== 'visible', text: l.textContent }; })()`);
         check(`at ${w}x${h} a race stage row (counters after the status text, on the stage's own line, then the done button) is not cut, wraps, and the window has no horizontal scroll`, !!fitRow && fitRow.noOverflow && fitRow.labelWraps && fitRow.textWraps && !fitRow.ellipsis, JSON.stringify(fitRow));
     }
+    // The same row once its race has ended (done): wraps like the running one, is never cut, its figures stay inside the window, one scroll axis.
+    raceDone = true; raceProgress = true;
+    for (const [w, h] of [[1920, 1080], [1366, 768]]) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+        await until(`!!document.querySelector('#whatIfProgress .whatif-part-done.whatif-part-race')`);
+        await new Promise((r) => setTimeout(r, 400));
+        const fitDone = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-done.whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), edge = body.getBoundingClientRect().right, within = [l, x].every((e) => !e || (e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().right <= edge + 0.5)); return { noOverflow: body.scrollWidth <= body.clientWidth, within, wraps: getComputedStyle(l).whiteSpace === 'normal', noButton: !row.querySelector('[data-whatif-done]'), noRunning: !/Running|round [0-9]+ running/.test(row.textContent), counts: /473 still in the running/.test(row.textContent) && /0 set aside/.test(row.textContent), text: row.textContent }; })()`);
+        check(`at ${w}x${h} a finished race stage row is not cut, its figures stay inside the window, it has no done button and no horizontal scroll`, !!fitDone && fitDone.noOverflow && fitDone.within && fitDone.wraps && fitDone.noButton && fitDone.noRunning && fitDone.counts, JSON.stringify(fitDone));
+    }
+    raceDone = false;
     await page.send('Emulation.clearDeviceMetricsOverride');
     raceProgress = false;
     // The Status column holds the longest of its statuses (all but the "fresh runs: n, m more needed" sentence) on one line at 1920 and 1366 wide;

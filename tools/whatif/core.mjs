@@ -744,6 +744,7 @@ export async function main(settings, seams) {
                 }) };
             lastRound = rec;
             stageCont = { contending: cont.contending, paused: cont.paused };
+            report(); // the progress row takes the round record's counts now, not the first look's
             outSink.round(rec);
             onRound?.(rec, live);
             const top = rec.pools.map((p) => { const l = p.leaders[0]; return l ? `${p.key} ${l.desc.slice(0, 48)} ${l.tooFew ? `(${l.readingSeeds} reading seeds, too few)` : `${fmt(l.reading)} [${fmt(l.low)}, ${fmt(l.high)}] n=${l.readingSeeds}`}` : `${p.key} none`; }).join('; ');
@@ -763,7 +764,14 @@ export async function main(settings, seams) {
             const byUser = !!stopSignal.done;
             if (byUser) stopSignal.done = false;
             if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart;
-            if (settled || byUser || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
+            if (settled || byUser || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) {
+                // The race has ended (by its lock, the round limit or the button): its last figures and its end go to the progress record at
+                // once (stageEnded names the stage), so the row stops reading "running" and drops the button however long the pick checks take.
+                // A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
+                Object.assign(progress, stageCtx(), { stageEnded: stage });
+                report();
+                return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
+            }
         }
         } finally { stageCtx = null; }
     }
