@@ -502,9 +502,12 @@ export function bestBlock(result, t, names = null, running = false, floor = null
                 n: e.readingSeeds ?? 0 });
             const few = unclear ? `<br><span class="whatif-dim small" data-best-status="${e.loses ? 'loses' : 'zero'}" title="${esc(tip)}">${esc(t(e.loses ? 'rounds.status.loses' : 'rounds.status.zero'))}</span>` : '';
             let nums, note = '';
-            if (unclear) nums = '<td colspan="2" class="whatif-dim">—</td>';
-            else if (e.unchanged) nums = `<td colspan="2" class="whatif-dim">${esc(t('result.noChange'))}</td>`;
-            else if (e.soFar && e.tooFew) nums = `<td colspan="2" class="whatif-dim">${esc(t('rounds.tooFew'))}</td>`;
+            // A row with no figure is one cell over the two gain columns, centred between their headings (a left-aligned word sat under the gap
+            // left of the first heading, as if in a column of its own).
+            const spanCell = (text) => `<td colspan="2" class="whatif-dim whatif-span">${esc(text)}</td>`;
+            if (unclear) nums = spanCell('—');
+            else if (e.unchanged) nums = spanCell(t('result.noChange'));
+            else if (e.soFar && e.tooFew) nums = spanCell(t('rounds.tooFew'));
             else if (e.soFar) {
                 nums = pmCell(e.gainPerUser, halfOf(e.low, e.high), t) + pmCell(e.buyerNet, halfOf(e.netLow, e.netHigh), t);
             } else {

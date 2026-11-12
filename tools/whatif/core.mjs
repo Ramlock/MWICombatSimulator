@@ -628,7 +628,7 @@ export async function main(settings, seams) {
     // with both arms cached; the figure is the mean of the paired differences, its range from two seeds on). Same rows, same order, same pools as a
     // round record, with `provisional: true` and the count of candidates that have a figure. Read-only: no field of a candidate is set that a
     // choice reads, and nothing here is used to pause, lock or choose.
-    function firstLook(cands, base, byPlayer, stage) {
+    function firstLook(cands, base, byPlayer, stage, round) {
         const bk = keyOf(base), n = setups0.length, party = goal === 'profit' ? lootOf : metric, mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
         const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
         const pools = new Map(); let have = 0, total = 0;
@@ -654,11 +654,11 @@ export async function main(settings, seams) {
             if (goal === 'profit') { const e = range(q); Object.assign(r, { net: e.m, netLow: e.low, netHigh: e.high, payback: e.m > 0 && c.cost.cost > 0 ? paybackDays(c.cost.cost, e.m) : null }); }
             pool.rows.push(rowShape(base, c, r, { seeds: k, readingSeeds: 0, few: false, status: 'first', screen: g.m }));
         }
-        return { provisional: true, round: roundNo, stage, simHours: wallLog.reduce((a, r) => a + r.h, 0), unitHours: unitH, coverage, pauseMult, leadersK, goal, readingMin: readMin, firstLook: { have, total },
+        return { provisional: true, round, stage, simHours: wallLog.reduce((a, r) => a + r.h, 0), unitHours: unitH, coverage, pauseMult, leadersK, goal, readingMin: readMin, firstLook: { have, total },
             candidates: { total, contending: total, paused: 0, refuted: 0, locked: 0 },
             pools: [...pools].sort(poolSorter(players)).map(([key, p]) => { const sortedBy = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, sortedBy, leaders: p.rows.slice(0, leadersK) }; }) };
     }
-    async function race(cands, base, { stage, byPlayer, onRefute, onRound }) {
+    async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd }) {
         const H = unitH, bk = keyOf(base), n = setups0.length;
         liveCands = cands; lastBase = base;
         for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; }
@@ -675,13 +675,14 @@ export async function main(settings, seams) {
         try {
         for (;;) {
             roundNo++;
+            const stageRound = roundNo - sinceStart; // the round's number inside its own stage: a stage's first round is round 1 (roundNo runs across the stages)
             const active = cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player)));
             const todo = active.filter((c) => c.status !== 'paused');
             for (const c of todo) c.k = c.k ? c.k + roundSeeds : firstK;
             const maxK = Math.max(...active.map((c) => c.k), 0);
             // Each phase of a round is named for what it is: the round being run (from its start), the phase (search seeds of every candidate
             // in contention, reading seeds of the leaders) and the phase's own candidate count; the bar is the phase's runs.
-            report({ stage, round: roundNo, phase: 'search', candidatesLeft: todo.length });
+            report({ stage, round: stageRound, phase: 'search', candidatesLeft: todo.length });
             // The order the runs are asked for in: the base's first seed, then seed 1 of every candidate (and the base on it), then seed 2 of every
             // candidate, and so on, then the base's other seeds. Only the order changes (the same runs, the same keys): the first look has a figure of
             // every candidate after the first sweep, long before the last seed of the first candidate would have been done.
@@ -689,14 +690,14 @@ export async function main(settings, seams) {
             const sweeps = Array.from({ length: maxK }, (_, s) => pairs.filter((x) => s < x.c.k).flatMap((x) => [x.pr[s], x.pr[x.c.k + s]]));
             const sweepIds = sweeps.map((sw) => sw.map((r) => keyOf(r.ops) + '#' + r.seed));
             let doneSweeps = 0, lastLook = 0;
-            const first = roundNo - sinceStart === 1;
+            const first = stageRound === 1;
             // The first look (round 1 of a race): a provisional round record per finished sweep and, while a sweep runs, every few seconds. It is
             // read from the cache only, goes to the sink and nowhere else; nothing chooses, pauses or locks from it.
             const look = (force) => {
                 const now = Date.now();
                 if (!force && now - lastLook < 3000) return;
                 lastLook = now;
-                outSink.round(firstLook(cands, base, byPlayer, stage));
+                outSink.round(firstLook(cands, base, byPlayer, stage, stageRound));
             };
             const onRun = first ? () => {
                 const was = doneSweeps;
@@ -710,7 +711,7 @@ export async function main(settings, seams) {
             const leaders = cont.pools.flatMap((p) => p.leaders);
             if (readStep > 0 && leaders.length) {
                 const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
-                report({ stage, round: roundNo, phase: 'reading', candidatesLeft: leaders.length });
+                report({ stage, round: stageRound, phase: 'reading', candidatesLeft: leaders.length });
                 if (!await ensure(reqs)) return null;
             }
             // Readings, the pick check on them, the refuted, the locks.
@@ -733,7 +734,7 @@ export async function main(settings, seams) {
                 return rowShape(base, c, r, { seeds: c.k, readingSeeds: r ? r.k : 0, few, status: c.refuted ? 'refuted' : few ? 'few' : peek.get(c).verdict === 'pass' ? 'confirmed' : c.status, screen: goal === 'profit' ? c.est.net / n : c.est.gain / n });
             });
             const wallH = wallLog.reduce((a, r) => a + r.h, 0);
-            const rec = { round: roundNo, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal, readingMin: readMin,
+            const rec = { round: stageRound, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal, readingMin: readMin,
                 candidates: { total: cands.length, contending: cont.contending, paused: cont.paused, refuted: cands.filter((c) => c.refuted).length, locked: lockedBy.size },
                 // rangeWidth: the width (high minus low, per user per day) of the pool's top leader's range; rangeWidthPrev: the same pool's width one round
                 // earlier of this race (absent on the stage's first round, or when that round had no range). Computed here once; the panel only prints them.
@@ -748,7 +749,7 @@ export async function main(settings, seams) {
             outSink.round(rec);
             onRound?.(rec, live);
             const top = rec.pools.map((p) => { const l = p.leaders[0]; return l ? `${p.key} ${l.desc.slice(0, 48)} ${l.tooFew ? `(${l.readingSeeds} reading seeds, too few)` : `${fmt(l.reading)} [${fmt(l.low)}, ${fmt(l.high)}] n=${l.readingSeeds}`}` : `${p.key} none`; }).join('; ');
-            console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] round ${roundNo} ${stage}: ${cont.contending} in contention, ${cont.paused} paused, ${rec.candidates.refuted} refuted, ${rec.simHours} sim h; ${top}`);
+            console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] round ${stageRound} ${stage}: ${cont.contending} in contention, ${cont.paused} paused, ${rec.candidates.refuted} refuted, ${rec.simHours} sim h; ${top}`);
             // Locks: the leader's reading seeds pass the pick check (peek) and, with lockRule 'both', nobody in its pool reaches its lower bound.
             const sepOpts = { goal, mult: pauseMult, byPlayer };
             const ready = (c) => !c.timeOnly && peek.get(c).verdict === 'pass' && (lockRule === 'reading' || separated(c, active, sepOpts));
@@ -777,6 +778,7 @@ export async function main(settings, seams) {
                 // The race has ended (by its lock, the round limit or the button): its last figures and its end go to the progress record at
                 // once (stageEnded names the stage), so the row stops reading "running" and drops the button however long the pick checks take.
                 // A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
+                onEnd?.(); // the report takes the end mark (result.endedByUser) at once, not after the pick checks that follow
                 Object.assign(progress, stageCtx(), { stageEnded: stage });
                 report();
                 return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live, accepted: [...accepted.values()] };
@@ -856,7 +858,7 @@ export async function main(settings, seams) {
                 };
                 // Each round the report shows the current best of the stage (soFar), the same data as the rounds table.
                 const onRound = (rec, live) => { result.best[kind] = inParty({ ...result.best[kind], ...liveBest(kind, baseOps, rec, live) }); publish(result); };
-                const res = await race(fc, baseOps, { stage: kind, byPlayer: true, onRefute: refute, onRound });
+                const res = await race(fc, baseOps, { stage: kind, byPlayer: true, onRefute: refute, onRound, onEnd: () => publish(result) });
                 if (!res) return stop(result);
                 // Each player's locked filling (his leader whose reading seeds passed the pick check) is confirmed on fresh seeds, in party order,
                 // each alone against the stage's start (not the earlier players' confirmed fillings); the runs are the reading seeds, already
@@ -932,7 +934,7 @@ export async function main(settings, seams) {
                 else { dead.add(c.id); result.notConfirmed.push({ ...row(c), step: step + 1, fresh: p.fresh }); console.log(`${label}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`); }
                 publish(result);
             };
-            const res = await race(cur, baseOps, { stage: step === 0 ? 'screen' : `greedy step ${step}`, byPlayer: false, onRefute: refuteStep });
+            const res = await race(cur, baseOps, { stage: step === 0 ? 'screen' : `greedy step ${step}`, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result) });
             if (!res) return stop(result);
             if (!singlesDone) {
                 singlesDone = true;
