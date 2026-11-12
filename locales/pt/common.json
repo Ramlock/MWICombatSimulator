@@ -158,6 +158,7 @@
         "exportKept": "guardada ({{who}})",
         "exportNone": "sem exportação: ignorado por {{levers}}",
         "exportNoneBare": "sem exportação",
+        "exportLeverOff": "Precisa da exportação do personagem: cole uma para um jogador marcado.",
         "exportBad": "não é uma exportação de personagem: não guardada",
         "levers": "O que buscar",
         "lever": {
@@ -168,10 +169,6 @@
             "consumables": {
                 "name": "Comidas e bebidas",
                 "desc": "achar primeiro as melhores comidas e as melhores bebidas (todos os espaços de cada), e medir todo o resto em cima delas"
-            },
-            "pairs": {
-                "name": "Pares de comidas e bebidas",
-                "desc": "não é mais preciso: a busca de comidas e bebidas já testa combinações inteiras de todos os espaços"
             },
             "owned": {
                 "name": "Itens que você tem",
@@ -200,10 +197,6 @@
             "books": {
                 "name": "Novas técnicas",
                 "desc": "aprender uma técnica que você não tem em um espaço livre (precisa das técnicas aprendidas do exportador)"
-            },
-            "skills": {
-                "name": "Níveis de habilidade de combate",
-                "desc": "subir um nível de habilidade de combate, com os dias até lá contados em moedas"
             }
         },
         "start": "Iniciar busca",
@@ -248,6 +241,10 @@
             "partPicks": "Confirmando as escolhas",
             "partConfirmation": "Confirmação",
             "optionsLeft": "{{n}} opções restantes",
+            "stageLabel": "rodada {{round}}{{phase}} · {{contending}} ainda na disputa · {{paused}} deixadas de lado por ora",
+            "stageCounters": "{{runs}} execuções · {{hours}} horas simuladas · {{dropped}} descartadas",
+            "phaseSearch": "buscando entre as candidatas ainda na disputa",
+            "phaseReading": "conferindo os líderes em execuções novas",
             "runsOf": "{{done}} / {{total}} execuções",
             "upTo": "até {{n}} execuções",
             "timeLeft": "Tempo restante {{time}}",
@@ -259,15 +256,23 @@
             "title": "Rodadas da busca",
             "round": "rodada",
             "simHours": "horas simuladas",
-            "contending": "em disputa",
-            "paused": "pausadas",
+            "contending": "ainda na disputa",
+            "paused": "deixadas de lado por ora",
+            "pausedTip": "deixadas de lado por ora; voltam sozinhas se as faixas dos líderes se alargarem",
             "refuted": "descartadas",
-            "coverage": "faixas a {{pct}}%",
+            "coverage": "± cobre {{pct}}% dos casos",
+            "firstLook": "primeiro olhar: até agora {{have}} de {{total}} candidatas têm um primeiro valor",
             "pool": { "free": "Mudanças grátis", "paid": "Mudanças pagas" },
-            "poolCounts": "{{contending}} em disputa, {{paused}} pausadas",
-            "col": { "candidate": "Mudança", "cost": "Custo", "seeds": "Sementes (busca / leitura)", "reading": "Ganho por usuário", "range": "Faixa", "buyerNet": "Ganho do comprador", "payback": "Dias de retorno", "status": "Estado" },
-            "status": { "contending": "em disputa", "paused": "pausada", "confirmed": "confirmada", "refuted": "descartada" },
-            "tooFew": "poucas sementes de leitura ({{n}})",
+            "poolCounts": "{{contending}} ainda na disputa, {{paused}} deixadas de lado por ora",
+            "poolSize": "{{n}} candidatas",
+            "sortedBy": "ordenado por {{col}}, melhor primeiro",
+            "col": { "candidate": "Mudança", "cost": "Custo", "hours": "Horas simuladas", "reading": "Ganho por usuário", "buyerNet": "Ganho do comprador", "payback": "Dias de retorno", "status": "Estado" },
+            "hoursTitle": "{{search}} h de execuções da busca + {{fresh}} h de execuções novas",
+            "status": { "contending": "ainda na disputa", "paused": "deixada de lado por ora", "confirmed": "conferida em execuções novas", "few": "execuções novas: {{n}}, faltam {{more}} para o intervalo ficar final", "refuted": "descartada", "zero": "ainda não difere de nenhuma mudança", "first": "primeiro olhar, execuções até agora: {{n}}" },
+            "tooFew": "ainda sem execuções novas",
+            "noRange": "ainda sem intervalo",
+            "rangeWidth": "largura do intervalo {{now}}",
+            "rangeWidthWas": "largura do intervalo {{now}} (era {{before}})",
             "none": "ainda sem líderes"
         },
         "result": {
@@ -283,7 +288,12 @@
             "playerLine": "{{player}}: ganho {{gain}} ± {{se}} por dia, retorno em {{payback}} dias",
             "oldSplit": "Salvo antes das linhas de ganho por jogador: execute a busca de novo para vê-las.",
             "confirmedParty": "Confirmado em execuções novas, ganho do grupo (o loot compartilhado, antes da comida e da bebida de cada um)",
-            "running": "Em andamento: os resultados vão sendo preenchidos conforme a busca avança. As linhas mostradas são finais.",
+            "running": "Em andamento: o relatório vai sendo preenchido conforme a busca avança. As listas marcadas “até agora” ainda podem mudar; as linhas das outras listas são finais.",
+            "slot": "Espaço {{n}}",
+            "gainPerDay": "Ganho por dia",
+            "paysBackIn": "Se paga em (dias)",
+            "singlesNotShown": "mais {{n}} buscadas, não confirmadas, não mostradas",
+            "confirmedPartyRow": "Grupo (o saque compartilhado, por usuário)",
             "stoppedMark": "Parado: foi até aqui que a busca chegou.",
             "soFar": "até agora",
             "notConfirmedAtStep": "no passo {{step}}",
@@ -308,6 +318,9 @@
             "showMore": "Mostrar mais {{n}} não aceitas",
             "showLess": "Ocultar as {{n}} não aceitas",
             "apart": "Custo desconhecido, sem ranking",
+            "apartNote": "({{n}} sem custo conhecido: fora do ranking)",
+            "apartShow": "Mostrar as {{n}} sem custo conhecido",
+            "apartHide": "Ocultar as {{n}} sem custo conhecido",
             "overBudget": "Com preço, acima do orçamento",
             "overBudgetNote": "({{n}}, sem ranking: cada um custa mais que o orçamento do seu jogador)",
             "overBudgetShow": "Mostrar os {{n}} acima do orçamento",

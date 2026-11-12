@@ -158,6 +158,7 @@
         "exportKept": "kept ({{who}})",
         "exportNone": "no export: skipped by {{levers}}",
         "exportNoneBare": "no export",
+        "exportLeverOff": "Needs the character export: paste one for a ticked player.",
         "exportBad": "not a character export: not kept",
         "levers": "What to search",
         "lever": {
@@ -168,10 +169,6 @@
             "consumables": {
                 "name": "Food and drinks",
                 "desc": "find the best foods and the best drinks first (every slot of each), then measure everything else on top of them"
-            },
-            "pairs": {
-                "name": "Food and drink pairs",
-                "desc": "no longer needed: the food and drink search already tries whole combinations of every slot"
             },
             "owned": {
                 "name": "Items you own",
@@ -200,10 +197,6 @@
             "books": {
                 "name": "New abilities",
                 "desc": "learn an ability you do not have into an open slot (needs the exporter's learned abilities)"
-            },
-            "skills": {
-                "name": "Skill levels",
-                "desc": "raise a combat skill level, the days to reach it counted in coin"
             }
         },
         "start": "Start search",
@@ -250,6 +243,10 @@
             "partPicks": "Confirming the picks",
             "partConfirmation": "Confirmation",
             "optionsLeft": "{{n}} options left",
+            "stageLabel": "round {{round}}{{phase}} · {{contending}} still in the running · {{paused}} set aside for now",
+            "stageCounters": "{{runs}} runs · {{hours}} simulated hours · {{dropped}} ruled out",
+            "phaseSearch": "searching the candidates still in the running",
+            "phaseReading": "checking the leaders on fresh runs",
             "runsOf": "{{done}} / {{total}} runs",
             "upTo": "up to {{n}} runs",
             "timeLeft": "{{time}} left",
@@ -261,15 +258,23 @@
             "title": "Search rounds",
             "round": "round",
             "simHours": "simulated hours",
-            "contending": "in contention",
-            "paused": "paused",
-            "refuted": "dropped",
-            "coverage": "ranges at {{pct}}%",
+            "contending": "still in the running",
+            "paused": "set aside for now",
+            "pausedTip": "set aside for now; comes back by itself if the leaders' ranges widen",
+            "refuted": "ruled out",
+            "coverage": "± covers {{pct}}% of cases",
+            "firstLook": "first look: so far {{have}} of {{total}} candidates have a first figure",
             "pool": { "free": "Free changes", "paid": "Paid changes" },
-            "poolCounts": "{{contending}} in contention, {{paused}} paused",
-            "col": { "candidate": "Change", "cost": "Cost", "seeds": "Seeds (search / reading)", "reading": "Gain per user", "range": "Range", "buyerNet": "Buyer's gain", "payback": "Payback days", "status": "Status" },
-            "status": { "contending": "in contention", "paused": "paused", "confirmed": "confirmed", "refuted": "dropped" },
-            "tooFew": "too few reading seeds ({{n}})",
+            "poolCounts": "{{contending}} still in the running, {{paused}} set aside for now",
+            "poolSize": "{{n}} candidates",
+            "sortedBy": "sorted by {{col}}, best first",
+            "col": { "candidate": "Change", "cost": "Cost", "hours": "Hours simulated", "reading": "Gain per user", "buyerNet": "Buyer's gain", "payback": "Payback days", "status": "Status" },
+            "hoursTitle": "{{search}} h of search runs + {{fresh}} h of fresh runs",
+            "status": { "contending": "still in the running", "paused": "set aside for now", "confirmed": "checked on fresh runs", "few": "fresh runs: {{n}}, {{more}} more needed before the range is final", "refuted": "ruled out", "zero": "not yet different from no change", "first": "first look, runs so far: {{n}}" },
+            "tooFew": "no fresh runs yet",
+            "noRange": "no range yet",
+            "rangeWidth": "range width {{now}}",
+            "rangeWidthWas": "range width {{now}} (was {{before}})",
             "none": "no leaders yet"
         },
         "result": {
@@ -285,7 +290,12 @@
             "playerLine": "{{player}}: gain {{gain}} ± {{se}} per day, pays back in {{payback}} days",
             "oldSplit": "Saved before the per-player gain lines: run the search again to see them.",
             "confirmedParty": "Confirmed on fresh runs, party gain (the shared loot, before anyone's food and drink)",
-            "running": "Running: the results fill in as the search goes. The rows shown are final.",
+            "running": "Running: the report fills in as the search goes. The lists marked “so far” can still change; the rows of every other list are final.",
+            "slot": "Slot {{n}}",
+            "gainPerDay": "Gain per day",
+            "paysBackIn": "Pays back in (days)",
+            "singlesNotShown": "{{n}} more searched, not confirmed, not shown",
+            "confirmedPartyRow": "Party (the shared loot, per user)",
             "stoppedMark": "Stopped: this is where the search got to.",
             "soFar": "so far",
             "notConfirmedAtStep": "at step {{step}}",
@@ -310,6 +320,9 @@
             "showMore": "Show {{n}} more not accepted",
             "showLess": "Hide the {{n}} not accepted",
             "apart": "Unknown cost, not ranked",
+            "apartNote": "({{n}} with no known cost: not ranked)",
+            "apartShow": "Show the {{n}} with no known cost",
+            "apartHide": "Hide the {{n}} with no known cost",
             "overBudget": "Priced, over budget",
             "overBudgetNote": "({{n}}, not ranked: each is priced above its player's budget)",
             "overBudgetShow": "Show the {{n}} priced over budget",

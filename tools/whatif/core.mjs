@@ -19,7 +19,7 @@ import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
-import { tMult, dfOf, contention, anyHope, separated, bounds } from './rounds.mjs';
+import { tMult, dfOf, contention, anyHope, separated, bounds, poolKey } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -47,9 +47,9 @@ export async function main(settings, seams) {
     const z = Number(arg('z', 2));
     // The search that keeps refining (anytime-search-design.md). Every number below is a named option with the design's proposed value;
     // none is decided (the report lists them as open). Unit of work: one seed of `unit-hours` (50). Round 1 gives every candidate
-    // `first-seeds` (4) seeds; each later round gives every candidate still in contention `round-seeds` more.
+    // `first-seeds` (2) seeds; each later round gives every candidate still in contention `round-seeds` more.
     const unitH = Number(arg('unit-hours', 50));
-    const firstK = Number(arg('first-seeds', 4));
+    const firstK = Number(arg('first-seeds', 2));
     const roundSeeds = Number(arg('round-seeds', 1));
     const leadersK = Number(arg('leaders', 10)); // K leaders per pool
     const pauseMult = Number(arg('pause-mult', 3)); // errors: a candidate is paused when its upper bound at this many errors is below the leaders' line
@@ -61,7 +61,7 @@ export async function main(settings, seams) {
     const finK = Number(arg('confirm-seeds', 16)); // seeds of the pick check, the foods and drinks confirmation, the final confirmation (and a trigger refinement's judgement)
     const finH = Number(arg('confirm-hours', 300)); // their hours per seed: the old last stage's, so a pick is measured as it was before the rounds search (the race itself runs at unit-hours)
     if (!(firstK >= 2 && roundSeeds >= 1 && leadersK >= 1 && pauseMult > 0 && coverage > 0 && coverage < 1 && readStep >= 0 && ['both', 'reading'].includes(lockRule))) throw new Error('rounds options: --first-seeds >= 2, --round-seeds >= 1, --leaders >= 1, --pause-mult > 0, 0 < --coverage < 1, --reading-step >= 0, --lock-rule both|reading');
-    if (errorRule === 'unpaired' && firstK < 4) throw new Error('unpaired rule: at least 4 runs per variant (design 3.3)');
+    if (errorRule === 'unpaired' && firstK < 2) throw new Error('unpaired rule: at least 2 runs per variant (his pick, relaxed from 4)');
     const stages = [{ k: firstK, h: unitH }]; // the one fixed stage left: round 1, today's screen
     const fin = { k: finK, h: finH }; // the measurement of the pick checks, the confirmation and the trigger refinement
     const keep = [];
@@ -80,9 +80,10 @@ export async function main(settings, seams) {
     const sureOffset = confirmOffset + 10000;
     const setupsDir = settings.setupsDir, pricesFile = settings.pricesFile;
     const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-    const LEVERS = ['equip', 'consumables', 'pairs', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
+    const LEVERS = ['equip', 'consumables', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
-    const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS.filter((l) => l !== 'abilitylevels' && l !== 'books') : [x.trim()])));
+    // `pairs` is no longer a lever (the foods and drinks race tries whole combinations): an old command line or request that names it still runs, the name is ignored.
+    const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS.filter((l) => l !== 'abilitylevels' && l !== 'books') : [x.trim()])).filter((x) => x !== 'pairs'));
     for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
     // --export: the old single character export (an object with its `name`), or a map { "<player name>": <that player's export> }.
     // Levers that need a player's export never block a search: that player is skipped by the lever (result.skippedNoExport).
@@ -147,8 +148,9 @@ export async function main(settings, seams) {
     // cached run is done when it is counted): planned never drops and done never exceeds it. Shown as the part "Confirming the picks".
     const sure = { planned: 0, done: 0, counted: new Set() };
     let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
+    let stageCtx = null; // the race stage's own counters (race() sets it, clears it at the stage's end): added to every progress message of the stage
     function report(patch = {}) {
-        Object.assign(progress, patch);
+        Object.assign(progress, patch, stageCtx ? stageCtx() : {});
         const wall = wallLog.reduce((a, r) => a + r.wallSeconds, 0), hours = wallLog.reduce((a, r) => a + r.h, 0);
         const left = progress.runsPlanned - progress.runsDone;
         progress.secondsPerRun = batch.done ? batch.wall / batch.done : wallLog.length ? wall / wallLog.length : null;
@@ -159,7 +161,9 @@ export async function main(settings, seams) {
         outSink.progress(progress);
     }
 
-    async function ensure(reqs) { // reqs: [{ops, seed, h, tag}]
+    // reqs: [{ops, seed, h, tag}], run in the order given (tasks of equal length keep it). `onRun`: called after each finished run (the first
+    // look of round 1 listens: it only reads the cache and the sink, it never feeds a choice).
+    async function ensure(reqs, { onRun } = {}) {
         const tasks = [], need = new Map(); // id -> task, at the longest length asked for that run
         for (const r of reqs) {
             const key = keyOf(r.ops), id = key + '#' + r.seed;
@@ -190,6 +194,7 @@ export async function main(settings, seams) {
                 batch.hoursLeft -= t.h; batch.wall += res.wallSeconds; batch.done++;
                 if (t.tag === 'sure') sure.done++;
                 report({ runsDone: progress.runsDone + 1 });
+                onRun?.();
             }
         };
         await Promise.all(Array.from({ length: Math.min(jobs, tasks.length) }, lane));
@@ -521,7 +526,7 @@ export async function main(settings, seams) {
     // bound above 0), or at --max-rounds; a stop or the time limit returns null. `byPlayer`: Stage F / D, one race per player inside
     // the same rounds, each player ends when his own leader locks. Returns { locked, leaders }: locked is a Map player -> candidate
     // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
-    let roundNo = 0, liveCands = null, lastRound = null;
+    let roundNo = 0, liveCands = null, lastRound = null, lastBase = [];
     const haveSeeds = (ops, seeds, h) => { const key = keyOf(ops); return seeds.every((s) => cache.get(key + '#' + s)?.byHours[h]); };
     // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached).
     function readCount(base, c, h) {
@@ -536,12 +541,13 @@ export async function main(settings, seams) {
         const vOps = [...base, ...c.ops], seeds = sureSeeds(k);
         const vcp = seeds.map((s) => cpOf(vOps, s, h)), bcp = seeds.map((s) => cpOf(base, s, h));
         const party = goal === 'profit' ? lootOf : metric;
-        const m1 = tMult(coverage, dfOf(vcp.map(party), bcp.map(party), errorRule));
-        const out = { k, figure: f.gainPerUser, low: f.gainPerUser - m1 * f.sePerUser, high: f.gainPerUser + m1 * f.sePerUser, accepted: f.accepted };
+        const m1 = k < 2 ? 0 : tMult(coverage, dfOf(vcp.map(party), bcp.map(party), errorRule));
+        // One reading seed gives the figure and no range (a range needs two seeds): low and high are null then.
+        const out = k < 2 ? { k, figure: f.gainPerUser, low: null, high: null, accepted: f.accepted, gain: f.gain, se: f.se, sePerUser: f.sePerUser } : { k, figure: f.gainPerUser, low: f.gainPerUser - m1 * f.sePerUser, high: f.gainPerUser + m1 * f.sePerUser, accepted: f.accepted, gain: f.gain, se: f.se, sePerUser: f.sePerUser };
         if (goal === 'profit') {
             const q = (cp) => lootOf(cp) / n - suppliesOf(cp, c.player);
-            const m2 = tMult(coverage, dfOf(vcp.map(q), bcp.map(q), errorRule));
-            Object.assign(out, { net: f.buyerNet, netLow: f.buyerNet - m2 * f.buyerNetSe, netHigh: f.buyerNet + m2 * f.buyerNetSe, payback: f.buyerNet > 0 && c.cost.cost > 0 ? paybackDays(c.cost.cost, f.buyerNet) : null });
+            const m2 = k < 2 ? 0 : tMult(coverage, dfOf(vcp.map(q), bcp.map(q), errorRule));
+            Object.assign(out, { net: f.buyerNet, netSe: f.buyerNetSe, netLow: k < 2 ? null : f.buyerNet - m2 * f.buyerNetSe, netHigh: k < 2 ? null : f.buyerNet + m2 * f.buyerNetSe, payback: f.buyerNet > 0 && c.cost.cost > 0 ? paybackDays(c.cost.cost, f.buyerNet) : null });
         }
         return out;
     }
@@ -559,33 +565,135 @@ export async function main(settings, seams) {
         }
         return { verdict: 'wait' };
     }
-    async function race(cands, base, { stage, byPlayer, onRefute }) {
+    // ---- The rows of a round record (the real round's and the first look's: one shape, one order) ----
+    // What a foods or drinks candidate changes, slot by slot: the new item of each slot it changes (the panel leaves the other slots blank), with the
+    // readable text of its trigger when the candidate sets one (an unchanged trigger is the default and is not said). Others have none: the panel
+    // shows their desc. Worked out once per candidate and base.
+    function changeOf(base, c) {
+        const bk = keyOf(base);
+        if (c.changeBase === bk) return c.change;
+        const ops = c.ops.filter((o) => o.op === 'food' || o.op === 'drink'), trig = c.ops.filter((o) => o.op === 'trigger');
+        c.changeBase = bk;
+        if (!ops.length) return (c.change = null);
+        const kind = ops[0].op === 'food' ? 'foods' : 'drinks', setup = applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === c.player);
+        return (c.change = { kind, slots: ops.map((o) => ({ index: o.index, item: o.item, trigger: kind === 'foods' && trig.some((x) => x.hrid === o.item) ? triggerText(effectiveTriggers(setup, o.item)) : null })) });
+    }
+    // A range that reaches 0 (the buyer's gain's on the profit goal, the figure's otherwise) is not a result yet: status 'zero', never 'confirmed'.
+    const zeroed = (r) => { const lo = goal === 'profit' ? r.netLow : r.low, hi = goal === 'profit' ? r.netHigh : r.high; return r.k >= 2 && Number.isFinite(lo) && Number.isFinite(hi) && lo <= 0 && hi >= 0; };
+    // `r`: the reading { k, figure, low, high, net, netLow, netHigh, payback } or null (none yet).
+    function rowShape(base, c, r, { seeds, readingSeeds, few, status, screen }) {
+        const has = !!r && r.net !== undefined, searchHours = seeds * unitH, readHours = readingSeeds * unitH;
+        return { id: c.id, player: c.player, desc: c.desc, change: changeOf(base, c), cost: c.cost.cost, seeds, readingSeeds, searchHours, readHours, hours: searchHours + readHours, tooFew: !r, few, status: status !== 'refuted' && r && zeroed(r) ? 'zero' : status, screen,
+            reading: r ? r.figure : null, low: r ? r.low : null, high: r ? r.high : null,
+            buyerNet: has ? r.net : null, netLow: has ? r.netLow : null, netHigh: has ? r.netHigh : null, payback: r ? r.payback ?? null : null };
+    }
+    // The order of a pool's table, by one column: a free pool by the buyer's gain (largest first), a paid pool by its payback (shortest first, none
+    // last), a goal without a buyer's gain by the figure; a tie by the larger buyer's gain, then the id. Returns the column's name.
+    function sortRows(rows, key) {
+        const col = goal !== 'profit' ? 'reading' : String(key).endsWith('free') ? 'buyerNet' : 'payback', down = col !== 'payback';
+        // The order is the order of what the column shows: a figure whose range reaches 0 is written "≈ 0" (|figure| <= half the range), so it ranks as 0.
+        const of = (r) => {
+            if (col === 'payback') return r.payback;
+            const v = col === 'buyerNet' ? r.buyerNet : r.reading, lo = col === 'buyerNet' ? r.netLow : r.low, hi = col === 'buyerNet' ? r.netHigh : r.high;
+            return Number.isFinite(v) && Number.isFinite(lo) && Number.isFinite(hi) && Math.abs(v) <= (hi - lo) / 2 ? 0 : v;
+        };
+        const tie = (a, b) => ((b.buyerNet ?? b.reading ?? -Infinity) - (a.buyerNet ?? a.reading ?? -Infinity)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+        rows.sort((a, b) => { const x = of(a), y = of(b), fx = Number.isFinite(x), fy = Number.isFinite(y); if (fx !== fy) return fx ? -1 : 1; if (fx && x !== y) return down ? y - x : x - y; return tie(a, b); });
+        return col;
+    }
+    // The first look at a race (round 1): a provisional round record from the cache alone, with the candidates that have a first figure (a seed
+    // with both arms cached; the figure is the mean of the paired differences, its range from two seeds on). Same rows, same order, same pools as a
+    // round record, with `provisional: true` and the count of candidates that have a figure. Read-only: no field of a candidate is set that a
+    // choice reads, and nothing here is used to pause, lock or choose.
+    function firstLook(cands, base, byPlayer, stage) {
+        const bk = keyOf(base), n = setups0.length, party = goal === 'profit' ? lootOf : metric, mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+        const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
+        const pools = new Map(); let have = 0, total = 0;
+        for (const c of cands) {
+            if (c.refuted) continue;
+            total++;
+            const key = poolKey(c, byPlayer), pool = pools.get(key) || pools.set(key, { size: 0, rows: [] }).get(key);
+            pool.size++;
+            if (c.vkeyBase !== bk) { c.vkeyBase = bk; c.vkey = keyOf([...base, ...c.ops]); }
+            const d = [], q = [];
+            for (const s of seedIndex.get(c.vkey) || []) {
+                if (s > confirmOffset) continue;
+                const v = cache.get(c.vkey + '#' + s)?.byHours[unitH], b = cache.get(bk + '#' + s)?.byHours[unitH];
+                if (!v || !b) continue;
+                d.push((party(v) - party(b)) / n);
+                if (goal === 'profit') q.push(lootOf(v) / n - suppliesOf(v, c.player) - (lootOf(b) / n - suppliesOf(b, c.player)));
+            }
+            const k = d.length;
+            if (!k) continue;
+            have++;
+            const range = (a) => { const m = mean(a); if (k < 2) return { m, low: null, high: null }; const h = tMult(coverage, k - 1) * sd(a) / Math.sqrt(k); return { m, low: m - h, high: m + h }; };
+            const g = range(d), r = { k, figure: g.m, low: g.low, high: g.high };
+            if (goal === 'profit') { const e = range(q); Object.assign(r, { net: e.m, netLow: e.low, netHigh: e.high, payback: e.m > 0 && c.cost.cost > 0 ? paybackDays(c.cost.cost, e.m) : null }); }
+            pool.rows.push(rowShape(base, c, r, { seeds: k, readingSeeds: 0, few: false, status: 'first', screen: g.m }));
+        }
+        return { provisional: true, round: roundNo, stage, simHours: wallLog.reduce((a, r) => a + r.h, 0), unitHours: unitH, coverage, pauseMult, leadersK, goal, readingMin: readMin, firstLook: { have, total },
+            candidates: { total, contending: total, paused: 0, refuted: 0, locked: 0 },
+            pools: [...pools].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([key, p]) => { const sortedBy = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, sortedBy, leaders: p.rows.slice(0, leadersK) }; }) };
+    }
+    async function race(cands, base, { stage, byPlayer, onRefute, onRound }) {
         const H = unitH, bk = keyOf(base), n = setups0.length;
-        liveCands = cands;
+        liveCands = cands; lastBase = base;
         for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; }
         const lockedBy = new Map(); // player (or '*') -> candidate
-        const sinceStart = roundNo;
+        const sinceStart = roundNo, hours0 = wallLog.reduce((a, r) => a + r.h, 0), runs0 = wallLog.length;
+        // A race stage has no total known in advance, so its progress part shows no bar: only counters that never go down (the round being run,
+        // the runs finished in the stage and the simulated hours spent in it, both cumulative over every batch of every round, and the
+        // candidates dropped, who never return) and the contention of the last finished round (in contention, paused: plain numbers, they
+        // may fall and rise). report() adds them to every progress message of the stage (stageCtx), whichever batch is running.
+        const widthPrev = new Map(); // pool key -> the top leader's range width of the last round (item: range width and the one before)
+        let stageCont = { contending: cands.length, paused: 0 };
+        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageDropped: cands.filter((c) => c.refuted).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
+        try {
         for (;;) {
             roundNo++;
             const active = cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player)));
             const todo = active.filter((c) => c.status !== 'paused');
             for (const c of todo) c.k = c.k ? c.k + roundSeeds : firstK;
             const maxK = Math.max(...active.map((c) => c.k), 0);
-            report({ stage, candidatesLeft: todo.length });
-            if (!await ensure([...req(base, H, maxK * baseMult, 'base'), ...todo.flatMap((c) => reqPair(base, [...base, ...c.ops], H, c.k, 'variant'))])) return null;
+            // Each phase of a round is named for what it is: the round being run (from its start), the phase (search seeds of every candidate
+            // in contention, reading seeds of the leaders) and the phase's own candidate count; the bar is the phase's runs.
+            report({ stage, round: roundNo, phase: 'search', candidatesLeft: todo.length });
+            // The order the runs are asked for in: the base's first seed, then seed 1 of every candidate (and the base on it), then seed 2 of every
+            // candidate, and so on, then the base's other seeds. Only the order changes (the same runs, the same keys): the first look has a figure of
+            // every candidate after the first sweep, long before the last seed of the first candidate would have been done.
+            const baseReqs = req(base, H, maxK * baseMult, 'base'), pairs = todo.map((c) => ({ c, pr: reqPair(base, [...base, ...c.ops], H, c.k, 'variant') }));
+            const sweeps = Array.from({ length: maxK }, (_, s) => pairs.filter((x) => s < x.c.k).flatMap((x) => [x.pr[s], x.pr[x.c.k + s]]));
+            const sweepIds = sweeps.map((sw) => sw.map((r) => keyOf(r.ops) + '#' + r.seed));
+            let doneSweeps = 0, lastLook = 0;
+            const first = roundNo - sinceStart === 1;
+            // The first look (round 1 of a race): a provisional round record per finished sweep and, while a sweep runs, every few seconds. It is
+            // read from the cache only, goes to the sink and nowhere else; nothing chooses, pauses or locks from it.
+            const look = (force) => {
+                const now = Date.now();
+                if (!force && now - lastLook < 3000) return;
+                lastLook = now;
+                outSink.round(firstLook(cands, base, byPlayer, stage));
+            };
+            const onRun = first ? () => {
+                const was = doneSweeps;
+                while (doneSweeps < sweepIds.length && sweepIds[doneSweeps].every((id) => cache.get(id)?.byHours[H])) doneSweeps++;
+                look(doneSweeps > was);
+            } : undefined;
+            if (first) look(true);
+            if (!await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun })) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
             const cont = contention(active, { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst });
             const leaders = cont.pools.flatMap((p) => p.leaders);
             if (readStep > 0 && leaders.length) {
                 const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
-                report({ stage, candidatesLeft: leaders.length });
+                report({ stage, round: roundNo, phase: 'reading', candidatesLeft: leaders.length });
                 if (!await ensure(reqs)) return null;
             }
             // Readings, the pick check on them, the refuted, the locks.
             const read = new Map(), peek = new Map();
             for (const c of leaders) {
                 const k = readCount(base, c, H);
-                read.set(c, k >= 2 ? readingOf(base, c, k, H) : null);
+                read.set(c, k >= 1 ? readingOf(base, c, k, H) : null);
                 peek.set(c, peekCheck(base, c, H));
             }
             for (const c of leaders) {
@@ -594,19 +702,26 @@ export async function main(settings, seams) {
             }
             const live = leaders.filter((c) => !c.refuted);
             const rows = (p) => p.leaders.map((c) => {
-                const r = read.get(c), tooFew = !r || r.k < readMin, st = peek.get(c).verdict === 'pass' ? 'confirmed' : c.status;
-                return { id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, seeds: c.k, readingSeeds: r ? r.k : 0, tooFew, status: c.refuted ? 'refuted' : st,
-                    screen: goal === 'profit' ? c.est.net / n : c.est.gain / n,
-                    reading: tooFew ? null : r.figure, low: tooFew ? null : r.low, high: tooFew ? null : r.high,
-                    buyerNet: tooFew || r.net === undefined ? null : r.net, netLow: tooFew || r.net === undefined ? null : r.netLow, netHigh: tooFew || r.net === undefined ? null : r.netHigh,
-                    payback: tooFew ? null : r.payback ?? null };
+                // The figure shows from the first reading seed and its range from the second (low / high are null with one seed): `few` while the
+                // leader has fewer than --reading-min (its status says so), `tooFew` only with no reading seed at all. 'confirmed' (the fresh seeds
+                // word) needs --reading-min seeds. 'zero': the range reaches 0 (rowShape).
+                const r = read.get(c), few = !!r && r.k < readMin;
+                return rowShape(base, c, r, { seeds: c.k, readingSeeds: r ? r.k : 0, few, status: c.refuted ? 'refuted' : few ? 'few' : peek.get(c).verdict === 'pass' ? 'confirmed' : c.status, screen: goal === 'profit' ? c.est.net / n : c.est.gain / n });
             });
             const wallH = wallLog.reduce((a, r) => a + r.h, 0);
-            const rec = { round: roundNo, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal,
+            const rec = { round: roundNo, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal, readingMin: readMin,
                 candidates: { total: cands.length, contending: cont.contending, paused: cont.paused, refuted: cands.filter((c) => c.refuted).length, locked: lockedBy.size },
-                pools: cont.pools.map((p) => ({ key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, leaders: rows(p) })) };
+                // rangeWidth: the width (high minus low, per user per day) of the pool's top leader's range; rangeWidthPrev: the same pool's width one round
+                // earlier of this race (absent on the stage's first round, or when that round had no range). Computed here once; the panel only prints them.
+                pools: cont.pools.map((p) => {
+                    const lr = rows(p), sortedBy = sortRows(lr, p.key), t = lr[0], w = t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
+                    widthPrev.set(p.key, w);
+                    return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), sortedBy, leaders: lr };
+                }) };
             lastRound = rec;
+            stageCont = { contending: cont.contending, paused: cont.paused };
             outSink.round(rec);
+            onRound?.(rec, live);
             const top = rec.pools.map((p) => { const l = p.leaders[0]; return l ? `${p.key} ${l.desc.slice(0, 48)} ${l.tooFew ? `(${l.readingSeeds} reading seeds, too few)` : `${fmt(l.reading)} [${fmt(l.low)}, ${fmt(l.high)}] n=${l.readingSeeds}`}` : `${p.key} none`; }).join('; ');
             console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] round ${roundNo} ${stage}: ${cont.contending} in contention, ${cont.paused} paused, ${rec.candidates.refuted} refuted, ${rec.simHours} sim h; ${top}`);
             // Locks: the leader's reading seeds pass the pick check (peek) and, with lockRule 'both', nobody in its pool reaches its lower bound.
@@ -621,12 +736,27 @@ export async function main(settings, seams) {
             const settled = byPlayer ? players.every((p) => lockedBy.has(p) || !anyHope(cands.filter((c) => c.player === p && !c.timeOnly), goal, pauseMult)) : lockedBy.size > 0 || !anyHope(cands.filter((c) => !c.timeOnly), goal, pauseMult);
             if (settled || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
         }
+        } finally { stageCtx = null; }
     }
     // One player's entry of result.best: his items in slot order after the stage (a food with the readable text of its trigger, null
     // when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
+    const bestItems = (kind, setup) => (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x) => x?.itemHrid).filter(Boolean)
+        .map((item) => (kind === 'foods' ? { item, trigger: triggerText(effectiveTriggers(setup, item)) } : { item }));
+    // The same entry while the stage still runs (soFar: true): each player's leader as the lock would take it (the best ranked of his live
+    // leaders), with the figure and the range of its row in the round record, the data the rounds table shows (no second computation);
+    // a leader with too few reading seeds has its items and tooFew: true. The stage's end replaces it with bestEntry's.
+    function liveBest(kind, base, rec, live) {
+        const rowOf = new Map(rec.pools.flatMap((p) => p.leaders.map((r) => [r.id, r]))), out = {};
+        for (const p of players) {
+            const c = live.filter((x) => x.player === p).sort(rankFirst)[0], r = c && rowOf.get(c.id);
+            if (!r) continue;
+            const items = bestItems(kind, applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === p));
+            out[p] = { soFar: true, items, readingSeeds: r.readingSeeds, ...(r.tooFew ? { tooFew: true } : { gainPerUser: r.reading, low: r.low, high: r.high, ...(r.buyerNet === null ? {} : { buyerNet: r.buyerNet, netLow: r.netLow, netHigh: r.netHigh }) }) };
+        }
+        return out;
+    }
     function bestEntry(kind, setup, chosen, fresh) {
-        const slots = (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x) => x?.itemHrid).filter(Boolean);
-        const items = slots.map((item) => (kind === 'foods' ? { item, trigger: triggerText(effectiveTriggers(setup, item)) } : { item }));
+        const items = bestItems(kind, setup);
         if (!chosen) return { items, unchanged: true };
         const e = chosen.est, n = setups0.length;
         return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), ...(e.own ? { ownSuppliesPerDay: e.own.gain } : {}), stage: e.stage, ...(fresh ? { fresh } : {}) };
@@ -653,7 +783,9 @@ export async function main(settings, seams) {
                     result.notConfirmed.push({ ...row(c), step: null, kind: flag, fresh: p.fresh });
                     console.log(`${kind}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`);
                 };
-                const res = await race(fc, baseOps, { stage: kind, byPlayer: true, onRefute: refute });
+                // Each round the report shows the current best of the stage (soFar), the same data as the rounds table.
+                const onRound = (rec, live) => { Object.assign(result.best[kind], liveBest(kind, baseOps, rec, live)); publish(result); };
+                const res = await race(fc, baseOps, { stage: kind, byPlayer: true, onRefute: refute, onRound });
                 if (!res) return stop(result);
                 // Each player's locked filling (his leader whose reading seeds passed the pick check) is confirmed on fresh seeds, in party order,
                 // each alone against the stage's start (not the earlier players' confirmed fillings); the runs are the reading seeds, already
@@ -737,7 +869,7 @@ export async function main(settings, seams) {
                 // The rows below are measured against the baseline, this figure stays the original base.
                 if (!await ensure(req([], fin.h, fin.k * baseMult, 'base'))) return stop(result);
                 { const bs = pick([], fin.h, fin.k * baseMult); result.basePerUser = bs.reduce((a, i) => a + val([], i, fin.h), 0) / bs.length / setups0.length; }
-                result.singles = [...cands.filter((c) => c.est).sort(rank).map((c) => row(c)), ...result.singles];
+                ({ rows: result.singles, notShown: result.singlesNotShown } = singleRows(cands, baseOps, result.singles));
                 publish(result); // snapshot 4: the first race has a pick (each change alone, the base)
             }
             logCandidates(step + 1, res.leaders.filter((c) => !c.timeOnly).slice(0, 5));
@@ -822,6 +954,23 @@ export async function main(settings, seams) {
         const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, sharedSeSamePerUser: est.shared.seSame / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
         return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
     }
+    // "Each change alone": only a change with a reading from reading seeds (at least --reading-min of them, on the baseline the race ran from) is a
+    // row, and its figures are the reading's (figure, error, buyer's gain, error, payback, accepted by the search's own rule); the others are counted
+    // (notShown), never listed. Ordered by the one comparator (rankEst on the reading's own score, net and gain: a free change with a gain first).
+    function singleRows(list, base, rest) {
+        const picked = [];
+        let notShown = 0;
+        for (const c of list.filter((x) => x.est)) {
+            const k = readCount(base, c, unitH);
+            if (k < readMin || k < 2) { notShown++; continue; }
+            const r = readingOf(base, c, k, unitH), plain = row(c);
+            const cost = c.cost.cost, net = goal === 'profit' ? r.net : undefined;
+            const score = goal === 'profit' ? scoreOf(net, cost, c.monotone) : cost <= 0 ? (r.gain > 0 ? Infinity : r.gain) : r.gain / cost;
+            const split = net !== undefined && plain.sharedGainPerUser !== undefined ? { sharedGainPerUser: r.figure, sharedSePerUser: r.sePerUser, ownSuppliesPerDay: r.figure - r.net, paybackOwn: paybackOwnOf(cost, r.figure, r.figure - r.net) } : {};
+            picked.push({ est: { score, net, gain: r.gain }, row: { ...plain, ...split, gain: r.gain, se: r.se, gainPerUser: r.figure, sePerUser: r.sePerUser, payback: r.payback ?? null, accepted: r.accepted && !c.est.judged, readingSeeds: k, ...(net !== undefined ? { buyerNet: r.net, buyerNetSe: r.netSe } : {}) } });
+        }
+        return { rows: [...picked.sort((a, b) => rankEst(a.est, b.est)).map((x) => x.row), ...rest], notShown };
+    }
     // The report as it stands (his go 2026-11-11: the whole report unfolds live): one function builds it, the live snapshots and the final
     // result both come from it (the final result is the last snapshot plus the parts only the end has: the confirmation, the skills
     // report, the timing). A copy of the arrays the search still appends to; `timeOnly` is the search's own working list, never reported.
@@ -845,7 +994,7 @@ export async function main(settings, seams) {
     // candidate's figure so far as the single changes.
     function stop(result) {
         if (lastRound) result.round = lastRound;
-        if (liveCands && !result.singles.some((s) => !s.hiddenFood)) result.singles = [...liveCands.filter((c) => c.est).sort(rank).map((c) => row(c)), ...result.singles];
+        if (liveCands && !result.singles.some((s) => !s.hiddenFood)) ({ rows: result.singles, notShown: result.singlesNotShown } = singleRows(liveCands, lastBase, result.singles));
         timing(result); result.incomplete = true; result.stoppedBy = stopSignal.requested ? 'stop request' : '--max-minutes';
         outSink.stopped(snapshot(result));
         report({ stage: 'stopped' });

@@ -32,7 +32,14 @@ export const scoreOf = (net, cost, monotone) => { const used = monotone ? Math.m
 
 // The order: the larger score first (the smaller buyer payback), a tie by the larger buyer net, then the larger party gain.
 // `est` carries score, net (none on a goal that is not profit: read as 0) and gain.
-export const rankEst = (a, b) => (b.score - a.score) || ((b.net ?? 0) - (a.net ?? 0)) || (b.gain - a.gain);
+// A total order, with no NaN hole: a free change with a gain (score Infinity) comes first and the free ones are ranked by the buyer's gain
+// (net, then the party gain); the rest (they cost something, or gain nothing) by score, then net, then gain. A missing or NaN figure sorts last.
+const down = (x, y) => { const p = Number.isNaN(x) || x == null ? -Infinity : x, q = Number.isNaN(y) || y == null ? -Infinity : y; return p === q ? 0 : p > q ? -1 : 1; };
+export const rankEst = (a, b) => {
+    const fa = a.score === Infinity, fb = b.score === Infinity;
+    if (fa !== fb) return fa ? -1 : 1;
+    return (fa ? 0 : down(a.score, b.score)) || down(a.net ?? 0, b.net ?? 0) || down(a.gain, b.gain);
+};
 // The same order with the rows that pass the accept rule first (used to cut each stage's pool).
 export const rankAcceptedFirst = (a, b) => (Number(b.accepted) - Number(a.accepted)) || rankEst(a, b);
 

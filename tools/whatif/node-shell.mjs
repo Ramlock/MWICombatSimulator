@@ -85,9 +85,11 @@ export function createNodeSink(out) {
             if (process.connected) process.send({ type: 'progress', progress: p });
         },
         partial(snapshot) { if (process.connected) process.send({ type: 'partial', result: snapshot }); },
-        // One search round (rounds.jsonl, one line each, and the IPC message `round`).
+        // One search round (rounds.jsonl, one line each, and the IPC message `round`). A provisional record (`provisional: true`, the first look at
+        // round 1: figures read from the cache while the round's runs are still going) goes to the window only: rounds.jsonl holds only the
+        // finished rounds, so its lines stay one per round, in round order.
         round(r) {
-            appendFileSync(path.join(out, 'rounds.jsonl'), JSON.stringify(r) + '\n');
+            if (!r.provisional) appendFileSync(path.join(out, 'rounds.jsonl'), JSON.stringify(r) + '\n');
             if (process.connected) process.send({ type: 'round', round: r });
         },
         stopped(snapshot) { writeFileSync(path.join(out, 'partial.json'), JSON.stringify(snapshot, null, 1)); },

@@ -152,8 +152,60 @@ const old = panel.renderProgress({ state: 'running', progress: { stage: 'screen'
 check('old progress without parts: the single line unchanged', !old.includes('whatif-part') && old.includes('width: 25%') && old.includes('1:02:05') && old.includes('candidates left'));
 check('empty parts array: the single line', !panel.renderProgress({ state: 'running', progress: { stage: 'screen', parts: [], runsPlanned: 1, runsDone: 0 } }, t).includes('whatif-part'));
 
+// No bar goes back, in any stage, and the counters of a race stage only grow. The real message sequence of a search is fed through the tracker
+// and the panel one message at a time: rounds of a race stage (a search batch of 103 runs, a reading batch of 30 leaders' runs, a search batch
+// again), a greedy step that is itself a race, a greedy step of two batches (each batch restarts its own run counts), the pick check whose planned runs
+// grow, the confirmation of two batches. After every message each row's bar (width) must be at least what it was, a race stage's running row has no
+// bar, its counters (runs, simulated hours, dropped) never fall and its label names the phase in words.
+{
+    const tp = createParts({ stages: [{ k: 4, h: 50 }, { k: 4, h: 150 }], keep: [10], candidates: 103, maxSteps: 20 });
+    const seq = [];
+    let stageRuns = 0, hours = 0, picksPlanned = 0, picksDone = 0;
+    const batch = (n, extra) => { const at = (d) => ({ runsDone: d, runsPlanned: n, etaSeconds: n - d, ...(typeof extra === 'function' ? extra(d) : extra) }); for (let d = 0; d < n; d += Math.max(1, Math.floor(n / 6))) seq.push(at(d)); seq.push(at(n)); };
+    const race = (stage, rounds) => {
+        let runs = 0, h = 0, round = 0;
+        for (const r of rounds) {
+            round++;
+            const ctx = () => ({ stage, round, candidatesLeft: r.n, stageContending: r.cont, stagePaused: r.paused, stageDropped: r.dropped });
+            const run = (n, phase) => { const base = runs, hb = h; batch(n, (d) => ({ phase, ...ctx(), stageRuns: base + d, stageSimHours: hb + d * 50 })); runs += n; h += n * 50; };
+            run(r.n, 'search'); run(r.reads, 'reading');
+        }
+    };
+    race('screen', [{ n: 103, reads: 30, cont: 103, paused: 0, dropped: 0 }, { n: 40, reads: 30, cont: 40, paused: 63, dropped: 2 }, { n: 12, reads: 30, cont: 12, paused: 91, dropped: 5 }]);
+    race('halving 1', [{ n: 12, reads: 12, cont: 12, paused: 0, dropped: 0 }, { n: 5, reads: 12, cont: 5, paused: 7, dropped: 1 }]);
+    race('greedy step 1', [{ n: 24, reads: 10, cont: 24, paused: 0, dropped: 0 }, { n: 9, reads: 10, cont: 9, paused: 15, dropped: 3 }]);
+    batch(30, { stage: 'confirming picks', picksPlanned: 32, picksDone: 10 }); batch(30, { stage: 'confirming picks', picksPlanned: 48, picksDone: 48 });
+    batch(24, { stage: 'greedy step 2' }); batch(16, { stage: 'greedy step 2' }); batch(8, { stage: 'greedy step 2' });
+    batch(30, { stage: 'confirming picks', picksPlanned: 80, picksDone: 60 });
+    batch(16, { stage: 'confirmation' }); batch(16, { stage: 'confirmation' });
+    seq.push({ stage: 'done', runsDone: 16, runsPlanned: 16 });
+    const widths = new Map(), counters = new Map();
+    const bad = [], phaseWords = [];
+    for (const m of seq) {
+        const st = { state: 'running', progress: { ...m, parts: tp.sync(m) } };
+        const html = panel.renderParts(st, t);
+        const seen = new Map();
+        for (const mm of html.matchAll(/<div class="whatif-part whatif-part-(\w+)" data-kind="(\w+)"[^>]*>([^]*?)<span class="whatif-part-text">([^]*?)<\/span><\/div>/g)) {
+            const key = mm[2] + '#' + (seen.set(mm[2], (seen.get(mm[2]) ?? 0) + 1), seen.get(mm[2]));
+            const w = mm[3].match(/width: ([\d.]+)%/), isRace = mm[3].includes('whatif-no-bar');
+            if (w) { if (widths.has(key) && Number(w[1]) < widths.get(key)) bad.push(`${key} bar ${widths.get(key)} -> ${w[1]} at ${JSON.stringify(m)}`); widths.set(key, Number(w[1])); }
+            if (isRace && mm[3].includes('progress-bar')) bad.push(`${key} race row has a bar`);
+            if (isRace) {
+                const nums = [...mm[4].matchAll(/data-num="([\d.]+)"/g)].map((x) => Number(x[1])).slice(0, 3), prev = counters.get(key);
+                if (prev && nums.some((v, i) => v < prev[i])) bad.push(`${key} counters ${prev} -> ${nums}`);
+                counters.set(key, nums);
+                phaseWords.push(/searching the candidates still in the running|checking the leaders on fresh runs/.test(mm[3]));
+            }
+        }
+    }
+    check('sequence: no row\'s bar ever goes back across rounds, greedy steps, the pick check and the confirmation', bad.length === 0, bad.slice(0, 3).join(' | '));
+    check('sequence: a running race row has no bar, counters that only grow, and the phase named in words', phaseWords.length > 20 && phaseWords.every(Boolean) && counters.size >= 3);
+    check('sequence: the runs and simulated hours counters end above where they began and "dropped" did rise', [...counters.values()].some((c) => c[0] > 100 && c[1] > 5000 && c[2] >= 3), JSON.stringify([...counters.values()]));
+    check('sequence: contention is shown as plain numbers (it may fall, no bar for it)', !/contending[^]*progress-bar/.test(panel.renderParts({ state: 'running', progress: { parts: tp.sync({ stage: 'screen', round: 4, phase: 'search', runsDone: 1, runsPlanned: 9, stageContending: 3, stagePaused: 9, stageDropped: 1, stageRuns: 5, stageSimHours: 10 }) } }, t).match(/data-kind="screen"[^]*?<\/div>/)?.[0] ?? ''));
+}
+
 // Strings in en, pt, zh.
-const keys = ['partOf', 'partSteps', 'partMoreSteps', 'partConfirmationWaiting', 'partScreen', 'partHalving', 'partStep', 'partPicks', 'partConfirmation', 'optionsLeft', 'runsOf', 'upTo', 'timeLeft', 'done', 'secondsPerRunCap', 'elapsed'];
+const keys =['partOf', 'partSteps', 'partMoreSteps', 'partConfirmationWaiting', 'partScreen', 'partHalving', 'partStep', 'partPicks', 'partConfirmation', 'optionsLeft', 'runsOf', 'upTo', 'timeLeft', 'done', 'secondsPerRunCap', 'elapsed'];
 for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`, keys.every((k) => typeof locales[l].progress[k] === 'string' && locales[l].progress[k].length), l);
 check('strings: placeholders match across languages', keys.every((k) => ['pt', 'zh'].every((l) => (locales[l].progress[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.progress[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
 const ptHtml = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'step', index: 2, state: 'running', runsPlanned: 4, runsDone: 1, etaSeconds: 9 }] } }, tIn('pt'));

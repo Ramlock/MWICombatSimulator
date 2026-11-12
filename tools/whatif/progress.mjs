@@ -12,7 +12,9 @@
 // own three halvings run as one part; the runner reports stage 'foods' / 'drinks' and the part shows the current batch).
 // A part: { kind: 'foods'|'drinks'|'screen'|'halving'|'steps'|'step'|'moreSteps'|'confirmation', index, state: 'waiting'|'running'|
 // 'done', runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
-// stepsLeft ('moreSteps') }. A stop leaves the running part running: the rows stay as they were.
+// stepsLeft ('moreSteps'), and on a part of a race stage: round, phase ('search' | 'reading'), contending, paused, dropped, simHours
+// (the stage's counters: runs and simHours are cumulative over the stage, dropped never falls; contending and paused are the last finished
+// round's and may rise and fall, so the window shows them as numbers). A part with a round has no bar: a race stage has no known total. }. A stop leaves the running part running: the rows stay as they were.
 
 export function createParts(plan) {
     const { stages, keep = [], maxSteps, fillings = false } = plan;
@@ -31,7 +33,7 @@ export function createParts(plan) {
     // The part "Confirming the picks" (optimize.mjs confirmPick): one row for the whole greedy phase, its runs counted by the optimizer
     // as distinct runs (progress.picksPlanned / picksDone, never dropping): running while a pick is being checked, grey between two
     // checks, done once the confirmation starts or the search ends. Not a row of `rows`: it comes back to running at every step.
-    const picks = { started: false, state: 'waiting', runsPlanned: 0, runsDone: 0 };
+    const picks = { started: false, state: 'waiting', runsPlanned: 0, runsDone: 0, fill: 0 };
     const rows = []; // started parts, in order: { kind, index, runsPlanned, runsDone, candidatesLeft, etaSeconds, state }
     const parse = (stage) => {
         if (stage === 'screen') return { kind: 'screen', index: 0 };
@@ -52,6 +54,7 @@ export function createParts(plan) {
                 picks.started = true;
                 picks.runsPlanned = Math.max(picks.runsPlanned, progress.picksPlanned);
                 picks.runsDone = Math.min(picks.runsPlanned, Math.max(picks.runsDone, progress.picksDone ?? 0));
+                picks.fill = Math.max(picks.fill, picks.runsPlanned > 0 ? picks.runsDone / picks.runsPlanned : 0); // never goes back, as a part's
             }
             if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
             else if (progress.stage === 'confirmation' || progress.stage === 'done') { if (picks.started) picks.state = 'done'; }
@@ -66,6 +69,12 @@ export function createParts(plan) {
                 row.runsDone = progress.runsDone ?? 0;
                 row.candidatesLeft = progress.candidatesLeft ?? null;
                 row.etaSeconds = progress.etaSeconds ?? null;
+                // The bar of a part never goes back: a part that runs several batches (each batch restarts its own counts) or whose planned runs grow
+                // keeps the highest fraction it has shown (`fill`, 0 to 1); the panel draws the bar from it.
+                row.fill = Math.max(row.fill ?? 0, row.runsPlanned > 0 ? Math.min(1, row.runsDone / row.runsPlanned) : 0);
+                // The round being run, its phase ('search' | 'reading') and the stage's own totals (see race() in core.mjs): carried only
+                // when the stage reports a round, so a part of an older run keeps its shape.
+                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, runs: progress.stageRuns, simHours: progress.stageSimHours });
             }
             // 'stopped', 'probe' and 'start' change no row.
             for (const r of rows) if (r.state === 'done') { r.runsDone = r.runsPlanned; r.etaSeconds = 0; }
@@ -80,7 +89,7 @@ export function createParts(plan) {
                 out.push(r ? { ...r } : waiting(kind, si, poolsOf()[si], stages[si].k));
             }
             if (picks.state === 'done') picks.runsDone = picks.runsPlanned;
-            out.push({ kind: 'picks', index: 0, state: picks.state, runsPlanned: picks.runsPlanned, runsDone: picks.runsDone, etaSeconds: picks.state === 'running' ? (progress.etaSeconds ?? null) : picks.state === 'done' ? 0 : null });
+            out.push({ kind: 'picks', index: 0, state: picks.state, runsPlanned: picks.runsPlanned, runsDone: picks.runsDone, fill: picks.fill, etaSeconds: picks.state === 'running' ? (progress.etaSeconds ?? null) : picks.state === 'done' ? 0 : null });
             const steps = rows.filter((r) => r.kind === 'step'), conf = rows.find((r) => r.kind === 'confirmation');
             if (!steps.length) out.push({ kind: 'steps', index: 0, state: 'waiting', maxSteps });
             for (const r of steps) out.push({ ...r });

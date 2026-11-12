@@ -157,6 +157,7 @@
         "exportKept": "已保存（{{who}}）",
         "exportNone": "无导出：被 {{levers}} 跳过",
         "exportNoneBare": "无导出",
+        "exportLeverOff": "需要角色导出：请为已勾选的玩家粘贴一份。",
         "exportBad": "不是角色导出：未保存",
         "levers": "搜索范围",
         "lever": {
@@ -167,10 +168,6 @@
             "consumables": {
                 "name": "食物和饮料",
                 "desc": "find the best foods and the best drinks first (every slot of each), then measure everything else on top of them"
-            },
-            "pairs": {
-                "name": "食物和饮料组合",
-                "desc": "no longer needed: the food and drink search already tries whole combinations of every slot"
             },
             "owned": {
                 "name": "已拥有的物品",
@@ -199,10 +196,6 @@
             "books": {
                 "name": "新技能",
                 "desc": "在空栏位学习尚未拥有的技能（需要导出器的已学技能数据）"
-            },
-            "skills": {
-                "name": "战斗技能等级",
-                "desc": "提升战斗技能等级，达到所需的天数折算为金币"
             }
         },
         "start": "开始搜索",
@@ -249,6 +242,10 @@
             "partPicks": "确认所选改动",
             "partConfirmation": "确认",
             "optionsLeft": "剩余 {{n}} 个选项",
+            "stageLabel": "第 {{round}} 轮{{phase}} · {{contending}} 个仍在竞争 · {{paused}} 个暂时搁置",
+            "stageCounters": "{{runs}} 次运行 · {{hours}} 模拟小时 · {{dropped}} 个已排除",
+            "phaseSearch": "搜索仍在竞争的候选",
+            "phaseReading": "用新运行核对领先者",
             "runsOf": "{{done}} / {{total}} 次运行",
             "upTo": "最多 {{n}} 次运行",
             "timeLeft": "剩余 {{time}}",
@@ -261,14 +258,22 @@
             "round": "轮",
             "simHours": "模拟小时",
             "contending": "仍在竞争",
-            "paused": "已暂停",
-            "refuted": "已淘汰",
-            "coverage": "区间覆盖率 {{pct}}%",
+            "paused": "暂时搁置",
+            "pausedTip": "暂时搁置；若领先者的范围变宽，会自动恢复",
+            "refuted": "已排除",
+            "coverage": "± 覆盖 {{pct}}% 的情况",
+            "firstLook": "初步结果：目前 {{total}} 个候选中已有 {{have}} 个有初步数值",
             "pool": { "free": "免费改动", "paid": "付费改动" },
-            "poolCounts": "{{contending}} 个在竞争，{{paused}} 个已暂停",
-            "col": { "candidate": "改动", "cost": "成本", "seeds": "种子（搜索 / 读数）", "reading": "每人收益", "range": "区间", "buyerNet": "买家收益", "payback": "回本天数", "status": "状态" },
-            "status": { "contending": "在竞争", "paused": "已暂停", "confirmed": "已确认", "refuted": "已淘汰" },
-            "tooFew": "读数种子太少（{{n}}）",
+            "poolCounts": "{{contending}} 个仍在竞争，{{paused}} 个暂时搁置",
+            "poolSize": "{{n}} 个候选",
+            "sortedBy": "按「{{col}}」排序，最优在前",
+            "col": { "candidate": "改动", "cost": "成本", "hours": "模拟小时", "reading": "每人收益", "buyerNet": "买家收益", "payback": "回本天数", "status": "状态" },
+            "hoursTitle": "搜索运行 {{search}} 小时 + 新运行 {{fresh}} 小时",
+            "status": { "contending": "仍在竞争", "paused": "暂时搁置", "confirmed": "已用新运行核对", "few": "新运行 {{n}} 次，还需 {{more}} 次才算定稿", "refuted": "已排除", "zero": "与不改动尚无明显差别", "first": "初步结果，目前运行次数：{{n}}" },
+            "tooFew": "还没有新运行",
+            "noRange": "暂无范围",
+            "rangeWidth": "范围宽度 {{now}}",
+            "rangeWidthWas": "范围宽度 {{now}}（上一轮 {{before}}）",
             "none": "暂无领先者"
         },
         "result": {
@@ -284,7 +289,12 @@
             "playerLine": "{{player}}: gain {{gain}} ± {{se}} per day, pays back in {{payback}} days",
             "oldSplit": "在逐玩家收益行出现之前保存：请重新运行搜索以查看。",
             "confirmedParty": "在新的运行中确认，队伍收益（共享战利品，不含任何人的食物和饮料）",
-            "running": "运行中：结果会随搜索进行逐步补全。已显示的行均为最终结果。",
+            "running": "运行中：报告会随搜索进行逐步补全。标有“目前为止”的列表仍可能改变，其他列表的行均为最终结果。",
+            "slot": "格 {{n}}",
+            "gainPerDay": "每日收益",
+            "paysBackIn": "回本天数",
+            "singlesNotShown": "另有 {{n}} 个已搜索但未确认，不显示",
+            "confirmedPartyRow": "队伍（共享战利品，每位用户）",
             "stoppedMark": "已停止：搜索进行到了这里。",
             "soFar": "目前为止",
             "notConfirmedAtStep": "第 {{step}} 步",
@@ -309,6 +319,9 @@
             "showMore": "显示另外 {{n}} 项（未被接受）",
             "showLess": "隐藏这 {{n}} 项（未被接受）",
             "apart": "成本未知，不参与排名",
+            "apartNote": "（{{n}} 项成本未知：不参与排名）",
+            "apartShow": "显示这 {{n}} 项成本未知",
+            "apartHide": "隐藏这 {{n}} 项成本未知",
             "overBudget": "有价格，超出预算",
             "overBudgetNote": "（{{n}} 项，不参与排名：每项成本都超过其玩家的预算）",
             "overBudgetShow": "显示这 {{n}} 项超出预算",

@@ -33,7 +33,7 @@ import { profitPerDay, mapKey } from "./xpChart.mjs";
 import { unitPrice } from "./unitPrice.mjs";
 import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4145,6 +4145,7 @@ function whatIfKeepExport(box) {
         try { localStorage.setItem(whatIfExportKey(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
     }
     whatIfShowExportStatus();
+    whatIfApplyExportLevers();
 }
 
 function whatIfShowExportStatus() {
@@ -4211,6 +4212,8 @@ function whatIfRenderSetup() {
     }
     whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
+    // The boxes that needed the export and were off before this redraw (all of them on the first draw): they come back ticked once one is there.
+    const prevDisabled = new Set(WHATIF_EXPORT_LEVERS.filter((id) => { const old = document.getElementById('whatIfLever_' + id); return !old || old.disabled; }));
     const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(WHATIF_LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
     for (const lever of WHATIF_LEVERS) {
@@ -4230,6 +4233,23 @@ function whatIfRenderSetup() {
         label.append(name, ': ' + whatIfT('lever.' + lever.id + '.desc'));
         row.append(input, label);
         levers.append(row);
+    }
+    whatIfApplyExportLevers(prevDisabled);
+}
+
+// "Items you own" and "Abilities" need the character export: off (unticked, not interactable, tooltip saying why) while no ticked player has a kept
+// export, on and ticked as soon as one has (a later tick of the reader is kept). `prevDisabled`: the ids that were off before a redraw (none
+// given: read from the boxes as they are now).
+function whatIfApplyExportLevers(prevDisabled = null) {
+    const hasExport = whatIfSlots(true).some((s) => whatIfKeptExport(s.name));
+    for (const id of WHATIF_EXPORT_LEVERS) {
+        const input = document.getElementById('whatIfLever_' + id);
+        if (!input) continue;
+        const view = whatIfExportLeverView({ hasExport, wasDisabled: prevDisabled ? prevDisabled.has(id) : input.disabled, wasChecked: input.checked }, whatIfT);
+        input.disabled = view.disabled;
+        input.checked = view.checked;
+        input.title = view.title;
+        input.closest('.form-check').title = view.title;
     }
 }
 

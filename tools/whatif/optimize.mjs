@@ -9,7 +9,7 @@
 //                                best food filling, Stage D his best drink filling (drinkfill.mjs, pruned by his rules); the
 //                                two become the baseline every other change is measured on; result.best says what they are;
 //                                without it there is no Stage F or D and the current foods and drinks are the baseline),
-//                                pairs (kept for old command lines: it produces nothing now, drinks are fillings),
+//                                (pairs is accepted and ignored, for old command lines: drinks are fillings),
 //                                triggers (each numeric term over its grid, structure changes; design 3.5),
 //                                owned (items in the exporter's
 //                                inventory), abilities (learned, at their learned level), order (ability order),

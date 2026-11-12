@@ -23,6 +23,13 @@ const lookup = (o, key) => key.split('.').reduce((x, k) => (x && typeof x === 'o
 const used = new Set();
 const t = (key, params = {}) => { used.add(key); const s = lookup(locales.en, key); return typeof s === 'string' ? s.replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k])) : '#' + key; };
 
+// Table helpers: the steps and Each change alone tables are told from the best-foods tables and the confirmation table by class.
+const tablesOf = (h) => [...h.matchAll(/<table([^>]*)>([^]*?)<\/table>/g)].filter((m) => !/whatif-best-table|whatif-confirm/.test(m[1])).map((m) => m[2]);
+const confOf = (h) => [...h.matchAll(/<table([^>]*whatif-confirm[^>]*)>([^]*?)<\/table>/g)].map((m) => m[2])[0];
+const bestOf = (h, kind) => [...h.matchAll(/<table([^>]*)data-best="(\w+)"([^>]*)>([^]*?)<\/table>/g)].filter((m) => m[2] === kind).map((m) => m[4])[0];
+const txt = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<br>/g, ' | ').replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<');
+const bodyRows = (tb) => tb ? [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => !/whatif-group/.test(m[1])).map((m) => [...m[2].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => txt(c[1]))) : [];
+
 // A generic party of two, in the page's slot format (ability levels are strings on the page).
 const setup = (ring) => ({
     player: { staminaLevel: 50, intelligenceLevel: 50, attackLevel: 50, meleeLevel: 1, defenseLevel: 50, rangedLevel: 1, magicLevel: 60,
@@ -134,10 +141,10 @@ const result = {
     Object.assign(full.singles[0], { buyerNet: 1234, buyerNetSe: 77, sharedGainPerUser: 1500, paybackOwn: 22.5, ...books });
     Object.assign(full.confirmation, { buyerByPlayer: { Alpha: { gain: 1100, se: 80, payback: 12.5 }, Beta: { gain: 600, se: 90, payback: null } } });
     const html = panel.renderResult(full, t);
-    const tablesOf = (h) => [...h.matchAll(/<table[^>]*>([^]*?)<\/table>/g)].map((m) => m[1]);
+    // The steps table and the Each change alone table (the best-foods tables and the confirmation table are picked by their own class).
     const heads = (tb) => [...tb.slice(tb.indexOf('<thead>'), tb.indexOf('</thead>')).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
     const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
-    const rowsOf = (tb) => [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr[^>]*>([^]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => plain(c[1])));
+    const rowsOf = (tb) => [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => !/whatif-group/.test(m[1])).map((m) => [...m[2].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => plain(c[1])));
     const [stepsTb, eachTb] = tablesOf(html);
     const tail = ['Cost', 'Payback days', 'How it is bought', ''], pair = ['Party gain per player/day', '± error', "Buyer's gain per day", '± error'];
     check('columns: Chosen changes reads #, Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(stepsTb)) === JSON.stringify(['#', 'Player', 'Change', ...pair, ...tail]), heads(stepsTb).join('|'));
@@ -158,13 +165,14 @@ const result = {
     check('cells: a result with no buyerNet shows the party gain and a dash in both buyer cells (both tables), How it is bought in both', oldRows[0][3] === '1500' && oldRows[0][4] === '± 300' && oldRows[0][5] === '—' && oldRows[0][6] === '—' && oldRows[1][2] === '1500' && oldRows[1][4] === '—' && oldRows[1][5] === '—' && oldRows[1][7] === '333.3' && oldRows[1][8] === 'market', JSON.stringify(oldRows));
     const exp = panel.renderResult({ ...full, goal: 'exp' }, t), expRow = rowsOf(tablesOf(exp)[0])[0];
     check('cells: on the EXP goal the buyer cells are dashes and the party pair shows', expRow[3] === '1500' && expRow[4] === '± 300' && expRow[5] === '—' && expRow[6] === '—' && expRow[7] === '1000000' && expRow[8] === '333.3', JSON.stringify(expRow));
-    const conf = html.slice(html.indexOf('Confirmed on fresh runs'), html.indexOf(locales.en.result.singles));
-    check('confirmation: the first line shows the party gain ± error per user per day and the cost, no party payback beside the player lines', plain(conf.split('</div>')[0]) === "Confirmed on fresh runs, party gain (the shared loot, before anyone's food and drink): 2900 ± 450 per user per day, Cost ≤ 1600000", plain(conf.split('</div>')[0]));
-    check('confirmation: one line per player with gain ± error and payback, a dash for none, same font size as the line above', plain(conf.split('</div>')[1]) === 'Alpha: gain 1100 ± 80 per day, pays back in ≤ 12.5 days' && plain(conf.split('</div>')[2]) === 'Beta: gain 600 ± 90 per day, pays back in — days' && conf.split('</div>').slice(1, 3).every((d) => d.startsWith('<div class="mb-1">')) && !/\bsmall\b/.test(conf), conf);
+    const confTb = confOf(html), cr = rowsOf(confTb);
+    check('confirmation: a table with Player, Gain per day, error, Pays back in (days)', JSON.stringify(heads(confTb).slice(0, 4)) === JSON.stringify(['Player', 'Gain per day', '± error', 'Pays back in (days)']), heads(confTb).join('|'));
+    check('confirmation: the first row is the party gain ± error and the cost, with no party payback', JSON.stringify(cr[0]) === JSON.stringify(['Party (the shared loot, per user)', '2900', '± 450', '—', 'Cost ≤ 1600000']), JSON.stringify(cr[0]));
+    check('confirmation: one row per player with gain, error and payback, a dash for none', JSON.stringify(cr[1].slice(0, 4)) === JSON.stringify(['Alpha', '1100', '± 80', '≤ 12.5']) && JSON.stringify(cr[2].slice(0, 4)) === JSON.stringify(['Beta', '600', '± 90', '—']), JSON.stringify(cr));
     const zero = JSON.parse(JSON.stringify(full));
     Object.assign(zero.confirmation, { cost: 0, buyerByPlayer: { Alpha: { gain: 5, se: 1, payback: 0 }, Beta: { gain: 6, se: 1, payback: 31.5 } } });
-    const zl = panel.renderResult(zero, t).split('</div>').map(plain);
-    check('confirmation: a saved payback of 0 shows a dash, above 0 shows the number', zl.some((l) => l.endsWith('Alpha: gain 5 ± 1 per day, pays back in — days')) && zl.some((l) => l.endsWith('Beta: gain 6 ± 1 per day, pays back in ≤ 31.5 days')), zl.join('|'));
+    const zr = rowsOf(confOf(panel.renderResult(zero, t)));
+    check('confirmation: a saved payback of 0 shows a dash, above 0 shows the number', JSON.stringify(zr[1].slice(0, 4)) === JSON.stringify(['Alpha', '5', '± 1', '—']) && JSON.stringify(zr[2].slice(0, 4)) === JSON.stringify(['Beta', '6', '± 1', '≤ 31.5']), JSON.stringify(zr));
     const zeroOld = JSON.parse(JSON.stringify(result));
     zeroOld.confirmation = { ...zeroOld.confirmation, cost: 5, payback: 0 };
     check('confirmation: a party payback of 0 on a cost above 0 (older result) shows "Payback days —", a payback above 0 shows the number', /Payback days —<\/div>/.test(panel.renderResult(zeroOld, t)) && !/Payback days <span data-num="0"/.test(panel.renderResult(zeroOld, t)));
@@ -179,10 +187,10 @@ const result = {
         const rs = JSON.parse(JSON.stringify(full));
         Object.assign(rs.confirmation, { sharedGainPerUser: 2900, ownSuppliesByPlayer: { Alpha: -1200, Beta: 300 } });
         rs.singles.push({ id: 'sk', player: 'Alpha', desc: 'Alpha ranged 153 -> 155', lastStage: '4x50', gain: 10, se: 1, gainPerUser: 5, sePerUser: 1, cost: 0, payback: null, costPath: 'time (levelled by combat; days in the skill-level table)', accepted: true, timeOnly: true, ops: [] });
-        const h2 = panel.renderResult(rs, t), lines = h2.slice(h2.indexOf('Confirmed on fresh runs')).split('</div>').map(plain);
-        check('legend: the steps table is followed by the line saying what party gain and the buyer gain are', h2.includes(locales.en.result.gainLegend) && h2.indexOf(locales.en.result.gainLegend) > h2.indexOf('</table>') && h2.indexOf(locales.en.result.gainLegend) < h2.indexOf('Confirmed on fresh runs'));
-        check('confirmation: a player line adds the loot share and the food and drink saved (or bought more)', lines.some((l) => l.includes('Alpha: gain 1100 ± 80 per day, pays back in ≤ 12.5 days (2900 loot share + 1200 food and drink saved)')) && lines.some((l) => l.includes('Beta: gain 600 ± 90') && l.includes('(2900 loot share - 300 more food and drink bought)')), lines.join('|'));
-        check('confirmation: a loot share that reads no change (inside the party error) says so in the note, one that does not shows its number', (() => { const ns = JSON.parse(JSON.stringify(rs)); ns.confirmation.sharedGainPerUser = 100; const l2 = panel.renderResult(ns, t).split('</div>').map(plain); return l2.some((l) => l.includes('Alpha: gain 1100 ± 80') && l.includes('(' + locales.en.result.noChange + ' loot share + 1200 food and drink saved)')) && l2.some((l) => l.includes('(' + locales.en.result.noChange + ' loot share - 300 more food and drink bought)')); })());
+        const h2 = panel.renderResult(rs, t), lines = rowsOf(confOf(h2)).map((r) => r.join(' | '));
+        check('legend: the steps table is followed by the line saying what party gain and the buyer gain are', h2.includes(locales.en.result.gainLegend) && h2.indexOf(locales.en.result.gainLegend) > h2.indexOf('</table>') && h2.indexOf(locales.en.result.gainLegend) < h2.indexOf('data-confirm="players"'));
+        check('confirmation: a player row adds the loot share and the food and drink saved (or bought more)', lines.some((l) => l.includes('Alpha | 1100 | ± 80 | ≤ 12.5') && l.includes('(2900 loot share + 1200 food and drink saved)')) && lines.some((l) => l.includes('Beta | 600 | ± 90') && l.includes('(2900 loot share - 300 more food and drink bought)')), lines.join('|'));
+        check('confirmation: a loot share that reads no change (inside the party error) says so in the note, one that does not shows its number', (() => { const ns = JSON.parse(JSON.stringify(rs)); ns.confirmation.sharedGainPerUser = 100; const l2 = rowsOf(confOf(panel.renderResult(ns, t))).map((r) => r.join(' | ')); return l2.some((l) => l.includes('Alpha | 1100 | ± 80') && l.includes('(' + locales.en.result.noChange + ' loot share + 1200 food and drink saved)')) && l2.some((l) => l.includes('(' + locales.en.result.noChange + ' loot share - 300 more food and drink bought)')); })());
         check('confirmation: the note under no change keeps the real value as hover title', panel.renderResult((() => { const ns = JSON.parse(JSON.stringify(rs)); ns.confirmation.sharedGainPerUser = 100; return ns; })(), t).includes('<span title="+100 ± 450">' + locales.en.result.noChange + '</span> loot share'));
         check('confirmation: an older result without the split fields shows no split note', !plain(panel.renderResult(full, t)).includes('loot share'));
         const skillIdx = rs.singles.length - 1;
@@ -244,12 +252,101 @@ const result = {
     const html = panel.renderRounds(rec, t);
     check('rounds: nothing without a record', panel.renderRounds(null, t) === '' && panel.renderRounds({}, t) === '');
     check('rounds: the round counter, the contention counts and the dropped count', html.includes('data-rounds="round"><span data-num="7"') && html.includes('data-rounds="contending"><span data-num="31"') && html.includes('data-rounds="paused"><span data-num="80"') && html.includes('data-num="2"') && html.includes(t('rounds.coverage', { pct: 99 })));
-    check('rounds: a leader shows its figure and its range, both from the record', html.includes('data-num="1234"') && html.includes('data-num="1100"') && html.includes('data-num="1368"'));
+    check('rounds: a leader shows its figure ± half its range, cut to the precision of the ± (1234, 1100-1368 -> 1230 ± 130)', html.includes('data-num="1230"') && html.includes('data-num="130"') && html.includes(' ± ') && !html.includes('data-num="1234"') && !html.includes('data-num="1100"') && !html.includes(' – '));
     check('rounds: a leader with too few reading seeds is shown as such, with no figure', html.includes(t('rounds.tooFew', { n: 3 })) && !html.includes('data-num="999"'));
     check('rounds: a pool per key, the player named in a per-player pool, the empty pool says none', html.includes('Player 2 · ') && html.includes(t('rounds.none')) && (html.match(/<table class="whatif-table"/g) || []).length === 2);
     check('rounds: no payback is a dash, never NaN or undefined', !html.includes('NaN') && !html.includes('undefined') && !html.includes('null'));
     check('rounds: text is escaped', html.includes('&lt;books&gt;') && !html.includes('<books>'));
     check('rounds: no buttons or inputs (output only)', !/<(button|input|select|textarea)/.test(html));
+}
+
+// Step 3: range width on the pool heading, one reading seed, few seeds, best so far, singles, legend, export lever boxes.
+{
+    const leader = (o) => ({ id: 'x', player: 'Player 1', desc: 'Magic 1 -> 2', cost: 0, seeds: 4, readingSeeds: 8, tooFew: false, status: 'confirmed', reading: 100, low: 80, high: 120, buyerNet: 90, payback: null, ...o });
+    const pool = (o) => ({ key: 'free', size: 4, contending: 2, paused: 2, leaders: [leader({})], ...o });
+    const heading = (html) => txt(html.match(/<b>(Free changes[^]*?)<\/b>/)[1]);
+    const second = panel.renderRounds({ round: 2, simHours: 10, coverage: 1, candidates: {}, pools: [pool({ rangeWidth: 40, rangeWidthPrev: 90 })] }, t);
+    const first = panel.renderRounds({ round: 1, simHours: 10, coverage: 1, candidates: {}, pools: [pool({ rangeWidth: 40 })] }, t);
+    check('range width: two rounds print both widths on the pool heading (now and was)', heading(second).includes('range width 40 (was 90)'), heading(second));
+    check('range width: a first round prints the width and no "was"', heading(first).includes('range width 40') && !heading(first).includes('was'), heading(first));
+    check('range width: a pool with no width prints neither', !heading(panel.renderRounds({ round: 1, pools: [pool({})] }, t)).includes('range width'));
+    const one = panel.renderRounds({ round: 1, pools: [pool({ leaders: [leader({ readingSeeds: 1, low: null, high: null, status: 'few' })] })] }, t);
+    check('one fresh run: the figure shows, the cell says no range yet, the status says how many more runs the range needs', one.includes('data-num="100"') && one.includes('no range yet') && one.includes('fresh runs: 1, 7 more needed before the range is final'), one);
+    const two = panel.renderRounds({ round: 1, pools: [pool({ leaders: [leader({ readingSeeds: 2, status: 'few' }), leader({ id: 'y', readingSeeds: 8, status: 'confirmed' })] })] }, t);
+    check('2 fresh runs: figure ± range and "6 more needed"; 8 runs: checked on fresh runs, no note', two.includes('fresh runs: 2, 6 more needed') && two.includes('data-num="100"') && two.includes('data-num="20"') && two.includes('checked on fresh runs') && !two.includes('fresh runs: 8'), two);
+    // Best foods so far: the pool leader with figure and range, marked so far; a few-seeds note below the minimum; one seed has no range.
+    const so = (o) => ({ items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 40, netLow: 30, netHigh: 50, ...o });
+    const res = (e) => ({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: e }, drinks: {} } });
+    const r8 = bodyRows(bestOf(panel.renderResult(res(so({})), t, undefined, null, true), 'foods'))[0];
+    check('best so far: figure and range in place of the error, buyer figure and range, no few-seeds note at 8 seeds', r8[2] === '12' && r8[3] === '± 3' && r8[4] === '40' && r8[5] === '± 10' && !r8[0].includes('fresh runs'), JSON.stringify(r8));
+    const r2 = bodyRows(bestOf(panel.renderResult(res(so({ readingSeeds: 2 })), t, undefined, null, true), 'foods'))[0];
+    check('best so far: 2 runs show the figure, the ± and the note "fresh runs: 2, 6 more needed" under the player', r2[2] === '12' && r2[3] === '± 3' && r2[0].includes('fresh runs: 2, 6 more needed'), JSON.stringify(r2));
+    const r1 = bodyRows(bestOf(panel.renderResult(res(so({ readingSeeds: 1, low: null, high: null, netLow: null, netHigh: null })), t, undefined, null, true), 'foods'))[0];
+    check('best so far: 1 run shows the figure and "no range yet"', r1[2] === '12' && r1[3] === 'no range yet' && r1[0].includes('fresh runs: 1, 7 more needed'), JSON.stringify(r1));
+    check('best so far: the group heading is marked so far', panel.renderResult(res(so({})), t, undefined, null, true).includes('· ' + locales.en.result.soFar));
+    // Singles: shown rows are split free / paid; a count line for the ones left out; the legend of a running search.
+    const free = { id: 'f', player: 'Alpha', desc: 'Ring free', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, buyerNet: 10, buyerNetSe: 2, cost: 0, payback: null, costPath: 'market', accepted: true, ops: [] };
+    const paid = { ...free, id: 'p', desc: 'Ring paid', cost: 500, payback: 50, paybackOwn: 50 };
+    const sing = panel.renderResult({ ...result, singles: [free, paid], singlesNotShown: 3 }, t);
+    check('singles: the free rows come under a Free changes sub-heading and the paid under Paid changes', sing.indexOf('data-group="free"') > 0 && sing.indexOf('Ring free') > sing.indexOf('data-group="free"') && sing.indexOf('data-group="paid"') > sing.indexOf('Ring free') && sing.indexOf('Ring paid') > sing.indexOf('data-group="paid"'));
+    check('singles: a line says how many more were searched, not confirmed, not shown; none when 0 or absent', txt(sing).includes('3 more searched, not confirmed, not shown') && !panel.renderResult({ ...result, singles: [free], singlesNotShown: 0 }, t).includes('data-singles="not-shown"') && !panel.renderResult({ ...result, singles: [free] }, t).includes('data-singles="not-shown"'), sing.match(/data-singles[^]*?<\/div>/)?.[0]);
+    check('legend: a running search says the lists marked so far can still change and the other rows are final', locales.en.result.running.includes('so far') && locales.en.result.running.includes('can still change') && !/rows shown are final/i.test(locales.en.result.running));
+    // The export lever boxes: off, unticked and with a tooltip while no ticked player has a kept export; on and ticked as soon as one has.
+    const none = panel.exportLeverView({ hasExport: false, wasDisabled: false, wasChecked: true }, (k) => t(k));
+    const some = panel.exportLeverView({ hasExport: true, wasDisabled: true, wasChecked: false }, (k) => t(k));
+    const kept = panel.exportLeverView({ hasExport: true, wasDisabled: false, wasChecked: false }, (k) => t(k));
+    check('export levers: no export -> disabled, unticked, tooltip says why; an export -> enabled and ticked; the user\'s untick is kept afterwards', none.disabled && !none.checked && none.title.length > 10 && !some.disabled && some.checked && some.title === '' && !kept.checked);
+    check('levers: seven in the window, all ticked by default, no pairs and no skills box', panel.LEVERS.length === 7 && panel.LEVERS.every((l) => l.def === true) && !panel.LEVERS.some((l) => l.id === 'pairs' || l.id === 'skills'), panel.LEVERS.map((l) => l.id).join());
+}
+
+// Step 3 (items 18 to 25): change columns, one order, zero range, ±, precision, plain words, hours, closed list, first look.
+{
+    const leader = (o) => ({ id: 'x', player: 'Player 1', desc: 'Player 1 Magic 1 -> 2', change: null, cost: 0, seeds: 4, readingSeeds: 8, searchHours: 200, readHours: 400, hours: 600, tooFew: false, few: false, status: 'confirmed', reading: 100, low: 80, high: 120, buyerNet: 90, netLow: 70, netHigh: 110, payback: null, ...o });
+    const pool = (o) => ({ key: 'Player 1:paid', size: 4, contending: 2, paused: 2, sortedBy: 'payback', leaders: [leader({})], ...o });
+    const rec = (pools, o = {}) => ({ round: 3, simHours: 900, coverage: 0.99, readingMin: 8, candidates: { contending: 2, paused: 2 }, pools, ...o });
+    const food = (slots) => ({ kind: 'foods', slots: slots.map(([index, item, trigger = null]) => ({ index, item, trigger })) });
+    // fit / precision: no digit finer than the ±; a range that reaches 0 reads ≈ 0.
+    check('fit: -2118 with a ± of 337412 is 0; 90412 is 90000; 1234 with 134 is 1230; 0.123456 with 0.0456 is 0.123', panel.fit(-2118, 337412) === 0 && panel.fit(90412, 337412) === 90000 && panel.fit(1234, 134) === 1230 && panel.fit(0.123456, 0.0456) === 0.123);
+    const zeroHtml = panel.renderRounds(rec([pool({ leaders: [leader({ status: 'zero', buyerNet: -2118, netLow: -339530, netHigh: 335294 }), leader({ id: 'y', buyerNet: 90412, netLow: -247000, netHigh: 427000 })] })]), t);
+    const zr = bodyRows(tablesOf(zeroHtml)[0]);
+    check('precision: a buyer\'s gain whose range reaches 0 reads "≈ 0 ± 337" (never -2,118 ± 337k), greyed', zr[0][4].startsWith('≈ 0 ± ') && !zr[0][4].includes('-2118') && zeroHtml.includes('<span class="whatif-dim">≈ 0 ± '), JSON.stringify(zr[0]));
+    check('precision: 90412 ± 337000 also reaches 0 and reads ≈ 0; the ± has two digits', zr[1][4].startsWith('≈ 0 ± 340'), JSON.stringify(zr[1]));
+    check('zero range: status "not yet different from no change", row greyed, never "checked on fresh runs"', zr[0][6] === 'not yet different from no change' && zeroHtml.includes('<tr data-status="zero" class="whatif-dim">') && !zr[0][6].includes('fresh'), JSON.stringify(zr[0]));
+    // columns: Change, Cost, Hours simulated, Gain per user, Buyer's gain, Payback days, Status; no Seeds, no Range.
+    const heads = [...tablesOf(zeroHtml)[0].slice(0, tablesOf(zeroHtml)[0].indexOf('</thead>')).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+    check('columns: Change, Cost, Hours simulated, Gain per user, Buyer\'s gain, Payback days, Status; no Seeds, no Range', JSON.stringify(heads) === JSON.stringify(['Change', 'Cost', 'Hours simulated', 'Gain per user', "Buyer's gain", 'Payback days', 'Status']), heads.join('|'));
+    check('hours: one cell with search + fresh runs, the split in its title only', zr[0][2] === '600' && zeroHtml.includes('title="200 h of search runs + 400 h of fresh runs"'), JSON.stringify(zr[0]));
+    // the player is in the heading: no "Player 1" and no "(trigger kept)" in a row
+    check('change: a pool of one player drops the player from the row; the heading names him', zr[0][0] === 'Magic 1 -> 2' && txt(zeroHtml).includes('Player 1 · Paid changes'), JSON.stringify(zr[0]));
+    // foods: one cell per slot, only the new food in a slot that changes
+    const fp = pool({ leaders: [leader({ id: 'a', desc: 'Player 1 food: a -> donut (trigger kept)', change: food([[1, '/items/donut']]) }), leader({ id: 'b', desc: 'Player 1 food: ...', change: food([[0, '/items/cake'], [2, '/items/gummy', 'HP < 50%']]) })] });
+    const fh = panel.renderRounds(rec([fp]), t);
+    const fr = bodyRows(tablesOf(fh)[0]);
+    const fheads = [...tablesOf(fh)[0].slice(0, tablesOf(fh)[0].indexOf('</thead>')).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+    check('foods: Slot 1 to Slot 3 columns, the new food only in the slot that changes, blank where it stays', fheads.slice(0, 3).join('|') === 'Slot 1|Slot 2|Slot 3' && fr[0].slice(0, 3).join('|') === '|donut|' && fr[1][0] === 'cake' && fr[1][1] === '' && fr[1][2].startsWith('gummy'), JSON.stringify(fr));
+    check('foods: no "Player 1 food:" and no "(trigger kept)" on any row; a changed trigger is shown with its food', !txt(fh).includes('food:') && !txt(fh).includes('trigger kept') && fr[1][2] === 'gummy (HP < 50%)', JSON.stringify(fr[1]));
+    // order and heading
+    const oh = panel.renderRounds(rec([pool({ key: 'Player 1:free', sortedBy: 'buyerNet' }), pool({ key: 'Player 1:paid', sortedBy: 'payback' })]), t);
+    check('order: each pool heading says what it is sorted by', txt(oh).includes("Player 1 · Free changes · 2 still in the running, 2 set aside for now · sorted by Buyer's gain, best first") && txt(oh).includes('sorted by Payback days, best first'), txt(oh));
+    // ± everywhere: no "low – high"
+    const allHtml = zeroHtml + oh + panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 40, netLow: 30, netHigh: 50 } }, drinks: {} } }, t, undefined, null, true);
+    check('range: written with ± everywhere (rounds, Best so far), never "low – high"', !allHtml.includes(' – ') && allHtml.includes(' ± '));
+    // Best so far: a buyer's gain whose range reaches 0
+    const bz = bodyRows(bestOf(panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 4, netLow: -30, netHigh: 38 } }, drinks: {} } }, t, undefined, null, true), 'foods'))[0];
+    check('best so far: a buyer\'s gain whose range reaches 0 reads ≈ 0 and the row says not yet different from no change', bz[4] === '≈ 0' && bz[5] === '± 34' && bz[0].includes('not yet different from no change'), JSON.stringify(bz));
+    // Each change alone / Best (final): the digits follow the error
+    const fin = bodyRows(bestOf(panel.renderResult({ ...result, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], gainPerUser: 123456, sePerUser: 20000, buyerNet: 98765, buyerNetSe: 1234 } }, drinks: {} } }, t), 'foods'))[0];
+    check('best (final): the figure is cut to the precision of its error (123456 ± 20000 -> 123000 ± 20000; 98765 ± 1234 -> 98800 ± 1200)', fin[2] === '123000' && fin[3] === '± 20000' && fin[4] === '98800' && fin[5] === '± 1200', JSON.stringify(fin));
+    // the closed "Unknown cost, not ranked" list
+    const ap = panel.renderResult({ ...result, apart: [{ id: 'q', player: 'Alpha', desc: 'Ring unknown', note: 'no price' }] }, t);
+    check('apart: "Unknown cost, not ranked" starts closed behind one toggle, like the other lists', ap.includes('data-whatif-more="whatIfApart"') && /<ul class="small whatif-more" id="whatIfApart" hidden>/.test(ap) && ap.includes('Show the 1 with no known cost'));
+    // the first look: a provisional record
+    const fl = panel.renderRounds(rec([pool({ key: 'free', sortedBy: 'buyerNet', size: 240, contending: 240, paused: 0 })], { provisional: true, firstLook: { have: 37, total: 240 } }), t);
+    check('first look: the head says "so far 37 of 240 candidates have a first figure", no contention counts, the pool shows its size', txt(fl).includes('first look: so far 37 of 240 candidates have a first figure') && !fl.includes('data-rounds="paused"') && txt(fl).includes('240 candidates'), txt(fl).slice(0, 300));
+    // plain words: none of the old terms in any of the three languages
+    const words = (l) => Object.entries(flat({ rounds: locales[l].rounds, progress: locales[l].progress })).filter(([k]) => k !== 'progress.partHalving').map(([, v]) => String(v).replace(/\{\{[^}]*\}\}/g, ''));
+    const old = { en: /seeds?\b|contention|reading|dropped|refuted/i, pt: /semente|leitura/i, zh: /种子|读数|淘汰/ };
+    for (const l of ['en', 'pt', 'zh']) check(`plain words (${l}): the rounds and progress strings do not use seeds, reading, contention or dropped`, !words(l).some((s) => old[l].test(s)), words(l).filter((s) => old[l].test(s)).join(' | '));
 }
 
 // Strings: every key the window uses (rendered above, plus main.js and index.html) exists in en, pt and zh.
@@ -417,16 +514,16 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     Object.assign(full.confirmation, { buyerByPlayer: { Alpha: { gain: 1100, se: 80, payback: 12.5 }, Beta: { gain: 600, se: 90, payback: null } } });
     const fullHtml = panel.renderResult(full, t);
     const tables = [...fullHtml.matchAll(/<table[^>]*>([^]*?)<\/table>/g)].map((m) => m[1]);
+    check('headings: the steps, the confirmation and Each change alone tables are rendered', tables.length === 3 && tablesOf(fullHtml).length === 2 && !!confOf(fullHtml));
     const classesOf = (src, tag) => [...src.matchAll(new RegExp(`<${tag}( [^>]*)?>`, 'g'))].map((m) => /class="[^"]*\bnum\b/.test(m[1] || ''));
     const alignOk = (tb) => {
         const ths = classesOf(tb.slice(tb.indexOf('<thead>'), tb.indexOf('</thead>')), 'th');
-        const body = tb.slice(tb.indexOf('<tbody'));
+        const body = tb.slice(tb.indexOf('<tbody')).replace(/<tr class="whatif-group"[^]*?<\/tr>/g, '');
         const row = body.slice(body.indexOf('<tr'), body.indexOf('</tr>'));
         const tds = classesOf(row, 'td');
         return ths.length > 0 && ths.length === tds.length && ths.every((v, i) => v === tds[i]) && ths.some(Boolean);
     };
-    check('headings: two tables are rendered', tables.length === 2);
-    check('headings: in every table the th at each column has class num exactly when the first body row\'s td does', tables.every(alignOk));
+    check('headings: in every table the th at each column has class num exactly when the first body row\'s td does', tables.filter((x) => !x.includes('Slot 1')).every(alignOk), tables.map((x) => alignOk(x)).join());
 }
 
 // One food row per player (hiddenFood): the other food rows stay in the file but are left out of Each change alone.
@@ -462,11 +559,13 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('no change: the error cell next to it shows a dash and the same title', inRow[4].html === '—' && inRow[4].attrs === inRow[3].attrs);
     check('no change: the buyer cells beside it still show numbers (1000 is beyond 1 error)', inRow[5].html.includes('data-num="1000"') && inRow[6].html.includes('data-num="100"'));
     const edgeRow = cellsOf('edge');
-    check('no change: exactly 1 error shows the number; the buyer at -0.5 errors reads no change', edgeRow[3].html.includes('data-num="242"') && edgeRow[4].html.includes('data-num="242"') && edgeRow[5].html === nc);
+    check('no change: exactly 1 error shows the number; the buyer at -0.5 errors reads no change', edgeRow[3].html.includes('data-num="240"') && edgeRow[4].html.includes('data-num="240"') && edgeRow[5].html === nc);
     const negRow = cellsOf('neg');
     check('no change: a negative within 1 error shows the words too (Each change alone)', negRow[2].html === nc && /title="[^"]*-[^"]*"/.test(negRow[2].attrs));
-    check('no change: 288 against 242 is beyond 1 error and shows the number', cellsOf('big')[2].html.includes('data-num="288"'));
-    check('no change: the confirmation line shows the words, titled; the per-player lines too, and a clear one keeps its numbers', /Confirmed on fresh runs, party gain \(the shared loot, before anyone's food and drink\): <b><span title="[^"]*">no change<\/span><\/b>/.test(html) && /Alpha: gain <span title="[^"]*">no change<\/span> per day/.test(html) && /Beta: gain <span data-num="600"/.test(html));
+    check('no change: 288 against 242 is beyond 1 error and shows the number', cellsOf('big')[2].html.includes('data-num="290"'));
+    const cf = confOf(html);
+    const cfRows = [...cf.slice(cf.indexOf('<tbody')).matchAll(/<tr[^>]*>([^]*?)<\/tr>/g)].map((m) => m[1]);
+    check('no change: the confirmation table shows the words, titled, on the party row and on a small player row; a clear one keeps its numbers', /title="[^"]*">no change</.test(cfRows[0]) && /title="[^"]*">no change</.test(cfRows[1]) && cfRows[1].includes('Alpha') && cfRows[2].includes('Beta') && cfRows[2].includes('data-num="600"'), cfRows.join('\n'));
 }
 // ---- Best foods and drinks block (result.best), the baseline line and the cost-0 wording ----
 {
@@ -477,20 +576,24 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const html = panel.renderResult(withBest, t, undefined, nm), plainHtml = plain(html);
     const idx = (s) => html.indexOf(s);
     check('best: a Best foods and a Best drinks block sit above the chosen changes', idx(locales.en.result.bestFoods) > 0 && idx(locales.en.result.bestFoods) < idx(locales.en.result.bestDrinks) && idx(locales.en.result.bestDrinks) < idx(locales.en.result.steps));
-    check('best: one line per player in slot order; a food shows its trigger in parentheses with the names, one without a trigger shows none', plainHtml.includes('Alpha: Donut (Self Current HP <= 60), Cake') && !plainHtml.includes('Cake ('), plainHtml);
-    check('best: a drink never shows a trigger', plainHtml.includes('Alpha: Coffee X') && !plainHtml.includes('Coffee X ('));
-    check('best: a player left unchanged shows his current items and no change; a changed one does not', plainHtml.includes('Beta: Gummy · ' + locales.en.result.noChange) && !plainHtml.includes('Cake · ' + locales.en.result.noChange));
+    const fr = bodyRows(bestOf(html, 'foods')), dr = bodyRows(bestOf(html, 'drinks'));
+    check('best: one row per player in slot order; a food shows its trigger in parentheses with the names, one without a trigger shows none', fr[0][0] === 'Alpha' && fr[0][1] === 'Donut (Self Current HP <= 60)' && fr[0][2] === 'Cake' && !fr[0][2].includes('('), JSON.stringify(fr));
+    check('best: a drink never shows a trigger', dr[0][0] === 'Alpha' && dr[0][1] === 'Coffee X' && !dr[0][1].includes('('), JSON.stringify(dr));
+    check('best: a player left unchanged shows his current items and a no change cell; a changed one does not', fr[1][0] === 'Beta' && fr[1][1] === 'Gummy' && fr[1].some((c) => c === locales.en.result.noChange) && !fr[0].some((c) => c === locales.en.result.noChange), JSON.stringify(fr));
+    check('best: one table per kind with Player, a column per slot, gain, error, buyer gain, error', bestOf(html, 'foods').includes('<th>Player</th><th>Slot 1</th><th>Slot 2</th>') && bestOf(html, 'drinks').includes('<th>Player</th><th>Slot 1</th><th class="num"'));
     check('best: the baseline line follows the block', idx(locales.en.result.bestBaseline) > idx(locales.en.result.bestDrinks) && idx(locales.en.result.bestBaseline) < idx(locales.en.result.steps));
-    check('best: without names the ids show as they came (item slug, trigger text)', plain(panel.renderResult(withBest, t)).includes('Alpha: donut (self current_hp <= 60), cake'));
+    check('best: without names the ids show as they came (item slug, trigger text)', bodyRows(bestOf(panel.renderResult(withBest, t), 'foods'))[0].slice(0, 3).join('|') === 'Alpha|donut (self current_hp <= 60)|cake');
     check('best: an older result without best shows no block and does not fail', !panel.renderResult(result, t).includes(locales.en.result.bestFoods) && !panel.renderResult({ ...result, best: undefined }, t, undefined, nm).includes(locales.en.result.bestBaseline));
     check('best: an empty best (consumables off) shows no block', !panel.renderResult({ ...result, best: { foods: {}, drinks: {} } }, t).includes(locales.en.result.bestFoods));
     {
         const bestG = { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], gainPerUser: -13, sePerUser: 49, buyerNet: 2204, buyerNetSe: 44, ownSuppliesPerDay: -2217 }, Beta: { items: [{ item: '/items/gummy', trigger: null }], gainPerUser: 500, sePerUser: 50, buyerNet: 900, buyerNetSe: 40 }, Gamma: { items: [{ item: '/items/cake', trigger: null }], unchanged: true } }, drinks: {} };
-        const txt = plain(panel.renderResult({ ...result, best: bestG }, t, undefined, nm));
-        check('best: a changed line says the party gain (no change inside one error), the buyer gain and the saved split', txt.includes('Alpha: Donut · party gain ' + locales.en.result.noChange + ", buyer's gain 2204 ± 44 per day (no change loot share + 2217 food and drink saved)"), txt);
-        check('best: a loot share that is not inside its error shows its number in the note', plain(panel.renderResult({ ...result, best: { foods: { Beta: { ...bestG.foods.Beta, ownSuppliesPerDay: -300 } }, drinks: {} } }, t, undefined, nm)).includes("Beta: Gummy · party gain 500 ± 50, buyer's gain 900 ± 40 per day (500 loot share + 300 food and drink saved)"));
-        check('best: a loot share inside one error of the party gain reads no change in the note (the old bare -13 is gone)', !txt.includes('-13 loot share'));
-        check('best: a changed line without the saved figure shows the two gains only; an unchanged one shows none', txt.includes("Beta: Gummy · party gain 500 ± 50, buyer's gain 900 ± 40 per day") && !txt.includes('Beta: Gummy · party gain 500 ± 50, buyer\'s gain 900 ± 40 per day (') && txt.includes('Gamma: Cake · ' + locales.en.result.noChange) && !txt.includes('Gamma: Cake · ' + locales.en.result.noChange + ' ·'), txt);
+        const g = bodyRows(bestOf(panel.renderResult({ ...result, best: bestG }, t, undefined, nm), 'foods'));
+        const nc = locales.en.result.noChange;
+        check('best: a changed row says the party gain (no change inside one error), the buyer gain and the saved split in the note', g[0][2] === nc && g[0][4] === '2204' && g[0][5] === '± 44' && g[0][6].includes('(' + nc + ' loot share + 2217 food and drink saved)'), JSON.stringify(g[0]));
+        const g2 = bodyRows(bestOf(panel.renderResult({ ...result, best: { foods: { Beta: { ...bestG.foods.Beta, ownSuppliesPerDay: -300 } }, drinks: {} } }, t, undefined, nm), 'foods'));
+        check('best: a loot share that is not inside its error shows its number in the note', g2[0][6].includes('500 loot share + 300 food and drink saved'), JSON.stringify(g2[0]));
+        check('best: a loot share inside one error of the party gain reads no change in the note (the old bare -13 is gone)', !g[0][6].includes('-13 loot share'));
+        check('best: a changed row without the saved figure has an empty note; an unchanged one is the no change row', g[1][2] === '500' && g[1][3] === '± 50' && g[1][4] === '900' && g[1][5] === '± 40' && g[1][6] === '' && g[2][1] === 'Cake' && g[2][2] === nc, JSON.stringify(g));
         check('best: the pt and zh bestGain strings exist and differ from en', ['pt', 'zh'].every((l) => typeof locales[l].result.bestGain === 'string' && locales[l].result.bestGain !== locales.en.result.bestGain));
     }
     check('best: the pt and zh strings exist for every new key', ['bestFoods', 'bestDrinks', 'bestBaseline', 'noCost', 'playerLineFree', 'playerLineFreeNoChange'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && locales.pt.result.bestBaseline !== locales.en.result.bestBaseline);
@@ -502,9 +605,9 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const payOf = (id) => { const tr = out.split('<tr').find((x) => x.includes('Ring ' + id)); return [...tr.matchAll(/<td([^>]*)>([^]*?)<\/td>/g)].map((m) => m[2]); };
     check('cost 0: the Payback cell of a free change says N/A (steps and each alone)', payOf('free')[8] === locales.en.result.noCost && out.split(locales.en.result.noCost).length - 1 >= 2, JSON.stringify(payOf('free')));
     check('cost 0: a cost above 0 with no positive gain keeps the dash', payOf('paid')[8] === '—');
-    const lines = out.split('</div>').map(plain);
-    check('cost 0: the confirmation line of a player who bought nothing says N/A; one who bought keeps the dash', lines.some((l) => l.endsWith('Alpha: gain 10 ± 2 per day, no cost')) && lines.some((l) => l.endsWith('Beta: gain 30 ± 5 per day, pays back in — days')), lines.join('|'));
-    check('cost 0: an older confirmation with no running spend keeps the dash', plain(panel.renderResult({ ...res, confirmation: { ...res.confirmation, runningSpend: undefined } }, t)).includes('Alpha: gain 10 ± 2 per day, pays back in — days'));
+    const cr = bodyRows(confOf(out));
+    check('cost 0: the confirmation row of a player who bought nothing says N/A; one who bought keeps the dash', cr.some((r) => r[0] === 'Alpha' && r[3] === locales.en.result.noCost) && cr.some((r) => r[0] === 'Beta' && r[3] === '—'), JSON.stringify(cr));
+    check('cost 0: an older confirmation with no running spend keeps the dash', bodyRows(confOf(panel.renderResult({ ...res, confirmation: { ...res.confirmation, runningSpend: undefined } }, t))).some((r) => r[0] === 'Alpha' && r[3] === '—'));
 }
 // The pick check (sure.mjs): a step's fresh reading is a small second line inside each gain cell; the picks left out sit closed.
 {
@@ -530,7 +633,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('not confirmed: an EXP result shows the gain only', plain(panel.renderResult({ ...result, goal: 'exp', steps: [], notConfirmed: [{ ...nc, fresh: { seeds: 16, gainPerUser: 3, sePerUser: 2, accepted: false } }] }, t)).includes('at step 2, fresh runs: gain 3 ± 2'));
     check('not confirmed: an older result (no field) or an empty list shows nothing', !panel.renderResult(result, t).includes(locales.en.result.notConfirmed) && !panel.renderResult({ ...result, notConfirmed: [] }, t).includes(locales.en.result.notConfirmed));
     const keys = ['overPayback', 'overPaybackNote', 'overPaybackShow', 'overPaybackHide', 'overPaybackDays', 'overPaybackNever', 'bestGainExp', 'notConfirmed', 'notConfirmedNote', 'notConfirmedShow', 'notConfirmedHide', 'notConfirmedItem', 'notConfirmedItemExp'];
-    check('fresh: the pt and zh strings exist for every new key, differ from en and keep the placeholders; no locale string says seeds or sementes', keys.every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales[l].result[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).sort().join())) && !['en', 'pt', 'zh'].some((l) => Object.entries(locales[l].result).some(([k, v]) => /\{\{seeds\}\}/.test(v) || (k !== 'notConfirmed' && /\bseeds\b|sementes|种子/.test(v)))));
+    check('fresh: the pt and zh strings exist for every new key, differ from en and keep the placeholders; no locale string says seeds or sementes', keys.every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales[l].result[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).sort().join())) && !['en', 'pt', 'zh'].some((l) => Object.entries(locales[l].result).some(([k, v]) => /\{\{seeds\}\}/.test(v) || (k !== 'notConfirmed' && k !== 'fewSeeds' && /\bseeds\b|sementes|种子/.test(v)))));
 }
 // The live report (his go 2026-11-11: the whole report unfolds as the search goes): the same renderer, with a running mark; a partial
 // result with only the foods, then with steps, then the final one. The foods and drinks carry their own fresh line.
@@ -540,20 +643,20 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const foods = { Alpha: { items: [{ item: '/items/donut', trigger: null }], gain: 22, se: 6, gainPerUser: 11, sePerUser: 3, buyerNet: 40, buyerNetSe: 6, ownSuppliesPerDay: -29, stage: '8x300', fresh }, Beta: { items: [{ item: '/items/cake', trigger: null }], unchanged: true } };
     const live0 = { goal: 'profit', budgets: { Alpha: 100 }, setups: [], options: { zone: '/actions/combat/fly', tier: 0 }, best: { foods, drinks: {} }, steps: [], singles: [{ id: 'hf', player: 'Alpha', desc: 'Alpha food', hiddenFood: true }], notConfirmed: [] };
     const h0 = panel.renderResult(live0, t, undefined, null, true);
-    check('live: the running mark shows, with only the foods the foods group shows and nothing else of the table', h0.includes(locales.en.result.running) && h0.includes(locales.en.result.bestFoods) && !h0.includes(locales.en.result.bestDrinks) && !h0.includes('<table'));
+    check('live: the running mark shows, with only the foods the foods group shows and nothing else of the table', h0.includes(locales.en.result.running) && h0.includes(locales.en.result.bestFoods) && !h0.includes(locales.en.result.bestDrinks) && tablesOf(h0).length === 0 && !h0.includes('data-best="drinks"'));
     check('live: no "no steps" and no "no singles" message and no steps heading while running; the baseline line waits for both groups', !h0.includes(locales.en.result.noSteps) && !h0.includes(locales.en.result.noSingles) && !h0.includes(locales.en.result.steps) && !h0.includes(locales.en.result.singles) && !h0.includes(locales.en.result.bestBaseline));
-    check('live: no totals line while running (the confirmation is not in a snapshot)', !h0.includes('Confirmed on fresh runs'));
-    check('live: the foods line shows the filling\'s fresh reading in place of the search one (party 12 ± 3.5, buyer 41 ± 6.5), no second line and no seeds; an unchanged player has none', plain(h0).includes('Alpha: donut') && /Alpha: donut[^]*party gain 12 ± 3\.5, buyer's gain 41 ± 6\.5/.test(plain(h0)) && !h0.includes('whatif-fresh') && !plain(h0).includes('seeds'));
+    check('live: no totals line while running (the confirmation is not in a snapshot)', !h0.includes('data-confirm="players"'));
+    check('live: the foods line shows the filling\'s fresh reading in place of the search one (party 12 ± 3.5, buyer 41 ± 6.5), no second line and no seeds; an unchanged player has none', JSON.stringify(bodyRows(bestOf(h0, 'foods'))[0].slice(0, 6)) === JSON.stringify(['Alpha', 'donut', '12', '± 3.5', '41', '± 6.5']) && !h0.includes('whatif-fresh') && !plain(h0).includes('seeds'));
     const old = JSON.parse(JSON.stringify(live0)); delete old.best.foods.Alpha.fresh;
-    check('live: a filling with no fresh reading (an older result) shows its search reading (11 ± 3, 40 ± 6)', /party gain 11 ± 3, buyer's gain 40 ± 6/.test(plain(panel.renderResult(old, t, undefined, null, true))));
+    check('live: a filling with no fresh reading (an older result) shows its search reading (11 ± 3, 40 ± 6)', JSON.stringify(bodyRows(bestOf(panel.renderResult(old, t, undefined, null, true), 'foods'))[0].slice(0, 6)) === JSON.stringify(['Alpha', 'donut', '11', '± 3', '40', '± 6']));
     const step = { id: 's', player: 'Alpha', desc: 'Ring one', lastStage: '8x300', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, sharedGainPerUser: 10, sharedSePerUser: 2, buyerNet: 30, buyerNetSe: 5, ownSuppliesPerDay: -20, cost: 100, payback: 3, paybackOwn: 3, costPath: 'market', accepted: true, ops: [], fresh };
     const live1 = { ...live0, best: { foods, drinks: { Alpha: { items: [{ item: '/items/attack_coffee' }], unchanged: true } } }, steps: [step], singles: [...live0.singles, { ...step, id: 'x', fresh: undefined }] };
     const h1 = panel.renderResult(live1, t, undefined, null, true);
-    check('live: with steps the heading reads so far, the steps table and the each-change table draw, still no totals and no no-steps message', h1.includes(locales.en.result.steps + ' <span') && plain(h1).includes('· ' + locales.en.result.soFar) && h1.split('<table').length === 3 && !h1.includes('Confirmed on fresh runs') && !h1.includes(locales.en.result.noSteps) && h1.includes(locales.en.result.bestBaseline));
+    check('live: with steps the heading reads so far, the steps table and the each-change table draw, still no totals and no no-steps message', h1.includes(locales.en.result.steps + ' <span') && plain(h1).includes('· ' + locales.en.result.soFar) && tablesOf(h1).length === 2 && !h1.includes('data-confirm="players"') && !h1.includes(locales.en.result.noSteps) && h1.includes(locales.en.result.bestBaseline));
     const done = panel.renderResult({ ...live1, confirmation: { gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, cost: 100, payback: 3, buyerByPlayer: { Alpha: { gain: 30, se: 5, payback: 3 } } } }, t);
-    check('live: the final report has no running mark and no so far, and the totals', !done.includes(locales.en.result.running) && !done.includes(locales.en.result.soFar) && done.includes('Confirmed on fresh runs'));
+    check('live: the final report has no running mark and no so far, and the totals', !done.includes(locales.en.result.running) && !done.includes(locales.en.result.soFar) && !!confOf(done));
     check('live: a stopped search keeps what it got, marked as stopped', panel.renderResult(live1, t, undefined, null, 'stopped').includes(locales.en.result.stoppedMark) && !panel.renderResult(live1, t, undefined, null, 'stopped').includes(locales.en.result.running));
-    check('live: a finished result with no steps still says so, and an EXP food line shows the party fresh gain only (no seeds)', panel.renderResult({ ...live0, best: undefined }, t).includes(locales.en.result.noSteps) && plain(panel.renderResult({ ...live0, goal: 'exp', best: { foods: { Alpha: { items: [{ item: '/items/donut' }], gain: 5, se: 1, gainPerUser: 5, sePerUser: 1, stage: '8x300', fresh: { seeds: 16, gainPerUser: 4, sePerUser: 1 } } }, drinks: {} } }, t, undefined, null, true)).includes('Alpha: donut · gain 4 ± 1'));
+    check('live: a finished result with no steps still says so, and an EXP food line shows the party fresh gain only (no seeds)', panel.renderResult({ ...live0, best: undefined }, t).includes(locales.en.result.noSteps) && JSON.stringify(bodyRows(bestOf(panel.renderResult({ ...live0, goal: 'exp', best: { foods: { Alpha: { items: [{ item: '/items/donut' }], gain: 5, se: 1, gainPerUser: 5, sePerUser: 1, stage: '8x300', fresh: { seeds: 16, gainPerUser: 4, sePerUser: 1 } } }, drinks: {} } }, t, undefined, null, true), 'foods'))[0].slice(0, 6)) === JSON.stringify(['Alpha', 'donut', '4', '± 1', '—', '—']));
     // Not confirmed: a filling left out says where.
     const nc = (kind, step) => ({ id: 'n' + kind, player: 'Alpha', desc: 'Alpha ' + kind + ' filling', kind, step, fresh: { seeds: 16, gainPerUser: 9, sePerUser: 2, buyerNet: 3, buyerNetSe: 4, accepted: false } });
     const h = plain(panel.renderResult({ ...live1, notConfirmed: [nc('food', null), nc('drink', null), { ...nc(undefined, 4), kind: undefined }] }, t));

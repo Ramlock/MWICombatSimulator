@@ -34,13 +34,12 @@
         .whatif-table th.num { text-align: right; }
         .whatif-table th.num + th:not(.num), .whatif-table td.num + td:not(.num) { padding-left: 16px; }
         .whatif-rounds .whatif-table { table-layout: fixed; width: 100%; }
-        .whatif-rounds .whatif-table th:nth-child(2) { width: 6em; }
-        .whatif-rounds .whatif-table th:nth-child(3) { width: 13em; }
-        .whatif-rounds .whatif-table th:nth-child(4) { width: 9em; }
-        .whatif-rounds .whatif-table th:nth-child(5) { width: 14em; }
-        .whatif-rounds .whatif-table th:nth-child(6) { width: 8em; }
-        .whatif-rounds .whatif-table th:nth-child(7) { width: 7em; }
-        .whatif-rounds .whatif-table th:nth-child(8) { width: 9em; }
+        .whatif-rounds .whatif-table th.c-cost { width: 6em; }
+        .whatif-rounds .whatif-table th.c-hours { width: 7em; }
+        .whatif-rounds .whatif-table th.c-gain { width: 10em; }
+        .whatif-rounds .whatif-table th.c-pay { width: 7em; }
+        .whatif-rounds .whatif-table th.c-status { width: 15em; }
+        .whatif-table.whatif-best-table td.chg { min-width: 7em; }
         .whatif-table td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 11em; }
         .whatif-table td.chg { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
         .whatif-each td.chg { width: 50em; }
@@ -72,6 +71,7 @@
         .whatif-part { display: grid; grid-template-columns: 1.5em minmax(10em, 24em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
         .whatif-part-waiting { opacity: 0.6; }
         .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
+        .whatif-no-bar { display: block; height: 8px; }
         .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .whatif-part-text { text-align: right; white-space: nowrap; }
         .whatif-part-done .progress-bar { background-color: #198754; }
@@ -1834,14 +1834,14 @@
                                     <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="365" class="form-control form-control-sm"></div>
                                 </div>
                             </div>
+                            <div class="d-flex flex-wrap gap-2 align-items-center mt-2" id="whatIfStartRow">
+                                <button type="button" class="btn btn-primary btn-sm" id="buttonWhatIfStart" data-i18n="common:whatIf.start">Start search</button>
+                                <button type="button" class="btn btn-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
+                                <span class="ms-3" data-i18n="common:whatIf.earlier">Earlier searches</span>
+                                <select id="selectWhatIfResult" class="form-select form-select-sm" style="width: auto;"></select>
+                                <button type="button" class="btn btn-secondary btn-sm" id="buttonWhatIfLoad" data-i18n="common:whatIf.load">Show</button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <button type="button" class="btn btn-primary btn-sm" id="buttonWhatIfStart" data-i18n="common:whatIf.start">Start search</button>
-                        <button type="button" class="btn btn-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
-                        <span class="ms-3" data-i18n="common:whatIf.earlier">Earlier searches</span>
-                        <select id="selectWhatIfResult" class="form-select form-select-sm" style="width: auto;"></select>
-                        <button type="button" class="btn btn-secondary btn-sm" id="buttonWhatIfLoad" data-i18n="common:whatIf.load">Show</button>
                     </div>
                     <div id="whatIfProgress"></div>
                     <div id="whatIfMessage" class="whatif-warn"></div>
@@ -2220,10 +2220,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=8a77837c"></script>
+    <script src="js/i18n.js?v=3e019163"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.8a77837c.js" type="module"></script>
+    <script src="bundle.3e019163.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">
