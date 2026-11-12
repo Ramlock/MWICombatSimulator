@@ -271,7 +271,7 @@
             "sortedBy": "按「{{col}}」排序，最优在前",
             "col": { "candidate": "改动", "cost": "成本", "hours": "模拟小时", "payback": "回本天数", "status": "状态" },
             "hoursTitle": "搜索运行 {{search}} 小时 + 新运行 {{fresh}} 小时",
-            "status": { "contending": "仍在竞争", "paused": "暂时搁置", "confirmed": "已用新运行核对", "few": "新运行 {{n}} 次，还需 {{more}} 次才算定稿", "refuted": "已排除", "zero": "暂无明显变化", "zeroTip": "与不改动尚无明显差别", "first": "初步结果，目前运行次数：{{n}}" },
+            "status": { "contending": "仍在竞争", "paused": "暂时搁置", "confirmed": "已用新运行核对", "few": "新运行 {{n}} 次，还需 {{more}} 次才算定稿", "refuted": "已排除", "zero": "暂无明显变化", "zeroTip": "与不改动尚无明显差别", "loses": "队伍损失战利品", "losesTip": "每位用户的共享战利品下降，即使买家自己的收益与 0 没有明显差别", "first": "初步结果，目前运行次数：{{n}}" },
             "tooFew": "还没有新运行",
             "noRange": "暂无范围",
             "rangeWidth": "范围宽度 {{now}}",

@@ -112,9 +112,9 @@ export function skillReport({ singles, cands, setups, players, baseCps, names, l
     const gUnit = goal === 'exp' ? 'party EXP/h' : 'party coin/day';
     const L = ['', '## Skill levels (time, levelled by combat; never bought, never stacked)', '',
         `Days to reach: experience still to gain / the skill's EXP per hour in the base runs (${baseCps.length} runs), held at today's rate. Start: the typed experience left to the next level, else the level's start (stated per row). Folded gold cost = hours away from combat x base profit per hour per user (${fmt(ratePerHourUser)} coin/h after tax, from the base runs); levelling by combat takes 0 hours away, so it is 0.`, '',
-        `| Change | Stage | Gain (${gUnit}) | ± se |${goal === 'profit' ? ' Gain per user/day |' : ''} EXP/h | EXP to gain | Days to reach | Start | Folded gold cost |`,
-        `|---|---|---|---|${goal === 'profit' ? '---|' : ''}---|---|---|---|---|`];
-    for (const r of rows) L.push(`| ${r.player} ${r.skill} ${r.from} -> ${r.to} | ${r.stage ?? '-'} | ${fmt(r.gain)} | ${fmt(r.se)} |${goal === 'profit' ? ` ${fmt(r.gainUser)} |` : ''} ${fmt(r.expPerHour)} | ${fmt(r.exp)} | ${D(r.days)} | ${r.startSource} | ${fmt(r.foldedCost)} |`);
+        `| Change | Stage | Gain (${gUnit}) |${goal === 'profit' ? ' Gain per user/day |' : ''} EXP/h | EXP to gain | Days to reach | Start | Folded gold cost |`,
+        `|---|---|---|${goal === 'profit' ? '---|' : ''}---|---|---|---|---|`];
+    for (const r of rows) L.push(`| ${r.player} ${r.skill} ${r.from} -> ${r.to} | ${r.stage ?? '-'} | ${fmt(r.gain)} ± ${fmt(r.se)} |${goal === 'profit' ? ` ${fmt(r.gainUser)} |` : ''} ${fmt(r.expPerHour)} | ${fmt(r.exp)} | ${D(r.days)} | ${r.startSource} | ${fmt(r.foldedCost)} |`);
     L.push('', `### 5th ability slot (Intelligence ${reqList[5]})`, '');
     for (const u of unlocks) L.push(u.open ? `- ${u.player}: open (Intelligence ${u.level}).` : `- ${u.player}: Intelligence ${u.level} -> ${u.gate}, ${fmt(u.exp)} EXP at ${fmt(u.rate)} EXP/h: ${D(u.days)} days (start: ${u.source}). Its gain once filled is the abilities lever's.`);
     return { lines: L, json: { ratePerHourUser, rateLabel: 'base party profit per day after tax / party size / 24', rows, unlocks } };

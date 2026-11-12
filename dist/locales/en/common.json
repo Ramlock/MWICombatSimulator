@@ -272,7 +272,7 @@
             "sortedBy": "sorted by {{col}}, best first",
             "col": { "candidate": "Change", "cost": "Cost", "hours": "Hours simulated", "payback": "Payback days", "status": "Status" },
             "hoursTitle": "{{search}} h of search runs + {{fresh}} h of fresh runs",
-            "status": { "contending": "still in the running", "paused": "set aside for now", "confirmed": "checked on fresh runs", "few": "fresh runs: {{n}}, {{more}} more needed before the range is final", "refuted": "ruled out", "zero": "no clear change yet", "zeroTip": "not yet different from no change", "first": "first look, runs so far: {{n}}" },
+            "status": { "contending": "still in the running", "paused": "set aside for now", "confirmed": "checked on fresh runs", "few": "fresh runs: {{n}}, {{more}} more needed before the range is final", "refuted": "ruled out", "zero": "no clear change yet", "zeroTip": "not yet different from no change", "loses": "party loses loot", "losesTip": "the shared loot per user falls, even though the buyer's own gain is not clearly different from 0", "first": "first look, runs so far: {{n}}" },
             "tooFew": "no fresh runs yet",
             "noRange": "no range yet",
             "rangeWidth": "range width {{now}}",

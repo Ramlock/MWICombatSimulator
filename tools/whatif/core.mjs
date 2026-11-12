@@ -585,10 +585,12 @@ export async function main(settings, seams) {
     }
     // A range that reaches 0 (the buyer's gain's on the profit goal, the figure's otherwise) is not a result yet: status 'zero', never 'confirmed'.
     const zeroed = (r) => { const lo = goal === 'profit' ? r.netLow : r.low, hi = goal === 'profit' ? r.netHigh : r.high; return r.k >= 2 && Number.isFinite(lo) && Number.isFinite(hi) && lo <= 0 && hi >= 0; };
+    // A shared loot gain whose whole range is below 0 (profit goal): the party loses on this row, whatever the buyer's gain reads. Status 'loses' only (the search's choice is unchanged).
+    const loses = (r) => goal === 'profit' && r.k >= 2 && Number.isFinite(r.high) && r.high < 0;
     // `r`: the reading { k, figure, low, high, net, netLow, netHigh, payback } or null (none yet).
     function rowShape(base, c, r, { seeds, readingSeeds, few, status, screen }) {
         const has = !!r && r.net !== undefined, searchHours = seeds * unitH, readHours = readingSeeds * unitH;
-        return { id: c.id, player: c.player, desc: c.desc, change: changeOf(base, c), cost: c.cost.cost, seeds, readingSeeds, searchHours, readHours, hours: searchHours + readHours, tooFew: !r, few, status: status !== 'refuted' && r && zeroed(r) ? 'zero' : status, screen,
+        return { id: c.id, player: c.player, desc: c.desc, change: changeOf(base, c), cost: c.cost.cost, seeds, readingSeeds, searchHours, readHours, hours: searchHours + readHours, tooFew: !r, few, status: status !== 'refuted' && r && loses(r) ? 'loses' : status !== 'refuted' && r && zeroed(r) ? 'zero' : status, screen,
             reading: r ? r.figure : null, low: r ? r.low : null, high: r ? r.high : null,
             buyerNet: has ? r.net : null, netLow: has ? r.netLow : null, netHigh: has ? r.netHigh : null, payback: r ? r.payback ?? null : null };
     }
@@ -1031,10 +1033,10 @@ export async function main(settings, seams) {
         const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Rounds: ${firstK} seeds of ${unitH} h for every candidate, then ${roundSeeds} more per round for those not paused; ${leadersK} leaders per pool, paused below the leaders' lower bound at ${pauseMult} errors, ranges at ${(coverage * 100).toFixed(0)}% coverage. Costs ${TAX_LABEL} on every sale.`, ''];
         // The cost path as the report shows it: the note without the upper-bound caveat (the "≤" on the cost carries that).
         const pathMd = (s) => { const note = (s.note || '').replace('; upper bound (XP inside the level unknown)', ''); return s.costPath + (note ? ' (' + note + ')' : ''); };
-        // A gain within one error of zero reads "no change" with the real value in brackets (a file has no hover), its error "-".
+        // A gain within one error of zero reads "no change" with the real value in brackets (a file has no hover); the error is in the same cell ("value ± se").
         const signed = (v) => (v > 0 ? '+' : '') + fmt(v);
-        const gainMd = (v, se) => (Number.isFinite(v) && Number.isFinite(se) && Math.abs(v) < se ? `no change (${signed(v)} ± ${fmt(se)}) | -` : `${fmt(v)} | ${fmt(se)}`);
-        const buyerMd = (s) => (Number.isFinite(s.buyerNet) ? gainMd(s.buyerNet, s.buyerNetSe) : '- | -');
+        const gainMd = (v, se) => (Number.isFinite(v) && Number.isFinite(se) && Math.abs(v) < se ? `no change (${signed(v)} ± ${fmt(se)})` : `${fmt(v)} ± ${fmt(se)}`);
+        const buyerMd = (s) => (Number.isFinite(s.buyerNet) ? gainMd(s.buyerNet, s.buyerNetSe) : '-');
         const NO_COST = 'N/A'; // a cost of exactly 0 has nothing to pay back (a cost above 0 with no gain keeps "-")
         const paybackMd = (s) => (s.paybackOwn !== undefined ? s.paybackOwn : s.payback)?.toFixed(1) ?? (s.cost === 0 ? NO_COST : '-');
         // Best foods and drinks: one line per player, items in slot order, a food's trigger in brackets; a player left unchanged says so.
@@ -1048,7 +1050,7 @@ export async function main(settings, seams) {
             }
             L.push('Everything below is measured on top of these foods and drinks.', '');
         }
-        L.push('## Changes, in order', '', '| # | Change | Party gain per user | ± se | Buyer\'s gain per day | ± se | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|---|---|');
+        L.push('## Changes, in order', '', '| # | Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
         result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`));
         L.push('', "Party gain: the change in the group's shared loot per player per day, before anyone's food and drink. Buyer's gain: that player's share of it plus the change in what they spend on their own food and drink, so a free change can show no party gain and still pay the player by saving food and drink.");
         if (result.confirmation) {
@@ -1056,7 +1058,7 @@ export async function main(settings, seams) {
             L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): party gain (the shared loot, before anyone's food and drink) ${Math.abs(c.gainPerUser) < c.sePerUser ? `no change (${signed(c.gainPerUser)} ± ${fmt(c.sePerUser)})` : `${fmt(c.gainPerUser)} ± ${fmt(c.sePerUser)}`} per user per day (${unit()}), cost ${fmt(c.cost)}${c.buyerByPlayer ? '' : c.payback == null && c.cost === 0 ? `, ${NO_COST}` : `, payback ${c.payback?.toFixed(1) ?? '-'} days`}.`);
             if (c.buyerByPlayer) { L.push(''); for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`- ${p}: gain ${Math.abs(b.gain) < b.se ? `no change (${signed(b.gain)} ± ${fmt(b.se)})` : `${fmt(b.gain)} ± ${fmt(b.se)}`} per day (${Number.isFinite(c.sharedGainPerUser) && Number.isFinite(c.ownSuppliesByPlayer?.[p]) ? (c.ownSuppliesByPlayer[p] <= 0 ? `${fmt(c.sharedGainPerUser)} loot share + ${fmt(-c.ownSuppliesByPlayer[p])} food and drink saved` : `${fmt(c.sharedGainPerUser)} loot share - ${fmt(c.ownSuppliesByPlayer[p])} more food and drink bought`) : 'loot share and own food and drink'}), ${b.payback == null && c.runningSpend?.[p] === 0 ? NO_COST : `pays back in ${b.payback?.toFixed(1) ?? '-'} days`}`); }
         }
-        L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Party gain per user | ± se | Buyer\'s gain per day | ± se | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|---|---|');
+        L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|');
         const rowMd = (s) => `| ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${pathMd(s)} |`;
         for (const s of result.singles) if (!s.hiddenFood) L.push(rowMd(s));
         L.push(...skillLines);

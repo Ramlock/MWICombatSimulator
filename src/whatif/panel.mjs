@@ -69,19 +69,18 @@ function pm(v, half) {
     const body = p.err === null ? p.main : p.main + ' ± ' + p.err;
     return p.zero ? `<span class="whatif-dim">${body}</span>` : body;
 }
-// The same as two cells (figure, then "± error"), for the tables that keep the error in its own column; a figure with no range says so there.
-function pmCells(v, half, t) {
+// The same as one table cell; a figure with no range yet says so after it.
+function pmCell(v, half, t) {
     const p = pmParts(v, half);
-    if (!p) return '<td class="num">—</td><td class="num">—</td>';
-    const dim = p.zero ? ' whatif-dim' : '';
-    return `<td class="num${dim}">${p.main}</td>` + (p.err === null ? `<td class="num whatif-dim">${esc(t('rounds.noRange'))}</td>` : `<td class="num${dim}">± ${p.err}</td>`);
+    if (!p) return '<td class="num">—</td>';
+    return `<td class="num">${pm(v, half)}${p.err === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : ''}</td>`;
 }
 // One figure in a line of text: "no change", or "<value> ± <error>".
 const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + num(fit(se, se)));
-// The two cells of a gain and its error: "no change" and "—" (both with the real value as title) when it reads as no change.
-function gainPair(v, se, t, floor) {
-    if (isNoChange(v, se, floor)) { const title = ` title="${esc(realValue(v, se))}"`; return `<td class="num"${title}>${esc(t('result.noChange'))}</td><td class="num"${title}>—</td>`; }
-    return `<td class="num">${num(fit(v, se))}</td><td class="num">± ${num(fit(se, se))}</td>`;
+// One cell for a gain and its error, "<value> ± <error>": "no change" (the real value as title) when it reads as no change.
+function gainCell(v, se, t, floor) {
+    if (isNoChange(v, se, floor)) return `<td class="num" title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</td>`;
+    return `<td class="num">${num(fit(v, se))}${Number.isFinite(se) ? ' ± ' + num(fit(se, se)) : ''}</td>`;
 }
 // A chosen change or filling shows its fresh reading (the optimizer's pick check: the same change measured again on fresh seeds
 // against what was chosen before it) in place of the search's own: [value, error] of a pair of fields from `fresh` when it has both,
@@ -320,7 +319,7 @@ export function renderRounds(round, t, names = null) {
             // The status in plain words; a row with no fresh run yet says so there. A range that reaches 0 greys the row (status zero).
             const status = l.tooFew ? t('rounds.tooFew') : t('rounds.status.' + l.status, { n: l.status === 'first' ? l.seeds : l.readingSeeds, more: Math.max(0, readingMin - (l.readingSeeds ?? 0)), min: readingMin });
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: formatNumber(l.searchHours), fresh: formatNumber(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap"${l.status === 'zero' && !l.tooFew ? ` title="${esc(t('rounds.status.zeroTip'))}"` : ''}>${esc(status)}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap"${(l.status === 'zero' || l.status === 'loses') && !l.tooFew ? ` title="${esc(t('rounds.status.' + l.status + 'Tip'))}"` : ''}>${esc(status)}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         return `<div class="whatif-sec"><div class="small"><b>${title}</b></div><table class="whatif-table"><thead><tr>${changeHead}${head2}</tr></thead><tbody>${rows || `<tr><td colspan="${cols}" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
@@ -411,7 +410,7 @@ const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
 // withFresh: a chosen change, whose row shows its fresh reading.
 function gainCells(row, goalExp, t, floor, withFresh = false) {
     const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
-    return gainPair(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainPair(net, netSe, t, floor) : '<td class="num">—</td><td class="num">—</td>');
+    return gainCell(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainCell(net, netSe, t, floor) : '<td class="num">—</td>');
 }
 // How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
 const pathCell = (s) => {
@@ -471,16 +470,17 @@ export function bestBlock(result, t, names = null, running = false, floor = null
             }).join('');
             // The so-far note: a range that reaches 0 says it is not yet different from no change, else how many fresh runs it has and how many it still needs.
             const zero = e.soFar && !e.tooFew && (Number.isFinite(e.buyerNet) ? pmParts(e.buyerNet, halfOf(e.netLow, e.netHigh))?.zero : pmParts(e.gainPerUser, halfOf(e.low, e.high))?.zero);
-            const fewText = zero ? t('rounds.status.zero') : e.readingSeeds > 0 ? t('rounds.status.few', { n: e.readingSeeds, more: Math.max(0, readingMin - e.readingSeeds), min: readingMin }) : t('rounds.tooFew');
-            const few = e.soFar && (zero || e.readingSeeds < readingMin) ? `<br><span class="whatif-dim small"${zero ? ` title="${esc(t('rounds.status.zeroTip'))}"` : ''}>${esc(fewText)}</span>` : '';
+            const loses = e.soFar && !e.tooFew && result.goal !== 'exp' && Number.isFinite(e.high) && e.high < 0;
+            const fewText = loses ? t('rounds.status.loses') : zero ? t('rounds.status.zero') : e.readingSeeds > 0 ? t('rounds.status.few', { n: e.readingSeeds, more: Math.max(0, readingMin - e.readingSeeds), min: readingMin }) : t('rounds.tooFew');
+            const few = e.soFar && (loses || zero || e.readingSeeds < readingMin) ? `<br><span class="whatif-dim small"${loses ? ` title="${esc(t('rounds.status.losesTip'))}"` : zero ? ` title="${esc(t('rounds.status.zeroTip'))}"` : ''}>${esc(fewText)}</span>` : '';
             let nums, note = '';
-            if (e.unchanged) nums = `<td colspan="4" class="whatif-dim">${esc(t('result.noChange'))}</td>`;
-            else if (e.soFar && e.tooFew) nums = `<td colspan="4" class="whatif-dim">${esc(t('rounds.tooFew'))}</td>`;
+            if (e.unchanged) nums = `<td colspan="2" class="whatif-dim">${esc(t('result.noChange'))}</td>`;
+            else if (e.soFar && e.tooFew) nums = `<td colspan="2" class="whatif-dim">${esc(t('rounds.tooFew'))}</td>`;
             else if (e.soFar) {
-                nums = pmCells(e.gainPerUser, halfOf(e.low, e.high), t) + pmCells(e.buyerNet, halfOf(e.netLow, e.netHigh), t);
+                nums = pmCell(e.gainPerUser, halfOf(e.low, e.high), t) + pmCell(e.buyerNet, halfOf(e.netLow, e.netHigh), t);
             } else {
                 const [gain, gainSe] = reading(e.fresh, e, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(e.fresh, e, 'buyerNet', 'buyerNetSe');
-                nums = gainPair(gain, gainSe, t, floor) + (Number.isFinite(net) ? gainPair(net, netSe, t, floor) : '<td class="num">—</td><td class="num">—</td>');
+                nums = pmCell(gain, gainSe, t) + (Number.isFinite(net) ? pmCell(net, netSe, t) : '<td class="num">—</td>');
                 if (Number.isFinite(net)) note = supplyNote({ sharedGainPerUser: gain, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t, gainSe, floor);
             }
             return `<tr><td>${esc(p)}${few}</td>${cells}${nums}<td class="small">${note}</td></tr>`;
@@ -508,7 +508,7 @@ function closedList(key, id, items, note, t) {
         `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 }
 const colHead = (t) => [
-    gainTh(t, 'partyGain'), `<th class="num">${esc(t('col.se'))}</th>`, gainTh(t, 'buyerGain'), `<th class="num">${esc(t('col.se'))}</th>`].join('');
+    gainTh(t, 'partyGain'), gainTh(t, 'buyerGain')].join('');
 // The two gain column heads (name and tooltip): the one definition every table with these columns uses (the rounds table too).
 function gainTh(t, key, cls = '') { return `<th class="num${cls}" title="${esc(t('col.' + key + 'Tip'))}">${esc(t('col.' + key))}</th>`; }
 
@@ -559,13 +559,13 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         if (perPlayer) {
             // One table: Player, the buyer's gain per day and its error, the days he takes to pay back (a player who bought nothing, his running
             // spend exactly 0, has nothing to pay back: the free wording, not a dash), then the split note.
-            const party = `<tr data-confirm-row="party"><td>${esc(t('result.confirmedPartyRow'))}</td>${gainPair(c.gainPerUser, c.sePerUser, t, floor)}<td class="num">—</td><td class="small">${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}</td></tr>`;
+            const party = `<tr data-confirm-row="party"><td>${esc(t('result.confirmedPartyRow'))}</td>${gainCell(c.gainPerUser, c.sePerUser, t, floor)}<td class="num">—</td><td class="small">${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}</td></tr>`;
             const body = party + Object.entries(c.buyerByPlayer).map(([p, b]) => {
                 const free = c.runningSpend?.[p] === 0;
                 const payback = free ? esc(t('result.noCost')) : paybackCell({ payback: confirmedPayback(b.payback), costBound: bound });
-                return `<tr><td>${esc(p)}</td>${gainPair(b.gain, b.se, t, floor)}<td class="num${free ? ' whatif-free' : ''}">${payback}</td><td class="small">${supplyNote(c, p, t, c.sePerUser, floor)}</td></tr>`;
+                return `<tr><td>${esc(p)}</td>${gainCell(b.gain, b.se, t, floor)}<td class="num${free ? ' whatif-free' : ''}">${payback}</td><td class="small">${supplyNote(c, p, t, c.sePerUser, floor)}</td></tr>`;
             }).join('');
-            L.push(`<table class="table table-sm whatif-table whatif-confirm" data-confirm="players"><thead><tr><th>${esc(t('col.player'))}</th><th class="num">${esc(t('result.gainPerDay'))}</th><th class="num">${esc(t('col.se'))}</th><th class="num">${esc(t('result.paysBackIn'))}</th><th></th></tr></thead><tbody>${body}</tbody></table>`);
+            L.push(`<table class="table table-sm whatif-table whatif-confirm" data-confirm="players"><thead><tr><th>${esc(t('col.player'))}</th><th class="num">${esc(t('result.gainPerDay'))}</th><th class="num">${esc(t('result.paysBackIn'))}</th><th></th></tr></thead><tbody>${body}</tbody></table>`);
         }
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
@@ -585,7 +585,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // The accepted rows are two lists, free changes first (ranked by the buyer's gain), then those that cost something (by payback): the core
         // sorted them with one comparator, the window only splits them by cost.
         const accepted = rows.filter(([s]) => s.accepted), isFree = ([s]) => !(s.cost > 0);
-        const group = (key, list) => (list.length ? `<tr class="whatif-group" data-group="${key}"><td colspan="10" class="small text-secondary">${esc(t('rounds.pool.' + key))}</td></tr>` + list.map(([s, i]) => row(s, i)).join('') : '');
+        const group = (key, list) => (list.length ? `<tr class="whatif-group" data-group="${key}"><td colspan="8" class="small text-secondary">${esc(t('rounds.pool.' + key))}</td></tr>` + list.map(([s, i]) => row(s, i)).join('') : '');
         L.push('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>');
         if (weak.length) L.push('<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
         L.push('</table>');

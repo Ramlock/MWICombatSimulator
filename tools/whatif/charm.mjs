@@ -151,17 +151,17 @@ function report(OUT, st, ctx) {
     const L = [];
     L.push(`# Charm what-if: ${ctx.player}`, '');
     L.push(`Per user = party profit per day after 4% market tax / ${ctx.names.length}. Each ± is one standard error over ${ctx.seeds.length} paired seeds x ${ctx.hours} sim h. Prices: ${path.basename(ctx.pricesFile)}, held fixed. Baseline: ${ctx.cand.base.hrid.split('/')[2]} +${ctx.cand.base.level} worn the whole time. Candidates: ${ctx.cand.style.split('/')[2]} style trains ${ctx.skills.join(', ')}; each candidate is the ${ctx.enh > 0 ? '+' + ctx.enh : ''} charm of that skill.`, '');
-    L.push('| Charm | Sell at skill level | Day | Gain per day (per user) | ± se | Charm round trip | Wear-day profit (per user) | Cost per user | Payback days (per user) | Payback days (party) | Note |', '|---|---|---|---|---|---|---|---|---|---|---|');
+    L.push('| Charm | Sell at skill level | Day | Gain per day (per user) | Charm round trip | Wear-day profit (per user) | Cost per user | Payback days (per user) | Payback days (party) | Note |', '|---|---|---|---|---|---|---|---|---|---|');
     for (const c of charms) {
         const p = c.peak;
-        if (!p) { L.push(`| ${c.skill} | - | - | - | - | ${M(c.costRound)} | - | - | - | - | no level-up measured |`); continue; }
+        if (!p) { L.push(`| ${c.skill} | - | - | - | ${M(c.costRound)} | - | - | - | - | no level-up measured |`); continue; }
         const note = [p === best ? 'best' : tie(p) ? 'tie with the best (inside 2 se)' : '', c.past ? '' : `no peak by day ${ctx.maxH / 24}: still rising`, p.provisional ? 'provisional' : ''].filter(Boolean).join('; ');
-        L.push(`| ${c.skill} | ${p.level} | ${p.days.toFixed(1)} | ${M(p.gainUser)} | ${M(p.se)} | ${M(p.costRound)} | ${M(p.wearUser)} | ${M(p.costUser)} | ${D(p.paybackUserDays)} | ${D(p.paybackPartyDays)} | ${note} |`);
+        L.push(`| ${c.skill} | ${p.level} | ${p.days.toFixed(1)} | ${M(p.gainUser)} ± ${M(p.se)} | ${M(p.costRound)} | ${M(p.wearUser)} | ${M(p.costUser)} | ${D(p.paybackUserDays)} | ${D(p.paybackPartyDays)} | ${note} |`);
     }
     L.push('', '## Every branch', '');
     for (const c of charms) {
-        L.push(`### ${c.skill}`, '', '| Skill level | Day | Gain per day (per user) | ± se | Cost per user | Payback days (per user) |', '|---|---|---|---|---|---|');
-        for (const b of c.branches) L.push(`| ${b.level} | ${b.days.toFixed(1)} | ${M(b.gainUser)} | ${M(b.se)} | ${M(b.costUser)} | ${D(b.paybackUserDays)} |`);
+        L.push(`### ${c.skill}`, '', '| Skill level | Day | Gain per day (per user) | Cost per user | Payback days (per user) |', '|---|---|---|---|---|');
+        for (const b of c.branches) L.push(`| ${b.level} | ${b.days.toFixed(1)} | ${M(b.gainUser)} ± ${M(b.se)} | ${M(b.costUser)} | ${D(b.paybackUserDays)} |`);
         L.push('');
     }
     L.push('## Look-ahead', '', `The best branches followed ${ctx.lookH / 24} days with the baseline charm back on, against the baseline at the same time.`, '');

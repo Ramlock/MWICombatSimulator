@@ -270,7 +270,7 @@
             "sortedBy": "ordenado por {{col}}, melhor primeiro",
             "col": { "candidate": "Mudança", "cost": "Custo", "hours": "Horas simuladas", "payback": "Dias de retorno", "status": "Estado" },
             "hoursTitle": "{{search}} h de execuções da busca + {{fresh}} h de execuções novas",
-            "status": { "contending": "ainda na disputa", "paused": "deixada de lado por ora", "confirmed": "conferida em execuções novas", "few": "execuções novas: {{n}}, faltam {{more}} para o intervalo ficar final", "refuted": "descartada", "zero": "sem mudança clara ainda", "zeroTip": "ainda não difere de nenhuma mudança", "first": "primeiro olhar, execuções até agora: {{n}}" },
+            "status": { "contending": "ainda na disputa", "paused": "deixada de lado por ora", "confirmed": "conferida em execuções novas", "few": "execuções novas: {{n}}, faltam {{more}} para o intervalo ficar final", "refuted": "descartada", "zero": "sem mudança clara ainda", "zeroTip": "ainda não difere de nenhuma mudança", "loses": "o grupo perde saque", "losesTip": "o saque compartilhado por usuário cai, mesmo que o ganho do próprio comprador não seja claramente diferente de 0", "first": "primeiro olhar, execuções até agora: {{n}}" },
             "tooFew": "ainda sem execuções novas",
             "noRange": "ainda sem intervalo",
             "rangeWidth": "largura do intervalo {{now}}",
