@@ -267,7 +267,7 @@ export async function main(settings, seams) {
                 sure.counted.add(id); sure.planned++;
                 if (cache.get(id)?.byHours[r.h]) sure.done++;
             }
-            report({ stage: 'confirming picks', candidatesLeft: 0 });
+            report({ stage: 'confirming picks', candidatesLeft: 0, checking: label });
             if (!await ensure(reqs)) return null;
             const fresh = freshRead(baseOps, c, k, fin.h);
             console.log(`  ${label} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);

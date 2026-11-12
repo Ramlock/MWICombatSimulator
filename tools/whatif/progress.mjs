@@ -34,6 +34,7 @@ export function createParts(plan) {
     // as distinct runs (progress.picksPlanned / picksDone, never dropping): running while a pick is being checked, grey between two
     // checks, done once the confirmation starts or the search ends. Not a row of `rows`: it comes back to running at every step.
     const picks = { started: false, state: 'waiting', runsPlanned: 0, runsDone: 0, fill: 0 };
+    const seen = { planned: 0, done: 0 }, chkBase = {}; // the pick-check run counts as last reported / when the check of a foods or drinks stage began
     const rows = []; // started parts, in order: { kind, index, runsPlanned, runsDone, candidatesLeft, etaSeconds, state }
     const parse = (stage) => {
         if (stage === 'screen') return { kind: 'screen', index: 0 };
@@ -50,13 +51,23 @@ export function createParts(plan) {
         setCandidates(n) { plan.candidates = n; },
         sync(progress) {
             const key = parse(progress.stage), confirming = progress.stage === 'confirming picks';
-            if (progress.picksPlanned !== undefined) {
+            // The pick check of a foods or drinks stage (progress.checking names the stage) is shown on that stage's own row, not as the greedy phase's
+            // 'picks' part: the row stays done and carries checking + its own run counts (the global counts minus what they were when the check began).
+            const chk = confirming && fillings && (progress.checking === 'foods' || progress.checking === 'drinks') ? progress.checking : null;
+            if (chk && !chkBase[chk]) chkBase[chk] = { planned: seen.planned, done: seen.done };
+            if (progress.picksPlanned !== undefined) { seen.planned = progress.picksPlanned; seen.done = progress.picksDone ?? 0; }
+            if (progress.picksPlanned !== undefined && !chk) {
                 picks.started = true;
                 picks.runsPlanned = Math.max(picks.runsPlanned, progress.picksPlanned);
                 picks.runsDone = Math.min(picks.runsPlanned, Math.max(picks.runsDone, progress.picksDone ?? 0));
                 picks.fill = Math.max(picks.fill, picks.runsPlanned > 0 ? picks.runsDone / picks.runsPlanned : 0); // never goes back, as a part's
             }
-            if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
+            for (const r of rows) {
+                r.checking = r.kind === chk;
+                if (r.checking) { r.checkPlanned = Math.max(0, seen.planned - chkBase[chk].planned); r.checkDone = Math.min(r.checkPlanned, Math.max(0, seen.done - chkBase[chk].done)); }
+            }
+            if (chk) { for (const r of rows) r.state = 'done'; }
+            else if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
             else if (progress.stage === 'confirmation' || progress.stage === 'done') { if (picks.started) picks.state = 'done'; }
             else if (key && picks.started) picks.state = 'waiting';
             if (progress.stage === 'done') for (const r of rows) r.state = 'done';
