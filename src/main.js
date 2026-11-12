@@ -4301,6 +4301,7 @@ function whatIfShowStatus(status) {
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
+    else if (status.state === 'running' && whatIf.resultRunning === 'stopped') whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done') whatIfLoadList();
 }

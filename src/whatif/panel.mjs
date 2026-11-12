@@ -224,12 +224,18 @@ export function renderProgress(status, t) {
 // Stacked rows from progress.parts (one per part of the search; output only, every figure is a field of the part).
 // Params given to t() here are already-escaped HTML (num()), so the translated line is not escaped again.
 const fill = (t, key, params) => t(key, params);
+// A count with a noun after it: the key's own singular (key + 'One', in every language) when the count is 1.
+const plural = (t, key, n, params) => t(Number(n) === 1 ? key + 'One' : key, params);
 // The "done with this stage, go on" button of the race stage that runs now (main.js posts API.done for it).
 function doneButton(t) { return `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done" data-whatif-done title="${esc(t('progress.stageDoneTip'))}">${esc(t('progress.stageDone'))}</button>`; }
 export function renderParts(status, t) {
     const p = status.progress || {}, parts = p.parts;
-    const running = parts.findIndex((r) => r.state === 'running');
-    const rowsHtml = parts.map((r) => {
+    // The search's own state decides what is drawn as running: a search that is stopped, done or failed has no part that runs, whatever the
+    // last progress record says (the part that was running when it stopped is drawn halted, with the figures it had).
+    const live = status.state === 'running';
+    const running = live ? parts.findIndex((r) => r.state === 'running') : -1;
+    const rowsHtml = parts.map((row) => {
+        const r = row.state === 'running' && !live ? { ...row, state: 'halted' } : row;
         const label = r.kind === 'foods' ? t('progress.partFoods')
             : r.kind === 'drinks' ? t('progress.partDrinks')
             : r.kind === 'screen' ? t('progress.partScreen')
@@ -246,22 +252,23 @@ export function renderParts(status, t) {
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
         const race = rounded && r.state === 'running'; // the stage that runs now and is a race: its counters and the "done with this stage" button sit on its line
         const phase = r.phase === 'reading' ? t('progress.phaseReading') : t('progress.phaseSearch');
-        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { round: t(r.state === 'running' ? 'rounds.roundRunning' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
-            : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
-        const counters = rounded ? fill(t, 'progress.stageCounters', { runs: num(r.runs), hours: num(r.simHours), dropped: num(r.dropped) }) : '';
+        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { round: t(r.state === 'running' ? 'rounds.roundRunning' : r.state === 'halted' ? 'rounds.roundStopped' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
+            : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + plural(t, 'progress.optionsLeft', r.candidatesLeft, { n: num(r.candidatesLeft) }) : '';
+        const counters = rounded ? fill(t, 'progress.stageCounters', { runs: plural(t, 'progress.runsCount', r.runs, { n: num(r.runs) }), hours: plural(t, 'progress.hoursCount', r.simHours, { n: num(r.simHours) }), dropped: num(r.dropped) }) : '';
         let text = '', cls;
-        if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); else if (r.kind === 'picks' && r.runsPlanned > 0) text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'waiting'; }
-        else if (r.state === 'done') { text = (rounded ? counters : fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + esc(t('progress.done')); cls = 'done'; }
+        if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = plural(t, 'progress.upTo', r.runsUpTo, { n: num(r.runsUpTo) }); else if (r.kind === 'picks' && r.runsPlanned > 0) text = plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'waiting'; }
+        else if (r.state === 'done') { text = (rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + esc(t('progress.done')); cls = 'done'; }
+        else if (r.state === 'halted') { text = rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'halted'; } // the part that was running when the search stopped (or failed): its figures, no running mark
         else if (rounded) { cls = 'running'; } // a race stage's counters follow its status text on the stage's own line (below), not a line of their own
         else {
-            text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) });
+            text = plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) });
             if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
             cls = 'running';
         }
         // One icon column of equal width: a plain text glyph (︎ asks for the text form, never a colour emoji).
-        const mark = { done: '✓', running: '▶︎', waiting: '○' }[cls];
-        const pct = r.state === 'done' ? 100 : (r.state === 'running' || (r.state === 'waiting' && r.kind === 'picks')) && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
-        const bar = rounded && r.state === 'running' ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
+        const mark = { done: '✓', running: '▶︎', waiting: '○', halted: '■︎' }[cls];
+        const pct = r.state === 'done' ? 100 : (r.state === 'running' || r.state === 'halted' || (r.state === 'waiting' && r.kind === 'picks')) && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
+        const bar = rounded && (r.state === 'running' || r.state === 'halted') ?'<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
         return `<div class="whatif-part whatif-part-${cls}${rounded && r.state === 'running' ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + doneButton(t) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
@@ -289,7 +296,7 @@ export function renderRounds(round, t, names = null) {
         // A real round record is a finished round; the first look (provisional) is the round still being run.
         t(prov ? 'rounds.roundRunning' : 'rounds.roundFinished', { n: `<span data-rounds="round">${num(round.round)}</span>` }),
         `${esc(t('rounds.simHours'))} ${num(round.simHours)}`,
-        ...(prov ? [`<span data-rounds="firstLook">${esc(t('rounds.firstLook', { have: round.firstLook?.have ?? 0, total: round.firstLook?.total ?? 0 }))}</span>`] : [
+        ...(prov ? [`<span data-rounds="firstLook">${esc(plural(t, 'rounds.firstLook', round.firstLook?.total ?? 0, { have: round.firstLook?.have ?? 0, total: round.firstLook?.total ?? 0 }))}</span>`] : [
             `${esc(t('rounds.contending'))} <span data-rounds="contending">${num(c.contending)}</span>`,
             `<span title="${esc(t('rounds.pausedTip'))}">${esc(t('rounds.paused'))}</span> <span data-rounds="paused">${num(c.paused)}</span>`,
             ...(c.refuted ? [`${esc(t('rounds.refuted'))} ${num(c.refuted)}`] : []),
@@ -301,7 +308,7 @@ export function renderRounds(round, t, names = null) {
         const [owner, kind] = String(p.key).includes(':') ? String(p.key).split(':') : [null, p.key];
         // The top leader's range width and the one a round earlier (the core's fields; a first round, or one with no range before, has no "was").
         const width = Number.isFinite(p.rangeWidth) ? ' · ' + (Number.isFinite(p.rangeWidthPrev) ? t('rounds.rangeWidthWas', { now: num(p.rangeWidth), before: num(p.rangeWidthPrev) }) : t('rounds.rangeWidth', { now: num(p.rangeWidth) })) : '';
-        const counts = prov ? t('rounds.poolSize', { n: p.size }) : t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
+        const counts = prov ? plural(t, 'rounds.poolSize', p.size, { n: p.size }) : t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
         const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: t(p.sortedBy === 'reading' ? 'col.partyGain' : p.sortedBy === 'buyerNet' ? 'col.buyerGain' : 'rounds.col.' + p.sortedBy) }) : '';
         const title = esc((owner ? who(owner) + ' · ' : '') + t('rounds.pool.' + kind) + ' · ' + counts) + width + esc(order);
         // A candidate ruled out is not listed (the heading counts it).
@@ -317,7 +324,10 @@ export function renderRounds(round, t, names = null) {
                 return `<td class="chg">${s ? itemLabel(s, names) : cur ? greyed(itemLabel({ item: cur }, names)) : i < (l.change.current || []).length ? emptyWord(t) : ''}</td>`;
             }).join('')
             : `<td class="chg">${esc(localizeDesc(l.desc, names, players, owner))}</td>`);
-        const changeHead = bySlot ? Array.from({ length: nSlots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') : `<th>${esc(t('rounds.col.candidate'))}</th>`;
+        // The pool's title is the header of its own table: it takes the place of the first column's header (the Change column). A table with one
+        // column per slot puts it over the slot columns (a header row of its own), the slot names under it; the other columns span both rows.
+        const titleTh = `<th class="whatif-pool-title"${bySlot ? ` colspan="${nSlots}"` : ''} data-pool="${esc(p.key)}"><b>${title}</b></th>`;
+        const slotHead = bySlot ? Array.from({ length: nSlots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') : '';
         const cols = (bySlot ? nSlots : 1) + 6;
         const rows = leaders.map((l) => {
             // The status in plain words; a row with no fresh run yet says so there. A range that reaches 0 greys the row (status zero).
@@ -328,7 +338,8 @@ export function renderRounds(round, t, names = null) {
             return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap" title="${esc(statusTip)}">${esc(status)}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
-        return `<div class="whatif-sec"><div class="small"><b>${title}</b></div><table class="whatif-table"><thead><tr>${changeHead}${head2}</tr></thead><tbody>${rows || `<tr><td colspan="${cols}" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
+        const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
+        return `<div class="whatif-sec"><table class="whatif-table"><thead>${thead}</thead><tbody>${rows || `<tr><td colspan="${cols}" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
     }).join('');
     return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
 }
@@ -636,7 +647,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     }
     if (result.dominated?.length) {
         // One line with the count and its toggle; the swaps the search skipped (no better on any stat) sit closed behind it.
-        L.push(`<div class="mt-3"><span class="fw-bold">${esc(t('result.dominated', { n: result.dominated.length }))}</span> ` +
+        L.push(`<div class="mt-3"><span class="fw-bold">${esc(plural(t, 'result.dominated', result.dominated.length, { n: result.dominated.length }))}</span> ` +
             `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfDominated" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
             '<ul class="small whatif-more" id="whatIfDominated" hidden>' +
             result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
@@ -645,7 +656,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // One folded line: the players the levers that need a character export skipped; the list sits closed behind it.
         const lever = (g) => t('lever.' + g.lever + '.name');
         const n = new Set(result.skippedNoExport.flatMap((g) => g.players)).size;
-        L.push(`<div class="mt-3"><span class="fw-bold">${esc(t('result.skippedNoExport', { n, levers: result.skippedNoExport.map(lever).join(', ') }))}</span> ` +
+        L.push(`<div class="mt-3"><span class="fw-bold">${esc(plural(t, 'result.skippedNoExport', n, { n, levers: result.skippedNoExport.map(lever).join(', ') }))}</span> ` +
             `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfSkippedNoExport" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
             '<ul class="small whatif-more" id="whatIfSkippedNoExport" hidden>' +
             result.skippedNoExport.map((g) => `<li>${esc(lever(g))}: ${esc(g.players.join(', '))}</li>`).join('') + '</ul>');
@@ -681,9 +692,9 @@ export function pricesLine(result, t, now = Date.now()) {
 // Seconds as the largest whole unit (days, hours or minutes).
 export function age(s, t) {
     const x = Math.max(0, Number(s));
-    if (x >= 86400) return t('age.days', { n: Math.floor(x / 86400) });
-    if (x >= 3600) return t('age.hours', { n: Math.floor(x / 3600) });
-    return t('age.minutes', { n: Math.floor(x / 60) });
+    if (x >= 86400) return plural(t, 'age.days', Math.floor(x / 86400), { n: Math.floor(x / 86400) });
+    if (x >= 3600) return plural(t, 'age.hours', Math.floor(x / 3600), { n: Math.floor(x / 3600) });
+    return plural(t, 'age.minutes', Math.floor(x / 60), { n: Math.floor(x / 60) });
 }
 
 // The ops behind a button's data-whatif-apply value.

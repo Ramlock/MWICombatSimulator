@@ -28,6 +28,8 @@ import { isDominatedSwap } from './dominated.mjs';
 import { createParts } from './progress.mjs';
 import { SURE_BLOCK, SURE_MAX, verdict, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
 import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
+// A count with its noun, singular for 1 ("1 run", "2 runs").
+const nOf = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 import { refineTrigger } from './refine.mjs';
 import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 import { makeArg, list } from './options.mjs';
@@ -178,7 +180,7 @@ export async function main(settings, seams) {
         report({ runsDone: 0, runsPlanned: tasks.length });
         if (!tasks.length) return true;
         if (stopSignal.requested) { stoppedByTime = true; return false; }
-        console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] ${tasks.length} runs, ${tasks.reduce((a, t) => a + t.h, 0)} sim h`);
+        console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] ${nOf(tasks.length, 'run')}, ${tasks.reduce((a, t) => a + t.h, 0)} sim h`);
         let next = 0;
         // One lane per core: each takes the next task while there is one, no stop was asked and the time limit has not passed.
         const lane = async () => {
@@ -859,7 +861,7 @@ export async function main(settings, seams) {
         result.candidates = cands.length;
         result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
         publish(result); // snapshot 3: the candidates are priced (over-budget list, unknown costs, skipped swaps, the count)
-        console.log(`${cands.length} candidates within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${dominated.length} swaps skipped (no better on any stat)`);
+        console.log(`${nOf(cands.length, 'candidate')} within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${nOf(dominated.length, 'swap')} skipped (no better on any stat)`);
 
         // The rest of the search runs on the baseline (baseOps: the chosen foods and drinks): a race of every candidate (rounds, two
         // pools, K leaders each) until a pick locks, then the pick joins the baseline and the race goes on from the new baseline.
@@ -1090,7 +1092,7 @@ export async function main(settings, seams) {
         L.push('', `Timing: ${t.wallMinutes.toFixed(1)} min wall this call, ${t.coreHoursAllRuns.toFixed(2)} core-hours over all cached runs (${t.simHoursAllRuns} sim h, ${t.secondsPerSimHour?.toFixed(2)} s per sim hour).`);
         const where = outSink.final(snapshot(result), L.join('\n') + '\n'); // result.json and result.md
         report({ stage: 'done', candidatesLeft: 0 });
-        console.log(`done: ${result.steps.length} steps; ${where}`);
+        console.log(`done: ${nOf(result.steps.length, 'step')}; ${where}`);
         return { stopped: false };
     }
 

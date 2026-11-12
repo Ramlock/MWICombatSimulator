@@ -146,7 +146,7 @@ check('panel: small line seconds per run and elapsed, no whole-search time', pla
 check('panel: bars at 100, 45 and 0 percent', ['width: 100%', 'width: 45%', 'width: 0%'].every((w) => html.includes(w)));
 check('panel: numbers keep their raw value', html.includes('data-num="36"') && html.includes('title="241.4567"'));
 const stoppedHtml = panel.renderProgress({ state: 'stopped', progress: { stage: 'stopped', parts: [{ kind: 'screen', index: 0, state: 'running', runsPlanned: 10, runsDone: 4, etaSeconds: 5 }] } }, t);
-check('panel: stopped keeps the rows', stoppedHtml.includes('whatif-part-running'));
+check('panel: stopped keeps the rows and their figures, but nothing reads or is marked running (item 27)', stoppedHtml.includes('whatif-part-halted') && stoppedHtml.replace(/<[^>]+>/g, '').includes('4 / 10 runs') && !stoppedHtml.includes('whatif-part-running') && !/Running/.test(stoppedHtml), stoppedHtml);
 // Old progress (no parts): today's single line.
 const old = panel.renderProgress({ state: 'running', progress: { stage: 'screen', candidatesLeft: 120, runsDone: 30, runsPlanned: 120, secondsPerRun: 12.5, etaSeconds: 3725 } }, t);
 check('old progress without parts: the single line unchanged', !old.includes('whatif-part') && old.includes('width: 25%') && old.includes('1:02:05') && old.includes('candidates left'));
