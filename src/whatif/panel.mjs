@@ -604,7 +604,11 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     }
     const anySingles = (result.singles || []).some((s) => !s.hiddenFood);
     if (!running || anySingles) L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
-    if (!result.singles?.length) { if (!running) L.push(`<div class="text-secondary">${esc(t('result.noSingles'))}</div>`); }
+    // With a round table (the race has run and the first figures exist) a change is counted as not measured only for want of the reading minimum:
+    // the line says how many were searched and that none is checked on that many fresh runs yet, not that none was measured.
+    const readMin = result.round?.readingMin;
+    const yet = Number.isFinite(readMin) && readMin > 0 && result.singlesNotShown > 0;
+    if (!result.singles?.length) { if (!running) L.push(`<div class="text-secondary">${yet ? plural(t, 'result.noSinglesYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : esc(t('result.noSingles'))}</div>`); }
     else if (running && !anySingles) { /* only the foods and drinks fillings are in so far: they are not a table */ }
     else {
         L.push('<table class="table table-sm whatif-table whatif-each"><thead><tr>' +
@@ -624,7 +628,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         L.push('</table>');
         if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
     }
-    if (result.singlesNotShown > 0 && (anySingles || !running)) L.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
+    if (result.singlesNotShown > 0 && (anySingles || !running)) L.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
         L.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`), {}, t));
