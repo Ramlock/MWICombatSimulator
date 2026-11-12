@@ -122,7 +122,8 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(file).pipe(res);
 });
 let holdRunning = true;
-const progress = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90 });
+let raceProgress = false; // true: the progress message of a race stage in a late round (round 12, 10 ruled out), the long label and counters of the real run
+const progress = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }] } : {}) });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
 
@@ -287,6 +288,17 @@ try {
     check('rounds: a newer round replaces the counter, the counts and the range', await until(`document.querySelector('#whatIfRounds [data-rounds="round"]')?.textContent === '4'`) && await js(`(() => { const e = document.getElementById('whatIfRounds'); return e.querySelector('[data-rounds="contending"]').textContent === '25' && e.textContent.includes('1,000 ± 50') && !e.textContent.includes('1,000 ± 100'); })()`), (await roundsText()).slice(0, 500));
     check('rounds: dark mode (no white table), no scroll axis of its own, one table per pool', await js(`(() => { const e = document.getElementById('whatIfRounds'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const cs = getComputedStyle(e.querySelector('table')); const ov = [e, ...e.querySelectorAll('*')].every((x) => { const o = getComputedStyle(x); return !/(auto|scroll)/.test(o.overflowX + o.overflowY); }); return ov && lum(getComputedStyle(e.querySelector('table td')).color) > 300 && e.querySelectorAll('table').length === 1 && cs.backgroundColor !== 'rgb(255, 255, 255)'; })()`));
     await shot('whatIfModal', 'whatif-rounds.png');
+    // A race stage's progress row has no bar: its label and counters use the whole row, wrap, are never cut and never widen the window.
+    raceProgress = true;
+    for (const [w, h] of [[1920, 1080], [1600, 900], [1366, 768]]) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+        await until(`!!document.querySelector('#whatIfProgress .whatif-part-race')`);
+        await new Promise((r) => setTimeout(r, 400));
+        const fitRow = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), edge = body.getBoundingClientRect().right; return { noOverflow: body.scrollWidth <= body.clientWidth, labelWraps: getComputedStyle(l).whiteSpace === 'normal' && l.scrollWidth <= l.clientWidth + 1, textWraps: getComputedStyle(x).whiteSpace === 'normal' && x.scrollWidth <= x.clientWidth + 1 && x.getBoundingClientRect().right <= edge + 0.5, ellipsis: getComputedStyle(l).textOverflow === 'ellipsis' && getComputedStyle(l).overflow !== 'visible', text: l.textContent + ' / ' + x.textContent }; })()`);
+        check(`at ${w}x${h} a race stage row is not cut, wraps, and the window has no horizontal scroll`, !!fitRow && fitRow.noOverflow && fitRow.labelWraps && fitRow.textWraps && !fitRow.ellipsis, JSON.stringify(fitRow));
+    }
+    await page.send('Emulation.clearDeviceMetricsOverride');
+    raceProgress = false;
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Stop stops it and offers Resume', await until(`document.getElementById('buttonWhatIfStop').textContent === 'Resume'`) && search.state === 'stopped');
     check('live: a stopped search keeps its report on screen, marked Stopped', await until(`document.getElementById('whatIfResult').textContent.includes('Stopped: this is where the search got to.')`) && !(await resultText()).includes('Running: the report fills in') && (await resultText()).includes('Magic 1 → 2'));

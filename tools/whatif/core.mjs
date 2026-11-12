@@ -569,14 +569,17 @@ export async function main(settings, seams) {
     // What a foods or drinks candidate changes, slot by slot: the new item of each slot it changes (the panel leaves the other slots blank), with the
     // readable text of its trigger when the candidate sets one (an unchanged trigger is the default and is not said). Others have none: the panel
     // shows their desc. Worked out once per candidate and base.
+    // The trigger text the player has in a food slot: that of the item in the slot (its own or the default); the item's own when the slot is empty.
+    const slotTrigger = (setup, i, item) => triggerText(effectiveTriggers(setup, setup?.food?.['/action_types/combat']?.[i]?.itemHrid || item));
     function changeOf(base, c) {
         const bk = keyOf(base);
         if (c.changeBase === bk) return c.change;
         const ops = c.ops.filter((o) => o.op === 'food' || o.op === 'drink'), trig = c.ops.filter((o) => o.op === 'trigger');
         c.changeBase = bk;
         if (!ops.length) return (c.change = null);
-        const kind = ops[0].op === 'food' ? 'foods' : 'drinks', setup = applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === c.player);
-        return (c.change = { kind, slots: ops.map((o) => ({ index: o.index, item: o.item, trigger: kind === 'foods' && trig.some((x) => x.hrid === o.item) ? triggerText(effectiveTriggers(setup, o.item)) : null })) });
+        const kind = ops[0].op === 'food' ? 'foods' : 'drinks', setup = applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === c.player), now = applyOps(setups0, base).find((s) => s.name === c.player);
+        // A slot shows its trigger only when the candidate changes it from the player's current one in that slot (the setup the stage measures on top of).
+        return (c.change = { kind, slots: ops.map((o) => { const t = kind === 'foods' && trig.some((x) => x.hrid === o.item) ? triggerText(effectiveTriggers(setup, o.item)) : null; return { index: o.index, item: o.item, trigger: t !== null && t !== slotTrigger(now, o.index, o.item) ? t : null }; }) });
     }
     // A range that reaches 0 (the buyer's gain's on the profit goal, the figure's otherwise) is not a result yet: status 'zero', never 'confirmed'.
     const zeroed = (r) => { const lo = goal === 'profit' ? r.netLow : r.low, hi = goal === 'profit' ? r.netHigh : r.high; return r.k >= 2 && Number.isFinite(lo) && Number.isFinite(hi) && lo <= 0 && hi >= 0; };
@@ -740,8 +743,10 @@ export async function main(settings, seams) {
     }
     // One player's entry of result.best: his items in slot order after the stage (a food with the readable text of its trigger, null
     // when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
-    const bestItems = (kind, setup) => (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x) => x?.itemHrid).filter(Boolean)
-        .map((item) => (kind === 'foods' ? { item, trigger: triggerText(effectiveTriggers(setup, item)) } : { item }));
+    // The trigger text of a food only when it differs from the player's own on the setup he came with (the default or his kept one is not repeated).
+    const shownTrigger = (setup, i, item) => { const t = triggerText(effectiveTriggers(setup, item)), orig = setups0.find((x) => x.name === setup.name); return t !== null && (!orig || t !== slotTrigger(orig, i, item)) ? t : null; };
+    const bestItems = (kind, setup) => (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x, i) => (x?.itemHrid ? { item: x.itemHrid, i } : null)).filter(Boolean)
+        .map(({ item, i }) => (kind === 'foods' ? { item, trigger: shownTrigger(setup, i, item) } : { item }));
     // The same entry while the stage still runs (soFar: true): each player's leader as the lock would take it (the best ranked of his live
     // leaders), with the figure and the range of its row in the round record, the data the rounds table shows (no second computation);
     // a leader with too few reading seeds has its items and tooFew: true. The stage's end replaces it with bestEntry's.

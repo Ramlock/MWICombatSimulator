@@ -259,7 +259,7 @@ export function renderParts(status, t) {
         const mark = { done: '✓', running: '▶︎', waiting: '○' }[cls];
         const pct = r.state === 'done' ? 100 : (r.state === 'running' || (r.state === 'waiting' && r.kind === 'picks')) && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
         const bar = rounded && r.state === 'running' ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
-        return `<div class="whatif-part whatif-part-${cls}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}</span>${bar}<span class="whatif-part-text">${text}</span></div>`;
+        return `<div class="whatif-part whatif-part-${cls}${rounded && r.state === 'running' ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}</span>${bar}<span class="whatif-part-text">${text}</span></div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
@@ -300,7 +300,8 @@ export function renderRounds(round, t, names = null) {
         const counts = prov ? t('rounds.poolSize', { n: p.size }) : t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
         const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: t('rounds.col.' + p.sortedBy) }) : '';
         const title = esc((owner ? who(owner) + ' · ' : '') + t('rounds.pool.' + kind) + ' · ' + counts) + width + esc(order);
-        const leaders = p.leaders || [];
+        // A candidate ruled out is not listed (the heading counts it).
+        const leaders = (p.leaders || []).filter((l) => l.status !== 'refuted');
         // A foods or drinks pool: one column per slot, the cell holding only the new item of a slot the candidate changes and nothing where the slot
         // stays; any other pool: one Change column with the candidate's text (the player is in the heading when the pool is his).
         const bySlot = leaders.length > 0 && leaders.every((l) => l.change && Array.isArray(l.change.slots));

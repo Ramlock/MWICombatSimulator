@@ -72,6 +72,10 @@
         .whatif-part-waiting { opacity: 0.6; }
         .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
         .whatif-no-bar { display: block; height: 8px; }
+        .whatif-part-race { grid-template-columns: 1.5em 1fr; }
+        .whatif-part-race .whatif-no-bar { display: none; }
+        .whatif-part-race .whatif-part-label { white-space: normal; overflow: visible; text-overflow: clip; }
+        .whatif-part-race .whatif-part-text { white-space: normal; text-align: left; grid-column: 2; }
         .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .whatif-part-text { text-align: right; white-space: nowrap; }
         .whatif-part-done .progress-bar { background-color: #198754; }

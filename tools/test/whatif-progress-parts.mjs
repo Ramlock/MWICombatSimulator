@@ -185,7 +185,7 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
         const st = { state: 'running', progress: { ...m, parts: tp.sync(m) } };
         const html = panel.renderParts(st, t);
         const seen = new Map();
-        for (const mm of html.matchAll(/<div class="whatif-part whatif-part-(\w+)" data-kind="(\w+)"[^>]*>([^]*?)<span class="whatif-part-text">([^]*?)<\/span><\/div>/g)) {
+        for (const mm of html.matchAll(/<div class="whatif-part whatif-part-(\w+)(?: whatif-part-race)?" data-kind="(\w+)"[^>]*>([^]*?)<span class="whatif-part-text">([^]*?)<\/span><\/div>/g)) {
             const key = mm[2] + '#' + (seen.set(mm[2], (seen.get(mm[2]) ?? 0) + 1), seen.get(mm[2]));
             const w = mm[3].match(/width: ([\d.]+)%/), isRace = mm[3].includes('whatif-no-bar');
             if (w) { if (widths.has(key) && Number(w[1]) < widths.get(key)) bad.push(`${key} bar ${widths.get(key)} -> ${w[1]} at ${JSON.stringify(m)}`); widths.set(key, Number(w[1])); }

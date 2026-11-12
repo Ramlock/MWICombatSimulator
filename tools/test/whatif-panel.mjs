@@ -305,6 +305,9 @@ const result = {
     const pool = (o) => ({ key: 'Player 1:paid', size: 4, contending: 2, paused: 2, sortedBy: 'payback', leaders: [leader({})], ...o });
     const rec = (pools, o = {}) => ({ round: 3, simHours: 900, coverage: 0.99, readingMin: 8, candidates: { contending: 2, paused: 2 }, pools, ...o });
     const food = (slots) => ({ kind: 'foods', slots: slots.map(([index, item, trigger = null]) => ({ index, item, trigger })) });
+    // A ruled-out candidate is not a row of the table (the heading counts it).
+    const refHtml = panel.renderRounds(rec([pool({ leaders: [leader({ id: 'a' }), leader({ id: 'r', status: 'refuted' })] })]), t);
+    check('ruled out: a refuted candidate is not listed in its pool table', bodyRows(tablesOf(refHtml)[0]).length === 1 && !refHtml.includes('data-status="refuted"'), String(bodyRows(tablesOf(refHtml)[0]).length));
     // fit / precision: no digit finer than the ±; a range that reaches 0 reads ≈ 0.
     check('fit: -2118 with a ± of 337412 is 0; 90412 is 90000; 1234 with 134 is 1230; 0.123456 with 0.0456 is 0.123', panel.fit(-2118, 337412) === 0 && panel.fit(90412, 337412) === 90000 && panel.fit(1234, 134) === 1230 && panel.fit(0.123456, 0.0456) === 0.123);
     const zeroHtml = panel.renderRounds(rec([pool({ leaders: [leader({ status: 'zero', buyerNet: -2118, netLow: -339530, netHigh: 335294 }), leader({ id: 'y', buyerNet: 90412, netLow: -247000, netHigh: 427000 })] })]), t);
