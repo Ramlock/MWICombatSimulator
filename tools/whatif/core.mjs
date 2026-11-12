@@ -19,7 +19,7 @@ import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
-import { tMult, dfOf, contention, anyHope, separated, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
+import { tMult, dfOf, contention, eliminate, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -59,7 +59,7 @@ export async function main(settings, seams) {
     const coverage = Number(arg('coverage', 0.99)); // the displayed range is a t range at this coverage
     const readStep = Number(arg('reading-step', 2)); // reading seeds added per leader per round (0 = none)
     const readMin = Number(arg('reading-min', 8)); // a leader with fewer reading seeds is shown as too few
-    const lockRule = String(arg('lock-rule', 'both')); // 'both': reading seeds pass the pick check AND no contender reaches the leader; 'reading': the pick check only
+    const lockRule = String(arg('lock-rule', 'both')); // 'both': the elimination rule's last candidate standing whose reading seeds pass the pick check; 'reading': the pick check only
     const maxRounds = Number(arg('max-rounds', 0)); // rounds per race (0 = no limit: the search ends by stop, --max-minutes, or when nothing can still help)
     const finK = Number(arg('confirm-seeds', 16)); // seeds of the pick check, the foods and drinks confirmation, the final confirmation (and a trigger refinement's judgement)
     const finH = Number(arg('confirm-hours', 300)); // their hours per seed: the old last stage's, so a pick is measured as it was before the rounds search (the race itself runs at unit-hours)
@@ -537,7 +537,7 @@ export async function main(settings, seams) {
     // `pauseMult` errors, a paused one resumes by itself), and the current leaders get `readStep` more READING seeds (sureSeeds: from
     // sureOffset + 1, the pick check's block, never used to choose): the figure shown as a result and its t range come only from those.
     // A round record goes out through outSink.round. The race ends with a lock (the leader's reading seeds pass the pick check's accept
-    // rule, and with lockRule 'both' no contender's upper bound reaches its lower bound), with nothing left that could help (no upper
+    // rule, and with lockRule 'both' it is its pool's last candidate standing: eliminate() in rounds.mjs), with no change left standing (no upper
     // bound above 0), or at --max-rounds; a stop or the time limit returns null. `byPlayer`: Stage F / D, one race per player inside
     // the same rounds, each player ends when his own leader locks. Returns { locked, leaders }: locked is a Map player -> candidate
     // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
@@ -658,10 +658,22 @@ export async function main(settings, seams) {
             candidates: { total, contending: total, paused: 0, refuted: 0, locked: 0 },
             pools: [...pools].sort(poolSorter(players)).map(([key, p]) => { const sortedBy = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, sortedBy, leaders: p.rows.slice(0, leadersK) }; }) };
     }
+    // The bar of each player: BAR_FRACTION of his own profit per day under the unchanged setup (Owner: "1 % of the player's profit per day as the
+    // bar for any change"), the mean over the base's seeds the round already has (cached runs, none of its own). His own profit is what the buyer's
+    // gain is measured in: the party's loot per user minus his own supplies; on another goal the party figure, as rankedOf() reads it. A player
+    // whose figure is zero or negative has no bar above 0 (eliminate() applies no cut to him).
+    const BAR_FRACTION = 0.01;
+    function barsOf(base, count) {
+        const seeds = pick(base, unitH, count), bars = new Map();
+        if (!seeds.length) return bars;
+        const cps = seeds.map((s) => cpOf(base, s, unitH)), n = setups0.length, mean = (f) => cps.reduce((a, cp) => a + f(cp), 0) / cps.length;
+        for (const p of players) bars.set(p, BAR_FRACTION * (goal === 'profit' ? mean((cp) => lootOf(cp) / n - suppliesOf(cp, p)) : mean(metric)));
+        return bars;
+    }
     async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd }) {
         const H = unitH, bk = keyOf(base), n = setups0.length;
         liveCands = cands; lastBase = base;
-        for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; }
+        for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; c.out = undefined; }
         const lockedBy = new Map(); // player (or '*') -> candidate
         stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
         const sinceStart = roundNo, hours0 = wallLog.reduce((a, r) => a + r.h, 0), runs0 = wallLog.length;
@@ -671,12 +683,12 @@ export async function main(settings, seams) {
         // may fall and rise). report() adds them to every progress message of the stage (stageCtx), whichever batch is running.
         const widthPrev = new Map(); // pool key -> the top leader's range width of the last round (item: range width and the one before)
         let stageCont = { contending: cands.length, paused: 0, acceptable: 0 };
-        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable,stageDropped: cands.filter((c) => c.refuted).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
+        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable,stageDropped: cands.filter((c) => c.refuted || c.out).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
         try {
         for (;;) {
             roundNo++;
             const stageRound = roundNo - sinceStart; // the round's number inside its own stage: a stage's first round is round 1 (roundNo runs across the stages)
-            const active = cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player)));
+            const active = cands.filter((c) => !c.refuted && !c.out && !(byPlayer && lockedBy.has(c.player)));
             const todo = active.filter((c) => c.status !== 'paused');
             for (const c of todo) c.k = c.k ? c.k + roundSeeds : firstK;
             const maxK = Math.max(...active.map((c) => c.k), 0);
@@ -707,8 +719,12 @@ export async function main(settings, seams) {
             if (first) look(true);
             if (!await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun })) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
-            const cont = contention(active, { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst, order: players });
-            const leaders = cont.pools.flatMap((p) => p.leaders);
+            // The elimination rule (rounds.mjs eliminate): per pool, the changes and the current setup; who is out leaves the race for good (c.out).
+            // The bar of each player is worked out from the base runs this round already has (no run of its own).
+            const standing = eliminate(cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player))), { goal, mult: pauseMult, byPlayer, bars: barsOf(base, maxK * baseMult), order: players });
+            const cont = contention(active.filter((c) => !c.out), { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst, order: players });
+            // A pool's last candidate standing is read even when it is not among the K best by rank (it is the one that can be locked).
+            const leaders = [...new Set([...cont.pools.flatMap((p) => p.leaders), ...standing.filter((p) => !p.noChange && p.changes.length === 1).map((p) => p.changes[0])])];
             if (readStep > 0 && leaders.length) {
                 const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
                 report({ stage, round: stageRound, phase: 'reading', candidatesLeft: leaders.length });
@@ -735,7 +751,7 @@ export async function main(settings, seams) {
             });
             const wallH = wallLog.reduce((a, r) => a + r.h, 0);
             const rec = { round: stageRound, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal, readingMin: readMin,
-                candidates: { total: cands.length, contending: cont.contending, paused: cont.paused, refuted: cands.filter((c) => c.refuted).length, locked: lockedBy.size },
+                candidates: { total: cands.length, contending: cont.contending, paused: cont.paused, refuted: cands.filter((c) => c.refuted).length, out: cands.filter((c) => c.out).length, locked: lockedBy.size },
                 // rangeWidth: the width (high minus low, per user per day) of the pool's top leader's range; rangeWidthPrev: the same pool's width one round
                 // earlier of this race (absent on the stage's first round, or when that round had no range). Computed here once; the panel only prints them.
                 pools: cont.pools.map((p) => {
@@ -750,13 +766,14 @@ export async function main(settings, seams) {
             onRound?.(rec, live);
             const top = rec.pools.map((p) => { const l = p.leaders[0]; return l ? `${p.key} ${l.desc.slice(0, 48)} ${l.tooFew ? `(${l.readingSeeds} reading seeds, too few)` : `${fmt(l.reading)} [${fmt(l.low)}, ${fmt(l.high)}] n=${l.readingSeeds}`}` : `${p.key} none`; }).join('; ');
             console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] round ${stageRound} ${stage}: ${cont.contending} in contention, ${cont.paused} paused, ${rec.candidates.refuted} refuted, ${rec.simHours} sim h; ${top}`);
-            // Locks: the leader's reading seeds pass the pick check (peek) and, with lockRule 'both', nobody in its pool reaches its lower bound.
-            const sepOpts = { goal, mult: pauseMult, byPlayer };
-            const ready = (c) => !c.timeOnly && peek.get(c).verdict === 'pass' && (lockRule === 'reading' || separated(c, active, sepOpts));
+            // Locks: a pool's last candidate standing (a change, with the current setup out) whose reading seeds pass the pick check (peek) is the pool's
+            // pick. lockRule 'reading': the best leader whose reading seeds pass the pick check, standing or not.
+            const sure = (c) => !c.timeOnly && peek.get(c)?.verdict === 'pass';
+            const lastStanding = (pools) => pools.filter((p) => !p.noChange && p.changes.length === 1).map((p) => p.changes[0]).filter(sure);
             if (byPlayer) {
-                for (const p of players) if (!lockedBy.has(p)) { const c = live.filter((x) => x.player === p).sort(rankFirst).find(ready); if (c) lockedBy.set(p, c); }
+                for (const p of players) if (!lockedBy.has(p)) { const c = (lockRule === 'reading' ? live.filter((x) => x.player === p && sure(x)) : lastStanding(standing.filter((q) => q.player === p))).sort(rankFirst)[0]; if (c) lockedBy.set(p, c); }
             } else {
-                const c = live.sort(rank).find(ready);
+                const c = (lockRule === 'reading' ? live.filter(sure) : lastStanding(standing)).sort(rank)[0];
                 if (c) lockedBy.set('*', c);
             }
             // What "Accept current winner" would take: in each pool that has no lock (a player's, or the stage's single one), its best live leader (the
@@ -765,7 +782,9 @@ export async function main(settings, seams) {
             const gainOf = (c) => { const r = read.get(c); return r ? (goal === 'profit' ? r.net : r.figure) : null; };
             const takes = acceptTakes(live, gainOf, { byPlayer, players, locked: lockedBy, cmp: byPlayer ? rankFirst : rank });
             stageCont.acceptable = takes.size;
-            const settled = byPlayer ? players.every((p) => lockedBy.has(p) || !anyHope(cands.filter((c) => c.player === p && !c.timeOnly), goal, pauseMult)) : lockedBy.size > 0 || !anyHope(cands.filter((c) => !c.timeOnly), goal, pauseMult);
+            // Nothing but the current setup can still stand in the pool(s): the pool(s) end as "no change" (a refuted last candidate leaves none).
+            const resolved = (pools) => pools.every((q) => q.changes.every((c) => c.refuted));
+            const settled = byPlayer ? players.every((p) => lockedBy.has(p) || resolved(standing.filter((q) => q.player === p))) : lockedBy.size > 0 || resolved(standing);
             // The window's two buttons (stop.done is 'accept' or 'skip'): the race ends here, after the round just published, with the leaders as
             // --max-rounds returns them. 'skip' leaves a pool that has no lock unchanged; 'accept' first locks the best positive leader of every pool
             // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).

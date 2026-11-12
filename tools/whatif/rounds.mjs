@@ -131,12 +131,45 @@ export function acceptTakes(live, gainOf, { byPlayer, players, locked, cmp }) {
     return takes;
 }
 
-// Whether any candidate could still be worth taking: an upper bound above 0.
-export const anyHope = (cands, goal, mult) => cands.some((c) => !c.refuted && bounds(c, goal, mult).hi > 0);
-
-// "No contender's upper bound reaches the leader's lower bound": every other candidate of the leader's pool (paused ones too) has an
-// upper bound below the leader's lower bound.
-export function separated(leader, cands, { goal, mult, byPlayer = false }) {
-    const key = poolKey(leader, byPlayer), lo = bounds(leader, goal, mult).lo;
-    return cands.every((c) => c === leader || c.refuted || poolKey(c, byPlayer) !== key || bounds(c, goal, mult).hi < lo);
+// ---- Elimination (the owner, 2026-11-12) ----
+// "A candidate stops being a valid candidate when its high end is below another candidate's low end. A leader is locked by being the last
+// candidate standing." Per pool, the candidates are the changes plus the CURRENT setup, one candidate like the others: a point at gain 0 (the
+// race's gains are paired against the unchanged setup, so its range is [0, 0]). A change is out when
+//  - its upper end (bounds(), the pool's own unit and `mult` errors) is below another candidate's lower end (paused ones and the current setup
+//    included; a candidate cut by the bar below does not count as another candidate: it cannot win, so it cannot beat anyone), or
+//  - its upper end is below the bar of its player: 1% of his own profit per day under the unchanged setup (`bars`: player -> bar, in the unit of
+//    rankedOf(); a player without a bar above 0 has no such cut). The current setup is exempt: a change must still beat it.
+// `out` is kept on the candidate ('beaten' | 'bar'), who never returns inside the race (the caller clears it when a new race starts); the
+// current setup is worked out again every round. A refuted candidate (it failed the pick check) and a time-only lever (never picked) take no
+// part. Returns one entry per pool, in the pool order: { key, player, changes: the changes still standing, noChange: the current setup is
+// standing, size }. A pool with one change and no current setup has its last candidate standing; one with the current setup alone ends as
+// "no change".
+export const CURRENT = Object.freeze({ current: true });
+const spanOf = (c, goal, mult) => (c === CURRENT ? { lo: 0, hi: 0 } : bounds(c, goal, mult));
+// The upper end in the unit of rankedOf() (not per coin); a monotone lever is floored at 0 as in bounds().
+const rawHi = (c, goal, mult) => { const r = rankedOf(c.est, goal); if (!r) return Infinity; const hi = r.q + mult * r.se; return c.monotone ? Math.max(hi, 0) : hi; };
+function cutOf(c, { goal, mult, bars }) {
+    const hi = rawHi(c, goal, mult);
+    if (!Number.isFinite(hi)) return null; // no usable estimate yet: unbounded, never cut
+    const bar = bars.get(c.player);
+    if (bar > 0 && hi < bar) return 'bar';
+    return null;
+}
+export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(), order = [] }) {
+    const groups = new Map();
+    for (const c of cands) {
+        if (c.refuted || c.timeOnly) continue;
+        const key = poolKey(c, byPlayer);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(c);
+    }
+    const pools = [];
+    for (const [key, list] of [...groups].sort(poolSorter(order))) {
+        for (const c of list) if (!c.out) c.out = cutOf(c, { goal, mult, bars }) ?? undefined;
+        const standing = [CURRENT, ...list.filter((c) => c.out !== 'bar')], span = new Map(standing.map((c) => [c, spanOf(c, goal, mult)]));
+        const beatenBy = (c) => standing.some((e) => e !== c && span.get(e).lo > spanOf(c, goal, mult).hi);
+        for (const c of list) if (!c.out && beatenBy(c)) c.out = 'beaten';
+        pools.push({ key, player: byPlayer ? list[0].player : null, changes: list.filter((c) => !c.out), noChange: !beatenBy(CURRENT), size: list.length });
+    }
+    return pools;
 }

@@ -73,13 +73,40 @@ const goal = 'profit';
     check(c.pools.length === 2 && set[2].status === 'contending' && set[1].status === 'paused', 'byPlayer: B\'s only candidate leads B\'s pool and is not paused by A\'s leader');
 }
 
-// Hope and separation (the lock rule).
+// The elimination rule (eliminate): the changes plus the current setup (a point at 0) per pool; out by another's lower end, out by the player's bar.
 {
-    const set = [cand('l', 100, 5), cand('m', 60, 5), cand('n', 85, 3)];
-    check(R.separated(set[0], set, { goal, mult: 3 }) === false, 'separated: a contender whose upper bound (94) reaches the leader\'s lower bound (85) blocks the lock');
-    check(R.separated(set[0], [set[0], set[1]], { goal, mult: 3 }) === true, 'separated: when every other upper bound (75) is below the leader\'s lower bound (85) the lock is allowed');
-    check(R.separated(set[0], [set[0], { ...set[2], refuted: true }], { goal, mult: 3 }) === true, 'separated: a refuted candidate does not count');
-    check(R.anyHope([cand('z', -50, 5)], goal, 3) === false && R.anyHope([cand('z', -50, 5), cand('y', -10, 5)], goal, 3) === true, 'anyHope: false when every upper bound is at or below 0');
+    const E = (cands, bars = new Map(), extra = {}) => R.eliminate(cands, { goal, mult: 3, bars, ...extra });
+    const ids = (p) => p.changes.map((c) => c.id).join();
+    // Out by another's lower end: l is 100 +- 15 (85..115), m 60 +- 15 (45..75): m is out; n 85 +- 9 (76..94) has an upper end (94) above 85: stays.
+    let set = [cand('l', 100, 5), cand('m', 60, 5), cand('n', 85, 3)], r = E(set);
+    check(set[1].out === 'beaten' && !set[0].out && !set[2].out && ids(r[0]) === 'l,n' && r[0].noChange === false, 'eliminate: a change whose upper end is below another\'s lower end is out; one whose upper end reaches it stays; the current setup is out too', JSON.stringify(r));
+    // The last candidate standing: n is now beaten by l when its range falls (the upper end 85 + 3 * 1 = 88 stays above l's lower end 85; at 80 it is out).
+    set = [cand('l', 100, 5), cand('n', 77, 1)]; r = E(set);
+    check(set[1].out === 'beaten' && ids(r[0]) === 'l' && r[0].noChange === false, 'eliminate: one change left and the current setup out is the last candidate standing');
+    // A refuted candidate and a time-only lever take no part.
+    set = [cand('l', 100, 5), cand('m', 60, 5, 0, { refuted: true }), cand('t', 500, 1, 0, { timeOnly: true })]; r = E(set);
+    check(!set[0].out && ids(r[0]) === 'l' && set[2].out === undefined, 'eliminate: a refuted or time-only candidate neither beats nor is counted');
+    // The current setup stays in against a change at -5%..+10% (a range that reaches 0 or below); the change stays in too.
+    set = [cand('w', 2.5, 2.5)]; r = E(set);
+    check(r[0].noChange === true && ids(r[0]) === 'w', 'eliminate: a change whose range straddles 0 (-5..+10) and the current setup both stay', JSON.stringify(r));
+    // Every change out: the current setup alone ends the pool as no change.
+    set = [cand('a1', -50, 5), cand('a2', -30, 5)]; r = E(set);
+    check(ids(r[0]) === '' && r[0].noChange === true, 'eliminate: a change whose upper end is below 0 is out (the current setup beats it): all out gives no change');
+    // The bar: 1% of the player's profit per day; a change whose upper end is below it is out, the current setup is exempt, the edge stays.
+    const bars = new Map([['A', 10]]);
+    set = [cand('b1', 5, 1), cand('b2', 6.5, 1), cand('b3', 7, 1)]; r = E(set, bars);
+    check(set[0].out === 'bar' && set[1].out === 'bar' && !set[2].out, 'eliminate: out by the bar when the upper end (b1 8, b2 9.5) is below 10; b3 (upper end 10, exactly the bar) stays', set.map((c) => c.out).join());
+    set = [cand('b1', 5, 1), cand('b2', 6.5, 1)]; r = E(set, bars);
+    check(r[0].noChange === true && ids(r[0]) === '', 'eliminate: changes cut by the bar do not beat the current setup (they cannot win, so they cannot beat anyone): no change');
+    // A player without a bar above 0 has no such cut.
+    set = [cand('c1', 1, 0.1)]; E(set, new Map([['A', 0]]));
+    check(!set[0].out, 'eliminate: a bar of 0 or less cuts nothing');
+    // byPlayer: a pool per player, each with its own current setup and bar.
+    set = [cand('p1', 50, 1, 0, { player: 'A' }), cand('q1', 4, 1, 0, { player: 'B' })]; r = R.eliminate(set, { goal, mult: 3, byPlayer: true, bars: new Map([['A', 10], ['B', 10]]), order: ['A', 'B'] });
+    check(r.length === 2 && r[0].player === 'A' && ids(r[0]) === 'p1' && r[0].noChange === false && ids(r[1]) === '' && r[1].noChange === true && set[1].out === 'bar', 'eliminate: byPlayer gives each player his own pool, bar and current setup', JSON.stringify(r.map((p) => [p.key, ids(p), p.noChange])));
+    // out is kept: a candidate out stays out in a later call.
+    set = [cand('l', 100, 5), cand('m', 60, 5)]; E(set); set[0].est = { ...set[0].est, net: 0, gain: 0 }; E(set);
+    check(set[1].out === 'beaten', 'eliminate: a candidate that is out never returns inside the race');
 }
 
 console.log(fails ? `${fails} FAILED` : 'all passed');
