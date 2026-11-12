@@ -32,7 +32,7 @@ import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
 // A count with its noun, singular for 1 ("1 run", "2 runs").
 const nOf = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 import { refineTrigger } from './refine.mjs';
-import { lootOf, suppliesOf, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
+import { lootOf, suppliesOf, barsFrom, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 import { makeArg, list } from './options.mjs';
 import itemDetailMap from '../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
 import abilityDetailMap from '../../src/combatsimulator/data/abilityDetailMap.json' with { type: 'json' };
@@ -258,16 +258,21 @@ export async function main(settings, seams) {
     // Runs the check (sure.mjs: 16 seeds per arm, more while the pick is between z/2 and z errors, up to 64). Returns { passed, fresh },
     // or null when the time limit or a stop ended the runs.
     // `who` ({ index, of }, foods and drinks only): which player's pick this is of how many are checked in the stage; the row of the stage shows "player N of M".
+    // The runs of a check at k seeds per arm: the start's arm and the pick's arm, same seeds.
+    const sureReqs = (baseOps, c, k, h) => sureSeeds(k).flatMap((seed) => [{ ops: baseOps, seed, h, tag: 'sure' }, { ops: [...baseOps, ...c.ops], seed, h, tag: 'sure' }]);
+    // A run is planned once; a cached one is done at once.
+    function planSure(reqs) {
+        for (const r of reqs) {
+            const id = keyOf(r.ops) + '#' + r.seed;
+            if (sure.counted.has(id)) continue;
+            sure.counted.add(id); sure.planned++;
+            if (cache.get(id)?.byHours[r.h]) sure.done++;
+        }
+    }
     async function confirmPick(baseOps, c, fin, label, who) {
         return checkPick(async (k) => {
-            const seeds = sureSeeds(k), vOps = [...baseOps, ...c.ops];
-            const reqs = seeds.flatMap((seed) => [{ ops: baseOps, seed, h: fin.h, tag: 'sure' }, { ops: vOps, seed, h: fin.h, tag: 'sure' }]);
-            for (const r of reqs) { // a run is planned once; a cached one is done at once
-                const id = keyOf(r.ops) + '#' + r.seed;
-                if (sure.counted.has(id)) continue;
-                sure.counted.add(id); sure.planned++;
-                if (cache.get(id)?.byHours[r.h]) sure.done++;
-            }
+            const reqs = sureReqs(baseOps, c, k, fin.h);
+            planSure(reqs);
             report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who ?? null });
             if (!await ensure(reqs)) return null;
             const fresh = freshRead(baseOps, c, k, fin.h);
@@ -665,11 +670,7 @@ export async function main(settings, seams) {
     // whose figure is zero or negative has no bar above 0 (eliminate() applies no cut to him).
     const BAR_FRACTION = 0.01;
     function barsOf(base, count) {
-        const seeds = pick(base, unitH, count), bars = new Map();
-        if (!seeds.length) return bars;
-        const cps = seeds.map((s) => cpOf(base, s, unitH)), n = setups0.length, mean = (f) => cps.reduce((a, cp) => a + f(cp), 0) / cps.length;
-        for (const p of players) bars.set(p, BAR_FRACTION * (goal === 'profit' ? mean((cp) => lootOf(cp) / n - suppliesOf(cp, p)) : mean(metric)));
-        return bars;
+        return barsFrom(pick(base, unitH, count).map((s) => cpOf(base, s, unitH)), { players, n: setups0.length, goal, metric, fraction: BAR_FRACTION });
     }
     async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd }) {
         const H = unitH, bk = keyOf(base), n = setups0.length;
@@ -885,6 +886,9 @@ export async function main(settings, seams) {
                 // in the cache. None locked leaves him unchanged (confirmFillings in sure.mjs). baseOps then holds every confirmed filling.
                 const fpool = [...res.locked.values()];
                 const checkers = players.filter((p) => fpool.some((c) => c.player === p)); // the players with a pick to check, in party order (confirmFillings checks them in this order)
+                // The first block of every player's check is planned before the first one starts, so the row's total is the whole first-block total from the start (the stage's
+                // start arm is shared); only an extension (a pick between z/2 and z errors) or a next best after a failure adds runs, and those are not known before the readings.
+                for (const p of checkers) planSure(sureReqs(baseOps, fpool.find((c) => c.player === p), SURE_BLOCK, fin.h));
                 const got = await confirmFillings(players, fpool, baseOps, (ops, c) => confirmPick(ops, c, fin, kind, { index: checkers.indexOf(c.player) + 1, of: checkers.length }), ({ cand, fresh }) => {
                     result.notConfirmed.push({ ...row(cand), step: null, kind: flag, fresh });
                     console.log(`${kind}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);

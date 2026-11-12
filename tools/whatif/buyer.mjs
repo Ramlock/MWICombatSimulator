@@ -4,6 +4,17 @@
 export const lootOf = (cp) => cp.party.profitAfterTaxPerDay + cp.party.consumablesPerDay;
 export const suppliesOf = (cp, name) => cp.players?.[name]?.consumablesPerDay ?? 0;
 
+// The elimination bar of each player (rounds.mjs eliminate): `fraction` of his own figure under the unchanged setup, the mean over the base's checkpoints `cps`
+// (one per seed), in the unit the buyer's gain is measured in: on the profit goal the party's loot per user minus his own supplies, per day; on another goal
+// the party figure `metric` reads. `n` = the party's size. Pure, so core.mjs and a script reading saved runs use the same function.
+export function barsFrom(cps, { players, n, goal, metric, fraction }) {
+    const bars = new Map();
+    if (!cps.length) return bars;
+    const mean = (f) => cps.reduce((a, cp) => a + f(cp), 0) / cps.length;
+    for (const p of players) bars.set(p, fraction * (goal === 'profit' ? mean((cp) => lootOf(cp) / n - suppliesOf(cp, p)) : mean(metric)));
+    return bars;
+}
+
 // The change (variant minus base) and its error, by the search's error rule on one series: paired = the mean of the
 // per-seed differences and sd(differences) / sqrt(n); unpaired = the gain and sqrt(sv^2/kv + sb^2/kb) with `bs` (all the base's
 // seeds) feeding the error. The unpaired gain is mean(variant) - mean(base on the variant's own seeds): `bsSame`, the base's values

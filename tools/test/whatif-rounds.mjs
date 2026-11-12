@@ -120,6 +120,18 @@ const goal = 'profit';
     check(set[1].out === 'beaten', 'eliminate: a candidate that is out never returns inside the race');
 }
 
+// The bar of each player (buyer.mjs barsFrom, the function core.mjs and a script on saved runs both use): 1% of his own loot-per-user-minus-supplies mean.
+{
+    const B = await import(pathToFileURL(path.join(root, 'tools/whatif/buyer.mjs')).href);
+    const cp = (profit, cons, a, b) => ({ party: { profitAfterTaxPerDay: profit, consumablesPerDay: cons }, players: { A: { consumablesPerDay: a }, B: { consumablesPerDay: b } } });
+    const cps = [cp(900, 100, 10, 30), cp(1100, 100, 30, 10)], bars = B.barsFrom(cps, { players: ['A', 'B'], n: 2, goal: 'profit', metric: null, fraction: 0.01 });
+    // loot 1000 and 1200, mean 1100, per user 550; A's supplies mean 20: 530; B's 20: 530; 1% = 5.3
+    check(near(bars.get('A'), 5.3, 1e-9) && near(bars.get('B'), 5.3, 1e-9), 'barsFrom: 1% of the loot per user minus his own supplies, the mean over the checkpoints', [...bars].join(' '));
+    const bx = B.barsFrom([{ party: { expPerHour: 200 } }, { party: { expPerHour: 400 } }], { players: ['A'], n: 2, goal: 'exp', metric: (c) => c.party.expPerHour, fraction: 0.01 });
+    check(near(bx.get('A'), 3, 1e-9), 'barsFrom: on another goal the party figure');
+    check(B.barsFrom([], { players: ['A'], n: 2, goal: 'profit', fraction: 0.01 }).size === 0, 'barsFrom: no checkpoints, no bars');
+}
+
 console.log(fails ? `${fails} FAILED` : 'all passed');
 // The pools follow the party's own order, not A to Z: party Zed, Amy, Bob; within a player the free pool before the paid one.
 {
