@@ -82,18 +82,20 @@ check('search: foods and drinks decided first, per player: Alice and Bob have a 
 check('search: both stages ended by their own lock, nobody pressed a button', !res.endedByUser.foods && !res.endedByUser.drinks);
 check('search: the pick check names the player among those checked (player 1 of 2, player 2 of 2) on the foods and drinks rows', [...run.seen.checkingWho].includes('foods 1 of 2') && [...run.seen.checkingWho].includes('foods 2 of 2') && [...run.seen.checkingWho].includes('drinks 2 of 2'), JSON.stringify([...run.seen.checkingWho]));
 check('search: the projection ("about N more rounds to separate") had a number while two or three changes stood', [...run.seen.separate].some((x) => Number.isFinite(x) && x >= 1), JSON.stringify([...run.seen.separate]));
-const run2 = await runSynthetic(scenario);
+const { createCountingPool } = await imp('tools/whatif/node-shell.mjs');
+let coldCounter = null;
+const run2 = await runSynthetic(scenario, {}, { poolWrap: (p) => (coldCounter = createCountingPool(p, () => {}, 50)) }); // the second full search: the determinism check and the replay counter's cold search in one
 check('search: seeded and deterministic (a second run takes the same steps, picks and number of runs)', JSON.stringify(run2.result.steps.map((s) => s.id ?? s.desc)) === JSON.stringify(steps.map((s) => s.id ?? s.desc)) && run2.runs === run.runs && JSON.stringify(run2.result.best) === JSON.stringify(res.best));
 
 // ---- Replay counter (node-shell.mjs createCountingPool): the runs that reach the pool are the store's misses ----
 {
-    const { createCountingPool } = await imp('tools/whatif/node-shell.mjs');
+
     const { walk, gauss } = await imp('tools/whatif/synthetic.mjs');
     check('replay counter: a run readings at different hours agree (one draw per run, shrunk by sqrt(50/h)), so a run recorded at one length answers a reading of another length', Math.abs(walk('t', 200) * 2 - walk('t', 50)) < 1e-9 && walk('t', 50) === gauss('t'));
     let counter = null;
-    const cold = await runSynthetic(scenario, {}, { poolWrap: (p) => (counter = createCountingPool(p, () => {}, 50)) });
+    const cold = run2; counter = coldCounter;
     check('replay counter: on an empty store every run is a real simulation, and the counter equals the runs that reached the pool', counter.count() === cold.runs && cold.runs > 0 && Object.values(counter.byTag()).reduce((a, b) => a + b, 0) === cold.runs, `${counter.count()} vs ${cold.runs}`);
-    const warm = await runSynthetic(scenario, {}, { records: cold.records, poolWrap: (p) => (counter = createCountingPool(p, () => {}, 50)) });
+    const warm = await runSynthetic(scenario, { 'max-steps': 0 }, { records: cold.records, onRound: (rec, stop) => { if (rec.stage === 'foods' && rec.round === 3) stop.done = 'skip'; }, poolWrap: (p) => (counter = createCountingPool(p, () => {}, 50)) }); // a short search (the foods stage ended by Skip after round 3) on the primed store
     check('replay counter: a search on a store holding the first search runs counts exactly the runs that reached the pool (the core first look reads every cached seed, so it takes its own path and is not a 0-run replay)', counter.count() === warm.runs && warm.records.length >= cold.records.length, `${counter.count()} ${warm.runs}`);
     const lines = []; const c3 = createCountingPool({ run: async () => ({}), kill() {} }, (l) => lines.push(l), 2);
     for (let i = 0; i < 5; i++) await c3.run({ tag: 'x' });
@@ -108,7 +110,7 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
 
 // ---- The two buttons ----
 {
-    const press = (stage, round, mode) => (rec, stop) => { if (rec.stage === stage && rec.round === round) stop.done = mode; };
+    const press = (stage, round, mode) => { let pressed = false; return (rec, stop) => { if (rec.stage === stage && rec.round === round) { stop.done = mode; pressed = true; } else if (pressed && rec.stage === 'screen') stop.requested = true; }; }; // after the button, the search is stopped when the Screen starts (the Screen of a no-step search has no lock to end it by)
     const skip = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 3, 'skip') });
     check('button: Skip on the foods stage ends it after that round with nothing taken ("ended by you after round 3")', skip.result.endedByUser.foods === 3 && Object.values(skip.result.best.foods).every((e) => e.unchanged) && skip.rounds.filter((r) => r.stage === 'foods').length === 3);
     const accept = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('drinks', 8, 'accept') });
