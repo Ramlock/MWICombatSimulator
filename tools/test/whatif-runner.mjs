@@ -348,7 +348,8 @@ if (res) {
         check(rl.every((r) => r.pools.every((p) => p.leaders.every((l) => l.status !== 'zero' || (Number.isFinite(l.netLow) ? l.netLow <= 0 && l.netHigh >= 0 : l.low <= 0 && l.high >= 0)))), 'rounds.jsonl: a leader is "zero" only when its range reaches 0');
         // round 1 asks for the runs seed by seed (seed 1 of every candidate, then seed 2, ...): in the order they finished (2 lanes), no run finishes
         // 4 places before one of a lower seed.
-        const vr = lines.filter((l) => l.tag === 'variant').slice(0, 20); // the first race's first 5 sweeps of 4 candidates
+        // (the first 4 sweeps of 4 candidates: with the elimination rule the first race can lock in its 5th sweep, and the next race's seed 1 then follows)
+        const vr = lines.filter((l) => l.tag === 'variant').slice(0, 16);
         check(vr.length >= 8 && vr.every((l, i) => vr.slice(0, Math.max(0, i - 3)).every((e) => e.seed <= l.seed)), 'round 1: the runs are asked for seed-major (no variant run finishes after one of a higher seed that came 4 or more places earlier): ' + vr.map((l) => l.seed).join());
         const picks = fin.trace.map((p) => p?.parts?.find((r) => r.kind === 'picks')).filter(Boolean);
         check(picks.length > 0 && picks.every((r, i) => i === 0 || (r.runsPlanned >= picks[i - 1].runsPlanned)) && picks.every((r) => r.runsDone <= r.runsPlanned) && (res.steps.length === 0 || fin.r.progress.parts.find((r) => r.kind === 'picks').state === 'done'), 'pick check: the progress has the picks row, planned never drops, done never exceeds it, done at the end');

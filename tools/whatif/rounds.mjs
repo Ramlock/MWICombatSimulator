@@ -123,10 +123,11 @@ export function contention(cands, { K, mult, goal, byPlayer = false, rank, order
 }
 
 // What the window's "Accept current winner" would take: in each pool that has no lock yet (a player's, or the stage's single one '*'), its best live
-// leader (by `cmp`, the order the lock uses) whose mean net gain (`gainOf`) is above 0, never a time-only lever. A Map pool key -> candidate. The
-// mean alone decides here; the pick check that follows every stage pick is what stops a clear loss (the caller does not lock without it).
+// leader (by `cmp`, the order the lock uses) whose mean net gain (`gainOf`) is above 0, never a time-only lever and never a candidate the elimination
+// rule put out (`out`: beaten, under the bar or over the payback limit). A Map pool key -> candidate. The mean alone decides here; the pick check
+// that follows every stage pick is what stops a clear loss (the caller does not lock without it).
 export function acceptTakes(live, gainOf, { byPlayer, players, locked, cmp }) {
-    const best = (list) => list.filter((c) => !c.timeOnly && gainOf(c) > 0).sort(cmp)[0] ?? null;
+    const best = (list) => list.filter((c) => !c.timeOnly && !c.out && gainOf(c) > 0).sort(cmp)[0] ?? null;
     const takes = new Map();
     if (byPlayer) { for (const p of players) if (!locked.has(p)) { const c = best(live.filter((x) => x.player === p)); if (c) takes.set(p, c); } }
     else if (!locked.has('*')) { const c = best(live); if (c) takes.set('*', c); }

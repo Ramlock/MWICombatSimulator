@@ -148,6 +148,11 @@ console.log(fails ? `${fails} FAILED` : 'all passed');
     check(R.acceptTakes(live, gainOf, { byPlayer: false, players: [], locked: new Map([['*', live[0]]]), cmp }).size === 0, 'accept: a stage whose single pool locked takes nothing');
     check(R.acceptTakes([L('x', 'A', -1), L('y', 'A', 0)], gainOf, { byPlayer: false, players: [], locked: new Map(), cmp }).size === 0, 'accept: no leader with a gain above 0 (no change leads): nothing is taken, so the window shows only Skip');
     check(R.acceptTakes([L('x', 'A', null), L('y', 'A', NaN)], gainOf, { byPlayer: true, players: ['A'], locked: new Map(), cmp }).size === 0, 'accept: a leader with no reading yet (no gain figure) is never taken');
+    // Accept with the elimination rule: a candidate that is out is never taken, even with the better mean; the one still in is.
+    const withOut = [L('o1', 'A', 9, { out: 'bar' }), L('o2', 'A', 4)];
+    const t4 = R.acceptTakes(withOut, gainOf, { byPlayer: true, players: ['A'], locked: new Map(), cmp });
+    check(t4.size === 1 && t4.get('A').id === 'o2', 'accept: of two positive leaders the one that is out (higher mean) is skipped and the one still in is taken');
+    check(R.acceptTakes([L('o3', 'A', 9, { out: 'payback' }), L('o4', 'A', 5, { out: 'beaten' })], gainOf, { byPlayer: true, players: ['A'], locked: new Map(), cmp }).size === 0, 'accept: every positive leader out (bar, payback, beaten): nothing is taken');
     // The taken leader goes through the same pick check as any lock: one that fails it is not chosen.
     const z = 2.5;
     const fresh = (accepted, v, se) => ({ accepted, buyerNet: v, buyerNetSe: se, gain: v, se });
