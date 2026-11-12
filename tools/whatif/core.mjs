@@ -579,7 +579,9 @@ export async function main(settings, seams) {
         if (!ops.length) return (c.change = null);
         const kind = ops[0].op === 'food' ? 'foods' : 'drinks', setup = applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === c.player), now = applyOps(setups0, base).find((s) => s.name === c.player);
         // A slot shows its trigger only when the candidate changes it from the player's current one in that slot (the setup the stage measures on top of).
-        return (c.change = { kind, slots: ops.map((o) => { const t = kind === 'foods' && trig.some((x) => x.hrid === o.item) ? triggerText(effectiveTriggers(setup, o.item)) : null; return { index: o.index, item: o.item, trigger: t !== null && t !== slotTrigger(now, o.index, o.item) ? t : null }; }) });
+        // `current`: the item the player has in each slot now (null for an empty one): the panel greys it in a slot the candidate leaves alone.
+        const cur = (now?.[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x) => x?.itemHrid || null);
+        return (c.change = { kind, current: cur, slots: ops.map((o) => { const t = kind === 'foods' && trig.some((x) => x.hrid === o.item) ? triggerText(effectiveTriggers(setup, o.item)) : null; return { index: o.index, item: o.item, trigger: t !== null && t !== slotTrigger(now, o.index, o.item) ? t : null }; }) });
     }
     // A range that reaches 0 (the buyer's gain's on the profit goal, the figure's otherwise) is not a result yet: status 'zero', never 'confirmed'.
     const zeroed = (r) => { const lo = goal === 'profit' ? r.netLow : r.low, hi = goal === 'profit' ? r.netHigh : r.high; return r.k >= 2 && Number.isFinite(lo) && Number.isFinite(hi) && lo <= 0 && hi >= 0; };
@@ -745,8 +747,15 @@ export async function main(settings, seams) {
     // when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
     // The trigger text of a food only when it differs from the player's own on the setup he came with (the default or his kept one is not repeated).
     const shownTrigger = (setup, i, item) => { const t = triggerText(effectiveTriggers(setup, item)), orig = setups0.find((x) => x.name === setup.name); return t !== null && (!orig || t !== slotTrigger(orig, i, item)) ? t : null; };
-    const bestItems = (kind, setup) => (setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || []).map((x, i) => (x?.itemHrid ? { item: x.itemHrid, i } : null)).filter(Boolean)
-        .map(({ item, i }) => (kind === 'foods' ? { item, trigger: shownTrigger(setup, i, item) } : { item }));
+    // Each item carries its slot and `same: true` when it is the item (and, for a food, the trigger) the player has in that slot now: the panel
+    // greys it, since the slot does not change. `emptySlots`: the slots that hold nothing now and after (the panel says "empty" there).
+    const setupSlots = (kind, setup) => setup[kind === 'foods' ? 'food' : 'drinks']?.['/action_types/combat'] || [];
+    const bestItems = (kind, setup) => {
+        const orig = setups0.find((x) => x.name === setup.name);
+        return setupSlots(kind, setup).map((x, i) => (x?.itemHrid ? { item: x.itemHrid, i } : null)).filter(Boolean)
+            .map(({ item, i }) => { const trigger = kind === 'foods' ? shownTrigger(setup, i, item) : null; return { item, ...(kind === 'foods' ? { trigger } : {}), slot: i, ...(orig && setupSlots(kind, orig)[i]?.itemHrid === item && trigger === null ? { same: true } : {}) }; });
+    };
+    const emptySlots = (kind, setup) => setupSlots(kind, setup).map((x, i) => (x?.itemHrid ? -1 : i)).filter((i) => i >= 0);
     // The same entry while the stage still runs (soFar: true): each player's leader as the lock would take it (the best ranked of his live
     // leaders), with the figure and the range of its row in the round record, the data the rounds table shows (no second computation);
     // a leader with too few reading seeds has its items and tooFew: true. The stage's end replaces it with bestEntry's.
@@ -755,16 +764,18 @@ export async function main(settings, seams) {
         for (const p of players) {
             const c = live.filter((x) => x.player === p).sort(rankFirst)[0], r = c && rowOf.get(c.id);
             if (!r) continue;
-            const items = bestItems(kind, applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === p));
-            out[p] = { soFar: true, items, readingSeeds: r.readingSeeds, ...(r.tooFew ? { tooFew: true } : { gainPerUser: r.reading, low: r.low, high: r.high, ...(r.buyerNet === null ? {} : { buyerNet: r.buyerNet, netLow: r.netLow, netHigh: r.netHigh }) }) };
+            const sp = applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === p), items = bestItems(kind, sp);
+            // `notFirst`: the pick (by the search's own runs) is not the first row of its pool's table (ordered by the fresh runs); the panel says so.
+            const pool = rec.pools.find((q) => q.leaders.some((x) => x.id === r.id)), first = pool?.leaders.find((x) => x.status !== 'refuted');
+            out[p] = { soFar: true, ...(first && first.id !== r.id ? { notFirst: true } : {}), items, empty: emptySlots(kind, sp), slots: setupSlots(kind, sp).length, readingSeeds: r.readingSeeds, ...(r.tooFew ? { tooFew: true } : { gainPerUser: r.reading, low: r.low, high: r.high, ...(r.buyerNet === null ? {} : { buyerNet: r.buyerNet, netLow: r.netLow, netHigh: r.netHigh }) }) };
         }
         return out;
     }
     function bestEntry(kind, setup, chosen, fresh) {
-        const items = bestItems(kind, setup);
-        if (!chosen) return { items, unchanged: true };
+        const items = bestItems(kind, setup), empty = emptySlots(kind, setup), slots = setupSlots(kind, setup).length;
+        if (!chosen) return { items, empty, slots, unchanged: true };
         const e = chosen.est, n = setups0.length;
-        return { items, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), ...(e.own ? { ownSuppliesPerDay: e.own.gain } : {}), stage: e.stage, ...(fresh ? { fresh } : {}) };
+        return { items, empty, slots, gain: e.gain, se: e.se, gainPerUser: e.gain / n, sePerUser: e.se / n, ...(e.net !== undefined ? { buyerNet: e.net, buyerNetSe: e.netSe } : {}), ...(e.own ? { ownSuppliesPerDay: e.own.gain } : {}), stage: e.stage, ...(fresh ? { fresh } : {}) };
     }
 
     // ---- Search ----

@@ -399,6 +399,8 @@ check(pf.state === 'done' && pf.result.options.pricesSource === 'committed' && p
     const b = fr.best, be = (kind) => b[kind].Alpha;
     check(b && Object.keys(b.foods).join() === 'Alpha' && Object.keys(b.drinks).join() === 'Alpha', 'result.best: foods and drinks, one entry per searched player');
     check(be('foods').items.length === 1 && 'trigger' in be('foods').items[0] && (be('foods').items[0].trigger === null || typeof be('foods').items[0].trigger === 'string') && be('drinks').items.length === 1 && !('trigger' in be('drinks').items[0]), 'result.best: items in slot order, a food with its trigger text (or null), a drink without a trigger');
+    check(['foods', 'drinks'].every((k) => be(k).items.every((x) => Number.isInteger(x.slot) && (x.same === undefined || x.same === true)) && Array.isArray(be(k).empty) && Number.isInteger(be(k).slots) && be(k).slots >= be(k).items.length + be(k).empty.length), 'result.best: each item carries its slot (and same: true when the player has it there now), the entry the empty slots and the slot count');
+    check(['foods', 'drinks'].every((k) => !be(k).unchanged || be(k).items.every((x) => x.same === true)), 'result.best: a player left unchanged has every item flagged same');
     for (const kind of ['foods', 'drinks']) {
         const e = be(kind);
         check(e.unchanged ? !('gain' in e) : [e.gain, e.se, e.buyerNet, e.buyerNetSe].every(Number.isFinite), 'result.best.' + kind + ': an unchanged player has no figures; a changed one has gain, se, buyerNet, buyerNetSe');

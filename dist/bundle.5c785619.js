@@ -3487,7 +3487,7 @@ function renderParts(status, t) {
         // the candidates dropped so far. A stage that has ended shows done as any part does.
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
         const phase = r.phase === 'reading' ? t('progress.phaseReading') : t('progress.phaseSearch');
-        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { round: num(r.round), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
+        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { round: t(r.state === 'running' ? 'rounds.roundRunning' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
             : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
         const counters = rounded ? fill(t, 'progress.stageCounters', { runs: num(r.runs), hours: num(r.simHours), dropped: num(r.dropped) }) : '';
         let text = '', cls;
@@ -3527,7 +3527,8 @@ function renderRounds(round, t, names = null) {
     const prov = round.provisional === true;
     const head = [
         `<b>${esc(t('rounds.title'))}</b>`,
-        `${esc(t('rounds.round'))} <span data-rounds="round">${num(round.round)}</span>`,
+        // A real round record is a finished round; the first look (provisional) is the round still being run.
+        t(prov ? 'rounds.roundRunning' : 'rounds.roundFinished', { n: `<span data-rounds="round">${num(round.round)}</span>` }),
         `${esc(t('rounds.simHours'))} ${num(round.simHours)}`,
         ...(prov ? [`<span data-rounds="firstLook">${esc(t('rounds.firstLook', { have: round.firstLook?.have ?? 0, total: round.firstLook?.total ?? 0 }))}</span>`] : [
             `${esc(t('rounds.contending'))} <span data-rounds="contending">${num(c.contending)}</span>`,
@@ -3542,16 +3543,20 @@ function renderRounds(round, t, names = null) {
         // The top leader's range width and the one a round earlier (the core's fields; a first round, or one with no range before, has no "was").
         const width = Number.isFinite(p.rangeWidth) ? ' · ' + (Number.isFinite(p.rangeWidthPrev) ? t('rounds.rangeWidthWas', { now: num(p.rangeWidth), before: num(p.rangeWidthPrev) }) : t('rounds.rangeWidth', { now: num(p.rangeWidth) })) : '';
         const counts = prov ? t('rounds.poolSize', { n: p.size }) : t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
-        const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: t('rounds.col.' + p.sortedBy) }) : '';
+        const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: t(p.sortedBy === 'reading' ? 'col.partyGain' : p.sortedBy === 'buyerNet' ? 'col.buyerGain' : 'rounds.col.' + p.sortedBy) }) : '';
         const title = esc((owner ? who(owner) + ' · ' : '') + t('rounds.pool.' + kind) + ' · ' + counts) + width + esc(order);
         // A candidate ruled out is not listed (the heading counts it).
         const leaders = (p.leaders || []).filter((l) => l.status !== 'refuted');
         // A foods or drinks pool: one column per slot, the cell holding only the new item of a slot the candidate changes and nothing where the slot
         // stays; any other pool: one Change column with the candidate's text (the player is in the heading when the pool is his).
         const bySlot = leaders.length > 0 && leaders.every((l) => l.change && Array.isArray(l.change.slots));
-        const nSlots = bySlot ? Math.max(...leaders.flatMap((l) => l.change.slots.map((s) => s.index + 1)), 1) : 0;
+        const nSlots = bySlot ? Math.max(...leaders.flatMap((l) => [...l.change.slots.map((s) => s.index + 1), (l.change.current || []).length]), 1) : 0;
+        // A slot the candidate changes shows the new item; one it leaves alone shows what the player has there now, greyed ("empty", greyed, when there is nothing).
         const changeCells = (l) => (bySlot
-            ? Array.from({ length: nSlots }, (_, i) => { const s = l.change.slots.find((x) => x.index === i); return `<td class="chg">${s ? itemLabel(s, names) : ''}</td>`; }).join('')
+            ? Array.from({ length: nSlots }, (_, i) => {
+                const s = l.change.slots.find((x) => x.index === i), cur = (l.change.current || [])[i];
+                return `<td class="chg">${s ? itemLabel(s, names) : cur ? greyed(itemLabel({ item: cur }, names)) : i < (l.change.current || []).length ? emptyWord(t) : ''}</td>`;
+            }).join('')
             : `<td class="chg">${esc(localizeDesc(l.desc, names, players, owner))}</td>`);
         const changeHead = bySlot ? Array.from({ length: nSlots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') : `<th>${esc(t('rounds.col.candidate'))}</th>`;
         const cols = (bySlot ? nSlots : 1) + 6;
@@ -3559,9 +3564,9 @@ function renderRounds(round, t, names = null) {
             // The status in plain words; a row with no fresh run yet says so there. A range that reaches 0 greys the row (status zero).
             const status = l.tooFew ? t('rounds.tooFew') : t('rounds.status.' + l.status, { n: l.status === 'first' ? l.seeds : l.readingSeeds, more: Math.max(0, readingMin - (l.readingSeeds ?? 0)), min: readingMin });
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(l.searchHours), fresh: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap">${esc(status)}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap"${l.status === 'zero' && !l.tooFew ? ` title="${esc(t('rounds.status.zeroTip'))}"` : ''}>${esc(status)}</td></tr>`;
         }).join('');
-        const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th><th class="num c-gain">${esc(t('rounds.col.reading'))}</th><th class="num c-gain">${esc(t('rounds.col.buyerNet'))}</th><th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
+        const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         return `<div class="whatif-sec"><div class="small"><b>${title}</b></div><table class="whatif-table"><thead><tr>${changeHead}${head2}</tr></thead><tbody>${rows || `<tr><td colspan="${cols}" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
     }).join('');
     return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
@@ -3681,6 +3686,11 @@ const itemLabel = (x, names) => {
     const name = names?.get('itemNames', slugOf(x.item)) ?? slugOf(x.item);
     return esc(name) + (x.trigger ? ' (' + esc(names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
 };
+// A slot the change leaves alone shows what the player has there now, greyed (an item flagged `same`); a slot empty now and staying empty says
+// "empty" greyed. The one place these two are written, for the rounds, Best foods and Best drinks tables.
+const greyed = (html) => `<span class="whatif-dim">${html}</span>`;
+const emptyWord = (t) => greyed(esc(t('rounds.slotEmpty')));
+const slotText = (x, label) => (x.same ? greyed(label(x)) : label(x));
 function bestBlock(result, t, names = null, running = false, floor = null) {
     const best = result?.best;
     if (!best) return '';
@@ -3694,14 +3704,19 @@ function bestBlock(result, t, names = null, running = false, floor = null) {
         const per = best[kind] || {};
         const who = Object.keys(per);
         if (!who.length) return '';
-        const slots = Math.max(1, ...who.map((p) => (per[p].items || []).length));
+        const slots = Math.max(1, ...who.map((p) => Math.max(per[p].slots ?? 0, ...(per[p].items || []).map((x, k) => (x.slot ?? k) + 1))));
         const rows = who.map((p) => {
             const e = per[p], items = e.items || [];
-            const cells = Array.from({ length: slots }, (_, i) => `<td class="chg">${items[i] ? itemText(items[i]) : '—'}</td>`).join('');
+            // A slot is shown by its place (older results have no `slot`: the item's order); one the pick leaves as it is shows the current food
+            // greyed, one that is empty now and stays empty a greyed "empty" word, one the player does not have a dash.
+            const cells = Array.from({ length: slots }, (_, i) => {
+                const x = items.find((y, k) => (y.slot ?? k) === i);
+                return `<td class="chg">${x ? slotText(x, itemText) : (e.empty || []).includes(i) ? emptyWord(t) : '—'}</td>`;
+            }).join('');
             // The so-far note: a range that reaches 0 says it is not yet different from no change, else how many fresh runs it has and how many it still needs.
             const zero = e.soFar && !e.tooFew && (Number.isFinite(e.buyerNet) ? pmParts(e.buyerNet, halfOf(e.netLow, e.netHigh))?.zero : pmParts(e.gainPerUser, halfOf(e.low, e.high))?.zero);
             const fewText = zero ? t('rounds.status.zero') : e.readingSeeds > 0 ? t('rounds.status.few', { n: e.readingSeeds, more: Math.max(0, readingMin - e.readingSeeds), min: readingMin }) : t('rounds.tooFew');
-            const few = e.soFar && (zero || e.readingSeeds < readingMin) ? `<br><span class="whatif-dim small">${esc(fewText)}</span>` : '';
+            const few = e.soFar && (zero || e.readingSeeds < readingMin) ? `<br><span class="whatif-dim small"${zero ? ` title="${esc(t('rounds.status.zeroTip'))}"` : ''}>${esc(fewText)}</span>` : '';
             let nums, note = '';
             if (e.unchanged) nums = `<td colspan="4" class="whatif-dim">${esc(t('result.noChange'))}</td>`;
             else if (e.soFar && e.tooFew) nums = `<td colspan="4" class="whatif-dim">${esc(t('rounds.tooFew'))}</td>`;
@@ -3717,7 +3732,9 @@ function bestBlock(result, t, names = null, running = false, floor = null) {
         // A group with an entry still so far (its stage is running) carries the same "so far" mark as the steps heading.
         const soFar = who.some((p) => per[p].soFar) ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : '';
         const head = `<th>${esc(t('col.player'))}</th>` + Array.from({ length: slots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') + colHead(t) + '<th></th>';
-        return `<div class="fw-bold mt-2">${esc(label)}${soFar}</div><table class="table table-sm whatif-table whatif-best-table" data-best="${kind}"><thead><tr>${head}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+        // The search picks on its own runs and the rounds table orders by the fresh ones: when a player's pick is not the table's first row, one line says so.
+        const pickNote = who.some((p) => per[p].soFar && per[p].notFirst) ? `<div class="small text-secondary" data-best-note="${kind}">${esc(t('result.pickNote'))}</div>` : '';
+        return `<div class="fw-bold mt-2">${esc(label)}${soFar}</div><table class="table table-sm whatif-table whatif-best-table" data-best="${kind}"><thead><tr>${head}</tr></thead><tbody>${rows.join('')}</tbody></table>${pickNote}`;
     };
     const foods = table('foods', t('result.bestFoods')), drinks = table('drinks', t('result.bestDrinks'));
     if (!foods && !drinks) return '';
@@ -3735,8 +3752,9 @@ function closedList(key, id, items, note, t) {
         `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 }
 const colHead = (t) => [
-    `<th class="num" title="${esc(t('col.partyGainTip'))}">${esc(t('col.partyGain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`,
-    `<th class="num" title="${esc(t('col.buyerGainTip'))}">${esc(t('col.buyerGain'))}</th>`, `<th class="num">${esc(t('col.se'))}</th>`].join('');
+    gainTh(t, 'partyGain'), `<th class="num">${esc(t('col.se'))}</th>`, gainTh(t, 'buyerGain'), `<th class="num">${esc(t('col.se'))}</th>`].join('');
+// The two gain column heads (name and tooltip): the one definition every table with these columns uses (the rounds table too).
+function gainTh(t, key, cls = '') { return `<th class="num${cls}" title="${esc(t('col.' + key + 'Tip'))}">${esc(t('col.' + key))}</th>`; }
 
 // The result: chosen steps, confirmation, ranked singles, unknown costs, each player's spend. Buttons carry
 // data-whatif-apply="steps:<n>" or "single:<index>".
@@ -9867,4 +9885,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.0db3c3e9.js.map
+//# sourceMappingURL=bundle.5c785619.js.map

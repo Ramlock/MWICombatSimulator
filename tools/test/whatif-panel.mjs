@@ -146,16 +146,16 @@ const result = {
     const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
     const rowsOf = (tb) => [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => !/whatif-group/.test(m[1])).map((m) => [...m[2].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => plain(c[1])));
     const [stepsTb, eachTb] = tablesOf(html);
-    const tail = ['Cost', 'Payback days', 'How it is bought', ''], pair = ['Party gain per player/day', '± error', "Buyer's gain per day", '± error'];
+    const tail = ['Cost', 'Payback days', 'How it is bought', ''], pair = ['Shared loot gain per user', '± error', "Buyer's gain", '± error'];
     check('columns: Chosen changes reads #, Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(stepsTb)) === JSON.stringify(['#', 'Player', 'Change', ...pair, ...tail]), heads(stepsTb).join('|'));
     check('columns: Each change alone reads Player, Change, party gain and error, buyer gain and error, Cost, Payback days, How it is bought, Apply', JSON.stringify(heads(eachTb)) === JSON.stringify(['Player', 'Change', ...pair, ...tail]), heads(eachTb).join('|'));
-    check('columns: the two gain headings carry their help text, exact English', html.includes("title=\"How much more the group's shared loot is worth per day per player with this change, before anyone's own food and drink.\"") &&
-        html.includes("title=\"How much more the player who pays for this change makes per day, after their own food and drink are paid. Payback is the cost divided by this.\""));
+    check('columns: the two gain headings carry their help text, exact English', html.includes("title=\"what the whole party's loot changes, per user; food and drink cost is not in it\"") &&
+        html.includes("title=\"the buyer's loot share minus what the buyer spends on their own food and drink\""));
     const sr = rowsOf(stepsTb);
     check('cells: both gain pairs show with their errors (party first, then the buyer\'s), the buyer payback and How it is bought', JSON.stringify(sr[0]) === JSON.stringify(['1', 'Alpha', 'Ring +5 → +6', '1500', '± 300', '1234', '± 77', '1000000', '22.5', 'books (25 x berserk)', 'Apply']), JSON.stringify(sr[0]));
     check('cells: a negative buyer gain shows as it is; a net of 0 or below shows a dash payback; a note keeps its other text', sr[2][5] === '-40' && sr[2][6] === '± 20' && sr[2][8] === '—' && sr[2][9] === 'market (a; b)', JSON.stringify(sr[2]));
     check('cells: an upper-bound cost marks its payback "≤"; a path with no note shows the path alone', sr[1][7] === '≤ 400000' && sr[1][8] === '≤ 51.4' && sr[1][9] === 'house upgrade', JSON.stringify(sr[1]));
-    check('cells: the four gain cells have class num, and so do their headings', [stepsTb, eachTb].every((tb) => /<th class="num"[^>]*>Party gain per player\/day<\/th><th class="num">± error<\/th><th class="num"[^>]*>Buyer's gain per day<\/th><th class="num">± error<\/th>/.test(tb)) && /<td class="chg">Ring[^<]*<\/td>(<td class="num">[^]*?<\/td>){4}<td class="num">/.test(stepsTb));
+    check('cells: the four gain cells have class num, and so do their headings', [stepsTb, eachTb].every((tb) => /<th class="num"[^>]*>Shared loot gain per user<\/th><th class="num">± error<\/th><th class="num"[^>]*>Buyer's gain<\/th><th class="num">± error<\/th>/.test(tb)) && /<td class="chg">Ring[^<]*<\/td>(<td class="num">[^]*?<\/td>){4}<td class="num">/.test(stepsTb));
     const er = rowsOf(eachTb);
     check('Each change alone: the same cells (Player first, no Stage), How it is bought without the caveat text', JSON.stringify(er[0]) === JSON.stringify(['Alpha', 'Ring +5 → +6', '1500', '± 300', '1234', '± 77', '1000000', '22.5', 'books (25 x berserk)', 'Apply']), JSON.stringify(er[0]));
     check('How it is bought: the caveat text is in no cell; the footnote under the table stays', !html.includes('XP inside the level unknown') && html.includes(locales.en.result.upperNote.slice(0, 20)));
@@ -314,10 +314,11 @@ const result = {
     const zr = bodyRows(tablesOf(zeroHtml)[0]);
     check('precision: a buyer\'s gain whose range reaches 0 reads "≈ 0 ± 337" (never -2,118 ± 337k), greyed', zr[0][4].startsWith('≈ 0 ± ') && !zr[0][4].includes('-2118') && zeroHtml.includes('<span class="whatif-dim">≈ 0 ± '), JSON.stringify(zr[0]));
     check('precision: 90412 ± 337000 also reaches 0 and reads ≈ 0; the ± has two digits', zr[1][4].startsWith('≈ 0 ± 340'), JSON.stringify(zr[1]));
-    check('zero range: status "not yet different from no change", row greyed, never "checked on fresh runs"', zr[0][6] === 'not yet different from no change' && zeroHtml.includes('<tr data-status="zero" class="whatif-dim">') && !zr[0][6].includes('fresh'), JSON.stringify(zr[0]));
-    // columns: Change, Cost, Hours simulated, Gain per user, Buyer's gain, Payback days, Status; no Seeds, no Range.
+    check('zero range: status "no clear change yet" with the long wording as its tooltip, row greyed, never "checked on fresh runs"', zr[0][6] === 'no clear change yet' && zeroHtml.includes('title="not yet different from no change"') && zeroHtml.includes('<tr data-status="zero" class="whatif-dim">') && !zr[0][6].includes('fresh'), JSON.stringify(zr[0]));
+    // columns: Change, Cost, Hours simulated, Shared loot gain per user, Buyer's gain, Payback days, Status; no Seeds, no Range.
     const heads = [...tablesOf(zeroHtml)[0].slice(0, tablesOf(zeroHtml)[0].indexOf('</thead>')).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
-    check('columns: Change, Cost, Hours simulated, Gain per user, Buyer\'s gain, Payback days, Status; no Seeds, no Range', JSON.stringify(heads) === JSON.stringify(['Change', 'Cost', 'Hours simulated', 'Gain per user', "Buyer's gain", 'Payback days', 'Status']), heads.join('|'));
+    check('columns: Change, Cost, Hours simulated, Shared loot gain per user, Buyer\'s gain, Payback days, Status; no Seeds, no Range', JSON.stringify(heads) === JSON.stringify(['Change', 'Cost', 'Hours simulated', 'Shared loot gain per user', "Buyer's gain", 'Payback days', 'Status']), heads.join('|'));
+    check('columns: the rounds table\'s two gain heads carry the same tooltips as the other tables (one definition)', tablesOf(zeroHtml)[0].includes('title="what the whole party\'s loot changes, per user; food and drink cost is not in it"') && tablesOf(zeroHtml)[0].includes('title="the buyer\'s loot share minus what the buyer spends on their own food and drink"'));
     check('hours: one cell with search + fresh runs, the split in its title only', zr[0][2] === '600' && zeroHtml.includes('title="200 h of search runs + 400 h of fresh runs"'), JSON.stringify(zr[0]));
     // the player is in the heading: no "Player 1" and no "(trigger kept)" in a row
     check('change: a pool of one player drops the player from the row; the heading names him', zr[0][0] === 'Magic 1 -> 2' && txt(zeroHtml).includes('Player 1 · Paid changes'), JSON.stringify(zr[0]));
@@ -336,7 +337,7 @@ const result = {
     check('range: written with ± everywhere (rounds, Best so far), never "low – high"', !allHtml.includes(' – ') && allHtml.includes(' ± '));
     // Best so far: a buyer's gain whose range reaches 0
     const bz = bodyRows(bestOf(panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 4, netLow: -30, netHigh: 38 } }, drinks: {} } }, t, undefined, null, true), 'foods'))[0];
-    check('best so far: a buyer\'s gain whose range reaches 0 reads ≈ 0 and the row says not yet different from no change', bz[4] === '≈ 0' && bz[5] === '± 34' && bz[0].includes('not yet different from no change'), JSON.stringify(bz));
+    check('best so far: a buyer\'s gain whose range reaches 0 reads ≈ 0 and the row says no clear change yet (long wording as its tooltip)', bz[4] === '≈ 0' && bz[5] === '± 34' && bz[0].includes('no clear change yet'), JSON.stringify(bz));
     // Each change alone / Best (final): the digits follow the error
     const fin = bodyRows(bestOf(panel.renderResult({ ...result, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], gainPerUser: 123456, sePerUser: 20000, buyerNet: 98765, buyerNetSe: 1234 } }, drinks: {} } }, t), 'foods'))[0];
     check('best (final): the figure is cut to the precision of its error (123456 ± 20000 -> 123000 ± 20000; 98765 ± 1234 -> 98800 ± 1200)', fin[2] === '123000' && fin[3] === '± 20000' && fin[4] === '98800' && fin[5] === '± 1200', JSON.stringify(fin));
@@ -346,6 +347,28 @@ const result = {
     // the first look: a provisional record
     const fl = panel.renderRounds(rec([pool({ key: 'free', sortedBy: 'buyerNet', size: 240, contending: 240, paused: 0 })], { provisional: true, firstLook: { have: 37, total: 240 } }), t);
     check('first look: the head says "so far 37 of 240 candidates have a first figure", no contention counts, the pool shows its size', txt(fl).includes('first look: so far 37 of 240 candidates have a first figure') && !fl.includes('data-rounds="paused"') && txt(fl).includes('240 candidates'), txt(fl).slice(0, 300));
+    // slots that stay: the current food greyed, "empty" greyed for a slot empty now and staying empty (rounds table)
+    const cur = ['/items/cake', null, '/items/gummy'];
+    const sh = panel.renderRounds(rec([pool({ leaders: [leader({ id: 'a', change: { ...food([[1, '/items/donut']]), current: cur } })] })]), t);
+    const shr = bodyRows(tablesOf(sh)[0])[0];
+    check('slots: a slot the candidate leaves shows the current food greyed; the changed slot is plain; no blank cell', shr.slice(0, 3).join('|') === 'cake|donut|gummy' && sh.includes('<td class="chg"><span class="whatif-dim">cake</span></td>') && sh.includes('<td class="chg">donut</td>') && !sh.includes('<td class="chg"></td>'), JSON.stringify(shr));
+    const shEmpty = panel.renderRounds(rec([pool({ leaders: [leader({ id: 'a', change: { ...food([[0, '/items/donut']]), current: ['/items/cake', null, null] } })] })]), t);
+    check('slots: a slot empty now and staying empty shows a greyed "empty"', (shEmpty.match(/<span class="whatif-dim">empty<\/span>/g) || []).length === 2, shEmpty);
+    // Best foods and drinks: the same
+    const bestSlots = (kind, e) => bodyRows(bestOf(panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: kind === 'foods' ? { Alpha: e } : {}, drinks: kind === 'drinks' ? { Alpha: e } : {} } }, t, undefined, null, true), kind))[0];
+    const bf = { soFar: true, slots: 3, empty: [2], items: [{ item: '/items/cake', slot: 0, trigger: null, same: true }, { item: '/items/donut', slot: 1, trigger: null }], readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 40, netLow: 30, netHigh: 50 };
+    const bfHtml = panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: bf }, drinks: { Alpha: { ...bf, items: bf.items.map(({ trigger, ...x }) => x) } } } }, t, undefined, null, true);
+    check('Best foods and drinks: the unchanged slot is the current item greyed, the new one plain, an empty slot a greyed "empty"', (bfHtml.match(/<td class="chg"><span class="whatif-dim">cake<\/span><\/td><td class="chg">donut<\/td><td class="chg"><span class="whatif-dim">empty<\/span><\/td>/g) || []).length === 2, bfHtml);
+    // the pick note: only when a player's pick is not the first row of the table
+    const noteOf = (e, kind = 'foods') => panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: kind === 'foods' ? { Alpha: e } : {}, drinks: kind === 'drinks' ? { Alpha: e } : {} } }, t, undefined, null, true);
+    const noteText = "This one is the search's pick on its search runs; the table above is ordered by the fresh runs.";
+    check('pick note: shown under the table when the pick is not the first row, in foods and in drinks', txt(noteOf({ ...bf, notFirst: true })).includes(noteText) && txt(noteOf({ ...bf, notFirst: true }, 'drinks')).includes(noteText) && noteOf({ ...bf, notFirst: true }).includes('data-best-note="foods"'));
+    check('pick note: not shown when the pick is the first row, or when the entry is final', !txt(noteOf(bf)).includes(noteText) && !txt(noteOf({ ...bf, soFar: false, notFirst: true })).includes(noteText));
+    // progress row and heading in words
+    const lab = (en) => (k, p) => t(k, p);
+    check('round labels: the heading says "round 3 finished"; the first look says "round 3 running"', txt(panel.renderRounds(rec([pool({})]), t)).includes('round 3 finished') && txt(fl).includes('round 3 running'), txt(fl).slice(0, 80));
+    const pr = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'foods', state: 'running', round: 9, phase: 'search', contending: 4, paused: 1, dropped: 2, runs: 10, simHours: 50, runsPlanned: 0, runsDone: 0 }, { kind: 'drinks', state: 'done', round: 8, contending: 4, paused: 1, dropped: 2, runs: 10, simHours: 50, runsPlanned: 0, runsDone: 0 }] } }, t);
+    check('round labels: the progress row says "round 9 running", a finished stage "round 8 finished"', txt(pr).includes('round 9 running') && txt(pr).includes('round 8 finished') && !txt(pr).includes('round 9 · '), txt(pr));
     // plain words: none of the old terms in any of the three languages
     const words = (l) => Object.entries(flat({ rounds: locales[l].rounds, progress: locales[l].progress })).filter(([k]) => k !== 'progress.partHalving').map(([, v]) => String(v).replace(/\{\{[^}]*\}\}/g, ''));
     const old = { en: /seeds?\b|contention|reading|dropped|refuted/i, pt: /semente|leitura/i, zh: /种子|读数|淘汰/ };
