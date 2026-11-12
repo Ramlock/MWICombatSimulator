@@ -104,6 +104,17 @@ const goal = 'profit';
     // byPlayer: a pool per player, each with its own current setup and bar.
     set = [cand('p1', 50, 1, 0, { player: 'A' }), cand('q1', 4, 1, 0, { player: 'B' })]; r = R.eliminate(set, { goal, mult: 3, byPlayer: true, bars: new Map([['A', 10], ['B', 10]]), order: ['A', 'B'] });
     check(r.length === 2 && r[0].player === 'A' && ids(r[0]) === 'p1' && r[0].noChange === false && ids(r[1]) === '' && r[1].noChange === true && set[1].out === 'bar', 'eliminate: byPlayer gives each player his own pool, bar and current setup', JSON.stringify(r.map((p) => [p.key, ids(p), p.noChange])));
+    // The payback cut: a paid candidate whose cost over the upper end of the buyer's gain is above the limit (365 days) is out; one just inside stays.
+    const P = { payLimit: 365 };
+    set = [cand('pa', 96, 1, 36500), cand('pb', 97, 1, 36500)]; r = E(set, new Map(), P);
+    check(set[0].out === 'payback' && !set[1].out, 'eliminate: a paid candidate with cost / upper end over 365 days (36500 / 99 = 368.7) is out; one at exactly 365 days (36500 / 100) stays', set.map((c) => c.out).join());
+    set = [cand('pc', -5, 1, 100)]; r = E(set, new Map(), P);
+    check(set[0].out === 'payback' && r[0].noChange === true && ids(r[0]) === '', 'eliminate: a paid candidate whose upper end is 0 or below counts as over the limit');
+    // A free candidate is never cut by the limit, whatever its figures; without a limit (other goals) nothing is cut.
+    set = [cand('fa', 0.5, 0.1, 0)]; E(set, new Map(), P);
+    check(!set[0].out, 'eliminate: a free candidate is never cut by the payback limit');
+    set = [cand('pd', 1, 1, 36500)]; R.eliminate(set, { goal: 'exp', mult: 3, bars: new Map() });
+    check(!set[0].out, 'eliminate: no limit (payLimit 0, as on a goal other than profit) cuts nothing');
     // out is kept: a candidate out stays out in a later call.
     set = [cand('l', 100, 5), cand('m', 60, 5)]; E(set); set[0].est = { ...set[0].est, net: 0, gain: 0 }; E(set);
     check(set[1].out === 'beaten', 'eliminate: a candidate that is out never returns inside the race');

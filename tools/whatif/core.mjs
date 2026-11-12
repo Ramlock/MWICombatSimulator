@@ -721,7 +721,7 @@ export async function main(settings, seams) {
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
             // The elimination rule (rounds.mjs eliminate): per pool, the changes and the current setup; who is out leaves the race for good (c.out).
             // The bar of each player is worked out from the base runs this round already has (no run of its own).
-            const standing = eliminate(cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player))), { goal, mult: pauseMult, byPlayer, bars: barsOf(base, maxK * baseMult), order: players });
+            const standing = eliminate(cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player))), { goal, mult: pauseMult, byPlayer, bars: barsOf(base, maxK * baseMult), payLimit, order: players });
             const cont = contention(active.filter((c) => !c.out), { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst, order: players });
             // A pool's last candidate standing is read even when it is not among the K best by rank (it is the one that can be locked).
             const leaders = [...new Set([...cont.pools.flatMap((p) => p.leaders), ...standing.filter((p) => !p.noChange && p.changes.length === 1).map((p) => p.changes[0])])];

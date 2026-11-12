@@ -5,6 +5,8 @@
 // candidate (the payback order: the larger net per coin first) and as it is for a free one (the buyer's gain order); a monotone
 // lever is floored at 0, as in scoreOf.
 
+import { overPaybackLimit } from '../../src/whatif/payback.mjs';
+
 // ---- Student's t (the displayed range is an ordinary t range) ----
 function lgamma(x) {
     const g = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
@@ -139,7 +141,9 @@ export function acceptTakes(live, gainOf, { byPlayer, players, locked, cmp }) {
 //    included; a candidate cut by the bar below does not count as another candidate: it cannot win, so it cannot beat anyone), or
 //  - its upper end is below the bar of its player: 1% of his own profit per day under the unchanged setup (`bars`: player -> bar, in the unit of
 //    rankedOf(); a player without a bar above 0 has no such cut). The current setup is exempt: a change must still beat it.
-// `out` is kept on the candidate ('beaten' | 'bar'), who never returns inside the race (the caller clears it when a new race starts); the
+//  - (profit goal, a paid candidate) its cost over the upper end of the buyer's gain goes over the payback limit (`payLimit`, days; 0 = none):
+//    even its best case cannot pay back in time. A free candidate is never cut this way.
+// `out` is kept on the candidate ('beaten' | 'bar' | 'payback'), who never returns inside the race (the caller clears it when a new race starts); the
 // current setup is worked out again every round. A refuted candidate (it failed the pick check) and a time-only lever (never picked) take no
 // part. Returns one entry per pool, in the pool order: { key, player, changes: the changes still standing, noChange: the current setup is
 // standing, size }. A pool with one change and no current setup has its last candidate standing; one with the current setup alone ends as
@@ -148,14 +152,17 @@ export const CURRENT = Object.freeze({ current: true });
 const spanOf = (c, goal, mult) => (c === CURRENT ? { lo: 0, hi: 0 } : bounds(c, goal, mult));
 // The upper end in the unit of rankedOf() (not per coin); a monotone lever is floored at 0 as in bounds().
 const rawHi = (c, goal, mult) => { const r = rankedOf(c.est, goal); if (!r) return Infinity; const hi = r.q + mult * r.se; return c.monotone ? Math.max(hi, 0) : hi; };
-function cutOf(c, { goal, mult, bars }) {
+function cutOf(c, { goal, mult, bars, payLimit }) {
     const hi = rawHi(c, goal, mult);
     if (!Number.isFinite(hi)) return null; // no usable estimate yet: unbounded, never cut
     const bar = bars.get(c.player);
     if (bar > 0 && hi < bar) return 'bar';
+    // Even its best case cannot pay back in time (the pick check's own definition, payback.mjs: an upper end of 0 or less is over the limit);
+    // a free candidate is never cut here, and a goal without a limit (payLimit 0) cuts nothing.
+    if (goal === 'profit' && c.cost.cost > 0 && overPaybackLimit(c.cost.cost, hi, payLimit)) return 'payback';
     return null;
 }
-export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(), order = [] }) {
+export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(), payLimit = 0, order = [] }) {
     const groups = new Map();
     for (const c of cands) {
         if (c.refuted || c.timeOnly) continue;
@@ -165,8 +172,8 @@ export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(
     }
     const pools = [];
     for (const [key, list] of [...groups].sort(poolSorter(order))) {
-        for (const c of list) if (!c.out) c.out = cutOf(c, { goal, mult, bars }) ?? undefined;
-        const standing = [CURRENT, ...list.filter((c) => c.out !== 'bar')], span = new Map(standing.map((c) => [c, spanOf(c, goal, mult)]));
+        for (const c of list) if (!c.out) c.out = cutOf(c, { goal, mult, bars, payLimit }) ?? undefined;
+        const standing = [CURRENT, ...list.filter((c) => c.out !== 'bar' && c.out !== 'payback')], span = new Map(standing.map((c) => [c, spanOf(c, goal, mult)]));
         const beatenBy = (c) => standing.some((e) => e !== c && span.get(e).lo > spanOf(c, goal, mult).hi);
         for (const c of list) if (!c.out && beatenBy(c)) c.out = 'beaten';
         pools.push({ key, player: byPlayer ? list[0].player : null, changes: list.filter((c) => !c.out), noChange: !beatenBy(CURRENT), size: list.length });
