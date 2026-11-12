@@ -185,13 +185,13 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
         const st = { state: 'running', progress: { ...m, parts: tp.sync(m) } };
         const html = panel.renderParts(st, t);
         const seen = new Map();
-        for (const mm of html.matchAll(/<div class="whatif-part whatif-part-(\w+)(?: whatif-part-race)?" data-kind="(\w+)"[^>]*>([^]*?)<span class="whatif-part-text">([^]*?)<\/span><\/div>/g)) {
+        for (const mm of html.matchAll(/<div class="whatif-part whatif-part-(\w+)(?: whatif-part-race)?" data-kind="(\w+)"[^>]*>([^]*?)(?:<span class="whatif-part-text">([^]*?)<\/span>)?<\/div>/g)) {
             const key = mm[2] + '#' + (seen.set(mm[2], (seen.get(mm[2]) ?? 0) + 1), seen.get(mm[2]));
             const w = mm[3].match(/width: ([\d.]+)%/), isRace = mm[3].includes('whatif-no-bar');
             if (w) { if (widths.has(key) && Number(w[1]) < widths.get(key)) bad.push(`${key} bar ${widths.get(key)} -> ${w[1]} at ${JSON.stringify(m)}`); widths.set(key, Number(w[1])); }
             if (isRace && mm[3].includes('progress-bar')) bad.push(`${key} race row has a bar`);
             if (isRace) {
-                const nums = [...mm[4].matchAll(/data-num="([\d.]+)"/g)].map((x) => Number(x[1])).slice(0, 3), prev = counters.get(key);
+                const nums = [...mm[3].matchAll(/data-num="([\d.]+)"/g)].map((x) => Number(x[1])).slice(-3), prev = counters.get(key);
                 if (prev && nums.some((v, i) => v < prev[i])) bad.push(`${key} counters ${prev} -> ${nums}`);
                 counters.set(key, nums);
                 phaseWords.push(/searching the candidates still in the running|checking the leaders on fresh runs/.test(mm[3]));
@@ -202,6 +202,29 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
     check('sequence: a running race row has no bar, counters that only grow, and the phase named in words', phaseWords.length > 20 && phaseWords.every(Boolean) && counters.size >= 3);
     check('sequence: the runs and simulated hours counters end above where they began and "dropped" did rise', [...counters.values()].some((c) => c[0] > 100 && c[1] > 5000 && c[2] >= 3), JSON.stringify([...counters.values()]));
     check('sequence: contention is shown as plain numbers (it may fall, no bar for it)', !/contending[^]*progress-bar/.test(panel.renderParts({ state: 'running', progress: { parts: tp.sync({ stage: 'screen', round: 4, phase: 'search', runsDone: 1, runsPlanned: 9, stageContending: 3, stagePaused: 9, stageDropped: 1, stageRuns: 5, stageSimHours: 10 }) } }, t).match(/data-kind="screen"[^]*?<\/div>/)?.[0] ?? ''));
+}
+
+// "Done with this stage, go on": the button is on the race stage that runs now, on its own line after the counters, and nowhere else.
+{
+    const raceHtml = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'foods', state: 'running', round: 3, phase: 'search', contending: 5, paused: 2, dropped: 1, runs: 224, simHours: 11000 }, { kind: 'screen', state: 'waiting', runsUpTo: 9 }, { kind: 'step', index: 1, state: 'running', runsPlanned: 4, runsDone: 1, etaSeconds: 9 }] } }, t);
+    const rows = raceHtml.split('<div class="whatif-part ').slice(1);
+    const race = rows.find((r) => r.includes('data-kind="foods"')), others = rows.filter((r) => !r.includes('data-kind="foods"'));
+    check('done button: shown once, inside the running race stage\'s label after its counters, and not in a waiting or bar row', (raceHtml.match(/data-whatif-done/g) || []).length === 1 && /<span class="whatif-part-label">.*224.*ruled out.*data-whatif-done/.test(race) && !race.includes('whatif-part-text') && others.every((r) => !r.includes('data-whatif-done')), raceHtml);
+    check('done button: its text and tooltip say what it does', race.includes('>Done with this stage, go on<') && race.includes('title="Ends this stage after the round it is in'));
+    check('done button: a finished race stage has none', !panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'foods', state: 'done', round: 3, contending: 5, paused: 2, dropped: 1, runs: 224, simHours: 11000 }] } }, t).includes('data-whatif-done'));
+    check('done button: the API has the done route', panel.API.done('a b') === '/api/search/a%20b/done');
+    for (const l of ['en', 'pt', 'zh']) check(`done button: ${l} has the strings`, ['stageDone', 'stageDoneTip'].every((k) => typeof locales[l].progress[k] === 'string' && locales[l].progress[k].length) && typeof locales[l].result.endedByUser === 'string' && locales[l].result.endedByUser.includes('{{n}}'));
+    const cs = read('tools/whatif/core.mjs'), os = read('tools/whatif/optimize.mjs'), sv = read('tools/whatif/runner/server.mjs');
+    check('done: optimize.mjs sets stop.done on the "done" message (and does not kill the pool)', /m === 'done'\) stop\.done = true/.test(os) && /m === 'stop'\) \{ stop\.requested = true; pool\.kill\(\); \}/.test(os));
+    check('done: the runner has POST /done that sends "done" over the IPC', /\\\/done\$\//.test(sv) && /c\.send\('done'\)/.test(sv));
+    check('done: race() ends after the published round when stop.done is set, with the leaders as --max-rounds returns them, and marks it', /outSink\.round\(rec\);[^]*?const byUser = !!stopSignal\.done;[^]*?endedByUser\[stage\] = roundNo - sinceStart;[^]*?settled \|\| byUser \|\|/.test(cs) && /result\.endedByUser = endedByUser/.test(cs));
+    check('done: a press before a stage\'s first round is dropped (race() clears the flag at its start)', /stopSignal\.done = false; \/\/ a press before/.test(cs));
+}
+// Item 24 in the core: a leader without a clear gain gives the final's unchanged form, flagged; one with a clear gain gives its items.
+{
+    const cs = read('tools/whatif/core.mjs');
+    check('best so far: an unclear leader (too few fresh runs, range reaching 0, shared loot falling) gets bestEntry(..., null) flagged unclear, the candidate kept', /if \(r\.tooFew \|\| r\.readingSeeds < readMin \|\| r\.status === 'loses' \|\| !\(Number\.isFinite\(lo\) && lo > 0\)\) \{[^]*?bestEntry\(kind, now, null\), soFar: true, unclear: true[^]*?candidate: items/.test(cs));
+    check('party order: contention gets the players, the first look sorts with poolSorter, the best and the report text follow partyEntries', /order: players \}\)/.test(cs) && /\.sort\(poolSorter\(players\)\)/.test(cs) && /result\.best\[kind\] = inParty\(/.test(cs) && /partyEntries\(result\.best\[kind\]\)/.test(cs) && /partyEntries\(c\.buyerByPlayer\)/.test(cs) && !/\.sort\(\(a, b\) => \(a\[0\] < b\[0\]/.test(cs));
 }
 
 // Strings in en, pt, zh.

@@ -88,7 +88,13 @@ export const poolKey = (c, byPlayer) => `${byPlayer ? c.player + ':' : ''}${c.co
 // lower bound among its pool's leaders; a leader is never paused; a candidate with no estimate yet is in contention. Sets
 // `c.status` ('contending' | 'paused') and `c.bounds`; a candidate with `c.refuted` is left out of every pool and counted in none.
 // Returns { pools: [{ key, leaders, line, contending, paused, size }], contending, paused }.
-export function contention(cands, { K, mult, goal, byPlayer = false, rank }) {
+// The one order of the pool groups (rounds table, first look): the players in the party's own order (`order`, the names), a key without a
+// player after them, and within a player the free pool before the paid one.
+export const poolSorter = (order = []) => {
+    const at = (key) => { const s = String(key), i = order.indexOf(s.includes(':') ? s.slice(0, s.lastIndexOf(':')) : ''); return i < 0 ? order.length : i; };
+    return (a, b) => (at(a[0]) - at(b[0])) || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+};
+export function contention(cands, { K, mult, goal, byPlayer = false, rank, order = [] }) {
     const groups = new Map();
     for (const c of cands) {
         if (c.refuted) continue;
@@ -99,7 +105,7 @@ export function contention(cands, { K, mult, goal, byPlayer = false, rank }) {
     }
     const pools = [];
     let contending = 0, paused = 0;
-    for (const [key, list] of [...groups].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    for (const [key, list] of [...groups].sort(poolSorter(order))) {
         const ranked = list.filter((c) => c.est).sort((a, b) => rank(a, b));
         const leaders = ranked.slice(0, K);
         const line = leaders.length ? Math.min(...leaders.map((c) => c.bounds.lo)) : -Infinity;

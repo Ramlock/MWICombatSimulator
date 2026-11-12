@@ -83,4 +83,16 @@ const goal = 'profit';
 }
 
 console.log(fails ? `${fails} FAILED` : 'all passed');
+// The pools follow the party's own order, not A to Z: party Zed, Amy, Bob; within a player the free pool before the paid one.
+{
+    const party = ['Zed', 'Amy', 'Bob'];
+    const mine = ['Bob', 'Amy', 'Zed', 'Amy'].flatMap((p, i) => [cand(p + 'f' + i, 5, 1, 0, { player: p }), cand(p + 'p' + i, 5, 1, 100, { player: p })]);
+    const c = R.contention(mine, { K: 2, mult: 3, goal, byPlayer: true, rank, order: party });
+    check(JSON.stringify(c.pools.map((p) => p.key)) === JSON.stringify(['Zed:free', 'Zed:paid', 'Amy:free', 'Amy:paid', 'Bob:free', 'Bob:paid']), 'party order: pools come out Zed, Amy, Bob (free before paid), not A to Z', c.pools.map((p) => p.key).join());
+    const none = R.contention(mine, { K: 2, mult: 3, goal, byPlayer: true, rank });
+    check(none.pools.map((p) => p.key)[0] === 'Amy:free', 'party order: with no order given the keys fall back to A to Z (a caller always passes the party)', none.pools.map((p) => p.key).join());
+    const sorted = [['Bob:free'], ['Zed:paid'], ['Amy:free'], ['Zed:free']].sort(R.poolSorter(party)).map((x) => x[0]);
+    check(sorted.join() === 'Zed:free,Zed:paid,Amy:free,Bob:free', 'party order: poolSorter is the one comparator (the first look uses it too)', sorted.join());
+}
+
 process.exit(fails ? 1 : 0);

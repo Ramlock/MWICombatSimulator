@@ -4424,6 +4424,14 @@ async function initWhatIf() {
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
+    // "Done with this stage, go on" (the button on the race stage that runs now): the runner ends that stage after its round.
+    document.getElementById('whatIfProgress').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-whatif-done]');
+        if (!button || !whatIf.searchId) return;
+        button.disabled = true;
+        try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST' }); if (!ok) whatIfMessage(body.error || whatIfT('runnerError')); }
+        catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+    });
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);

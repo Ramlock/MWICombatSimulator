@@ -86,9 +86,10 @@ mkdirSync(OUT, { recursive: true });
 if (arg('low-priority', false) === true) os.setPriority(os.constants.priority.PRIORITY_LOW);
 const pricesFile = arg('prices', DEFAULT_PRICES), setupsDir = arg('setups', undefined);
 
-const stop = { requested: false };
+const stop = { requested: false, done: false };
 const pool = createNodePool();
-process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } });
+// 'stop' ends the search; 'done' (the window's "done with this stage" button) only asks the race stage running now to end after its round.
+process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m === 'done') stop.done = true; });
 const settings = {
     flags, argsText: argv.join(' '), jobs: Number(arg('jobs', os.availableParallelism())), setupsDir, pricesFile,
     // The key holds the prices file relative to the checkout, so runs cached in one worktree match in another.

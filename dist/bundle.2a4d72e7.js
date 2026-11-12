@@ -3273,6 +3273,7 @@ const API = {
     // since: the version of the live report the window has; the runner sends the report so far only when it has a newer one.
     status: (id, since) => '/api/search/' + encodeURIComponent(id) + (since ? '?since=' + encodeURIComponent(since) : ''),
     stop: (id) => '/api/search/' + encodeURIComponent(id) + '/stop',
+    done: (id) => '/api/search/' + encodeURIComponent(id) + '/done',
     results: '/api/results',
     result: (id) => '/api/results/' + encodeURIComponent(id),
 };
@@ -3467,6 +3468,8 @@ function renderProgress(status, t) {
 // Stacked rows from progress.parts (one per part of the search; output only, every figure is a field of the part).
 // Params given to t() here are already-escaped HTML (num()), so the translated line is not escaped again.
 const fill = (t, key, params) => t(key, params);
+// The "done with this stage, go on" button of the race stage that runs now (main.js posts API.done for it).
+function doneButton(t) { return `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done" data-whatif-done title="${esc(t('progress.stageDoneTip'))}">${esc(t('progress.stageDone'))}</button>`; }
 function renderParts(status, t) {
     const p = status.progress || {}, parts = p.parts;
     const running = parts.findIndex((r) => r.state === 'running');
@@ -3485,6 +3488,7 @@ function renderParts(status, t) {
         // and rise); its right-hand text holds counters that only grow: the runs finished in the stage, the simulated hours spent in it and
         // the candidates dropped so far. A stage that has ended shows done as any part does.
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
+        const race = rounded && r.state === 'running'; // the stage that runs now and is a race: its counters and the "done with this stage" button sit on its line
         const phase = r.phase === 'reading' ? t('progress.phaseReading') : t('progress.phaseSearch');
         const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { round: t(r.state === 'running' ? 'rounds.roundRunning' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
             : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + fill(t, 'progress.optionsLeft', { n: num(r.candidatesLeft) }) : '';
@@ -3492,7 +3496,7 @@ function renderParts(status, t) {
         let text = '', cls;
         if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = fill(t, 'progress.upTo', { n: num(r.runsUpTo) }); else if (r.kind === 'picks' && r.runsPlanned > 0) text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'waiting'; }
         else if (r.state === 'done') { text = (rounded ? counters : fill(t, 'progress.runsOf', { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + esc(t('progress.done')); cls = 'done'; }
-        else if (rounded) { text = counters; cls = 'running'; }
+        else if (rounded) { cls = 'running'; } // a race stage's counters follow its status text on the stage's own line (below), not a line of their own
         else {
             text = fill(t, 'progress.runsOf', { done: num(r.runsDone), total: num(r.runsPlanned) });
             if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
@@ -3502,7 +3506,7 @@ function renderParts(status, t) {
         const mark = { done: '✓', running: '▶︎', waiting: '○' }[cls];
         const pct = r.state === 'done' ? 100 : (r.state === 'running' || (r.state === 'waiting' && r.kind === 'picks')) && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
         const bar = rounded && r.state === 'running' ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
-        return `<div class="whatif-part whatif-part-${cls}${rounded && r.state === 'running' ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}</span>${bar}<span class="whatif-part-text">${text}</span></div>`;
+        return `<div class="whatif-part whatif-part-${cls}${rounded && r.state === 'running' ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + doneButton(t) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
@@ -3561,9 +3565,11 @@ function renderRounds(round, t, names = null) {
         const cols = (bySlot ? nSlots : 1) + 6;
         const rows = leaders.map((l) => {
             // The status in plain words; a row with no fresh run yet says so there. A range that reaches 0 greys the row (status zero).
-            const status = l.tooFew ? t('rounds.tooFew') : t('rounds.status.' + l.status, { n: l.status === 'first' ? l.seeds : l.readingSeeds, more: Math.max(0, readingMin - (l.readingSeeds ?? 0)), min: readingMin });
+            // One or two words that say what a user can do with the row; the counts and the internal state are the cell's tooltip (facts only).
+            const sk = l.tooFew ? 'tooFew' : l.status, vals = { n: l.status === 'first' ? l.seeds : l.readingSeeds, more: Math.max(0, readingMin - (l.readingSeeds ?? 0)), min: readingMin };
+            const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(l.searchHours), fresh: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap"${(l.status === 'zero' || l.status === 'loses') && !l.tooFew ? ` title="${esc(t('rounds.status.' + l.status + 'Tip'))}"` : ''}>${esc(status)}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap" title="${esc(statusTip)}">${esc(status)}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         return `<div class="whatif-sec"><div class="small"><b>${title}</b></div><table class="whatif-table"><thead><tr>${changeHead}${head2}</tr></thead><tbody>${rows || `<tr><td colspan="${cols}" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
@@ -3713,12 +3719,18 @@ function bestBlock(result, t, names = null, running = false, floor = null) {
                 return `<td class="chg">${x ? slotText(x, itemText) : (e.empty || []).includes(i) ? emptyWord(t) : '—'}</td>`;
             }).join('');
             // The so-far note: a range that reaches 0 says it is not yet different from no change, else how many fresh runs it has and how many it still needs.
-            const zero = e.soFar && !e.tooFew && (Number.isFinite(e.buyerNet) ? pmParts(e.buyerNet, halfOf(e.netLow, e.netHigh))?.zero : pmParts(e.gainPerUser, halfOf(e.low, e.high))?.zero);
-            const loses = e.soFar && !e.tooFew && result.goal !== 'exp' && Number.isFinite(e.high) && e.high < 0;
-            const fewText = loses ? t('rounds.status.loses') : zero ? t('rounds.status.zero') : e.readingSeeds > 0 ? t('rounds.status.few', { n: e.readingSeeds, more: Math.max(0, readingMin - e.readingSeeds), min: readingMin }) : t('rounds.tooFew');
-            const few = e.soFar && (loses || zero || e.readingSeeds < readingMin) ? `<br><span class="whatif-dim small"${loses ? ` title="${esc(t('rounds.status.losesTip'))}"` : zero ? ` title="${esc(t('rounds.status.zeroTip'))}"` : ''}>${esc(fewText)}</span>` : '';
+            // The core flags a leader without a clear gain (`unclear`, and `loses` when the shared loot falls): the row shows the player's current items
+            // (the final's unchanged form) and the status; the leader's items and figures are the status cell's tooltip, a fact.
+            const unclear = e.soFar && e.unclear;
+            const plainPm = (v, half) => (Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(fit(v, half)) +(half > 0 ? ' ± ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(fit(half, half)) : '') : '—');
+            const tip = !unclear ? '' : e.loses ? t('rounds.status.losesTip') : t('rounds.status.bestTip', {
+                items: (e.candidate || []).map((x) => names?.get('itemNames', slugOf(x.item)) ?? slugOf(x.item)).join(', ') || '—',
+                figures: e.tooFew ? t('rounds.tooFew') : `${t('col.partyGain')} ${plainPm(e.gainPerUser, halfOf(e.low, e.high))}; ${t('col.buyerGain')} ${plainPm(e.buyerNet, halfOf(e.netLow, e.netHigh))}`,
+                n: e.readingSeeds ?? 0 });
+            const few = unclear ? `<br><span class="whatif-dim small" data-best-status="${e.loses ? 'loses' : 'zero'}" title="${esc(tip)}">${esc(t(e.loses ? 'rounds.status.loses' : 'rounds.status.zero'))}</span>` : '';
             let nums, note = '';
-            if (e.unchanged) nums = `<td colspan="2" class="whatif-dim">${esc(t('result.noChange'))}</td>`;
+            if (unclear) nums = '<td colspan="2" class="whatif-dim">—</td>';
+            else if (e.unchanged) nums = `<td colspan="2" class="whatif-dim">${esc(t('result.noChange'))}</td>`;
             else if (e.soFar && e.tooFew) nums = `<td colspan="2" class="whatif-dim">${esc(t('rounds.tooFew'))}</td>`;
             else if (e.soFar) {
                 nums = pmCell(e.gainPerUser, halfOf(e.low, e.high), t) + pmCell(e.buyerNet, halfOf(e.netLow, e.netHigh), t);
@@ -3730,7 +3742,9 @@ function bestBlock(result, t, names = null, running = false, floor = null) {
             return `<tr><td>${esc(p)}${few}</td>${cells}${nums}<td class="small">${note}</td></tr>`;
         });
         // A group with an entry still so far (its stage is running) carries the same "so far" mark as the steps heading.
-        const soFar = who.some((p) => per[p].soFar) ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : '';
+        const endedRound = result.endedByUser?.[kind];
+        const soFar = (who.some((p) => per[p].soFar) ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : '')
+            + (endedRound ? ` <span class="text-secondary fw-normal small" data-ended="${kind}">· ${esc(t('result.endedByUser', { n: endedRound }))}</span>` : '');
         const head = `<th>${esc(t('col.player'))}</th>` + Array.from({ length: slots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') + colHead(t) + '<th></th>';
         // The search picks on its own runs and the rounds table orders by the fresh ones: when a player's pick is not the table's first row, one line says so.
         const pickNote = who.some((p) => per[p].soFar && per[p].notFirst) ? `<div class="small text-secondary" data-best-note="${kind}">${esc(t('result.pickNote'))}</div>` : '';
@@ -3779,7 +3793,13 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
     const floor = Number.isFinite(result.basePerUser) ? result.basePerUser / 10000 : null;
     const bestHtml = bestBlock(result, t, names, running, floor);
     if (bestHtml) L.push(bestHtml);
+    // The screen and the greedy steps the user ended with "done with this stage": one line each, under the steps heading.
+    const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
     if (!running || result.steps?.length) L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
+    for (const [stage, n] of endedStages) {
+        const m = /^greedy step (\d+)$/.exec(stage), name = m ? t('progress.partStep', { n: m[1] }) : stage === 'screen' ? t('progress.partScreen') : stage;
+        L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(t('result.endedByUser', { n }))}</div>`);
+    }
     if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`); }
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
@@ -8853,6 +8873,14 @@ async function initWhatIf() {
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
+    // "Done with this stage, go on" (the button on the race stage that runs now): the runner ends that stage after its round.
+    document.getElementById('whatIfProgress').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-whatif-done]');
+        if (!button || !whatIf.searchId) return;
+        button.disabled = true;
+        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.API.done(whatIf.searchId), { method: 'POST' }); if (!ok) whatIfMessage(body.error || whatIfT('runnerError')); }
+        catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+    });
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);
@@ -9885,4 +9913,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.c42c1aab.js.map
+//# sourceMappingURL=bundle.2a4d72e7.js.map

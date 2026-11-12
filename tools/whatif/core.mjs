@@ -9,7 +9,7 @@
 //     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json and probe.json
 //     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once kill() ended it
 //     sink   progress(p), partial(snapshot), round(r), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
-//     stop   { requested }: true once the user asked to stop
+//     stop   { requested, done }: requested is true once the user asked to stop; done once he asked the race stage running now to end after its round
 //     hash   sha1 hex of a text (the run keys)
 //     sim    { runParty, measureNeed, buildDtos, Trigger }: the engine's own functions and Trigger class
 // Resolves with { stopped } (stopped: the search ended early, every finished run is in the store, the same call resumes).
@@ -19,7 +19,7 @@ import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
-import { tMult, dfOf, contention, anyHope, separated, bounds, poolKey } from './rounds.mjs';
+import { tMult, dfOf, contention, anyHope, separated, bounds, poolKey, poolSorter } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -527,6 +527,7 @@ export async function main(settings, seams) {
     // the same rounds, each player ends when his own leader locks. Returns { locked, leaders }: locked is a Map player -> candidate
     // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
     let roundNo = 0, liveCands = null, lastRound = null, lastBase = [];
+    const endedByUser = {}; // stage -> the round after which the user ended it (result.endedByUser)
     const haveSeeds = (ops, seeds, h) => { const key = keyOf(ops); return seeds.every((s) => cache.get(key + '#' + s)?.byHours[h]); };
     // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached).
     function readCount(base, c, h) {
@@ -640,13 +641,14 @@ export async function main(settings, seams) {
         }
         return { provisional: true, round: roundNo, stage, simHours: wallLog.reduce((a, r) => a + r.h, 0), unitHours: unitH, coverage, pauseMult, leadersK, goal, readingMin: readMin, firstLook: { have, total },
             candidates: { total, contending: total, paused: 0, refuted: 0, locked: 0 },
-            pools: [...pools].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([key, p]) => { const sortedBy = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, sortedBy, leaders: p.rows.slice(0, leadersK) }; }) };
+            pools: [...pools].sort(poolSorter(players)).map(([key, p]) => { const sortedBy = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, sortedBy, leaders: p.rows.slice(0, leadersK) }; }) };
     }
     async function race(cands, base, { stage, byPlayer, onRefute, onRound }) {
         const H = unitH, bk = keyOf(base), n = setups0.length;
         liveCands = cands; lastBase = base;
         for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; }
         const lockedBy = new Map(); // player (or '*') -> candidate
+        stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
         const sinceStart = roundNo, hours0 = wallLog.reduce((a, r) => a + r.h, 0), runs0 = wallLog.length;
         // A race stage has no total known in advance, so its progress part shows no bar: only counters that never go down (the round being run,
         // the runs finished in the stage and the simulated hours spent in it, both cumulative over every batch of every round, and the
@@ -689,7 +691,7 @@ export async function main(settings, seams) {
             if (first) look(true);
             if (!await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun })) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
-            const cont = contention(active, { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst });
+            const cont = contention(active, { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst, order: players });
             const leaders = cont.pools.flatMap((p) => p.leaders);
             if (readStep > 0 && leaders.length) {
                 const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
@@ -741,10 +743,18 @@ export async function main(settings, seams) {
                 if (c) lockedBy.set('*', c);
             }
             const settled = byPlayer ? players.every((p) => lockedBy.has(p) || !anyHope(cands.filter((c) => c.player === p && !c.timeOnly), goal, pauseMult)) : lockedBy.size > 0 || !anyHope(cands.filter((c) => !c.timeOnly), goal, pauseMult);
-            if (settled || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
+            // "Done with this stage" (stop.done): the race ends here, after the round just published, with the leaders as --max-rounds returns them; a
+            // stage that ends this way without the search's own lock is marked in the report (result.endedByUser) as ended by the user.
+            const byUser = !!stopSignal.done;
+            if (byUser) stopSignal.done = false;
+            if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart;
+            if (settled || byUser || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
         }
         } finally { stageCtx = null; }
     }
+    // An object keyed by player name, rebuilt in the party's own order (the order of `players`; a key that is no player after them).
+    const inParty = (obj) => Object.fromEntries(partyEntries(obj));
+    const partyEntries = (obj) => { const at = (k) => { const i = players.indexOf(k); return i < 0 ? players.length : i; }; return Object.entries(obj || {}).sort((a, b) => at(a[0]) - at(b[0])); };
     // One player's entry of result.best: his items in slot order after the stage (a food with the readable text of its trigger, null
     // when it always fires), with the chosen filling's figures at its last stage; no figures and unchanged: true without one.
     // The trigger text of a food only when it differs from the player's own on the setup he came with (the default or his kept one is not repeated).
@@ -767,9 +777,19 @@ export async function main(settings, seams) {
             const c = live.filter((x) => x.player === p).sort(rankFirst)[0], r = c && rowOf.get(c.id);
             if (!r) continue;
             const sp = applyOps(setups0, [...base, ...c.ops]).find((s) => s.name === p), items = bestItems(kind, sp);
+            const figures = { readingSeeds: r.readingSeeds, ...(r.tooFew ? { tooFew: true } : { gainPerUser: r.reading, low: r.low, high: r.high, ...(r.buyerNet === null ? {} : { buyerNet: r.buyerNet, netLow: r.netLow, netHigh: r.netHigh }) }) };
+            // A leader without a clear gain (the buyer's gain range, the figure's otherwise, does not lie entirely above 0, or it has fewer than
+            // --reading-min fresh runs, or the shared loot falls) is not a recommendation: the entry is the final's unchanged form (the player's current
+            // items), flagged `unclear`, with the leader's items and figures kept as `candidate` for the panel's tooltip.
+            const lo = r.buyerNet === null ? r.low : r.netLow;
+            if (r.tooFew || r.readingSeeds < readMin || r.status === 'loses' || !(Number.isFinite(lo) && lo > 0)) {
+                const now = applyOps(setups0, base).find((s) => s.name === p);
+                out[p] = { ...bestEntry(kind, now, null), soFar: true, unclear: true, ...(r.status === 'loses' ? { loses: true } : {}), candidate: items, ...figures };
+                continue;
+            }
             // `notFirst`: the pick (by the search's own runs) is not the first row of its pool's table (ordered by the fresh runs); the panel says so.
             const pool = rec.pools.find((q) => q.leaders.some((x) => x.id === r.id)), first = pool?.leaders.find((x) => x.status !== 'refuted');
-            out[p] = { soFar: true, ...(first && first.id !== r.id ? { notFirst: true } : {}), items, empty: emptySlots(kind, sp), slots: setupSlots(kind, sp).length, readingSeeds: r.readingSeeds, ...(r.tooFew ? { tooFew: true } : { gainPerUser: r.reading, low: r.low, high: r.high, ...(r.buyerNet === null ? {} : { buyerNet: r.buyerNet, netLow: r.netLow, netHigh: r.netHigh }) }) };
+            out[p] = { soFar: true, ...(first && first.id !== r.id ? { notFirst: true } : {}), items, empty: emptySlots(kind, sp), slots: setupSlots(kind, sp).length, ...figures };
         }
         return out;
     }
@@ -788,6 +808,7 @@ export async function main(settings, seams) {
         const fillings = levers.has('consumables');
         partsTracker = createParts({ stages, keep, candidates: null, maxSteps, fillings });
         result.best = { foods: {}, drinks: {} };
+        result.endedByUser = endedByUser;
         result.baselineOps = [];
         if (fillings) {
             report({ stage: 'need' }); needStore = await needBase();
@@ -802,7 +823,7 @@ export async function main(settings, seams) {
                     console.log(`${kind}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`);
                 };
                 // Each round the report shows the current best of the stage (soFar), the same data as the rounds table.
-                const onRound = (rec, live) => { Object.assign(result.best[kind], liveBest(kind, baseOps, rec, live)); publish(result); };
+                const onRound = (rec, live) => { result.best[kind] = inParty({ ...result.best[kind], ...liveBest(kind, baseOps, rec, live) }); publish(result); };
                 const res = await race(fc, baseOps, { stage: kind, byPlayer: true, onRefute: refute, onRound });
                 if (!res) return stop(result);
                 // Each player's locked filling (his leader whose reading seeds passed the pick check) is confirmed on fresh seeds, in party order,
@@ -1030,7 +1051,7 @@ export async function main(settings, seams) {
             result.skills = sk.json;
             skillLines = sk.lines;
         }
-        const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${Object.entries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Rounds: ${firstK} seeds of ${unitH} h for every candidate, then ${roundSeeds} more per round for those not paused; ${leadersK} leaders per pool, paused below the leaders' lower bound at ${pauseMult} errors, ranges at ${(coverage * 100).toFixed(0)}% coverage. Costs ${TAX_LABEL} on every sale.`, ''];
+        const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${partyEntries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Rounds: ${firstK} seeds of ${unitH} h for every candidate, then ${roundSeeds} more per round for those not paused; ${leadersK} leaders per pool, paused below the leaders' lower bound at ${pauseMult} errors, ranges at ${(coverage * 100).toFixed(0)}% coverage. Costs ${TAX_LABEL} on every sale.`, ''];
         // The cost path as the report shows it: the note without the upper-bound caveat (the "≤" on the cost carries that).
         const pathMd = (s) => { const note = (s.note || '').replace('; upper bound (XP inside the level unknown)', ''); return s.costPath + (note ? ' (' + note + ')' : ''); };
         // A gain within one error of zero reads "no change" with the real value in brackets (a file has no hover); the error is in the same cell ("value ± se").
@@ -1044,19 +1065,20 @@ export async function main(settings, seams) {
         if (bestKinds.length) {
             L.push('## Best foods and drinks', '');
             for (const [kind, label] of bestKinds) {
-                L.push(`### ${label}`, '');
-                for (const [p, e] of Object.entries(result.best[kind])) L.push(`- ${p}: ${e.items.map((x) => x.item.split('/').pop() + (x.trigger ? ` (${x.trigger})` : '')).join(', ') || 'none'}${e.unchanged ? ' (no change)' : Number.isFinite(e.buyerNet) ? ` (party gain ${fmt(e.gainPerUser)} ± ${fmt(e.sePerUser)}, buyer's gain ${fmt(e.buyerNet)} ± ${fmt(e.buyerNetSe)} per day${Number.isFinite(e.ownSuppliesPerDay) ? `; ${fmt(e.gainPerUser)} loot share ${e.ownSuppliesPerDay <= 0 ? `+ ${fmt(-e.ownSuppliesPerDay)} food and drink saved` : `- ${fmt(e.ownSuppliesPerDay)} more food and drink bought`}` : ''})` : ''}`);
+                L.push(`### ${label}${endedByUser[kind] ? ` (ended by you after round ${endedByUser[kind]})` : ''}`, '');
+                for (const [p, e] of partyEntries(result.best[kind])) L.push(`- ${p}: ${e.items.map((x) => x.item.split('/').pop() + (x.trigger ? ` (${x.trigger})` : '')).join(', ') || 'none'}${e.unchanged ? ' (no change)' : Number.isFinite(e.buyerNet) ? ` (party gain ${fmt(e.gainPerUser)} ± ${fmt(e.sePerUser)}, buyer's gain ${fmt(e.buyerNet)} ± ${fmt(e.buyerNetSe)} per day${Number.isFinite(e.ownSuppliesPerDay) ? `; ${fmt(e.gainPerUser)} loot share ${e.ownSuppliesPerDay <= 0 ? `+ ${fmt(-e.ownSuppliesPerDay)} food and drink saved` : `- ${fmt(e.ownSuppliesPerDay)} more food and drink bought`}` : ''})` : ''}`);
                 L.push('');
             }
             L.push('Everything below is measured on top of these foods and drinks.', '');
         }
-        L.push('## Changes, in order', '', '| # | Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
+        for (const [stage, n] of Object.entries(endedByUser)) if (stage !== 'foods' && stage !== 'drinks') L.push(`The ${stage} stage was ended by you after round ${n}.`, '');
+        L.push('## Changes, in order', '','| # | Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
         result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`));
         L.push('', "Party gain: the change in the group's shared loot per player per day, before anyone's food and drink. Buyer's gain: that player's share of it plus the change in what they spend on their own food and drink, so a free change can show no party gain and still pay the player by saving food and drink.");
         if (result.confirmation) {
             const c = result.confirmation;
             L.push('', `Confirmation on fresh seeds (base ${c.seeds.base[0]}..${c.seeds.base.at(-1)}, result ${c.seeds.result[0]}..${c.seeds.result.at(-1)}): party gain (the shared loot, before anyone's food and drink) ${Math.abs(c.gainPerUser) < c.sePerUser ? `no change (${signed(c.gainPerUser)} ± ${fmt(c.sePerUser)})` : `${fmt(c.gainPerUser)} ± ${fmt(c.sePerUser)}`} per user per day (${unit()}), cost ${fmt(c.cost)}${c.buyerByPlayer ? '' : c.payback == null && c.cost === 0 ? `, ${NO_COST}` : `, payback ${c.payback?.toFixed(1) ?? '-'} days`}.`);
-            if (c.buyerByPlayer) { L.push(''); for (const [p, b] of Object.entries(c.buyerByPlayer)) L.push(`- ${p}: gain ${Math.abs(b.gain) < b.se ? `no change (${signed(b.gain)} ± ${fmt(b.se)})` : `${fmt(b.gain)} ± ${fmt(b.se)}`} per day (${Number.isFinite(c.sharedGainPerUser) && Number.isFinite(c.ownSuppliesByPlayer?.[p]) ? (c.ownSuppliesByPlayer[p] <= 0 ? `${fmt(c.sharedGainPerUser)} loot share + ${fmt(-c.ownSuppliesByPlayer[p])} food and drink saved` : `${fmt(c.sharedGainPerUser)} loot share - ${fmt(c.ownSuppliesByPlayer[p])} more food and drink bought`) : 'loot share and own food and drink'}), ${b.payback == null && c.runningSpend?.[p] === 0 ? NO_COST : `pays back in ${b.payback?.toFixed(1) ?? '-'} days`}`); }
+            if (c.buyerByPlayer) { L.push(''); for (const [p, b] of partyEntries(c.buyerByPlayer)) L.push(`- ${p}: gain ${Math.abs(b.gain) < b.se ? `no change (${signed(b.gain)} ± ${fmt(b.se)})` : `${fmt(b.gain)} ± ${fmt(b.se)}`} per day (${Number.isFinite(c.sharedGainPerUser) && Number.isFinite(c.ownSuppliesByPlayer?.[p]) ? (c.ownSuppliesByPlayer[p] <= 0 ? `${fmt(c.sharedGainPerUser)} loot share + ${fmt(-c.ownSuppliesByPlayer[p])} food and drink saved` : `${fmt(c.sharedGainPerUser)} loot share - ${fmt(c.ownSuppliesByPlayer[p])} more food and drink bought`) : 'loot share and own food and drink'}), ${b.payback == null && c.runningSpend?.[p] === 0 ? NO_COST : `pays back in ${b.payback?.toFixed(1) ?? '-'} days`}`); }
         }
         L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|');
         const rowMd = (s) => `| ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${pathMd(s)} |`;
