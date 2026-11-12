@@ -357,6 +357,8 @@
             "notConfirmedItemExp": "{{at}}, fresh runs: gain {{partyGain}}",
             "dominated": "{{n}} swaps skipped (no better on any stat)",
             "dominatedOne": "{{n}} swap skipped (no better on any stat)",
+            "otherStyle": "{{n}} swaps skipped (only another style's bonuses)",
+            "otherStyleOne": "{{n}} swap skipped (only another style's bonuses)",
             "dominatedShow": "Show",
             "dominatedHide": "Hide",
             "skippedNoExport": "{{n}} players skipped by {{levers}}",

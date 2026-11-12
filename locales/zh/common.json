@@ -356,6 +356,8 @@
             "notConfirmedItemExp": "{{at}}，新的模拟：收益 {{partyGain}}",
             "dominated": "已跳过 {{n}} 项更换（各项属性均无提升）",
             "dominatedOne": "已跳过 {{n}} 项更换（各项属性均无提升）",
+            "otherStyle": "已跳过 {{n}} 项更换（仅有其他战斗风格的加成）",
+            "otherStyleOne": "已跳过 {{n}} 项更换（仅有其他战斗风格的加成）",
             "dominatedShow": "显示",
             "dominatedHide": "隐藏",
             "skippedNoExport": "{{n}} 名玩家被 {{levers}} 跳过",

@@ -652,6 +652,13 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             '<ul class="small whatif-more" id="whatIfDominated" hidden>' +
             result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
     }
+    if (result.otherStyle?.length) {
+        // The swaps to gear whose only bonuses are another combat style's or element's (the search never offers them): same fold.
+        L.push(`<div class="mt-3"><span class="fw-bold">${esc(plural(t, 'result.otherStyle', result.otherStyle.length, { n: result.otherStyle.length }))}</span> ` +
+            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfOtherStyle" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
+            '<ul class="small whatif-more" id="whatIfOtherStyle" hidden>' +
+            result.otherStyle.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
+    }
     if (result.skippedNoExport?.length) {
         // One folded line: the players the levers that need a character export skipped; the list sits closed behind it.
         const lever = (g) => t('lever.' + g.lever + '.name');

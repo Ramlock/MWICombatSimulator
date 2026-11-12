@@ -25,6 +25,7 @@ import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
+import { playerFit, misfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
 import { SURE_BLOCK, SURE_MAX, verdict, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
 import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
@@ -280,6 +281,15 @@ export async function main(settings, seams) {
     const meetsReq = (setup, item) => (item.equipmentDetail.levelRequirements || []).every((r) => (setup.player[r.skillHrid.split('/').pop() + 'Level'] ?? 0) >= r.level);
     // Market swaps no better on any combat stat (dominated.mjs): never offered, listed in result.json `dominated`.
     const dominated = [], dominatedKeys = new Set();
+    // Swaps to gear whose only bonuses are another combat style's (or another element's), stylefit.mjs: never offered, the
+    // market and owned ones alike, listed in result.json `otherStyle` (each with the style and element it is bound to).
+    const otherStyle = [], otherStyleKeys = new Set();
+    function styleDrop(fit, item, rec) {
+        const bound = misfit(item, fit);
+        if (!bound) return false;
+        if (!otherStyleKeys.has(rec.desc)) { otherStyleKeys.add(rec.desc); otherStyle.push({ ...rec, bound, wants: fit }); }
+        return true;
+    }
 
     // Charms change only EXP, so a profit goal leaves them out (phase 1 measured exactly zero for every charm, docs
     // what-if/phase-1.md in the private repo); --charms keeps them. An EXP goal keeps them.
@@ -287,7 +297,7 @@ export async function main(settings, seams) {
     // Each candidate names the groups it changes (`<player>:<slot>`, `:food<i>`, `:drink<i>`, `:ability<i>`); after a
     // greedy step, candidates touching the accepted change's groups are rebuilt from the new setup.
     function candidatesFor(setups, p, slots) {
-        const s = setups.find((x) => x.name === p), out = [];
+        const s = setups.find((x) => x.name === p), out = [], fit = playerFit(s, itemDetailMap);
         for (const slot of slots) {
             if (slot === 'charm' && !charmsOn) continue;
             const it = slotItem(setups, p, slot);
@@ -306,6 +316,7 @@ export async function main(settings, seams) {
                     if (!c.known) continue; // no seller at this level: not a market swap
                     if (c.cost <= 0 && !sellDown) continue; // frees gold: a sell-down, dropped (design 4.3 item 2)
                     const id = `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`;
+                    if (styleDrop(fit, item, { id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } })) continue;
                     if (isDominatedSwap(itemDetailMap[it.itemHrid], it.enhancementLevel, item, L)) {
                         if (!dominatedKeys.has(desc)) { dominatedKeys.add(desc); dominated.push({ id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } }); }
                         continue;
@@ -384,7 +395,7 @@ export async function main(settings, seams) {
     function ownedCands(setups, p, slots) {
         const ex = exportFor(p);
         if (!ex) return [];
-        const s = setups.find((x) => x.name === p), out = [], seen = new Set();
+        const s = setups.find((x) => x.name === p), out = [], seen = new Set(), fit = playerFit(s, itemDetailMap);
         for (const inv of ex.inventory || []) {
             const item = itemDetailMap[inv.itemHrid], type = item?.equipmentDetail?.type?.split('/').pop();
             if (!type || !meetsReq(s, item)) continue;
@@ -396,12 +407,14 @@ export async function main(settings, seams) {
             if (!slots.includes(slot) || (slot === 'charm' && !charmsOn)) continue;
             const it = slotItem(setups, p, slot) || (twoHand ? slotItem(setups, p, 'two_hand') : null);
             if (it && it.itemHrid === inv.itemHrid && it.enhancementLevel === L) continue;
+            const desc = `${p} ${slot} ${it ? short(it.itemHrid) + ' +' + it.enhancementLevel : 'empty'} -> owned ${short(inv.itemHrid)} +${L}`;
+            if (styleDrop(fit, item, { id: `${p}:${slot}=own:${short(inv.itemHrid)}+${L}`, player: p, slot, desc, from: it ? { item: it.itemHrid, level: it.enhancementLevel } : null, to: { item: inv.itemHrid, level: L } })) continue;
             const sale = pricer.sell(inv.itemHrid, L);
             const note = sale.noBuyer ? 'owned; no buyer' : `owned; selling it instead: ${fmt(sale.value)} ${TAX_LABEL}`;
             const ops = twoHand ? [{ op: 'unequip', player: p, slot: 'main_hand' }, { op: 'unequip', player: p, slot: 'off_hand' }, { op: 'equip', player: p, slot: 'two_hand', item: inv.itemHrid, level: L }]
                 : [{ op: 'equip', player: p, slot, item: inv.itemHrid, level: L }];
             const groups = twoHand ? [`${p}:main_hand`, `${p}:off_hand`, `${p}:two_hand`] : [`${p}:${slot}`];
-            out.push({ id: `${p}:${slot}=own:${short(inv.itemHrid)}+${L}`, kind: 'owned', groups, player: p, slot, monotone: false, desc: `${p} ${slot} ${it ? short(it.itemHrid) + ' +' + it.enhancementLevel : 'empty'} -> owned ${short(inv.itemHrid)} +${L}`, ops, cost: FREE('owned', note) });
+            out.push({ id: `${p}:${slot}=own:${short(inv.itemHrid)}+${L}`, kind: 'owned', groups, player: p, slot, monotone: false, desc, ops, cost: FREE('owned', note) });
         }
         return out;
     }
@@ -804,7 +817,7 @@ export async function main(settings, seams) {
 
     // ---- Search ----
     async function search() {
-        const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
+        const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
         result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, confirmHours: finH, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
         const fillings = levers.has('consumables');
@@ -861,7 +874,7 @@ export async function main(settings, seams) {
         result.candidates = cands.length;
         result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
         publish(result); // snapshot 3: the candidates are priced (over-budget list, unknown costs, skipped swaps, the count)
-        console.log(`${nOf(cands.length, 'candidate')} within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${nOf(dominated.length, 'swap')} skipped (no better on any stat)`);
+        console.log(`${nOf(cands.length, 'candidate')} within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${nOf(dominated.length, 'swap')} skipped (no better on any stat), ${nOf(otherStyle.length, 'swap')} skipped (only another style's bonuses)`);
 
         // The rest of the search runs on the baseline (baseOps: the chosen foods and drinks): a race of every candidate (rounds, two
         // pools, K leaders each) until a pick locks, then the pick joins the baseline and the race goes on from the new baseline.

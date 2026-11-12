@@ -355,6 +355,8 @@
             "notConfirmedItemExp": "{{at}}, execuções novas: ganho {{partyGain}}",
             "dominated": "{{n}} trocas ignoradas (nenhuma melhor em qualquer atributo)",
             "dominatedOne": "{{n}} troca ignorada (nenhuma melhor em qualquer atributo)",
+            "otherStyle": "{{n}} trocas ignoradas (apenas bônus de outro estilo)",
+            "otherStyleOne": "{{n}} troca ignorada (apenas bônus de outro estilo)",
             "dominatedShow": "Mostrar",
             "dominatedHide": "Ocultar",
             "skippedNoExport": "{{n}} jogadores ignorados por {{levers}}",
