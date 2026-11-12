@@ -3508,7 +3508,9 @@ function renderParts(status, t) {
         else if (r.state === 'done') {
             // A foods or drinks stage whose accepted picks are being checked on fresh runs (r.checking, its own run counts): the check shows on this row,
             // not as a part of its own after the later stages, so the later stages keep their waiting state.
-            const checking = r.checking ? fill(t, 'progress.checkingPicks', { runs: plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) }) : null;
+            // The total is the stage's so far (it grows as the next player's check plans his own arm), so the row names whose check it is: "player N of M".
+            const runs = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
+            const checking = r.checking ? (r.checkWho ? fill(t, 'progress.checkingPicksOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs }) : fill(t, 'progress.checkingPicks', { runs })) : null;
             text = (rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + (checking ?? esc(t('progress.done')));
             cls = checking ? 'running' : 'done';
         }
@@ -9952,4 +9954,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.02fe1811.js.map
+//# sourceMappingURL=bundle.2527ecb7.js.map

@@ -257,7 +257,8 @@ export async function main(settings, seams) {
     }
     // Runs the check (sure.mjs: 16 seeds per arm, more while the pick is between z/2 and z errors, up to 64). Returns { passed, fresh },
     // or null when the time limit or a stop ended the runs.
-    async function confirmPick(baseOps, c, fin, label) {
+    // `who` ({ index, of }, foods and drinks only): which player's pick this is of how many are checked in the stage; the row of the stage shows "player N of M".
+    async function confirmPick(baseOps, c, fin, label, who) {
         return checkPick(async (k) => {
             const seeds = sureSeeds(k), vOps = [...baseOps, ...c.ops];
             const reqs = seeds.flatMap((seed) => [{ ops: baseOps, seed, h: fin.h, tag: 'sure' }, { ops: vOps, seed, h: fin.h, tag: 'sure' }]);
@@ -267,7 +268,7 @@ export async function main(settings, seams) {
                 sure.counted.add(id); sure.planned++;
                 if (cache.get(id)?.byHours[r.h]) sure.done++;
             }
-            report({ stage: 'confirming picks', candidatesLeft: 0, checking: label });
+            report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who ?? null });
             if (!await ensure(reqs)) return null;
             const fresh = freshRead(baseOps, c, k, fin.h);
             console.log(`  ${label} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
@@ -883,7 +884,8 @@ export async function main(settings, seams) {
                 // each alone against the stage's start (not the earlier players' confirmed fillings); the runs are the reading seeds, already
                 // in the cache. None locked leaves him unchanged (confirmFillings in sure.mjs). baseOps then holds every confirmed filling.
                 const fpool = [...res.locked.values()];
-                const got = await confirmFillings(players, fpool, baseOps, (ops, c) => confirmPick(ops, c, fin, kind), ({ cand, fresh }) => {
+                const checkers = players.filter((p) => fpool.some((c) => c.player === p)); // the players with a pick to check, in party order (confirmFillings checks them in this order)
+                const got = await confirmFillings(players, fpool, baseOps, (ops, c) => confirmPick(ops, c, fin, kind, { index: checkers.indexOf(c.player) + 1, of: checkers.length }), ({ cand, fresh }) => {
                     result.notConfirmed.push({ ...row(cand), step: null, kind: flag, fresh });
                     console.log(`${kind}: ${cand.desc} not confirmed on fresh seeds (${fresh.seeds} per arm), left out`);
                 }, () => true);

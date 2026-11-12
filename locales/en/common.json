@@ -254,6 +254,7 @@
             "stageAcceptTip": "Ends this stage after the round it is in. Where nothing has locked yet, it takes the best leader whose average net gain is above 0, even if the race has not separated it from the rest. Every pick is still checked on fresh runs, and one that fails the check is left out: that pool stays as it is.",
             "stageSkip": "Skip {{stage}}",
             "checkingPicks": "checking the accepted picks on fresh runs · {{runs}}",
+            "checkingPicksOf": "checking the accepted picks on fresh runs · player {{n}} of {{of}} · {{runs}}",
             "stageSkipTip": "Ends this stage after the round it is in. A pool that has already locked keeps its pick; the others stay as they are.",
             "phaseSearch": "searching the candidates still in the running",
             "phaseReading": "checking the leaders on fresh runs",

@@ -252,6 +252,7 @@
             "stageAcceptTip": "Encerra esta etapa ao fim da rodada em que está. Onde nada travou ainda, toma o melhor líder cujo ganho líquido médio é maior que 0, mesmo que a disputa não o tenha separado dos demais. Toda escolha ainda é conferida em execuções novas, e a que não passa é deixada de fora: aquele grupo fica como está.",
             "stageSkip": "Pular {{stage}}",
             "checkingPicks": "conferindo as escolhas aceitas em execuções novas · {{runs}}",
+            "checkingPicksOf": "conferindo as escolhas aceitas em execuções novas · jogador {{n}} de {{of}} · {{runs}}",
             "stageSkipTip": "Encerra esta etapa ao fim da rodada em que está. Um grupo que já travou mantém a sua escolha; os demais ficam como estão.",
             "phaseSearch": "buscando entre as candidatas ainda na disputa",
             "phaseReading": "conferindo os líderes em execuções novas",

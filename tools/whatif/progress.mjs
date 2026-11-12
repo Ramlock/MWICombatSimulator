@@ -64,7 +64,7 @@ export function createParts(plan) {
             }
             for (const r of rows) {
                 r.checking = r.kind === chk;
-                if (r.checking) { r.checkPlanned = Math.max(0, seen.planned - chkBase[chk].planned); r.checkDone = Math.min(r.checkPlanned, Math.max(0, seen.done - chkBase[chk].done)); }
+                if (r.checking) { r.checkWho = progress.checkingWho ?? null; r.checkPlanned = Math.max(0, seen.planned - chkBase[chk].planned); r.checkDone = Math.min(r.checkPlanned, Math.max(0, seen.done - chkBase[chk].done)); }
             }
             if (chk) { for (const r of rows) r.state = 'done'; }
             else if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
