@@ -120,6 +120,60 @@ const goal = 'profit';
     check(set[1].out === 'beaten', 'eliminate: a candidate that is out never returns inside the race');
 }
 
+// The tie rule (eliminate, tieOf): the higher change A and each other standing change B are tied when A's upper end minus B's lower end (raw units, 3 errors)
+// is below the bar of A's player; the pool ends when every other one is tied (they go out as 'tied').
+{
+    const E = (cands, bars = new Map([['A', 10]]), extra = {}) => R.eliminate(cands, { goal, mult: 3, bars, ...extra });
+    const ids = (p) => p.changes.map((c) => c.id).join();
+    // l 100 +- 3 (97..103), b 98 +- 3 (95..101): the best-case gap 103 - 95 = 8 is under the bar 10: tied, the pool ends on the higher mean.
+    let set = [cand('b', 98, 1), cand('l', 100, 1)], r = E(set);
+    check(set[0].out === 'tied' && !set[1].out && ids(r[0]) === 'l' && r[0].noChange === false, 'tie: two changes whose best-case gap is under the bar end the pool on the higher mean', JSON.stringify(r));
+    // Exactly the bar: 103 - 93 = 10 is not under it.
+    set = [cand('b', 96, 1), cand('l', 100, 1)]; r = E(set);
+    check(!set[0].out && !set[1].out && ids(r[0]) === 'b,l', 'tie: a best-case gap exactly at the bar does not tie', JSON.stringify(r));
+    // Wide ranges (+- 30): the gap 130 - 68 = 62 is far over the bar.
+    set = [cand('b', 98, 10), cand('l', 100, 10)]; r = E(set);
+    check(!set[0].out && !set[1].out && ids(r[0]) === 'b,l', 'tie: wide error margins do not tie');
+    // Three standing: one far (c 94 +- 6: 88..100, gap 15) keeps the pool going, and b (tied alone) is not put out either.
+    set = [cand('b', 98, 1), cand('c', 94, 2), cand('l', 100, 1)]; r = E(set);
+    check(set.every((c) => !c.out) && ids(r[0]) === 'b,c,l', 'tie: three standing with one not tied keeps going, nobody put out', JSON.stringify(r));
+    set = [cand('b', 98, 1), cand('c', 99, 1), cand('l', 100, 1)]; r = E(set);
+    check(set[0].out === 'tied' && set[1].out === 'tied' && ids(r[0]) === 'l', 'tie: three standing all tied with the higher one end the pool', JSON.stringify(r));
+    // No bar above 0 for the player: no tie. A change of another player never ties (a mixed pool).
+    set = [cand('b', 98, 1), cand('l', 100, 1)]; r = E(set, new Map());
+    check(!set[0].out && !set[1].out, 'tie: a player without a bar never ties');
+    set = [cand('b', 98, 1, 0, { player: 'B' }), cand('l', 100, 1)]; r = E(set, new Map([['A', 10], ['B', 10]]));
+    check(!set[0].out && !set[1].out && ids(r[0]) === 'b,l', 'tie: a change of another player never ties with A in a pool that mixes players');
+    // A paid pool: A is the higher one by the pool's own order (per coin), the gap and the bar are in raw units, whatever the cost.
+    set = [cand('p1', 100, 1, 100), cand('p2', 98, 1, 98)]; r = E(set);
+    check(set[1].out === 'tied' && !set[0].out && ids(r[0]) === 'p1', 'tie: a paid pool (equal per coin) takes the first of the higher ones, the best-case gap 103 - 95 in raw units against the bar', JSON.stringify(r));
+    // The tie is sticky like every other out, and one standing change alone is not a tie.
+    set = [cand('l', 100, 1)]; r = E(set);
+    check(!set[0].out && ids(r[0]) === 'l', 'tie: one change alone is not a tie');
+    // Accept never takes a tied change.
+    set = [cand('b', 98, 1), cand('l', 100, 1)]; E(set);
+    const takes = R.acceptTakes(set, (c) => c.est.net, { byPlayer: false, players: ['A'], locked: new Map(), cmp: (a, b) => b.est.net - a.est.net });
+    check(takes.get('*')?.id === 'l', 'tie: Accept current winner skips the tied change and takes the one still in');
+}
+// The projection: the rounds needed for the sum of the top two margins to fall under the gap between the means, margins shrinking as 1/sqrt(rounds).
+{
+    const m = (mean, margin) => ({ mean, margin });
+    check(R.roundsToSeparate(m(100, 30), m(80, 30), 10) === 80, 'projection: margins 30 + 30 over a gap 20 after 10 rounds need 80 more (10 * (9 - 1))');
+    check(R.roundsToSeparate(m(100, 10), m(80, 8), 10) === 1, 'projection: already apart (sum 18 under the gap 20) is 1 round (the elimination takes it)');
+    check(R.roundsToSeparate(m(100, 10.2), m(80, 10), 10) === 1, 'projection: just over (sum 20.2, gap 20) is at least 1 round');
+    check(R.roundsToSeparate(m(100, 30), m(100, 30), 10) === null && R.roundsToSeparate(m(100, 30), m(100.0000001, 30), 10) === null, 'projection: no gap between the means cannot be told (shown as more than 999)');
+    check(R.roundsToSeparate(m(100, 30), m(99, 30), 10) === null, 'projection: above 999 rounds (10 * (3600 - 1)) cannot be shown as a number');
+    check(R.roundsToSeparate(m(100, 30), m(80, 30), 0) === null && R.roundsToSeparate(m(100, 0), m(80, 0), 10) === null, 'projection: no rounds so far or no margins cannot be told');
+    // The pool nearest to ending: pools with two or three changes; the smallest number wins; a pool that cannot be told counts as far.
+    const P = (...cs) => ({ changes: cs });
+    const near = (pools, rounds = 10) => R.nearestSeparation(pools, { goal, mult: 3, rounds });
+    const far = P(cand('f1', 100, 10), cand('f2', 99, 10)), close = P(cand('c1', 100, 10), cand('c2', 80, 10)), same = P(cand('s1', 100, 10), cand('s2', 100, 10)), four = P(cand('q1', 100, 10), cand('q2', 80, 10), cand('q3', 70, 10), cand('q4', 60, 10)), one = P(cand('o1', 100, 10));
+    check(near([far, close])?.rounds === 80, 'nearest: the pool needing the fewest rounds wins (margins 30 + 30 over a gap 20 at 10 rounds: 80)', JSON.stringify(near([far, close])));
+    check(near([same, close])?.rounds === 80 && near([same])?.rounds === null && near([far])?.rounds === null, 'nearest: a pool that cannot be told counts as far; alone it shows as more than 999');
+    check(near([four, one]) === null && near([]) === null, 'nearest: a pool of four or more, or one change alone, takes no part; none gives null');
+    check(near([P(cand('a', 100, 10), cand('b', 80, 10), cand('c', 85, 10))])?.rounds === 150, 'nearest: three standing use the top two by mean (100 and 85: margins 60 over a gap 15 at 10 rounds: 150)');
+}
+
 // The bar of each player (buyer.mjs barsFrom, the function core.mjs and a script on saved runs both use): 1% of his own loot-per-user-minus-supplies mean.
 {
     const B = await import(pathToFileURL(path.join(root, 'tools/whatif/buyer.mjs')).href);

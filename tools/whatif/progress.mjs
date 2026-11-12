@@ -87,7 +87,7 @@ export function createParts(plan) {
                 row.fill = Math.max(row.fill ?? 0, row.runsPlanned > 0 ? Math.min(1, row.runsDone / row.runsPlanned) : 0);
                 // The round being run, its phase ('search' | 'reading') and the stage's own totals (see race() in core.mjs): carried only
                 // when the stage reports a round, so a part of an older run keeps its shape.
-                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, acceptable: progress.stageAcceptable ?? 0, runs: progress.stageRuns, simHours: progress.stageSimHours });
+                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, acceptable: progress.stageAcceptable ?? 0, separate: progress.stageSeparate ?? null, runs: progress.stageRuns, simHours: progress.stageSimHours });
             }
             // 'stopped', 'probe' and 'start' change no row.
             for (const r of rows) if (r.state === 'done') { r.runsDone = r.runsPlanned; r.etaSeconds = 0; }

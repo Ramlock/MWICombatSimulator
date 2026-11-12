@@ -256,7 +256,9 @@ export function renderParts(status, t) {
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
         const race = rounded && r.state === 'running'; // the stage that runs now and is a race: its counters and the "done with this stage" button sit on its line
         const phase = r.phase === 'reading' ? t('progress.phaseReading') : t('progress.phaseSearch');
-        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { round: t(r.state === 'running' ? 'rounds.roundRunning' : r.state === 'halted' ? 'rounds.roundStopped' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
+        // The pool nearest to ending (two or three changes standing): the rounds it still needs to separate, after the still-in-the-running count of the stage that runs.
+        const separate = race && r.separate ? ' · ' + (r.separate.rounds === null ? t('progress.separateFar') : plural(t, 'progress.separateRounds', r.separate.rounds, { n: num(r.separate.rounds) })) : '';
+        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { separate, round: t(r.state === 'running' ? 'rounds.roundRunning' : r.state === 'halted' ? 'rounds.roundStopped' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
             : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + plural(t, 'progress.optionsLeft', r.candidatesLeft, { n: num(r.candidatesLeft) }) : '';
         const counters = rounded ? fill(t, 'progress.stageCounters', { runs: plural(t, 'progress.runsCount', r.runs, { n: num(r.runs) }), hours: plural(t, 'progress.hoursCount', r.simHours, { n: num(r.simHours) }), dropped: num(r.dropped) }) : '';
         let text = '', cls;

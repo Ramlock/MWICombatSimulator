@@ -252,8 +252,15 @@ for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`
     const ended = { ...during, stageContending: 271, stagePaused: 202, stageRuns: 986, stageSimHours: 49000, stageEnded: 'screen' };
     const row = tp.sync(ended).find((r) => r.kind === 'screen');
     check('ended stage: the row is done with the last round record counts (271 in the running, 202 set aside), not the first look ones', row.state === 'done' && row.contending === 271 && row.paused === 202 && row.runs === 986 && row.simHours === 49000, JSON.stringify(row));
+    // The projection (stageSeparate: the pool nearest to ending): after the "still in the running" count of the running stage; "more than 999" for a null; none without one.
+    const sepText = (sep, lang = 'en') => { const rr = tp.sync({ ...during, stageContending: 2, stagePaused: 1, ...(sep !== undefined ? { stageSeparate: sep } : {}) }); return panel.renderParts({ state: 'running', progress: { parts: rr } }, tIn(lang)).split('<div class="whatif-part ').slice(1).find((x) => x.includes('data-kind="screen"')).replace(/<[^>]*>/g, ''); };
+    check('projection: the running row says "about 80 more rounds to separate" right after the still-in-the-running count', sepText({ rounds: 80 }).includes('2 still in the running · about 80 more rounds to separate · 1 set aside'), sepText({ rounds: 80 }));
+    check('projection: one round is singular, a null is "more than 999", none shows nothing', sepText({ rounds: 1 }).includes('about 1 more round to separate') && !sepText({ rounds: 1 }).includes('rounds to separate') && sepText({ rounds: null }).includes('2 still in the running · more than 999 more rounds to separate · 1 set aside') && !sepText(null).includes('separate') && !sepText().includes('separate'));
+    for (const l of ['en', 'pt', 'zh']) check(`projection: ${l} has the three strings and the stage label takes the placeholder`, ['separateRounds', 'separateRoundsOne', 'separateFar'].every((k) => typeof locales[l].progress[k] === 'string') && locales[l].progress.stageLabel.includes('{{separate}}') && locales[l].progress.separateRounds.includes('{{n}}') && locales[l].progress.separateRoundsOne.includes('{{n}}'));
+    const csS = read('tools/whatif/core.mjs');
+    check('projection: core hands the nearest pool\'s figure (nearestSeparation over the elimination pools, this round of the stage) to the stage record', /separate: nearestSeparation\(standing, \{ goal, mult: pauseMult, rounds: stageRound \}\)/.test(csS) && /stageSeparate: stageCont\.separate \?\? null/.test(csS));
     // The pick checks go on reporting the same stage name: the row stays done.
-    const later = tp.sync({ ...ended, runsDone: 9, runsPlanned: 40 }).find((r) => r.kind === 'screen');
+    const later =tp.sync({ ...ended, runsDone: 9, runsPlanned: 40 }).find((r) => r.kind === 'screen');
     check('ended stage: later messages of the same stage name (the pick checks) keep it done', later.state === 'done' && later.contending === 271);
     const html = panel.renderParts({ state: 'running', progress: { parts: tp.sync({ ...ended, runsDone: 12, runsPlanned: 40 }) } }, t);
     const rowHtml = html.split('<div class="whatif-part ').slice(1).find((r) => r.includes('data-kind="screen"'));
@@ -300,7 +307,7 @@ for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`
     }
     const cs = read('tools/whatif/core.mjs');
     const flat = cs.split(/[\r\n ]+/).join(' ');
-    check('core: the progress record takes the round record counts at each round, and the stage end only when it ends (not on a stop)', flat.includes('stageCont = { contending: cont.contending, paused: cont.paused }; report();') && flat.includes('Object.assign(progress, stageCtx(), { stageEnded: stage }); report(); return { locked:') && cs.split('stageEnded: stage').length === 2);
+    check('core: the progress record takes the round record counts at each round, and the stage end only when it ends (not on a stop)', flat.includes('stageCont = { contending: cont.contending, paused: cont.paused, separate: nearestSeparation(standing, { goal, mult: pauseMult, rounds: stageRound }) }; report();') && flat.includes('Object.assign(progress, stageCtx(), { stageEnded: stage }); report(); return { locked:') && cs.split('stageEnded: stage').length === 2);
 }
 check('strings: placeholders match across languages', keys.every((k) => ['pt', 'zh'].every((l) => (locales[l].progress[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.progress[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
 const ptHtml = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'step', index: 2, state: 'running', runsPlanned: 4, runsDone: 1, etaSeconds: 9 }] } }, tIn('pt'));

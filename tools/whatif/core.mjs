@@ -19,7 +19,7 @@ import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
-import { tMult, dfOf, contention, eliminate, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
+import { tMult, dfOf, contention, eliminate, nearestSeparation, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -685,7 +685,7 @@ export async function main(settings, seams) {
         // may fall and rise). report() adds them to every progress message of the stage (stageCtx), whichever batch is running.
         const widthPrev = new Map(); // pool key -> the top leader's range width of the last round (item: range width and the one before)
         let stageCont = { contending: cands.length, paused: 0, acceptable: 0 };
-        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable,stageDropped: cands.filter((c) => c.refuted || c.out).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
+        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
         try {
         for (;;) {
             roundNo++;
@@ -762,7 +762,8 @@ export async function main(settings, seams) {
                     return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), sortedBy, leaders: lr };
                 }) };
             lastRound = rec;
-            stageCont = { contending: cont.contending, paused: cont.paused };
+            // The pool nearest to ending (two or three changes standing): the rounds it still needs to separate its top two, for the stage row (rounds.mjs nearestSeparation).
+            stageCont = { contending: cont.contending, paused: cont.paused, separate: nearestSeparation(standing, { goal, mult: pauseMult, rounds: stageRound }) };
             report(); // the progress row takes the round record's counts now, not the first look's
             outSink.round(rec);
             onRound?.(rec, live);

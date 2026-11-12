@@ -153,6 +153,47 @@ export const CURRENT = Object.freeze({ current: true });
 const spanOf = (c, goal, mult) => (c === CURRENT ? { lo: 0, hi: 0 } : bounds(c, goal, mult));
 // The upper end in the unit of rankedOf() (not per coin); a monotone lever is floored at 0 as in bounds().
 const rawHi = (c, goal, mult) => { const r = rankedOf(c.est, goal); if (!r) return Infinity; const hi = r.q + mult * r.se; return c.monotone ? Math.max(hi, 0) : hi; };
+// The lower end in the same unit (a monotone lever floored at 0 as in bounds()); -Infinity with no usable estimate.
+const rawLo = (c, goal, mult) => { const r = rankedOf(c.est, goal); if (!r) return -Infinity; const lo = r.q - mult * r.se; return c.monotone ? Math.max(lo, 0) : lo; };
+// The tie rule (the owner, 2026-11-12: "your proposal seems fair", "Build it with no time limit"). In a pool with two or more changes still standing, the higher
+// one A (the pool's own order, bounds().v) and each other standing change B are tied when A's upper end minus B's lower end, the best-case gap between
+// them, is below the bar of A's player (the 1% bar of the cut above). The pool ends when every other standing change is tied with A: they go out as
+// 'tied', A is its pick (the pick check follows as for any pick). The gap and the bar are in the unit of rankedOf() (the buyer's net, not per coin), like
+// the bar cut; the error margins are inside the ends, so a wide range is no tie. A change of another player than A's never ties (a pool that mixes
+// players, as the screen stage's, keeps going on it); no bar above 0 (or an end with no estimate) means no tie. The current setup takes no part.
+function tieOf(list, { goal, mult, bars }) {
+    const live = list.filter((c) => !c.out);
+    if (live.length < 2) return;
+    const A = live.reduce((a, c) => (bounds(c, goal, mult).v > bounds(a, goal, mult).v ? c : a));
+    const bar = bars.get(A.player), hi = rawHi(A, goal, mult);
+    if (!(bar > 0) || !Number.isFinite(hi)) return;
+    const others = live.filter((c) => c !== A);
+    if (others.every((b) => b.player === A.player && hi - rawLo(b, goal, mult) < bar)) for (const b of others) b.out = 'tied';
+}
+// The rounds still needed to separate the top two standing changes (A, B: { mean, margin } in the unit above, `margin` the half width at `mult` errors) after
+// `rounds` rounds of the race: both margins shrink as 1/sqrt(rounds), so the sum of the margins S falls under the gap D between the means after
+// n more rounds when S * sqrt(rounds / (rounds + n)) < D, n > rounds * (S^2 / D^2 - 1). Returns the whole number of rounds (at least 1), or null when
+// it cannot be told (no gap, no margins, or no rounds) or is above `cap` (the display says "more than 999").
+export function roundsToSeparate(a, b, rounds, cap = 999) {
+    const S = a.margin + b.margin, D = Math.abs(a.mean - b.mean);
+    if (!(S > 0) || !(D > 0) || !(rounds >= 1) || !Number.isFinite(S) || !Number.isFinite(D)) return null;
+    if (S < D) return 1; // already apart: the elimination takes the lower one this round
+    const n = Math.ceil(rounds * (S * S / (D * D) - 1));
+    return n > cap ? null : Math.max(1, n);
+}
+// The pool nearest to ending, for the stage row: over the pools eliminate() returned, those with two or three changes standing (a lone one is its pick,
+// four or more are far from it) each give the rounds to separate their top two (by the pool's own order); the smallest wins, a pool that cannot be told or is
+// above the cap counts as infinitely far. Returns null when no pool qualifies, else { rounds: the whole number, or null for "more than 999" }.
+export function nearestSeparation(pools, { goal, mult, rounds, cap = 999 }) {
+    let best = null;
+    for (const p of pools) {
+        if (p.changes.length < 2 || p.changes.length > 3) continue;
+        const [a, b] = [...p.changes].sort((x, y) => bounds(y, goal, mult).v - bounds(x, goal, mult).v), ra = rankedOf(a.est, goal), rb = rankedOf(b.est, goal);
+        const n = ra && rb ? roundsToSeparate({ mean: ra.q, margin: mult * ra.se }, { mean: rb.q, margin: mult * rb.se }, rounds, cap) : null;
+        if (best === null || (n !== null && (best.rounds === null || n < best.rounds))) best = { rounds: n };
+    }
+    return best;
+}
 function cutOf(c, { goal, mult, bars, payLimit }) {
     const hi = rawHi(c, goal, mult);
     if (!Number.isFinite(hi)) return null; // no usable estimate yet: unbounded, never cut
@@ -177,6 +218,7 @@ export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(
         const standing = [CURRENT, ...list.filter((c) => c.out !== 'bar' && c.out !== 'payback')], span = new Map(standing.map((c) => [c, spanOf(c, goal, mult)]));
         const beatenBy = (c) => standing.some((e) => e !== c && span.get(e).lo > spanOf(c, goal, mult).hi);
         for (const c of list) if (!c.out && beatenBy(c)) c.out = 'beaten';
+        tieOf(list, { goal, mult, bars });
         pools.push({ key, player: byPlayer ? list[0].player : null, changes: list.filter((c) => !c.out), noChange: !beatenBy(CURRENT), size: list.length });
     }
     return pools;
