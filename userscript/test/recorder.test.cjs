@@ -268,6 +268,28 @@ test('windows: same conditions share one window, a changed drop rate or zone ope
     assert.equal(r.state.windows[1].battles, 1);
 });
 
+test('windows: a labyrinth run is its own zone, so its fights do not carry the previous combat zone; other actions change nothing', () => {
+    const r = fresh();
+    const nb = (id) => NB(id, [unit({ combatDetails: { combatStats: { hpRegenPer10: 0.01 } } })], [mon('/monsters/m')]);
+    const act = (hrid) => r.handle({ type: 'action_completed', endCharacterAction: { actionHrid: hrid } }, 1);
+    act('/actions/combat/zone_a');
+    r.handle(nb(1), 1000); r.handle(nb(2), 2000);
+    assert.equal(r.state.windows[0].zone, '/actions/combat/zone_a');
+    act('/actions/labyrinth/explore');
+    r.handle(nb(3), 3000); r.handle(nb(4), 4000);
+    assert.equal(r.state.windows.length, 2, 'the labyrinth opens its own window');
+    assert.equal(r.state.windows[1].zone, '/actions/labyrinth/explore');
+    assert.equal(r.state.windows[0].zone, '/actions/combat/zone_a', 'the earlier window keeps its zone');
+    act('/actions/woodcutting/tree');
+    act('/actions/labyrinthine/x');
+    r.handle(nb(5), 5000);
+    assert.equal(r.state.windows.length, 2, 'a non-fight action, or a name that only starts like labyrinth, changes nothing');
+    act('/actions/combat/zone_a');
+    r.handle(nb(6), 6000);
+    assert.equal(r.state.windows.length, 3, 'back to combat opens a new window');
+    assert.equal(r.state.windows[2].zone, '/actions/combat/zone_a');
+});
+
 test('kills are counted once per monster and carry the time to kill; buff changes become events', () => {
     const r = fresh();
     const buff = (start) => ({ '/buff_uniques/c': { uniqueHrid: '/buff_uniques/c', typeHrid: '/buff_types/t', ratioBoost: 0.1, startTime: start, duration: 1e9 } });

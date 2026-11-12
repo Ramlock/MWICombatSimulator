@@ -610,7 +610,9 @@
             if (S.quests.length > REC.MAX_QUESTLOG) S.quests.shift();
         }
 
-        function onAction(a) { if (a && a.actionHrid && String(a.actionHrid).startsWith('/actions/combat/')) { S.zone = a.actionHrid; if (S.win && !S.win.zone) S.win.zone = S.zone; } }
+        // A combat zone or a labyrinth run is the zone of the fights that follow (the labyrinth has no /actions/combat/ action: without it its fights kept the previous combat zone).
+        const isFightAction = (hrid) => /^\/actions\/(combat|labyrinth)\//.test(String(hrid));
+        function onAction(a) { if (a && a.actionHrid && isFightAction(a.actionHrid)) { S.zone = a.actionHrid; if (S.win && !S.win.zone) S.win.zone = S.zone; } }
 
         // ---- encounter start: close the previous one, pick the window, take the baseline ----
         function onNewBattle(msg, t) {
