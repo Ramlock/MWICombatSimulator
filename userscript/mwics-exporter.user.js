@@ -979,7 +979,16 @@
             }
             st.queue.splice(0, batch.length);
             while (st.order.length > SINK.MAX_SENT) st.sent.delete(st.order.shift());
-            if (deps.saveSent) deps.saveSent(st.order);
+            if (deps.saveSent) adoptSent(deps.saveSent(st.order));
+        }
+
+        // Another game tab shares the sent list: keys it handed over count as sent here too, and are taken out of the queue.
+        function adoptSent(keys) {
+            if (!Array.isArray(keys)) return;
+            for (const k of keys) if (!st.sent.has(k)) { st.sent.add(k); st.order.push(k); }
+            while (st.order.length > SINK.MAX_SENT) st.sent.delete(st.order.shift());
+            if (!st.queue.length) return;
+            st.queue = st.queue.filter((r) => { if (!st.sent.has(r.key)) return true; st.queued.delete(r.key); return false; });
         }
 
         async function flush() {
@@ -987,6 +996,8 @@
             st.flushing = true;
             try {
                 while (st.queue.length) {
+                    if (deps.loadSent) adoptSent(deps.loadSent());
+                    if (!st.queue.length) break;
                     const batch = takeBatch();
                     let res;
                     try { res = await deps.post({ v: SINK.FORMAT_VERSION, records: batch }); } catch { res = { ok: false, status: 0 }; }
@@ -1085,8 +1096,50 @@
         });
     }
 
+    // ---- Several game tabs share one script storage ----
+    // Every tab keeps its own copy in memory and saves it to the shared keys. A save that wrote the whole copy back made the last tab
+    // to save overwrite what the others recorded. So a save reads the shared copy first and merges: rows by their own key (an encounter
+    // by encKey, a window by its start, a task list by its time), the counters by what this tab added since it last loaded or saved,
+    // the sent keys as a union. The tab's own memory (what the menu entries copy and count) is never changed by a save.
+    function mergeRows(stored, mine, keyOf, timeOf, pick, cap) {
+        const m = new Map();
+        for (const r of Array.isArray(stored) ? stored : []) if (r && typeof r === 'object') m.set(keyOf(r), r);
+        for (const r of mine) { const k = keyOf(r); m.set(k, m.has(k) ? pick(m.get(k), r) : r); }
+        const out = [...m.values()].sort((a, b) => timeOf(a) - timeOf(b));
+        return out.length > cap ? out.slice(out.length - cap) : out;
+    }
+    // A window grows while it is open, and only the tab that made it grows it: the copy that saw more battles, then more buffs, then later, is the newer.
+    const newerWindow = (a, b) => {
+        const rank = (w) => [w.battles || 0, (w.buffEvents || []).length, w.endedAt || 0];
+        const ra = rank(a), rb = rank(b);
+        for (let i = 0; i < 3; i++) if (ra[i] !== rb[i]) return ra[i] > rb[i] ? a : b;
+        return b;
+    };
+    // stored: the shared copy {encounters, windows, quests, stats} or null; mine: recorder.persistable(); base: this tab's stats when it last loaded or saved.
+    function mergeRecorded(stored, mine, base) {
+        const st = stored || {};
+        const stats = { ...(st.stats || {}) };
+        for (const [k, v] of Object.entries(mine.stats || {})) {
+            if (typeof v !== 'number') { stats[k] = v; continue; }
+            const b = base && typeof base[k] === 'number' ? base[k] : 0;
+            stats[k] = (typeof stats[k] === 'number' ? stats[k] : 0) + Math.max(0, v - b);
+        }
+        return {
+            encounters: mergeRows(st.encounters, mine.encounters, encKey, (e) => e.startedAt, (_o, n) => n, REC.MAX_ENCOUNTERS),
+            windows: mergeRows(st.windows, mine.windows, (w) => 'w:' + w.startedAt, (w) => w.startedAt, newerWindow, REC.MAX_WINDOWS),
+            quests: mergeRows(st.quests, mine.quests, (q) => 'q:' + q.t, (q) => q.t, (_o, n) => n, REC.MAX_QUESTLOG),
+            stats,
+        };
+    }
+    // The sent keys, oldest first: the shared list, then this tab's keys it lacks; the newest SINK.MAX_SENT stay.
+    function mergeSent(stored, mine, max) {
+        const seenKeys = new Set(), out = [];
+        for (const k of [].concat(Array.isArray(stored) ? stored : [], mine || [])) if (typeof k === 'string' && !seenKeys.has(k)) { seenKeys.add(k); out.push(k); }
+        return out.length > max ? out.slice(out.length - max) : out;
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { mergeRecorded, mergeSent, encKey, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -1110,6 +1163,8 @@
     // Sending to the helper: the stored toggle when there is one; with none stored (a fresh install) it is on only when a helper token has ever been stored (the key exists, even if emptied by hand), so a fresh install without a helper starts off and asks for nothing.
     function sendToHelperOn() { return recToggles.sendToHelper !== undefined ? recToggles.sendToHelper !== false : GM_getValue(HELPER_TOKEN_KEY, null) !== null; }
     function loadSent() { try { const a = JSON.parse(GM_getValue(SENT_KEY, '[]')); return Array.isArray(a) ? a : []; } catch { return []; } }
+    // Stats of this tab's recorder as of its last load or save: a save adds only what the tab counted since (other tabs share the stored counters).
+    let recBase = {};
     // The one request to the helper; every route goes through it. guardRequest makes a lost callback count as failed after REQUEST_WATCHDOG_MS.
     function helperCall(opts) {
         return guardRequest((done) => GM_xmlhttpRequest({
@@ -1128,7 +1183,9 @@
         enabled: () => !!recToggles.recorder && sendToHelperOn() && helperToken() !== '',
         selfOnly: () => !!recToggles.selfOnly,
         sent: loadSent(),
-        saveSent: (keys) => { try { GM_setValue(SENT_KEY, JSON.stringify(keys)); } catch (err) { console.error('[MWI Combat Tracker] could not save the sent keys', err); } },
+        loadSent,
+        // Several game tabs share this list: the saved list is the union of the stored one and this tab's, and the union is handed back to the sink.
+        saveSent: (keys) => { try { const merged = mergeSent(loadSent(), keys, SINK.MAX_SENT); GM_setValue(SENT_KEY, JSON.stringify(merged)); return merged; } catch (err) { console.error('[MWI Combat Tracker] could not save the sent keys', err); return undefined; } },
         post: async (body) => {
             const r = await helperRequest(body);
             if (!r.ok && !helperToast && document.body) { helperToast = true; toast('MWI Combat Tracker: helper not reachable or token wrong (status ' + r.status + '). Recorded data is kept and sending is retried.'); }
@@ -1181,13 +1238,23 @@
         try {
             const w = JSON.parse(GM_getValue(REC_WIN_KEY, 'null')), e = JSON.parse(GM_getValue(REC_ENC_KEY, 'null'));
             if (w) recorder.restore({ ...w, encounters: e || [] });
+            recBase = { ...recorder.state.stats };
         } catch (err) { console.error('[MWI Combat Tracker] could not load the recorded data', err); }
     }
-    function saveRecorded() {
+    function readRecorded() {
         try {
-            const d = recorder.persistable();
+            const w = JSON.parse(GM_getValue(REC_WIN_KEY, 'null')), e = JSON.parse(GM_getValue(REC_ENC_KEY, 'null'));
+            return w || e ? { ...(w || {}), encounters: e || [] } : null;
+        } catch { return null; }
+    }
+    // A save merges into the shared copy (several game tabs share it), so no tab overwrites another's rows. replace: the Clear menu entry, which empties it.
+    function saveRecorded(replace) {
+        try {
+            const mine = recorder.persistable();
+            const d = replace ? mine : mergeRecorded(readRecorded(), mine, recBase);
             GM_setValue(REC_ENC_KEY, JSON.stringify(d.encounters));
             GM_setValue(REC_WIN_KEY, JSON.stringify({ windows: d.windows, quests: d.quests, stats: d.stats }));
+            recBase = { ...mine.stats };
             recorder.state.dirty = 0;
         } catch (err) { console.error('[MWI Combat Tracker] could not save the recorded data', err); }
     }
@@ -1382,7 +1449,7 @@
     }
     function clearRecording() {
         recorder.clear();
-        saveRecorded();
+        saveRecorded(true);
         toast('MWI Combat Tracker: recorded combat data cleared (what the helper already wrote to disk stays).');
     }
     function setHelperToken() {

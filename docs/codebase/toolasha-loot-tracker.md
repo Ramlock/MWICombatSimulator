@@ -482,6 +482,15 @@ Design decisions (session-settled): the recorder appends what it records to a fi
 - **Menu names.** **Copy character export (player, gear, inventory)** (was **Copy export**), **Copy combat recording (clipboard)** (was **Copy loot export**), **Save combat recording (file)** (new: the same content as a downloaded `.json` file through a blob link, no clipboard), **Clear recorded combat data** (was **Clear recorded loot**; it does not delete what the helper already wrote), **Set helper token**, **Set helper address**, **Status** (version, counts written, held, rejected, queued, failed), **Settings** (the title shows the version).
 - **Not verified here.** Behaviour against the real helper (the tests use a mocked request function); the manager's storage limit for the sent-keys list; many hours of continuous sending.
 
+## Several game tabs (userscript, unreleased)
+
+The script runs in every game tab and all tabs share one script storage (`mwicsRecorderEncounters`, `mwicsRecorderWindows`, `mwicsSinkSent`, `mwicsGroupState`, `mwicsGroupSnapshot`, the toggles and the helper token). Each tab keeps its own recording in memory; the menu entries (copy, save, counts in Settings) read only that tab's memory.
+
+- **Saving the recording** (`saveRecorded`: every 20 closed encounters, page hidden, page closing) reads the shared copy first and merges (`mergeRecorded`): encounters by their sink key (`enc:<start>:<battle id>`), windows by their start time (the copy with more battles, then more buffer events, then the later end wins, a tie keeps the saving tab's), task lists by their time; each list is cut to its cap keeping the newest, in time order. The counters in `stats` add what the saving tab counted since it last loaded or saved (`recBase`), so a counter is never counted twice. **Clear recorded combat data** replaces the shared copy with the empty one; a tab that still holds rows writes them back at its next save.
+- **Sent keys** (`saveSent`) are the union of the stored list and the tab's (`mergeSent`, newest 5000). Before each batch the sink reads the stored list (`adoptSent`) and drops from its queue what another tab has sent. A request already in flight in another tab is not seen: two tabs can still send the same row once, and the helper holds one copy by key.
+- **Not merged:** `mwicsGroupState` (no timestamp) and `mwicsGroupSnapshot` (has `t`, always written newest-last, so the page shows the party of whichever tab wrote last).
+- Tests: `userscript/test/tabs.test.cjs` (several script instances over one fake storage).
+
 ## Group export (userscript 0.4.0)
 
 Menu entry `Copy group export (party, for Group Combat import)` copies the text the simulator's Group Combat `All players import` takes (`src/main.js` `doGroupImport` / `mergePlayerImport`): one object keyed by slot `"1"`..`"5"`, each value a player in the character export's shape. A kind a slot has no data for is left out; the import then keeps that slot's prior value (unknown, never empty). Never invented: no guesses by weapon type.
