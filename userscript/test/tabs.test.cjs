@@ -201,10 +201,30 @@ await test('a tab whose rows another tab sent meanwhile drops them from its queu
     for (const r of b.reqs) for (const x of JSON.parse(r.data).records) assert.ok(!sentA.has(x.key), 'resent ' + x.key);
 });
 
+await test('party state: the shared profiles of every tab are kept, the newest first; the members are the last writer\'s', () => {
+    const store = {};
+    const a = boot(store), b = boot(store);
+    const prof = (id, name, lvl) => ({ type: 'profile_shared', profile: { sharableCharacter: { id, name }, characterSkills: [{ characterID: id, skillHrid: '/skills/attack', level: lvl }], wearableItemMap: {} } });
+    const g = () => JSON.parse(store.mwicsGroupState);
+    a.send(init(1)); b.send(init(2));
+    a.send(prof(11, 'Ann', 10));
+    b.send(prof(12, 'Bob', 20));                                    // B never saw Ann's profile
+    assert.deepEqual(g().profiles.map((p) => p.name), ['Bob', 'Ann']);
+    a.send(NB(101, 1));                                             // A saves its (stale) list again with a new party start
+    assert.deepEqual(g().profiles.map((p) => p.name), ['Bob', 'Ann'], 'a save by A does not drop Bob');
+    assert.equal(g().members.length, 1);
+    b.send(prof(11, 'Ann', 15));                                    // the same player seen later in B: the later copy replaces the earlier
+    assert.deepEqual(g().profiles.map((p) => p.name + p.skills.attack), ['Ann15', 'Bob20']);
+    a.send(prof(12, 'Bob', 25));
+    assert.deepEqual(g().profiles.map((p) => p.name + p.skills.attack), ['Bob25', 'Ann15']);
+    b.send(NB(201, 2));                                             // members: the last writer's
+    assert.deepEqual(g().members.map((m) => m.id), [2]);
+});
+
 // ---- the pure rules ----
 const mod = (() => { const m = { exports: {} }; vm.runInNewContext(SRC, { module: m, console, JSON, Date, Object, Map, Set, Array, String, Number, Math, RegExp, Error, Promise, WeakSet }); return m.exports; })();
 // results come from another context: compare them as plain data
-if (mod.mergeRecorded) { const mr = mod.mergeRecorded, ms = mod.mergeSent; mod.mergeRecorded = (...a) => JSON.parse(JSON.stringify(mr(...a))); mod.mergeSent = (...a) => JSON.parse(JSON.stringify(ms(...a))); }
+if (mod.mergeRecorded) { const mr = mod.mergeRecorded, ms = mod.mergeSent; mod.mergeRecorded = (...a) => JSON.parse(JSON.stringify(mr(...a))); const mp = mod.mergeProfiles; mod.mergeProfiles = (...a) => JSON.parse(JSON.stringify(mp(...a))); mod.mergeSent = (...a) => JSON.parse(JSON.stringify(ms(...a))); }
 const E = (t, id) => ({ startedAt: t, battleId: id, players: [] });
 const W = (t, battles, extra) => ({ startedAt: t, endedAt: t + 10, battles, buffEvents: [], ...extra });
 
@@ -247,6 +267,24 @@ if (mod.mergeRecorded) {
         const r = mod.mergeRecorded({ stats: { closed: 30, negativeDiffs: 0 } }, mine, { closed: 8, negativeDiffs: 3 });
         assert.equal(r.stats.closed, 32);
         assert.equal(r.stats.negativeDiffs, 0, 'a counter that was reset below its base adds nothing');
+    });
+    await test('mergeProfiles: one per player (id or name), newest by its time first, a tie keeps this tab\'s, capped, junk ignored', () => {
+        const P = (id, name, t, extra) => ({ id, name, t, ...extra });
+        const names = (r) => r.map((p) => p.name + (p.tag || ''));
+        assert.deepEqual(names(mod.mergeProfiles([P(1, 'A', 5), P(2, 'B', 3)], [P(3, 'C', 4)])), ['A', 'C', 'B']);
+        assert.deepEqual(names(mod.mergeProfiles([P(1, 'A', 5, { tag: 's' })], [P(1, 'A', 9, { tag: 'm' })])), ['Am']);
+        assert.deepEqual(names(mod.mergeProfiles([P(1, 'A', 9, { tag: 's' })], [P(1, 'A', 5, { tag: 'm' })])), ['As']);
+        assert.deepEqual(names(mod.mergeProfiles([P(1, 'A', 5, { tag: 's' })], [P(1, 'A', 5, { tag: 'm' })])), ['Am'], 'tie');
+        assert.deepEqual(names(mod.mergeProfiles([P(null, 'N', 5, { tag: 's' })], [P(null, 'N', 7, { tag: 'm' })])), ['Nm'], 'same name, no id');
+        assert.deepEqual(names(mod.mergeProfiles([P(1, 'A', 5)], [P(1, 'A2', 4)])), ['A'], 'same id, name changed');
+        assert.deepEqual(names(mod.mergeProfiles(null, [P(1, 'A', 1)])), ['A']);
+        assert.deepEqual(names(mod.mergeProfiles('no', [null, 7, P(1, 'A', 1)])), ['A']);
+        assert.deepEqual(names(mod.mergeProfiles([P(1, 'A')], [P(2, 'B', 3)])), ['B', 'A'], 'no time counts as oldest');
+        const many = []; for (let i = 0; i < 30; i++) many.push(P(i, 'p' + i, i));
+        const r = mod.mergeProfiles(many.slice(0, 15), many.slice(15));
+        assert.equal(r.length, 20);
+        assert.equal(r[0].name, 'p29');
+        assert.equal(r[19].name, 'p10');
     });
     await test('mergeSent: union, stored first, newest max kept, non-strings dropped', () => {
         assert.deepEqual(mod.mergeSent(['a', 'b'], ['b', 'c'], 10), ['a', 'b', 'c']);

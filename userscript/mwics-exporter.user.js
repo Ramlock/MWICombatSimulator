@@ -1138,8 +1138,18 @@
         return out.length > max ? out.slice(out.length - max) : out;
     }
 
+    // The shared profiles (mwicsGroupState): the stored list and this tab's, one per player (same id, or same name), the newest by its own time first,
+    // a tie keeps this tab's; the newest PROFILE_MAX stay. The party members are not merged: the last tab to save writes its own.
+    function mergeProfiles(stored, mine) {
+        const all = [].concat(Array.isArray(mine) ? mine : [], Array.isArray(stored) ? stored : []).filter((p) => p && typeof p === 'object');
+        all.sort((a, b) => (Number(b.t) || 0) - (Number(a.t) || 0));
+        const out = [];
+        for (const p of all) if (!out.some((q) => (q.id != null && q.id === p.id) || (q.name && q.name === p.name))) out.push(p);
+        return out.slice(0, PROFILE_MAX);
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { mergeRecorded, mergeSent, encKey, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1264,7 +1274,8 @@
     const GROUP_KEY = 'mwicsGroupState';
     let grp = { members: [], profiles: [] };
     try { const g = JSON.parse(GM_getValue(GROUP_KEY, 'null')); if (g && Array.isArray(g.members) && Array.isArray(g.profiles)) grp = g; } catch { /* start empty */ }
-    function saveGroup() { try { GM_setValue(GROUP_KEY, JSON.stringify(grp)); } catch (err) { console.error('[MWI Combat Tracker] could not save the party data', err); } }
+    // Several game tabs share this key: the profiles saved are the stored ones merged with this tab's (mergeProfiles); this tab's own list in memory is not changed.
+    function saveGroup() { try { let stored = null; try { stored = JSON.parse(GM_getValue(GROUP_KEY, 'null')); } catch { /* no stored copy */ } GM_setValue(GROUP_KEY, JSON.stringify({ ...grp, profiles: mergeProfiles(stored && stored.profiles, grp.profiles) })); } catch (err) { console.error('[MWI Combat Tracker] could not save the party data', err); } }
     // The game's own current actions and party, kept live from init_character_data, actions_updated, action_completed and party_updated.
     let liveActions = null, livePartyInfo = null;
     function noteAction(obj) { const ea = obj && obj.endCharacterAction; if (ea && Array.isArray(liveActions)) liveActions = liveActions.map((a) => (a && a.id === ea.id ? ea : a)); }
