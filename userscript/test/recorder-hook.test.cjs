@@ -268,7 +268,7 @@ await test('simulator page: the import button is in the page language (en, pt, z
     assert.equal(mk(undefined).button._t, EN);
     // a live change: a check once a second (the second interval) relabels the button already on the page
     const a = mk('en');
-    assert.equal(a.sim.intervals.length, 2, 'the add-button timer and the language check');
+    assert.equal(a.sim.intervals.length, 3, 'the add-button timer, the language check and the character picker refresh');
     const poll = a.sim.intervals[1];
     for (const [lang, want] of [['pt-BR', PT], ['zh', ZH], ['en', EN], ['fr', EN]]) {
         a.sim.docEl.lang = lang; poll();

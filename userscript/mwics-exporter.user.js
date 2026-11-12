@@ -309,6 +309,20 @@
         return { ok: true, group: s.group, slots: s.slots || [], ageMin, ...(selected ? { selected } : {}), ...(fight ? { fight } : {}) };
     }
 
+    // One snapshot per character: its own key (SNAP_CHAR_PREFIX + the character id, the same text as the single snapshot) and an index of
+    // [{ id, name, t }], newest first, at most SNAP_KEEP characters. The single snapshot key keeps the latest save of any character.
+    const SNAP_KEEP = 10;
+    function mergeSnapIndex(stored, entry, keep) {
+        const m = new Map();
+        for (const e of Array.isArray(stored) ? stored : []) if (e && typeof e === 'object' && e.id != null) m.set(String(e.id), { id: e.id, name: String(e.name || ''), t: Number(e.t) || 0 });
+        const cur = m.get(String(entry.id));
+        if (!cur || entry.t >= cur.t) m.set(String(entry.id), { id: entry.id, name: String(entry.name || ''), t: entry.t });
+        const all = [...m.values()].sort((a, b) => b.t - a.t);
+        return { index: all.slice(0, keep), dropped: all.slice(keep).map((e) => e.id) };
+    }
+    // The picker's label: the name, then the time of the last save as the viewer's clock shows it (fmt(t) -> text).
+    const snapLabel = (e, fmt) => (e.name || 'Character ' + e.id) + ', saved ' + fmt(e.t);
+
     // ---- The fight the group is in (zone, tier) and who to tick; read-only from the game's own messages ----
     // actions: the game's characterActions list (the current action is the first). applyActionsUpdate mirrors how the game's client
     // keeps it for actions_updated.endCharacterActions: a finished action leaves, a known id is replaced, a new one is added;
@@ -1151,7 +1165,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1296,7 +1310,18 @@
     }
     // The latest group export for the simulator page (same build as the clipboard copy), rewritten when the party, a profile,
     // the character data or the toggles change.
-    const SNAP_KEY = 'mwicsGroupSnapshot';
+    const SNAP_KEY = 'mwicsGroupSnapshot', SNAP_INDEX_KEY = 'mwicsGroupSnapshotIndex', SNAP_CHAR_PREFIX = 'mwicsGroupSnapshot.';
+    function readSnapIndex() {
+        try { const a = JSON.parse(GM_getValue(SNAP_INDEX_KEY, '[]')); return Array.isArray(a) ? a.filter((e) => e && e.id != null).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0)) : []; } catch { return []; }
+    }
+    // Saves this character's snapshot under its own key and in the index (merged with the other tabs' entries); a character past the newest SNAP_KEEP is blanked.
+    function saveCharSnapshot(character, snap, text) {
+        if (!character || character.id == null) return;
+        GM_setValue(SNAP_CHAR_PREFIX + character.id, text);
+        const { index, dropped } = mergeSnapIndex(readSnapIndex(), { id: character.id, name: character.name, t: snap.t }, SNAP_KEEP);
+        GM_setValue(SNAP_INDEX_KEY, JSON.stringify(index));
+        for (const id of dropped) GM_setValue(SNAP_CHAR_PREFIX + id, '');
+    }
     function buildGroup(ownExport) {
         if (!latest) return null;
         return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles, ownExport: !!ownExport });
@@ -1308,7 +1333,9 @@
             if (r) {
                 const now = Date.now();
                 const fight = liveFight(now);
-                GM_setValue(SNAP_KEY, JSON.stringify({ t: now, group: r.group, slots: r.slots, selected: r.slots.map((x) => x.slot), ...(fight ? { fight } : {}) }));
+                const snap = { t: now, group: r.group, slots: r.slots, selected: r.slots.map((x) => x.slot), ...(fight ? { fight } : {}) }, text = JSON.stringify(snap);
+                GM_setValue(SNAP_KEY, text);
+                saveCharSnapshot(latest.characterObj && latest.characterObj.character, snap, text);
             }
         } catch (err) { console.error('[MWI Combat Tracker] could not publish the party for the simulator', err); }
     }
@@ -1414,11 +1441,46 @@
         b.addEventListener('click', importPartyFromGame);
         col.appendChild(b);
         wrap.appendChild(col);
+        // The character picker: shown only when the game tabs have left two or more characters; default the most recent save.
+        pickCol = document.createElement('div');
+        pickCol.className = 'col-md-auto';
+        pickCol.style.display = 'none';
+        picker = document.createElement('select');
+        picker.id = 'mwicsPartyPicker'; picker.className = 'form-select'; picker.title = 'Which character\'s party to import (MWI Combat Tracker)';
+        picker.style.width = 'auto';
+        picker.addEventListener('focus', refreshPicker);
+        picker.addEventListener('mousedown', refreshPicker);
+        pickCol.appendChild(picker);
+        wrap.appendChild(pickCol);
         row.insertAdjacentElement('afterend', wrap);
+        refreshPicker();
+        setInterval(refreshPicker, 5000);
         return true;
     }
+    let picker = null, pickCol = null, pickSig = '';
+    const clockText = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    function refreshPicker() {
+        if (!picker) return;
+        const list = readSnapIndex();
+        if (list.length < 2) { pickCol.style.display = 'none'; pickSig = ''; return; }
+        pickCol.style.display = '';
+        const sig = JSON.stringify(list);
+        if (sig === pickSig || (typeof document !== 'undefined' && document.activeElement === picker)) return; // unchanged, or the list is open
+        pickSig = sig;
+        const keep = picker.value && list.some((e) => String(e.id) === picker.value) ? picker.value : String(list[0].id);
+        picker.innerHTML = '';
+        for (const e of list) {
+            const o = document.createElement('option');
+            o.value = String(e.id);
+            o.textContent = snapLabel(e, clockText);
+            picker.appendChild(o);
+        }
+        picker.value = keep;
+    }
     function importPartyFromGame() {
-        const c = checkGroupSnapshot(GM_getValue(SNAP_KEY, ''), Date.now());
+        refreshPicker();
+        const chosen = picker && pickCol.style.display !== 'none' && picker.value ? picker.value : null; // a character picked; else the single snapshot, as before
+        const c = checkGroupSnapshot(GM_getValue(chosen ? SNAP_CHAR_PREFIX + chosen : SNAP_KEY, ''), Date.now());
         if (!c.ok) { toast(c.message, 8000); return; }
         const input = document.getElementById('inputSetGroupCombatAll'), go = document.getElementById('buttonImportSet'), tab = document.getElementById('group-combat-tab');
         if (!input || !go || !tab) { toast('MWI Combat Tracker: this simulator page has no Group Combat import.', 8000); return; }
