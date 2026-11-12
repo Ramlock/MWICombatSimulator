@@ -100,6 +100,12 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     check('replay counter: logs "N real simulations so far" every 50 (here 2) with a timestamp, and the summary names the total', lines.length === 2 && /^\d{4}-\d\d-\d\dT.* 2 real simulations so far/.test(lines[0]) && /5 real simulations in this search \(x 5\)/.test(c3.summary()), JSON.stringify(lines));
 }
 
+// ---- The payback list: scenario-payback.json (make-scenario.mjs --slow): every paid change loses except Cara legs +3, which pays back in 400 days ----
+{
+    const slow = await runSynthetic(loadScenario(path.join(root, 'tools/test/synthetic/scenario-payback.json')));
+    check('payback list: the one paid change left standing that pays back in 400 days (Cara legs +3) is refused by the pick check for the 365-day limit, listed under overPayback with its days, and no step is taken', slow.result.steps.length === 0 && slow.result.overPayback.length === 1 && slow.result.overPayback[0].id === 'Cara:legs+3' && slow.result.overPayback[0].paybackDays > 365, JSON.stringify(slow.result.overPayback.map((x) => [x.desc, x.paybackDays])));
+}
+
 // ---- The two buttons ----
 {
     const press = (stage, round, mode) => (rec, stop) => { if (rec.stage === stage && rec.round === round) stop.done = mode; };

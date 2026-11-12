@@ -45,6 +45,12 @@ const ENH = {
     'Cara:body+1': { cost: 500_000, loot: 6_000 }, 'Cara:body+3': { cost: 4_000_000, loot: 10_000 }, 'Cara:legs+1': { cost: 400_000, loot: 1_000 }, 'Cara:legs+2': { cost: 800_000, loot: 0 }, 'Cara:legs+3': { cost: 3_000_000, loot: 1_000 },
 };
 
+// --slow writes scenario-payback.json instead: every paid change loses except one, Cara legs +3, which gains but pays back in 450 days (cost 3M over a gain of 6.7k per user per day,
+// 20k of party loot); Cara has no 1% bar (her profit is below zero), so it is the one paid change left standing, and the pick check refuses it for the payback limit (the report's
+// 'Pays back too slowly' list). Same party, prices, foods and drinks as the main scenario.
+const SLOW = process.argv.includes('--slow');
+if (SLOW) for (const id of Object.keys(ENH)) { delete ENH[id].searchBonus; ENH[id].loot = id === 'Cara:legs+3' ? 20_000 : -20_000; if (id === 'Cara:legs+3') ENH[id].noiseSd = 60_000; }
+
 const FOODS = { 'blueberry_donut': 900, 'strawberry_donut': 2200, 'blueberry_cake': 1100, 'strawberry_cake': 2500, 'apple_gummy': 800, 'orange_gummy': 1900, 'apple_yogurt': 1000, 'orange_yogurt': 2300 };
 const DRINKS = { 'melee_coffee': 600, 'super_melee_coffee': 1800, 'ultra_melee_coffee': 4500, 'lucky_coffee': 700, 'swiftness_coffee': 900, 'critical_coffee': 800, 'wisdom_coffee': 700, 'stamina_coffee': 650, 'defense_coffee': 650, 'attack_coffee': 640 };
 
@@ -76,12 +82,12 @@ const CONS = [
 ];
 
 const effects = [
-    ...Object.entries(ENH).map(([id, e]) => { const [player, rest] = id.split(':'); const [slot, delta] = rest.split('+'); return { match: { op: 'enhance', player, slot, delta: Number(delta) }, loot: e.loot, ...(e.searchBonus ? { searchBonus: e.searchBonus } : {}), note: id }; }),
+    ...Object.entries(ENH).map(([id, e]) => { const [player, rest] = id.split(':'); const [slot, delta] = rest.split('+'); return { match: { op: 'enhance', player, slot, delta: Number(delta) }, loot: e.loot, ...(e.noiseSd ? { noiseSd: e.noiseSd } : {}), ...(e.searchBonus ? { searchBonus: e.searchBonus } : {}), note: id }; }),
     ...CONS,
 ];
 
 const scenario = {
-    name: 'synthetic-3-player',
+    name: SLOW ? 'synthetic-3-player-slow-payback' : 'synthetic-3-player',
     description: 'Three generic melee players, +4 gear on head, body and legs, a generic price snapshot; every change the core builds has a known true gain (effects). Cara spends more than her share of the loot (profit below zero).',
     players: NAMES.map(setup),
     market: { marketData: market(), timestamp: 1_800_000_000 },
@@ -93,5 +99,6 @@ const scenario = {
     },
     effects,
 };
-writeFileSync(path.join(here, 'scenario.json'), JSON.stringify(scenario, null, 1) + '\n');
-console.log('wrote', path.join(here, 'scenario.json'), 'effects', effects.length);
+const outFile = path.join(here, SLOW ? 'scenario-payback.json' : 'scenario.json');
+writeFileSync(outFile, JSON.stringify(scenario, null, 1) + '\n');
+console.log('wrote', outFile, 'effects', effects.length);

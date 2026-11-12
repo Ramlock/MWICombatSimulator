@@ -1,0 +1,1033 @@
+{
+ "name": "synthetic-3-player-slow-payback",
+ "description": "Three generic melee players, +4 gear on head, body and legs, a generic price snapshot; every change the core builds has a known true gain (effects). Cara spends more than her share of the loot (profit below zero).",
+ "players": [
+  {
+   "name": "Alice",
+   "zone": "/actions/combat/fly",
+   "simulationTime": 24,
+   "player": {
+    "attackLevel": 70,
+    "magicLevel": 1,
+    "meleeLevel": 70,
+    "rangedLevel": 1,
+    "defenseLevel": 70,
+    "staminaLevel": 70,
+    "intelligenceLevel": 70,
+    "equipment": [
+     {
+      "itemLocationHrid": "/item_locations/main_hand",
+      "itemHrid": "/items/crimson_sword",
+      "enhancementLevel": 5
+     },
+     {
+      "itemLocationHrid": "/item_locations/head",
+      "itemHrid": "/items/crimson_helmet",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/body",
+      "itemHrid": "/items/crimson_plate_body",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/legs",
+      "itemHrid": "/items/crimson_plate_legs",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/pouch",
+      "itemHrid": "/items/large_pouch",
+      "enhancementLevel": 0
+     }
+    ]
+   },
+   "food": {
+    "/action_types/combat": [
+     {
+      "itemHrid": "/items/blueberry_donut"
+     },
+     {
+      "itemHrid": "/items/apple_gummy"
+     },
+     {
+      "itemHrid": "/items/blueberry_cake"
+     }
+    ]
+   },
+   "drinks": {
+    "/action_types/combat": [
+     {
+      "itemHrid": "/items/melee_coffee"
+     },
+     {
+      "itemHrid": "/items/lucky_coffee"
+     }
+    ]
+   },
+   "abilities": [
+    {
+     "abilityHrid": "/abilities/poke",
+     "level": 10
+    }
+   ],
+   "triggerMap": {},
+   "houseRooms": {},
+   "achievements": {},
+   "guildCombatBuffLevels": {
+    "force": 0,
+    "tempo": 0,
+    "spirit": 0,
+    "rarity": 0,
+    "scholar": 0
+   }
+  },
+  {
+   "name": "Bob",
+   "zone": "/actions/combat/fly",
+   "simulationTime": 24,
+   "player": {
+    "attackLevel": 70,
+    "magicLevel": 1,
+    "meleeLevel": 70,
+    "rangedLevel": 1,
+    "defenseLevel": 70,
+    "staminaLevel": 70,
+    "intelligenceLevel": 70,
+    "equipment": [
+     {
+      "itemLocationHrid": "/item_locations/main_hand",
+      "itemHrid": "/items/rainbow_sword",
+      "enhancementLevel": 5
+     },
+     {
+      "itemLocationHrid": "/item_locations/head",
+      "itemHrid": "/items/rainbow_helmet",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/body",
+      "itemHrid": "/items/rainbow_plate_body",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/legs",
+      "itemHrid": "/items/rainbow_plate_legs",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/pouch",
+      "itemHrid": "/items/large_pouch",
+      "enhancementLevel": 0
+     }
+    ]
+   },
+   "food": {
+    "/action_types/combat": [
+     {
+      "itemHrid": "/items/blueberry_donut"
+     },
+     {
+      "itemHrid": "/items/apple_gummy"
+     },
+     {
+      "itemHrid": "/items/blueberry_cake"
+     }
+    ]
+   },
+   "drinks": {
+    "/action_types/combat": [
+     {
+      "itemHrid": "/items/melee_coffee"
+     },
+     {
+      "itemHrid": "/items/lucky_coffee"
+     }
+    ]
+   },
+   "abilities": [
+    {
+     "abilityHrid": "/abilities/poke",
+     "level": 10
+    }
+   ],
+   "triggerMap": {},
+   "houseRooms": {},
+   "achievements": {},
+   "guildCombatBuffLevels": {
+    "force": 0,
+    "tempo": 0,
+    "spirit": 0,
+    "rarity": 0,
+    "scholar": 0
+   }
+  },
+  {
+   "name": "Cara",
+   "zone": "/actions/combat/fly",
+   "simulationTime": 24,
+   "player": {
+    "attackLevel": 70,
+    "magicLevel": 1,
+    "meleeLevel": 70,
+    "rangedLevel": 1,
+    "defenseLevel": 70,
+    "staminaLevel": 70,
+    "intelligenceLevel": 70,
+    "equipment": [
+     {
+      "itemLocationHrid": "/item_locations/main_hand",
+      "itemHrid": "/items/burble_sword",
+      "enhancementLevel": 5
+     },
+     {
+      "itemLocationHrid": "/item_locations/head",
+      "itemHrid": "/items/burble_helmet",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/body",
+      "itemHrid": "/items/burble_plate_body",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/legs",
+      "itemHrid": "/items/burble_plate_legs",
+      "enhancementLevel": 4
+     },
+     {
+      "itemLocationHrid": "/item_locations/pouch",
+      "itemHrid": "/items/large_pouch",
+      "enhancementLevel": 0
+     }
+    ]
+   },
+   "food": {
+    "/action_types/combat": [
+     {
+      "itemHrid": "/items/blueberry_donut"
+     },
+     {
+      "itemHrid": "/items/apple_gummy"
+     },
+     {
+      "itemHrid": "/items/blueberry_cake"
+     }
+    ]
+   },
+   "drinks": {
+    "/action_types/combat": [
+     {
+      "itemHrid": "/items/melee_coffee"
+     },
+     {
+      "itemHrid": "/items/lucky_coffee"
+     }
+    ]
+   },
+   "abilities": [
+    {
+     "abilityHrid": "/abilities/poke",
+     "level": 10
+    }
+   ],
+   "triggerMap": {},
+   "houseRooms": {},
+   "achievements": {},
+   "guildCombatBuffLevels": {
+    "force": 0,
+    "tempo": 0,
+    "spirit": 0,
+    "rarity": 0,
+    "scholar": 0
+   }
+  }
+ ],
+ "market": {
+  "marketData": {
+   "/items/philosophers_mirror": {
+    "0": {
+     "a": 625000000,
+     "b": 617500000
+    }
+   },
+   "/items/crimson_helmet": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1160000,
+     "b": 0,
+     "p": 1160000,
+     "v": 100
+    },
+    "6": {
+     "a": 1860000,
+     "b": 0,
+     "p": 1860000,
+     "v": 100
+    },
+    "7": {
+     "a": 9960000,
+     "b": 0,
+     "p": 9960000,
+     "v": 100
+    }
+   },
+   "/items/crimson_plate_body": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1660000,
+     "b": 0,
+     "p": 1660000,
+     "v": 100
+    },
+    "6": {
+     "a": 1960000,
+     "b": 0,
+     "p": 1960000,
+     "v": 100
+    },
+    "7": {
+     "a": 6960000,
+     "b": 0,
+     "p": 6960000,
+     "v": 100
+    }
+   },
+   "/items/crimson_plate_legs": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1260000,
+     "b": 0,
+     "p": 1260000,
+     "v": 100
+    },
+    "6": {
+     "a": 1860000,
+     "b": 0,
+     "p": 1860000,
+     "v": 100
+    },
+    "7": {
+     "a": 4960000,
+     "b": 0,
+     "p": 4960000,
+     "v": 100
+    }
+   },
+   "/items/rainbow_helmet": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1460000,
+     "b": 0,
+     "p": 1460000,
+     "v": 100
+    },
+    "6": {
+     "a": 1520000,
+     "b": 0,
+     "p": 1520000,
+     "v": 100
+    },
+    "7": {
+     "a": 6960000,
+     "b": 0,
+     "p": 6960000,
+     "v": 100
+    }
+   },
+   "/items/rainbow_plate_body": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1560000,
+     "b": 0,
+     "p": 1560000,
+     "v": 100
+    },
+    "6": {
+     "a": 1760000,
+     "b": 0,
+     "p": 1760000,
+     "v": 100
+    },
+    "7": {
+     "a": 5960000,
+     "b": 0,
+     "p": 5960000,
+     "v": 100
+    }
+   },
+   "/items/rainbow_plate_legs": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1360000,
+     "b": 0,
+     "p": 1360000,
+     "v": 100
+    },
+    "6": {
+     "a": 2060000,
+     "b": 0,
+     "p": 2060000,
+     "v": 100
+    },
+    "7": {
+     "a": 5960000,
+     "b": 0,
+     "p": 5960000,
+     "v": 100
+    }
+   },
+   "/items/burble_helmet": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1260000,
+     "b": 0,
+     "p": 1260000,
+     "v": 100
+    },
+    "6": {
+     "a": 1660000,
+     "b": 0,
+     "p": 1660000,
+     "v": 100
+    },
+    "7": {
+     "a": 3960000,
+     "b": 0,
+     "p": 3960000,
+     "v": 100
+    }
+   },
+   "/items/burble_plate_body": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1460000,
+     "b": 0,
+     "p": 1460000,
+     "v": 100
+    },
+    "6": {
+     "a": 1960000,
+     "b": 0,
+     "p": 1960000,
+     "v": 100
+    },
+    "7": {
+     "a": 4960000,
+     "b": 0,
+     "p": 4960000,
+     "v": 100
+    }
+   },
+   "/items/burble_plate_legs": {
+    "4": {
+     "a": 0,
+     "b": 1000000,
+     "p": 0,
+     "v": 100
+    },
+    "5": {
+     "a": 1360000,
+     "b": 0,
+     "p": 1360000,
+     "v": 100
+    },
+    "6": {
+     "a": 1760000,
+     "b": 0,
+     "p": 1760000,
+     "v": 100
+    },
+    "7": {
+     "a": 3960000,
+     "b": 0,
+     "p": 3960000,
+     "v": 100
+    }
+   },
+   "/items/blueberry_donut": {
+    "0": {
+     "a": 900,
+     "b": 810,
+     "p": 900,
+     "v": 100
+    }
+   },
+   "/items/strawberry_donut": {
+    "0": {
+     "a": 2200,
+     "b": 1980,
+     "p": 2200,
+     "v": 100
+    }
+   },
+   "/items/blueberry_cake": {
+    "0": {
+     "a": 1100,
+     "b": 990,
+     "p": 1100,
+     "v": 100
+    }
+   },
+   "/items/strawberry_cake": {
+    "0": {
+     "a": 2500,
+     "b": 2250,
+     "p": 2500,
+     "v": 100
+    }
+   },
+   "/items/apple_gummy": {
+    "0": {
+     "a": 800,
+     "b": 720,
+     "p": 800,
+     "v": 100
+    }
+   },
+   "/items/orange_gummy": {
+    "0": {
+     "a": 1900,
+     "b": 1710,
+     "p": 1900,
+     "v": 100
+    }
+   },
+   "/items/apple_yogurt": {
+    "0": {
+     "a": 1000,
+     "b": 900,
+     "p": 1000,
+     "v": 100
+    }
+   },
+   "/items/orange_yogurt": {
+    "0": {
+     "a": 2300,
+     "b": 2070,
+     "p": 2300,
+     "v": 100
+    }
+   },
+   "/items/melee_coffee": {
+    "0": {
+     "a": 600,
+     "b": 540,
+     "p": 600,
+     "v": 100
+    }
+   },
+   "/items/super_melee_coffee": {
+    "0": {
+     "a": 1800,
+     "b": 1620,
+     "p": 1800,
+     "v": 100
+    }
+   },
+   "/items/ultra_melee_coffee": {
+    "0": {
+     "a": 4500,
+     "b": 4050,
+     "p": 4500,
+     "v": 100
+    }
+   },
+   "/items/lucky_coffee": {
+    "0": {
+     "a": 700,
+     "b": 630,
+     "p": 700,
+     "v": 100
+    }
+   },
+   "/items/swiftness_coffee": {
+    "0": {
+     "a": 900,
+     "b": 810,
+     "p": 900,
+     "v": 100
+    }
+   },
+   "/items/critical_coffee": {
+    "0": {
+     "a": 800,
+     "b": 720,
+     "p": 800,
+     "v": 100
+    }
+   },
+   "/items/wisdom_coffee": {
+    "0": {
+     "a": 700,
+     "b": 630,
+     "p": 700,
+     "v": 100
+    }
+   },
+   "/items/stamina_coffee": {
+    "0": {
+     "a": 650,
+     "b": 585,
+     "p": 650,
+     "v": 100
+    }
+   },
+   "/items/defense_coffee": {
+    "0": {
+     "a": 650,
+     "b": 585,
+     "p": 650,
+     "v": 100
+    }
+   },
+   "/items/attack_coffee": {
+    "0": {
+     "a": 640,
+     "b": 576,
+     "p": 640,
+     "v": 100
+    }
+   }
+  },
+  "timestamp": 1800000000
+ },
+ "budgets": {
+  "Alice": 1000000000,
+  "Bob": 1000000000,
+  "Cara": 1000000000
+ },
+ "request": {
+  "goal": "profit",
+  "levers": [
+   "equip",
+   "consumables"
+  ],
+  "slots": "head,body,legs",
+  "swaps": false,
+  "max-up": 3,
+  "max-payback": 365,
+  "max-steps": 4
+ },
+ "model": {
+  "lootPerDay": 3000000,
+  "lootSd50": 15000,
+  "supplies": {
+   "Alice": 150000,
+   "Bob": 200000,
+   "Cara": 1200000
+  },
+  "suppliesSd50": 3000,
+  "need": {
+   "Alice": {
+    "hp": 8000,
+    "mp": 4000
+   },
+   "Bob": {
+    "hp": 8000,
+    "mp": 4000
+   },
+   "Cara": {
+    "hp": 8000,
+    "mp": 4000
+   }
+  },
+  "noiseSalt": "e",
+  "deathsPerHour": 0.1,
+  "encountersPerHour": 120,
+  "expPerHour": 1000000,
+  "msPerRun": 300
+ },
+ "effects": [
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "body",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Alice:body+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "body",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Alice:body+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "body",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Alice:body+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "head",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Alice:head+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "head",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Alice:head+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "head",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Alice:head+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "legs",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Alice:legs+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "legs",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Alice:legs+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Alice",
+    "slot": "legs",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Alice:legs+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "head",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Bob:head+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "head",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Bob:head+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "head",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Bob:head+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "body",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Bob:body+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "body",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Bob:body+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "body",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Bob:body+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "legs",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Bob:legs+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "legs",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Bob:legs+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Bob",
+    "slot": "legs",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Bob:legs+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "body",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Cara:body+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "head",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Cara:head+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "head",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Cara:head+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "head",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Cara:head+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "body",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Cara:body+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "body",
+    "delta": 3
+   },
+   "loot": -20000,
+   "note": "Cara:body+3"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "legs",
+    "delta": 1
+   },
+   "loot": -20000,
+   "note": "Cara:legs+1"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "legs",
+    "delta": 2
+   },
+   "loot": -20000,
+   "note": "Cara:legs+2"
+  },
+  {
+   "match": {
+    "op": "enhance",
+    "player": "Cara",
+    "slot": "legs",
+    "delta": 3
+   },
+   "loot": 20000,
+   "noiseSd": 60000,
+   "note": "Cara:legs+3"
+  },
+  {
+   "match": {
+    "op": "food",
+    "player": "Alice",
+    "item": "/items/strawberry_cake"
+   },
+   "loot": 25000,
+   "supplies": -9000
+  },
+  {
+   "match": {
+    "op": "food",
+    "player": "Alice",
+    "item": "/items/orange_gummy"
+   },
+   "loot": 12000,
+   "supplies": -4000
+  },
+  {
+   "match": {
+    "op": "food",
+    "player": "Bob",
+    "item": "/items/strawberry_donut"
+   },
+   "loot": 30000,
+   "supplies": -6000
+  },
+  {
+   "match": {
+    "op": "food",
+    "player": "Bob",
+    "item": "/items/strawberry_cake"
+   },
+   "loot": 28000,
+   "supplies": -6000
+  },
+  {
+   "match": {
+    "op": "food",
+    "player": "Cara"
+   },
+   "loot": -20000,
+   "supplies": 5000
+  },
+  {
+   "match": {
+    "op": "drink",
+    "player": "Alice",
+    "item": "/items/super_melee_coffee"
+   },
+   "loot": 55000,
+   "supplies": 3000
+  },
+  {
+   "match": {
+    "op": "drink",
+    "player": "Alice",
+    "item": "/items/swiftness_coffee"
+   },
+   "loot": 30000,
+   "supplies": 1000
+  },
+  {
+   "match": {
+    "op": "drink",
+    "player": "Bob",
+    "item": "/items/swiftness_coffee"
+   },
+   "loot": 40000,
+   "supplies": 1000
+  },
+  {
+   "match": {
+    "op": "drink",
+    "player": "Cara"
+   },
+   "loot": -15000,
+   "supplies": 2000
+  }
+ ]
+}
