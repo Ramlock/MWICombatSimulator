@@ -77,6 +77,28 @@ export function createNodePool() {
     };
 }
 
+// Replay counter: wraps any pool seam and counts the runs that reach it. The core asks the pool only for a run the store does not hold
+// (core.mjs ensure(): a run in the cache is never asked), so every run counted here is a real simulation and every other run of the search was replayed from
+// recorded runs. count() is the total so far, byTag() the total per task tag; the wrapper logs 'N real simulations so far' every `every` runs.
+// It changes neither the pool nor the store: it only forwards run() and kill().
+export function createCountingPool(pool, log = (line) => console.log(line), every = 50) {
+    let total = 0;
+    const tags = new Map();
+    const stamp = () => new Date().toISOString();
+    return {
+        run(task) {
+            total++;
+            tags.set(task.tag ?? '', (tags.get(task.tag ?? '') ?? 0) + 1);
+            if (total % every === 0) log(`${stamp()} replay counter: ${total} real simulations so far (the rest of the runs came from recorded runs)`);
+            return pool.run(task);
+        },
+        kill() { return pool.kill(); },
+        count() { return total; },
+        byTag() { return Object.fromEntries(tags); },
+        summary() { return `${stamp()} replay counter: ${total} real simulations in this search${total ? ' (' + [...tags].map(([t, n]) => `${t || 'untagged'} ${n}`).join(', ') + ')' : ' (every run came from recorded runs)'}`; },
+    };
+}
+
 // The sink seam: files in <out> and the runner's IPC messages (only with an IPC channel).
 export function createNodeSink(out) {
     return {

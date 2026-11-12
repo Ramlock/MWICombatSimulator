@@ -31,18 +31,22 @@ export function gauss(text) {
     return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-// One checkpoint of a task at `h` sim hours: the model's base figures plus the ops' effects plus noise seeded by (variant, seed, hours).
+// A run's noise at `h` sim hours, seeded by (variant, seed) alone: one draw per run, shrunk by sqrt(50/h), so the readings of one run at different
+// hours agree with each other (the longer reading is the shorter one with less noise) and a run recorded at one length answers a reading of
+// any other length with the value a run of that length would have given. That is what lets a replay of recorded runs follow the same search.
+export const walk = (text, h) => Math.sqrt(50 / h) * gauss(text);
+
+// One checkpoint of a task at `h` sim hours: the model's base figures plus the ops' effects plus noise (walk above).
 export function checkpointFor(scenario, task, h, confirmOffset = 10000) {
     const m = scenario.model, names = scenario.players.map((p) => p.name);
     const eff = task.ops.map((op) => effectOf(scenario, op));
     const search = task.seed <= confirmOffset;
-    const scale = Math.sqrt(50 / h);
-    const sdLoot = Math.sqrt(m.lootSd50 ** 2 + eff.reduce((a, e) => a + (e?.noiseSd ?? 0) ** 2, 0)) * scale;
-    const loot = m.lootPerDay + eff.reduce((a, e) => a + (e?.loot ?? 0) + (search ? (e?.searchBonus ?? 0) : 0), 0) + sdLoot * gauss(`${task.variant}|${task.seed}|${h}|loot`);
+    const sdLoot50 = Math.sqrt(m.lootSd50 ** 2 + eff.reduce((a, e) => a + (e?.noiseSd ?? 0) ** 2, 0));
+    const loot = m.lootPerDay + eff.reduce((a, e) => a + (e?.loot ?? 0) + (search ? (e?.searchBonus ?? 0) : 0), 0) + sdLoot50 * walk(`${m.noiseSalt ?? ''}|${task.variant}|${task.seed}|loot`, h);
     const players = {};
     for (const n of names) {
         const delta = task.ops.reduce((a, op, i) => a + (op.player === n ? (eff[i]?.supplies ?? 0) : 0), 0);
-        players[n] = { consumablesPerDay: Math.max(0, m.supplies[n] + delta + m.suppliesSd50 * scale * gauss(`${task.variant}|${task.seed}|${h}|sup|${n}`)) };
+        players[n] = { consumablesPerDay: Math.max(0, m.supplies[n] + delta + m.suppliesSd50 * walk(`${m.noiseSalt ?? ''}|${task.variant}|${task.seed}|sup|${n}`, h)) };
     }
     const consumables = Object.values(players).reduce((a, p) => a + p.consumablesPerDay, 0);
     return { simHours: h, players, party: { profitAfterTaxPerDay: loot - consumables, consumablesPerDay: consumables, expPerHour: m.expPerHour, deathsPerHour: m.deathsPerHour }, encountersPerHour: m.encountersPerHour };
@@ -97,18 +101,18 @@ export function flagsFromRequest(req, extra = {}) {
 
 // The whole search on a scenario, in this process, without a page: the real core on the real seams except the pool and measureNeed (above) and an in-memory store
 // and sink. `extra` flags win over the scenario's request; `onRound(record, stop)` can press the stage buttons (stop.done = 'accept' | 'skip') or stop.requested = true.
-// Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, stop, seen }.
-export async function runSynthetic(scenario, extra = {}, { onRound } = {}) {
+// `records` primes the store with earlier runs (a run that reaches the pool is a store miss, counted in `runs`). Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, records, stop, seen }.
+export async function runSynthetic(scenario, extra = {}, { onRound, records: prior = [], poolWrap = (p) => p } = {}) {
     const E = await import('./engine.mjs'); // registers the loader hooks: the core is imported after it
     const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
     const { main } = await import('./core.mjs');
     const flags = flagsFromRequest(scenario.request, { budgets: Object.entries(scenario.budgets).map(([p, v]) => `${p}=${v}`).join(','), jobs: 8, players: scenario.players.map((p) => p.name), ...extra });
-    const records = [], aux = new Map(), rounds = [], partials = [];
+    const records = [...prior], aux = new Map(), rounds = [], partials = [];
     const seen = { separate: new Set(), checkingWho: new Set(), checking: new Set() }; // what the progress records showed (the stage rows read them)
     const stop = { requested: false, done: false };
     let result = null, markdown = null, lastProgress = null, runs = 0;
     const pool = createSyntheticPool({ ...scenario, model: { ...scenario.model, msPerRun: 0 } }, { confirmOffset: Number(flags['confirm-seed-offset'] ?? 10000) });
-    const counted = { run: async (t) => { runs++; return pool.run(t); }, kill: pool.kill };
+    const counted = poolWrap({ run: async (t) => { runs++; return pool.run(t); }, kill: pool.kill });
     const seams = {
         data: { setups: structuredClone(scenario.players), market: scenario.market.marketData, pricesTimestamp: scenario.market.timestamp, exportData: null, userTrig: {} },
         store: { *load() { yield* records; }, put(r) { records.push(r); }, readAux: (n) => aux.get(n) ?? null, writeAux: (n, v) => { aux.set(n, JSON.parse(JSON.stringify(v))); } },
@@ -129,5 +133,5 @@ export async function runSynthetic(scenario, extra = {}, { onRound } = {}) {
     };
     const settings = { flags, argsText: 'synthetic', jobs: Number(flags.jobs), pricesFile: 'synthetic', pricesKey: 'synthetic', setupsDir: 'synthetic' };
     const outcome = await main(settings, seams);
-    return { outcome, result, markdown, rounds, partials, lastProgress, runs, stop, seen };
+    return { outcome, result, markdown, rounds, partials, lastProgress, runs, records, stop, seen };
 }

@@ -672,6 +672,7 @@
     "mp": 4000
    }
   },
+  "noiseSalt": "e",
   "deathsPerHour": 0.1,
   "encountersPerHour": 120,
   "expPerHour": 1000000,

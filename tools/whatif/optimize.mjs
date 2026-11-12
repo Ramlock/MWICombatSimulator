@@ -75,7 +75,7 @@ import os from 'node:os';
 import { readParty } from './variants.mjs';
 import { DEFAULT_PRICES, root, measureNeed, runParty, buildDtos } from './engine.mjs'; // registers the loader hooks: the core is imported after it
 import { parseFlags, makeArg } from './options.mjs';
-import { loadNodeData, createNodeStore, createNodePool, createNodeSink, sha1 } from './node-shell.mjs';
+import { loadNodeData, createNodeStore, createNodePool, createCountingPool, createNodeSink, sha1 } from './node-shell.mjs';
 const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 const { main } = await import('./core.mjs');
 import { loadScenario, createSyntheticPool, syntheticSim } from './synthetic.mjs';
@@ -91,7 +91,8 @@ const pricesFile = arg('prices', DEFAULT_PRICES), setupsDir = arg('setups', unde
 const stop = { requested: false, done: false };
 // --synthetic <scenario.json> (test tooling, tools/whatif/synthetic.mjs): the run pool and measureNeed are answered from the scenario, the rest is real.
 const scenario = arg('synthetic', null) ? loadScenario(arg('synthetic')) : null;
-const pool = scenario ? createSyntheticPool(scenario, { confirmOffset: Number(arg('confirm-seed-offset', 10000)) }) : createNodePool();
+// The counting wrapper (node-shell.mjs) counts the runs that reach the pool: the store's misses, i.e. the real simulations; the search's other runs were replayed.
+const pool = createCountingPool(scenario ? createSyntheticPool(scenario, { confirmOffset: Number(arg('confirm-seed-offset', 10000)) }) : createNodePool());
 // 'stop' ends the search; { done: 'accept' | 'skip' } (the window's two stage buttons) only asks the race stage running now to end after its round.
 process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m?.done === 'accept' || m?.done === 'skip') stop.done = m.done; });
 const settings = {
@@ -107,6 +108,7 @@ const seams = {
     sim: scenario ? syntheticSim({ runParty, measureNeed, buildDtos, Trigger }, scenario) : { runParty, measureNeed, buildDtos, Trigger },
 };
 const outcome = await main(settings, seams);
+console.log(pool.summary());
 pool.kill();
 if (outcome.stopped) process.exit(3);
 if (process.connected) process.disconnect(); // the IPC channel (stop requests) would keep the process alive
