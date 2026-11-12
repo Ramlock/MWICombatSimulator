@@ -80,7 +80,7 @@ export function applyScenarioToRequest(body, scenario) {
     const options = { ...(body?.options ?? {}) };
     delete options.prices;
     options.marketplace = scenario.market;
-    return { ...(body ?? {}), ...(scenario.request ?? {}), setups: scenario.players, options, budgets: scenario.budgets, synthetic: scenarioHash(scenario) };
+    return { ...(body ?? {}), ...(scenario.request ?? {}), setups: scenario.players, players: scenario.players.map((p) => p.name), options, budgets: scenario.budgets, synthetic: scenarioHash(scenario) };
 }
 
 // The scenario's request as the optimizer's flags (what the command line would have been).

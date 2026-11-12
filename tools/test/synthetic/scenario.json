@@ -675,7 +675,7 @@
   "deathsPerHour": 0.1,
   "encountersPerHour": 120,
   "expPerHour": 1000000,
-  "msPerRun": 0
+  "msPerRun": 300
  },
  "effects": [
   {
