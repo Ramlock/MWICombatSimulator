@@ -95,4 +95,30 @@ console.log(fails ? `${fails} FAILED` : 'all passed');
     check(sorted.join() === 'Zed:free,Zed:paid,Amy:free,Bob:free', 'party order: poolSorter is the one comparator (the first look uses it too)', sorted.join());
 }
 
+// "Accept current winner": which leader each pool without a lock would take (acceptTakes), then the pick check decides (firstConfirmed, sure.mjs).
+{
+    const S = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
+    const L = (id, player, gain, extra = {}) => ({ id, player, gain, ...extra });
+    const gainOf = (c) => c.gain, cmp = (a, b) => b.gain - a.gain;
+    const live = [L('a1', 'A', 3), L('a2', 'A', 9), L('b1', 'B', -2), L('b2', 'B', 0), L('c1', 'C', 5, { timeOnly: true })];
+    const t1 = R.acceptTakes(live, gainOf, { byPlayer: true, players: ['A', 'B', 'C'], locked: new Map(), cmp });
+    check(t1.size === 1 && t1.get('A').id === 'a2', 'accept: a player with a positive leader takes his best; one whose leaders are all at or below 0, or time-only, takes none', [...t1.keys()].join());
+    const t2 = R.acceptTakes(live, gainOf, { byPlayer: true, players: ['A', 'B', 'C'], locked: new Map([['A', live[0]]]), cmp });
+    check(t2.size === 0, 'accept: a pool that already locked keeps its pick (it is not in the takes)');
+    const t3 = R.acceptTakes(live, gainOf, { byPlayer: false, players: [], locked: new Map(), cmp });
+    check(t3.size === 1 && t3.get('*').id === 'a2', 'accept: a stage with one pool takes the best positive leader under the key *');
+    check(R.acceptTakes(live, gainOf, { byPlayer: false, players: [], locked: new Map([['*', live[0]]]), cmp }).size === 0, 'accept: a stage whose single pool locked takes nothing');
+    check(R.acceptTakes([L('x', 'A', -1), L('y', 'A', 0)], gainOf, { byPlayer: false, players: [], locked: new Map(), cmp }).size === 0, 'accept: no leader with a gain above 0 (no change leads): nothing is taken, so the window shows only Skip');
+    check(R.acceptTakes([L('x', 'A', null), L('y', 'A', NaN)], gainOf, { byPlayer: true, players: ['A'], locked: new Map(), cmp }).size === 0, 'accept: a leader with no reading yet (no gain figure) is never taken');
+    // The taken leader goes through the same pick check as any lock: one that fails it is not chosen.
+    const z = 2.5;
+    const fresh = (accepted, v, se) => ({ accepted, buyerNet: v, buyerNetSe: se, gain: v, se });
+    const pass = await S.checkPick(async () => fresh(true, 10, 2), { z, goal: 'profit', cost: 0 });
+    const loss = await S.checkPick(async () => fresh(false, -3, 2), { z, goal: 'profit', cost: 0 });
+    const out = await S.firstConfirmed([live[1]], async () => loss);
+    check(pass.passed === true && loss.passed === false && out.best === null && out.failed.length === 1, 'accept: a taken leader that fails the fresh-run check is not chosen (best null, listed as failed): that pool ends as no change');
+    const ok = await S.firstConfirmed([live[1]], async () => pass);
+    check(ok.best === live[1], 'accept: a taken leader that passes the fresh-run check is chosen');
+}
+
 process.exit(fails ? 1 : 0);

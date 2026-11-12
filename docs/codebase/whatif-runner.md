@@ -49,6 +49,7 @@ JSON over HTTP, under `/api/`. Everything else is a static file from `dist/` (`/
 | `POST /api/search` (body JSON, `Content-Type: application/json`, up to 50 MB; a full `marketplace.json` is about 250 KB) | `{ id }`; `409 { error, id, running }` (both the running search's id) while another search runs; `400 { error }` for a malformed request |
 | `GET /api/search/<id>[?since=<n>]` | `{ state, progress, error?, result?, partial?, partialVersion?, round?, roundVersion? }`, `state` one of `running`, `stopped`, `done`, `error`; `result` is the search's `result.json`; a running search carries its report so far (`partial`) and its version (`partialVersion`), and the latest round record (`round`, `roundVersion`), each only when its version is above `since` (default 0; one counter serves both), see "Live report" and "The rounds search" |
 | `POST /api/search/<id>/stop` | `{ id, stopping: true }`; on a stopped search it resumes it from its `request.json`: `{ id, resumed: true }` (the window's Resume); `409` otherwise |
+| `POST /api/search/<id>/done` (body `{ mode: 'accept' \| 'skip' }`) | `{ id, done: mode }`: the race stage running now ends after its round (the window's "Accept current winner" and "Skip <stage>", see `whatif-window.md`); `400` for another mode, `409` when nothing runs |
 | `GET /api/results` | finished searches, newest first: `[{ id, finished, goal, players }]` |
 | `GET /api/results/<id>` | one `result.json` |
 

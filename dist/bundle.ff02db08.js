@@ -3470,8 +3470,12 @@ function renderProgress(status, t) {
 const fill = (t, key, params) => t(key, params);
 // A count with a noun after it: the key's own singular (key + 'One', in every language) when the count is 1.
 const plural = (t, key, n, params) => t(Number(n) === 1 ? key + 'One' : key, params);
-// The "done with this stage, go on" button of the race stage that runs now (main.js posts API.done for it).
-function doneButton(t) { return `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done" data-whatif-done title="${esc(t('progress.stageDoneTip'))}">${esc(t('progress.stageDone'))}</button>`; }
+// The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
+// lock has a leader with a gain above 0: row.acceptable) and "Skip <stage>". Both end the stage after the round it is in.
+function stageButtons(t, label, acceptable) {
+    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done" data-whatif-done="${mode}" title="${esc(t(tip))}">${esc(text)}</button>`;
+    return (acceptable > 0 ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip', { stage: label }), 'progress.stageSkipTip');
+}
 function renderParts(status, t) {
     const p = status.progress || {}, parts = p.parts;
     // The search's own state decides what is drawn as running: a search that is stopped, done or failed has no part that runs, whatever the
@@ -3515,7 +3519,7 @@ function renderParts(status, t) {
         // A race stage's row in any state (running, done, halted) has no bar and wraps like the running one: its status text is long, and a
         // done row's grid columns cut it and pushed its figures past the window edge.
         const bar = rounded ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
-        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + doneButton(t) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
+        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + stageButtons(t, label, r.acceptable) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
@@ -8898,12 +8902,12 @@ async function initWhatIf() {
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
-    // "Done with this stage, go on" (the button on the race stage that runs now): the runner ends that stage after its round.
+    // "Accept current winner" / "Skip <stage>" (the buttons on the race stage that runs now): the runner ends that stage after its round, in that mode.
     document.getElementById('whatIfProgress').addEventListener('click', async (event) => {
         const button = event.target.closest('[data-whatif-done]');
         if (!button || !whatIf.searchId) return;
         button.disabled = true;
-        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.API.done(whatIf.searchId), { method: 'POST' }); if (!ok) whatIfMessage(body.error || whatIfT('runnerError')); }
+        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_34__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: button.dataset.whatifDone }) }); if (!ok) whatIfMessage(body.error || whatIfT('runnerError')); }
         catch (err) { whatIfMessage(whatIfT('runnerGone')); }
     });
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
@@ -9938,4 +9942,4 @@ updateUI();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.e0573543.js.map
+//# sourceMappingURL=bundle.ff02db08.js.map

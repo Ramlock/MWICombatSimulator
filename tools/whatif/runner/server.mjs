@@ -124,7 +124,7 @@ export function forkOptimizer(args, outDir) {
         pid: c.pid,
         onProgress: null, onPartial: null, onRound: null, onExit: null,
         stop: () => { if (c.connected) c.send('stop'); },
-        done: () => { if (c.connected) c.send('done'); }, // the race stage running now ends after its round
+        done: (mode) => { if (c.connected) c.send({ done: mode }); }, // the race stage running now ends after its round: 'accept' or 'skip'
     };
     c.on('message', (m) => { if (m?.type === 'progress') handle.onProgress?.(m.progress); else if (m?.type === 'partial') handle.onPartial?.(m.result); else if (m?.type === 'round') handle.onRound?.(m.round); });
     c.on('exit', (code) => { log.end(); handle.onExit?.(code, tail); });
@@ -251,8 +251,10 @@ export function createRunner(opts = {}) {
             if (req.method === 'POST' && (m = /^\/api\/search\/([^/]+)\/done$/.exec(p))) {
                 const s = searches.get(m[1]);
                 if (!s || s.state !== 'running') return send(res, 409, { error: 'not running', state: status(m[1])?.state ?? null });
-                s.handle.done();
-                return send(res, 200, { id: m[1], done: true });
+                const mode = (await readBody(req))?.mode;
+                if (mode !== 'accept' && mode !== 'skip') return send(res, 400, { error: 'mode must be accept or skip' });
+                s.handle.done(mode);
+                return send(res, 200, { id: m[1], done: mode });
             }
             if (req.method === 'GET' && p === '/api/results') return send(res, 200, results());
             if (req.method === 'GET' && (m = /^\/api\/results\/([^/]+)$/.exec(p))) {

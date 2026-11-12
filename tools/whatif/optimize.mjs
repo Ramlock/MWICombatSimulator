@@ -88,8 +88,8 @@ const pricesFile = arg('prices', DEFAULT_PRICES), setupsDir = arg('setups', unde
 
 const stop = { requested: false, done: false };
 const pool = createNodePool();
-// 'stop' ends the search; 'done' (the window's "done with this stage" button) only asks the race stage running now to end after its round.
-process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m === 'done') stop.done = true; });
+// 'stop' ends the search; { done: 'accept' | 'skip' } (the window's two stage buttons) only asks the race stage running now to end after its round.
+process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m?.done === 'accept' || m?.done === 'skip') stop.done = m.done; });
 const settings = {
     flags, argsText: argv.join(' '), jobs: Number(arg('jobs', os.availableParallelism())), setupsDir, pricesFile,
     // The key holds the prices file relative to the checkout, so runs cached in one worktree match in another.

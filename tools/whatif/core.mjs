@@ -9,7 +9,7 @@
 //     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json and probe.json
 //     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once kill() ended it
 //     sink   progress(p), partial(snapshot), round(r), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
-//     stop   { requested, done }: requested is true once the user asked to stop; done once he asked the race stage running now to end after its round
+//     stop   { requested, done }: requested is true once the user asked to stop; done is 'accept' or 'skip' once he pressed one of the two stage buttons (the race stage running now ends after its round)
 //     hash   sha1 hex of a text (the run keys)
 //     sim    { runParty, measureNeed, buildDtos, Trigger }: the engine's own functions and Trigger class
 // Resolves with { stopped } (stopped: the search ended early, every finished run is in the store, the same call resumes).
@@ -19,7 +19,7 @@ import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
-import { tMult, dfOf, contention, anyHope, separated, bounds, poolKey, poolSorter } from './rounds.mjs';
+import { tMult, dfOf, contention, anyHope, separated, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -670,8 +670,8 @@ export async function main(settings, seams) {
         // candidates dropped, who never return) and the contention of the last finished round (in contention, paused: plain numbers, they
         // may fall and rise). report() adds them to every progress message of the stage (stageCtx), whichever batch is running.
         const widthPrev = new Map(); // pool key -> the top leader's range width of the last round (item: range width and the one before)
-        let stageCont = { contending: cands.length, paused: 0 };
-        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageDropped: cands.filter((c) => c.refuted).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
+        let stageCont = { contending: cands.length, paused: 0, acceptable: 0 };
+        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable,stageDropped: cands.filter((c) => c.refuted).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
         try {
         for (;;) {
             roundNo++;
@@ -758,19 +758,28 @@ export async function main(settings, seams) {
                 const c = live.sort(rank).find(ready);
                 if (c) lockedBy.set('*', c);
             }
+            // What "Accept current winner" would take: in each pool that has no lock (a player's, or the stage's single one), its best live leader (the
+            // lock's own order) whose reading has a mean net gain above 0 (the buyer's gain; the figure on another goal). It becomes that pool's lock
+            // only if the button was pressed; the pick check that follows every stage pick (confirmPick) then decides it, as for any lock.
+            const gainOf = (c) => { const r = read.get(c); return r ? (goal === 'profit' ? r.net : r.figure) : null; };
+            const takes = acceptTakes(live, gainOf, { byPlayer, players, locked: lockedBy, cmp: byPlayer ? rankFirst : rank });
+            stageCont.acceptable = takes.size;
             const settled = byPlayer ? players.every((p) => lockedBy.has(p) || !anyHope(cands.filter((c) => c.player === p && !c.timeOnly), goal, pauseMult)) : lockedBy.size > 0 || !anyHope(cands.filter((c) => !c.timeOnly), goal, pauseMult);
-            // "Done with this stage" (stop.done): the race ends here, after the round just published, with the leaders as --max-rounds returns them; a
-            // stage that ends this way without the search's own lock is marked in the report (result.endedByUser) as ended by the user.
-            const byUser = !!stopSignal.done;
+            // The window's two buttons (stop.done is 'accept' or 'skip'): the race ends here, after the round just published, with the leaders as
+            // --max-rounds returns them. 'skip' leaves a pool that has no lock unchanged; 'accept' first locks the best positive leader of every pool
+            // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).
+            const mode = stopSignal.done, byUser = !!mode;
             if (byUser) stopSignal.done = false;
             if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart;
+            const accepted = mode === 'accept' ? takes : new Map();
             if (settled || byUser || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) {
+                for (const [k, c] of accepted) lockedBy.set(k, c);
                 // The race has ended (by its lock, the round limit or the button): its last figures and its end go to the progress record at
                 // once (stageEnded names the stage), so the row stops reading "running" and drops the button however long the pick checks take.
                 // A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
                 Object.assign(progress, stageCtx(), { stageEnded: stage });
                 report();
-                return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live };
+                return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders: live, accepted: [...accepted.values()] };
             }
         }
         } finally { stageCtx = null; }
@@ -962,7 +971,7 @@ export async function main(settings, seams) {
                 publish(result); // snapshot 5: a failed pick
             });
             if (picked === null) return stop(result);
-            if (!picked.best) continue; // not confirmed: it left the race, the race goes on without it
+            if (!picked.best) { if (res.accepted.includes(res.locked)) break; continue; } // not confirmed: it left the race, the race goes on without it; but a pick the user accepted that fails the check ends the chain here (no change), like Skip
             const best = picked.best, bestFresh = picked.fresh;
             spent = pay(spent, best);
             baseOps = [...baseOps, ...best.ops];
