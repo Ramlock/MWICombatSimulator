@@ -9,7 +9,8 @@
             "What-if: Accept current winner takes the leader as it is; Skip ends the part at once and keeps its finished runs",
             "What-if: a finished search shows which parts ran, which you ended and which changes were left out along the way",
             "What-if: Each change alone shows one row per setting instead of several values of one setting",
-            "Importing a group is now remembered when you reload the page, names included"
+            "Importing a group is now remembered when you reload the page, names included",
+            "Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails"
         ]
     },
     "2026-11-12":

@@ -15,6 +15,7 @@ ZH = {
         "假设分析：搜索结束后会显示哪些部分已运行、哪些由你结束，以及途中排除了哪些改动",
         "假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值",
         "导入分组现在会在刷新页面后保留，包括名称",
+        "导入技能少于四个、或特殊技能栏为空的配置，不再失败",
     ],
     "2026-11-12": [
         "假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮",
@@ -200,6 +201,7 @@ PT = [
         "E se: uma busca concluída mostra quais partes rodaram, quais você encerrou e quais alterações ficaram de fora pelo caminho",
         "E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração",
         "Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos",
+        "Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais",
     ],
     [
         "E se: botões Aceitar o vencedor atual e Pular na etapa em andamento",
