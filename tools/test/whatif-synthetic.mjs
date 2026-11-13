@@ -150,6 +150,23 @@ console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length}
     // (Under the four endings a step's leader whose range still reaches the smallest gain takes more reading seeds than 8 rounds give, so the capped run leaves out only the drinks
     // whose whole range is below 0; the uncapped search leaves a step's leader out in its race: 'search: the pick that ... fails on fresh ones' below.)
 }
+// The fields the window's chart reads (round records): the payback's own range on every leader row, `prev` (its place in the pool's table the round before), and progress.inFlight.
+{
+    const rows = run.rounds.flatMap((r) => r.pools.flatMap((p) => p.leaders));
+    check('chart fields: every leader row has paybackLow and paybackHigh (a number or null)', rows.length > 0 && rows.every((l) => 'paybackLow' in l && 'paybackHigh' in l && [l.paybackLow, l.paybackHigh].every((v) => v === null || Number.isFinite(v))));
+    const priced = rows.filter((l) => l.cost > 0 && Number.isFinite(l.netHigh) && l.netHigh > 0);
+    check('chart fields: the short end of the payback is the cost over the high end of the buyer\'s gain, the long end the cost over its low end (open, null, when that is not above 0); a free row has none', priced.length > 0 && priced.every((l) => Math.abs(l.paybackLow - l.cost / l.netHigh) < 1e-6 && (l.netLow > 0 ? Math.abs(l.paybackHigh - l.cost / l.netLow) < 1e-6 && l.paybackLow <= l.paybackHigh : l.paybackHigh === null)) && rows.filter((l) => !(l.cost > 0)).every((l) => l.paybackLow === null && l.paybackHigh === null) && rows.some((l) => l.cost > 0 && l.netLow > 0), `${priced.length} priced rows`);
+    check('chart fields: no payback range where there is no reading (a row with no buyer\'s gain yet)', rows.filter((l) => l.buyerNet === null).every((l) => l.paybackLow === null && l.paybackHigh === null));
+    const byStage = new Map();
+    for (const r of run.rounds) { const k = r.stage; if (!byStage.has(k)) byStage.set(k, []); byStage.get(k).push(r); }
+    let firstOk = true, laterOk = true, anyPrev = false, anyNew = false;
+    for (const list of byStage.values()) list.forEach((r, i) => { for (const p of r.pools) { const was = i > 0 ? list[i - 1].pools.find((q) => q.key === p.key) : null; for (const l of p.leaders) {
+        const place = was ? was.leaders.findIndex((x) => x.id === l.id) + 1 : 0;
+        if (i === 0) firstOk &&= l.prev === null; else { laterOk &&= l.prev === (place > 0 ? place : null); if (place > 0) anyPrev = true; else anyNew = true; }
+    } } });
+    check('chart fields: prev is the leader\'s place (1 = first) in the same pool the round before, null on a stage\'s first round and when it was not among the leaders then', firstOk && laterOk && anyPrev, `${firstOk} ${laterOk} ${anyPrev} ${anyNew}`);
+    const ids = new Set(rows.map((l) => l.id));
+    check('chart fields: progress.inFlight is { runs, ids } on every progress record, runs went above 0 and back to 0, and its ids are candidates the rounds show', [...run.seen.flightShapes].join() === 'ok' && Math.max(...run.seen.flightRuns) >= 1 && run.seen.flightRuns.has(0) && run.seen.flightIds.size > 0 && [...run.seen.flightIds].some((id) => ids.has(id)), JSON.stringify({ runs: [...run.seen.flightRuns], ids: run.seen.flightIds.size }));}
 check('search: finished by itself, not stopped; no real engine run was asked for (the trigger lever is off)', run.outcome.stopped === false && res.options.levers.join() === 'equip,foods,drinks');
 check('search: a clear winner is the first step (Alice body +2)', hasOp(step(0), 'Alice', 'body', 2), JSON.stringify(step(0).desc ?? step(0).id));
 check('search: every step pays back inside 365 days and was confirmed on fresh seeds', steps.length >= 2 && steps.every((s) => s.fresh && s.fresh.accepted && (s.payback === undefined || s.payback === null || s.payback <= PAY + 1) && Object.values(s.fresh.buyers || {}).every((b) => !(b.cost > 0) || (b.buyerNet > 0 && b.cost / b.buyerNet <= PAY + 1))), JSON.stringify(steps.map((s) => [s.payback, !!s.fresh, s.fresh?.accepted, s.acceptedAsIs ?? false, s.desc.slice(0, 40)])));

@@ -113,7 +113,7 @@ export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, 
     const { main } = await import('./core.mjs');
     const flags = flagsFromRequest(scenario.request, { budgets: Object.entries(scenario.budgets).map(([p, v]) => `${p}=${v}`).join(','), jobs: 8, players: scenario.players.map((p) => p.name), ...extra });
     const records = [...prior], aux = new Map(priorAux ?? []), rounds = [], partials = [];
-    const seen = { separate: new Set(), checkingWho: new Set(), checking: new Set() }; // what the progress records showed (the stage rows read them)
+    const seen = { separate: new Set(), checkingWho: new Set(), checking: new Set(), flightRuns: new Set(), flightIds: new Set(), flightShapes: new Set() }; // what the progress records showed (the stage rows read them)
     const stop = { requested: false, done: false };
     let result = null, markdown = null, lastProgress = null, runs = 0;
     const pool = createSyntheticPool({ ...scenario, model: { ...scenario.model, msPerRun: 0 } }, { confirmOffset: Number(flags['confirm-seed-offset'] ?? 10000) });
@@ -129,6 +129,7 @@ export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, 
                 if (p.stageSeparate) seen.separate.add(p.stageSeparate.rounds);
                 if (p.checkingWho) seen.checkingWho.add(`${p.checking} ${p.checkingWho.index} of ${p.checkingWho.of}`);
                 if (p.checking) seen.checking.add(p.checking);
+                if (p.inFlight) { seen.flightRuns.add(p.inFlight.runs); for (const id of p.inFlight.ids) seen.flightIds.add(id); seen.flightShapes.add(Number.isInteger(p.inFlight.runs) && Array.isArray(p.inFlight.ids) ? 'ok' : 'bad'); }
             },
             partial(s) { partials.push(s); },
             round(r) { if (!r.provisional) rounds.push(r); onRound?.(r, stop); },
