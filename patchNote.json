@@ -13,7 +13,9 @@
             "Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails",
             "After importing a setup, the import window now closes by itself",
             "What-if: the What-if button on the public page explains how to get the runner",
-            "Importing a profile with an aura now selects the aura and puts the abilities in the right slots"
+            "Importing a profile with an aura now selects the aura and puts the abilities in the right slots",
+            "Portuguese: the equipment sets button and window are now called \"Conjuntos\", so the buttons no longer wrap",
+            "What-if: the window now also lists Linux steps (not tested yet)"
         ]
     },
     "2026-11-12":

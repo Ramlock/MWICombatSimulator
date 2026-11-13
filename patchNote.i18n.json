@@ -686,7 +686,9 @@
                 "导入技能少于四个、或特殊技能栏为空的配置，不再失败",
                 "导入配置后，导入窗口现在会自动关闭",
                 "假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器",
-                "导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位"
+                "导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位",
+                "葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行",
+                "假设分析：窗口现在也列出 Linux 步骤（尚未测试）"
             ]
         },
         "pt": {
@@ -701,7 +703,9 @@
                 "Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais",
                 "Depois de importar uma configuração, a janela de importação agora fecha sozinha",
                 "E se: o botão E se na página pública explica como obter o executor",
-                "Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos"
+                "Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos",
+                "Português: o botão e a janela de conjuntos de equipamento agora se chamam \"Conjuntos\", e os botões não quebram mais de linha",
+                "E se: a janela agora também lista os passos para Linux (ainda não testado)"
             ]
         }
     },

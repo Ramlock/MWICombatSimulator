@@ -19,6 +19,8 @@ ZH = {
         "导入配置后，导入窗口现在会自动关闭",
         "假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器",
         "导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位",
+        "葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行",
+        "假设分析：窗口现在也列出 Linux 步骤（尚未测试）",
     ],
     "2026-11-12": [
         "假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮",
@@ -208,6 +210,8 @@ PT = [
         "Depois de importar uma configuração, a janela de importação agora fecha sozinha",
         "E se: o botão E se na página pública explica como obter o executor",
         "Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos",
+        "Português: o botão e a janela de conjuntos de equipamento agora se chamam \"Conjuntos\", e os botões não quebram mais de linha",
+        "E se: a janela agora também lista os passos para Linux (ainda não testado)",
     ],
     [
         "E se: botões Aceitar o vencedor atual e Pular na etapa em andamento",
