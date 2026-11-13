@@ -4254,10 +4254,17 @@ function whatIfRenderSetup() {
         const label = document.createElement('label');
         label.className = 'form-check-label';
         label.htmlFor = input.id;
+        // A short bold label; its sentence is the help mark's (hover and keyboard focus); a tick that is off for want of an export shows "needs export" (CSS, from data-off).
         const name = document.createElement('b');
         name.textContent = whatIfT('lever.' + lever.id + '.name');
-        label.append(name, ': ' + whatIfT('lever.' + lever.id + '.desc'));
-        row.append(input, label);
+        label.append(name);
+        const helpMark = document.createElement('span');
+        helpMark.className = 'whatif-help';
+        helpMark.tabIndex = 0;
+        helpMark.dataset.tip = whatIfT('lever.' + lever.id + '.desc');
+        helpMark.textContent = '?';
+        row.dataset.off = whatIfT('needsExport');
+        row.append(input, label, helpMark);
         levers.append(row);
     }
     whatIfApplyExportLevers(prevDisabled);
@@ -4304,6 +4311,32 @@ function whatIfShowResult(result, running = false) {
     document.getElementById('whatIfRounds').hidden = !!box.querySelector('[data-whatif-more~="whatIfRounds"]') && (!details || details.hidden);
     alignNumbers();
     whatIfShowDiff();
+    whatIfShowSetup();
+}
+
+// The setup and the result are separate areas: once a search runs or a result shows, the setup folds into one bar of chips (goal, zone and tier,
+// each player's budget, the payback limit, the ticked kinds of change), whose button opens it again.
+function whatIfShowSetup() {
+    const shown = !!(whatIf.result || whatIf.status);
+    document.getElementById('whatIfSetup').hidden = shown && !whatIf.setupOpen;
+    const bar = document.getElementById('whatIfSummary');
+    bar.hidden = !shown;
+    document.getElementById('buttonWhatIfEditSetup').textContent = whatIfT(whatIf.setupOpen ? 'hideSetup' : 'editSetup');
+    if (!shown) return;
+    const chip = (k, v) => { const c = document.createElement('span'), key = document.createElement('span'); c.className = 'whatif-chip'; key.className = 'whatif-chip-k'; key.textContent = k; c.append(key, ' ' + v); return c; };
+    const sel = (id) => document.getElementById(id).selectedOptions[0]?.textContent ?? '';
+    const pay = Number(document.getElementById('inputWhatIfMaxPayback').value);
+    document.getElementById('whatIfSummaryChips').replaceChildren(
+        chip(whatIfT('goalLabel'), sel('selectWhatIfGoal')),
+        chip(whatIfT('zone'), sel('selectWhatIfZone') + ' · ' + sel('selectWhatIfTier')),
+        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? formatNumber(whatIfBudgetValue(i)) : whatIfT('noLimit'))),
+        chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('noLimit')),
+        chip(whatIfT('levers'), [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => whatIfT('lever.' + i.value + '.name')).join(', ')));
+}
+
+// The help marks the page's own markup carries (data-whatif-tip = a locale key): their sentence, in the current language.
+function whatIfTips() {
+    for (const e of document.querySelectorAll('#whatIfModal [data-whatif-tip]')) e.dataset.tip = whatIfT(e.dataset.whatifTip);
 }
 
 // Where the page's setup differs from the one the search ran on.
@@ -4363,6 +4396,7 @@ function whatIfShowStatus(status) {
     else if (status.state === 'running' && whatIf.resultRunning === 'stopped') whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done') whatIfLoadList();
+    whatIfShowSetup();
 }
 
 function whatIfStopWatching() {
@@ -4499,7 +4533,8 @@ async function initWhatIf() {
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
         if (!whatIf.timer && !document.getElementById('whatIfState').dataset.state) whatIfSetState('idle');
-        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
+        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); });
+    document.getElementById('buttonWhatIfEditSetup').addEventListener('click', () => { whatIf.setupOpen = !whatIf.setupOpen; whatIfShowSetup(); });
     document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
@@ -4525,10 +4560,10 @@ async function initWhatIf() {
             const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
             const hide = !bodies[0].hidden;
             for (const body of bodies) body.hidden = hide;
-            more.textContent = hide ? more.dataset.show : more.dataset.hide;
+            if (more.dataset.show) more.textContent = hide ? more.dataset.show : more.dataset.hide;
         }
     });
-    i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
+    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
 }
 // #endregion
 
