@@ -139,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.9.3/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.9.4/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -283,8 +283,8 @@ await test('simulator page: the import button is in the page language (en, pt, z
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.9.3/);
-    assert.ok(SRC.includes("const VERSION = '0.9.3'"));
+    assert.match(SRC, /@version\s+0.9.4/);
+    assert.ok(SRC.includes("const VERSION = '0.9.4'"));
     assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
     assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });
@@ -331,10 +331,10 @@ await test('no token, recorder on: the script asks the helper (GET /token, no to
     assert.ok(!b.tokenReqs[0].headers || !Object.keys(b.tokenReqs[0].headers).some((k) => /token/i.test(k)), 'no token header on the ask');
     assert.equal(b.toasts.filter((t) => t === WARN).length, 1, 'the warning shows once');
     // the backoff retries ask again (the token is still empty) and never repeat the warning
-    for (let i = 0; i < 3; i++) { const t = b.timers.filter((x) => x.ms >= 2000 && !x.done).pop(); t.done = true; t.fn(); await tick(); await tick(); }
+    for (let i = 0; i < 3; i++) { const t = b.timers.filter((x) => x.ms >= 2000 && x.ms !== 30000 && !x.done).pop(); t.done = true; t.fn(); await tick(); await tick(); }
     assert.equal(b.tokenReqs.length, 4, 'one ask at load, then one per backoff retry');
     assert.equal(b.toasts.filter((t) => t === WARN).length, 1, 'still once per page load');
-    const waits = b.timers.filter((x) => x.ms >= 2000 && x.ms !== 15000).map((x) => x.ms);
+    const waits = b.timers.filter((x) => x.ms >= 2000 && x.ms !== 15000 && x.ms !== 30000).map((x) => x.ms);
     assert.deepEqual(waits.slice(0, 3), [2000, 4000, 8000], 'the existing 2 s doubling backoff');
     assert.equal(store.mwicsHelperToken, undefined, '403 leaves the token empty');
     assert.equal(b.reqs.length, 0, 'nothing is sent');
@@ -361,7 +361,7 @@ await test('the helper answers: the token is stored, the warning is cleared, the
     assert.equal(b.toasts.filter((t) => t === WARN).length, 1, 'refused first: warned');
     assert.ok(!b.removed.includes(WARN));
     answer = { status: 200, responseText: JSON.stringify({ token: TOK }) };
-    b.timers.filter((x) => x.ms >= 2000).pop().fn();
+    b.timers.filter((x) => x.ms >= 2000 && x.ms !== 30000).pop().fn();
     await tick(); await tick();
     assert.equal(store.mwicsHelperToken, TOK, 'stored with GM_setValue');
     assert.ok(b.removed.includes(WARN), 'the warning toast is removed');

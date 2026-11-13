@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.9.4 (2026-11-13)
+
+- Fix: sending to the helper could stop for good until the page was reloaded. If the script manager lost a request and never answered it, the script kept waiting for that answer and sent nothing more. Now a request with no answer after 30 seconds counts as failed and the usual retry takes over.
+
 ### 0.9.3 (2026-11-13)
 
 - The party the script leaves for the simulator page ("Import party from game") now also carries your own character's inventory and learned abilities, written as "Copy character export" writes them (the same switches apply; Coin stays out, and no other member has either). The page keeps them only in its own browser storage, for the What-if searches that need them ("Items you own", "Abilities"); they never reach a simulator slot. The party text the "Copy group export" menu entry copies is unchanged. An import from an older script behaves as before.
@@ -101,6 +105,7 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 ### 0.1.1 (2026-11-13)
 
 - Fix: in a background tab the chat record fell hours behind and could stop. The script sent one line at a time and read the next line only after the helper had answered, so when the browser held the tab back each line waited for the next moment the tab was allowed to run. Now every line is taken the moment it arrives and everything waiting goes to the helper together in one send.
+- Fix: a request the script manager never answers no longer stops sending until the page is reloaded; after 30 seconds it counts as failed and the usual retry takes over.
 
 ### 0.1.0 (2026-11-07)
 

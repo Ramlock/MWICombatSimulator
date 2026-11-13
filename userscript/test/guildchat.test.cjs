@@ -12,7 +12,7 @@ const SRC = path.join(__dirname, '..', 'mwics-guildchat.user.js');
 const source = fs.readFileSync(SRC, 'utf8');
 const mod = { exports: {} };
 vm.runInNewContext(source, { module: mod, console });
-const { createRecorder, planHistory, frameType, parseFrame, GUILD_CHAN, MAX_QUEUE, MAX_BATCH_LINES } = mod.exports;
+const { createRecorder, planHistory, frameType, parseFrame, GUILD_CHAN, MAX_QUEUE, MAX_BATCH_LINES, guardRequest, REQUEST_WATCHDOG_MS } = mod.exports;
 const plain = (x) => JSON.parse(JSON.stringify(x)); // the script runs in its own realm
 
 const GUILD = GUILD_CHAN;
@@ -266,6 +266,40 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         await rec.idle();
         assert.deepEqual(msgs(sent).map((l) => l.id + ':' + l.src), ['2:history', '4:live', '3:live']);
         assert.equal(sent[0].type, 'session');
+    });
+
+    await test('a request whose callback never comes counts as failed after the watchdog, and the retry then delivers the lines', async () => {
+        assert.equal(REQUEST_WATCHDOG_MS, 30000);
+        const timers = [];
+        const sent = [];
+        let lose = true;
+        const setTimer = (fn, ms) => timers.push({ fn, ms });
+        const rec = createRecorder({
+            post: (lines) => guardRequest((done) => { if (!lose) { sent.push(...plain(lines)); done({ ok: true, status: 200 }); } }, REQUEST_WATCHDOG_MS, setTimer),
+            getCursor: async () => null,
+            now: () => Date.UTC(2030, 0, 1),
+            setTimer,
+            log: () => {},
+        });
+        rec.push(init([]));
+        rec.push(live(msg(1, T(1))));
+        await settle();
+        assert.equal(rec.state.flushing, true, 'the send is in flight and its callback never comes');
+        const dog = timers.find((t) => t.ms === REQUEST_WATCHDOG_MS);
+        lose = false;
+        dog.fn();
+        await settle();
+        assert.equal(rec.state.flushing, false, 'the watchdog ends the send as failed');
+        const retry = timers.find((t) => t.ms === 2000);
+        assert.ok(retry, 'the normal retry is scheduled');
+        retry.fn();
+        await settle();
+        assert.deepEqual(msgs(sent).map((l) => l.id), ['1']);
+        let late;
+        const r = await guardRequest((done) => { late = done; }, 5, (fn) => fn());
+        late({ ok: true, status: 200 });
+        assert.equal(r.ok, false);
+        assert.equal(r.timedOut, true, 'a late callback is ignored');
     });
 
     await test('planHistory is pure: same input, same plan, input untouched', () => {

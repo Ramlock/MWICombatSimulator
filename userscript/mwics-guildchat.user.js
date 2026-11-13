@@ -321,8 +321,20 @@
         try { return JSON.parse(raw); } catch { return null; }
     }
 
+    // A request whose callback never comes (the script manager lost it) would stop every later send for good: after ms with no callback
+    // it counts as failed (status 0) and the recorder's retry takes over; a late callback is ignored. start(done) issues the request.
+    const REQUEST_WATCHDOG_MS = 30000;
+    function guardRequest(start, ms, setTimer) {
+        return new Promise((resolve) => {
+            let settled = false;
+            const done = (r) => { if (!settled) { settled = true; resolve(r); } };
+            setTimer(() => done({ ok: false, status: 0, timedOut: true }), ms);
+            try { start(done); } catch { done({ ok: false, status: 0 }); }
+        });
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { createRecorder, planHistory, toMsgLine, toUpdateLine, frameType, parseFrame, GUILD_CHAN, MAX_QUEUE, MAX_BATCH_LINES, GAME_SOCKET_HOSTS };
+        module.exports = { guardRequest, REQUEST_WATCHDOG_MS, createRecorder, planHistory, toMsgLine, toUpdateLine, frameType, parseFrame, GUILD_CHAN, MAX_QUEUE, MAX_BATCH_LINES, GAME_SOCKET_HOSTS };
         return;
     }
 
@@ -343,19 +355,18 @@
         setTimeout(() => el.remove(), 5000);
     }
 
+    // The one request to the helper; guardRequest makes a lost callback count as failed after REQUEST_WATCHDOG_MS.
     function request(method, path, body) {
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method,
-                url: helperUrl() + path,
-                headers: { 'X-MWI-Token': helperToken(), 'Content-Type': 'application/json' },
-                data: body === undefined ? undefined : JSON.stringify(body),
-                timeout: 10000,
-                onload: (r) => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
-                onerror: () => resolve({ ok: false, status: 0 }),
-                ontimeout: () => resolve({ ok: false, status: 0 }),
-            });
-        });
+        return guardRequest((done) => GM_xmlhttpRequest({
+            method,
+            url: helperUrl() + path,
+            headers: { 'X-MWI-Token': helperToken(), 'Content-Type': 'application/json' },
+            data: body === undefined ? undefined : JSON.stringify(body),
+            timeout: 10000,
+            onload: (r) => done({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
+            onerror: () => done({ ok: false, status: 0 }),
+            ontimeout: () => done({ ok: false, status: 0 }),
+        }), REQUEST_WATCHDOG_MS, (fn, ms) => setTimeout(fn, ms));
     }
 
     const recorder = createRecorder({

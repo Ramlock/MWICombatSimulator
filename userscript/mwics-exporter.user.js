@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.9.3
+// @version      0.9.4
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -1073,8 +1073,20 @@
         return Object.prototype.hasOwnProperty.call(SIM_IMPORT_LABELS, key) ? SIM_IMPORT_LABELS[key] : SIM_IMPORT_LABELS.en;
     }
 
+    // A request whose callback never comes (the script manager lost it) would stop every later send for good: after ms with no callback
+    // it counts as failed (status 0) and the caller's retry takes over; a late callback is ignored. start(done) issues the request.
+    const REQUEST_WATCHDOG_MS = 30000;
+    function guardRequest(start, ms, setTimer) {
+        return new Promise((resolve) => {
+            let settled = false;
+            const done = (r) => { if (!settled) { settled = true; resolve(r); } };
+            setTimer(() => done({ ok: false, status: 0, timedOut: true }), ms);
+            try { start(done); } catch { done({ ok: false, status: 0 }); }
+        });
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { simImportLabel, SIM_IMPORT_LABELS, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -1090,7 +1102,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.9.3'; // keep equal to @version (a test checks it)
+    const VERSION = '0.9.4'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1098,19 +1110,18 @@
     // Sending to the helper: the stored toggle when there is one; with none stored (a fresh install) it is on only when a helper token has ever been stored (the key exists, even if emptied by hand), so a fresh install without a helper starts off and asks for nothing.
     function sendToHelperOn() { return recToggles.sendToHelper !== undefined ? recToggles.sendToHelper !== false : GM_getValue(HELPER_TOKEN_KEY, null) !== null; }
     function loadSent() { try { const a = JSON.parse(GM_getValue(SENT_KEY, '[]')); return Array.isArray(a) ? a : []; } catch { return []; } }
+    // The one request to the helper; every route goes through it. guardRequest makes a lost callback count as failed after REQUEST_WATCHDOG_MS.
+    function helperCall(opts) {
+        return guardRequest((done) => GM_xmlhttpRequest({
+            ...opts,
+            timeout: 10000,
+            onload: (r) => done({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
+            onerror: () => done({ ok: false, status: 0 }),
+            ontimeout: () => done({ ok: false, status: 0 }),
+        }), REQUEST_WATCHDOG_MS, (fn, ms) => setTimeout(fn, ms));
+    }
     function helperRequest(body) {
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method: 'POST',
-                url: helperUrl() + '/v1/combat',
-                headers: { 'X-MWI-Token': helperToken(), 'Content-Type': 'application/json' },
-                data: JSON.stringify(body),
-                timeout: 10000,
-                onload: (r) => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
-                onerror: () => resolve({ ok: false, status: 0 }),
-                ontimeout: () => resolve({ ok: false, status: 0 }),
-            });
-        });
+        return helperCall({ method: 'POST', url: helperUrl() + '/v1/combat', headers: { 'X-MWI-Token': helperToken(), 'Content-Type': 'application/json' }, data: JSON.stringify(body) });
     }
     const sink = createSink({
         recorder,
@@ -1132,16 +1143,7 @@
     const NOTOKEN_TEXT = 'MWI Combat Tracker: no helper token, so nothing is sent to the helper. The recording stays in this browser.';
     let tokenAsking = false, tokenRetryMs = SINK.RETRY_MIN_MS, tokenRetrySet = false, noTokenEl = null, noTokenWarned = false;
     function tokenRequest() {
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: helperUrl() + '/token',
-                timeout: 10000,
-                onload: (r) => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText }),
-                onerror: () => resolve({ ok: false, status: 0 }),
-                ontimeout: () => resolve({ ok: false, status: 0 }),
-            });
-        });
+        return helperCall({ method: 'GET', url: helperUrl() + '/token' });
     }
     function warnNoToken() {
         if (noTokenWarned || !document.body) return;

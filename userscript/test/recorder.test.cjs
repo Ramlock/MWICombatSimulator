@@ -349,7 +349,7 @@ test('the recorder and the sink have no network or storage calls of their own; t
     const pure = src.slice(src.indexOf('==/UserScript=='), src.indexOf("if (typeof module !== 'undefined' && module.exports)"));
     for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'GM_', 'sendBeacon', 'WebSocket']) assert.ok(!pure.includes(bad), 'module part: ' + bad);
     for (const bad of ['fetch(', 'XMLHttpRequest', '.send(', 'sendBeacon', 'new WebSocket']) assert.ok(!src.includes(bad), bad);
-    assert.equal((src.match(/GM_xmlhttpRequest\(/g) || []).length, 2, 'two requests: the combat POST and the token GET, both to the helper address');
+    assert.equal((src.match(/GM_xmlhttpRequest\(/g) || []).length, 1, 'one request call (helperCall), used by the combat POST and the token GET, both to the helper address');
     assert.deepEqual(src.match(/url: helperUrl\(\) \+ '[^']+'/g), ["url: helperUrl() + '/v1/combat'", "url: helperUrl() + '/token'"]);
     assert.deepEqual(src.match(/^\/\/ @connect\s+\S+/gm).map((l) => l.split(/\s+/).pop()), ['127.0.0.1', 'localhost']);
     assert.ok(/url: helperUrl\(\) \+ '\/v1\/combat'/.test(src));
@@ -377,6 +377,35 @@ const keysOf = (calls) => calls.flatMap((c) => c.records.map((x) => x.key));
 async function atest(name, fn) { await fn(); n++; console.log('ok - ' + name); }
 
 (async () => {
+await atest('a helper request whose callback never comes fails after the watchdog, the sink retries and sends; a late callback is ignored', async () => {
+    const { guardRequest, REQUEST_WATCHDOG_MS } = mod.exports;
+    assert.equal(REQUEST_WATCHDOG_MS, 30000);
+    let lose = true;
+    const r = fresh();
+    const s = sinkFor(r);
+    const dogs = [];
+    const sink = createSink({
+        recorder: r, enabled: () => true, selfOnly: () => false,
+        post: (body) => guardRequest((done) => { if (!lose) { s.calls.push(J(body)); done({ ok: true, status: 200, text: '{}' }); } }, REQUEST_WATCHDOG_MS, (fn, ms) => dogs.push({ fn, ms })),
+        now: () => 1e6, setTimer: (fn, ms) => s.timers.push({ fn, ms }), log() {},
+    });
+    r.handle({ type: 'quests_updated', endCharacterQuests: [{ status: '/quest_status/in_progress', category: 'c', monsterHrid: '/monsters/m', goalCount: 5, currentCount: 1 }] }, 900);
+    sink.notify();
+    await tick();
+    assert.equal(sink.state.flushing, true, 'the send is in flight and its callback never comes');
+    lose = false;
+    dogs.find((d) => d.ms === REQUEST_WATCHDOG_MS).fn();
+    await tick(); await tick();
+    assert.equal(sink.state.flushing, false, 'the watchdog ends the send as failed');
+    s.timers.find((t) => t.ms === SINK.RETRY_MIN_MS).fn();
+    await tick(); await tick();
+    assert.equal(s.calls.length, 1, 'the retry sends');
+    let late;
+    const res = await guardRequest((done) => { late = done; }, 5, (fn) => fn());
+    late({ ok: true, status: 200 });
+    assert.equal(res.timedOut, true, 'a late callback is ignored');
+});
+
 await atest('sink: an encounter goes out only after four later ones have closed; window and tasks go at once', async () => {
     const r = fresh(), s = sinkFor(r);
     r.handle({ type: 'quests_updated', endCharacterQuests: [{ status: '/quest_status/in_progress', category: 'c', monsterHrid: '/monsters/m', goalCount: 5, currentCount: 1 }] }, 900);
