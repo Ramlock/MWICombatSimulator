@@ -36,7 +36,7 @@ import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView } from "./whatif/panel.mjs";
-import { RUNNER_DOWNLOAD_URL } from "./whatif/runnerDownload.mjs";
+import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4452,9 +4452,10 @@ function whatIfApply(key) {
 }
 
 // No runner answers: the same button opens the same window in its "get the runner" state (the CSS in index.html shows
-// that pane and hides the search). Its strings are data-i18n like the rest of the page; the link is the one constant.
+// that pane and hides the search). Its strings are data-i18n like the rest of the page; the links are the two constants of runnerDownload.mjs.
 function whatIfShowGetRunner() {
-    for (const id of ['linkWhatIfRunner', 'linkWhatIfRunnerLinux']) document.getElementById(id).href = RUNNER_DOWNLOAD_URL;
+    document.getElementById('linkWhatIfRunner').href = RUNNER_DOWNLOAD_URL;
+    document.getElementById('linkWhatIfRunnerLinux').href = RUNNER_ZIP_URL;
     document.getElementById('whatIfModal').classList.add('whatif-norunner');
     document.getElementById('buttonWhatIf').style.display = '';
 }
