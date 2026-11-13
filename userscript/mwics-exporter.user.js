@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.9.2
+// @version      0.9.3
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -222,10 +222,14 @@
         return out;
     }
 
-    // ctx: { characterObj (init_character_data), clientObj, toggles, members (trimBattle result), profiles (trimProfile results) }.
+    // ctx: { characterObj (init_character_data), clientObj, toggles, members (trimBattle result), profiles (trimProfile results),
+    // ownExport }. ownExport (the snapshot for the simulator page only, never the clipboard copy): the user's own slot also carries
+    // the inventory and the learned abilities, as the character export writes them (the page keeps them for the What-if searches
+    // and never puts them in a sim slot). Coin is never in it, and no other member has either.
     // Returns { group, slots: [{ slot, name, self, have[], missing[] }] }, or null when no slot has any data.
     function buildGroupExport(ctx) {
-        const on = { ...defaultToggles(), ...(ctx.toggles || {}), learnedAbilities: false, inventory: false, coin: false };
+        const base = { ...defaultToggles(), ...(ctx.toggles || {}) };
+        const on = { ...base, learnedAbilities: ctx.ownExport ? !!base.learnedAbilities : false, inventory: ctx.ownExport ? !!base.inventory : false, coin: false };
         const co = ctx.characterObj || null, client = ctx.clientObj || null;
         const selfId = co?.character?.id ?? null;
         const profiles = ctx.profiles || [];
@@ -1086,7 +1090,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.9.2'; // keep equal to @version (a test checks it)
+    const VERSION = '0.9.3'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1211,14 +1215,14 @@
     // The latest group export for the simulator page (same build as the clipboard copy), rewritten when the party, a profile,
     // the character data or the toggles change.
     const SNAP_KEY = 'mwicsGroupSnapshot';
-    function buildGroup() {
+    function buildGroup(ownExport) {
         if (!latest) return null;
-        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles });
+        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles, ownExport: !!ownExport });
     }
     function liveFight(now) { return currentFight({ actions: liveActions, partyInfo: livePartyInfo, clientObj: clientData(), now }); }
     function publishSnapshot() {
         try {
-            const r = buildGroup();
+            const r = buildGroup(true);
             if (r) {
                 const now = Date.now();
                 const fight = liveFight(now);
