@@ -836,11 +836,12 @@ export async function main(settings, seams) {
             // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).
             const mode = stopSignal.done, byUser = !!mode;
             if (byUser) stopSignal.done = false;
-            if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart;
+            if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart; // a Skip that lands at the end of a round is still a Skip (the round in flight is the next one)
+            if (byUser && !settled && mode === 'skip') endedBySkip[stage] = true;
             const accepted = mode === 'accept' ? takes : new Map();
             if (settled || byUser || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) {
                 for (const [k, c] of accepted) lockedBy.set(k, c);
-                return endStage(live, [...accepted.values()]); // the race has ended (by its lock, the round limit or a button)
+                return endStage(live, [...accepted.values()], byUser && !settled && mode === 'skip'); // the race has ended (by its lock, the round limit or a button)
             }
             prevLive = live;
         }
