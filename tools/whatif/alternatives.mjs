@@ -4,9 +4,10 @@
 // rankEst). One function does it for every kind of row; the foods (foodfill.mjs hideFoodRows) are one case of it, keyed by player.
 import { rankAcceptedFirst } from './buyer.mjs';
 
-// The one switch for the paid changes. false: a paid row (cost above 0) is never grouped (equipment +5 and +6 of one slot, a house room +1
-// and +2 stay separate rows). true: paid alternatives of one setting are grouped like the free ones.
-export const GROUP_PAID = false;
+// The one switch for the paid changes. true (the owner's ruling): paid alternatives of one setting (equipment +5 and +6 of one slot, a house
+// room +1 and +2) are grouped like the free ones, the best-ranked row (gain per price, rankEst) shows. false: a paid row (cost above 0) is
+// never grouped.
+export const GROUP_PAID = true;
 
 // What one op changes (the setting it names, with its player). The slot ops (enhance, equip, unequip) share one kind: they all set what
 // sits in that slot. The others keep their own kind.
@@ -48,5 +49,5 @@ export function hideAlternatives(rows, { keyOf, estOf = rowEst, flag = 'hiddenAl
     }
 }
 
-// The rows of Each change alone: one per setting (free rows; paid ones too when GROUP_PAID).
+// The rows of Each change alone: one per setting (paid rows too while GROUP_PAID).
 export const hideSettingAlternatives = (rows, estOf) => hideAlternatives(rows, { keyOf: (r) => (r.hiddenFood || (r.cost > 0 && !GROUP_PAID) ? null : settingKey(r.ops)), estOf });

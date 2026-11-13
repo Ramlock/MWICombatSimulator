@@ -30,7 +30,7 @@ check(A.settingKey([]) === null && A.settingKey(undefined) === null, 'no ops: no
 
 // ---- The helper on rows ----
 const trig = (id, value, extra) => ({ id, player: 'Alice', cost: 0, ops: [{ op: 'trigger', player: 'Alice', hrid: AX, triggers: [{ value }] }], score: Infinity, ...extra });
-const est = (r) => ({ score: Infinity, net: r.buyerNet, gain: r.gain });
+const est = (r) => ({ score: r.cost > 0 ? r.buyerNet / r.cost : Infinity, net: r.buyerNet, gain: r.gain });
 const hidden = (rows) => rows.filter((r) => r.hiddenAlt).map((r) => r.id);
 const run = (rows) => { A.hideSettingAlternatives(rows, est); return rows; };
 {
@@ -51,22 +51,27 @@ const run = (rows) => { A.hideSettingAlternatives(rows, est); return rows; };
     check(hidden(rows).length === 0, 'rows of another player or another ability are not grouped');
 }
 {
-    const rows = run([trig('p5', 5, { cost: 100, gain: 10, buyerNet: 5, accepted: true }), trig('p6', 6, { cost: 200, gain: 12, buyerNet: 6, accepted: true })]);
-    check(A.GROUP_PAID === false && hidden(rows).length === 0, 'paid rows of one setting are not grouped (the paid switch is off)');
+    // Paid rows of one setting (equipment +5 and +6): the paid switch is on, the first in rankAcceptedFirst order stays (gain per price: 5/100 over 6/200), the rest are hidden.
+    const rows = run([trig('p6', 6, { cost: 200, gain: 12, buyerNet: 6, accepted: true }), trig('p5', 5, { cost: 100, gain: 10, buyerNet: 5, accepted: true }), trig('p7', 7, { cost: 300, gain: 30, buyerNet: 7, accepted: true })]);
+    check(A.GROUP_PAID === true && hidden(rows).join() === 'p6,p7' && !rows[1].hiddenAlt, 'paid rows of one setting are grouped (the paid switch is on): the best gain per price stays, the rest are hidden', JSON.stringify(hidden(rows)));
+}
+{
+    const rows = run([trig('paid-ok', 2, { cost: 100, gain: 12, buyerNet: 6, accepted: true }), trig('paid-weak', 3, { cost: 10, gain: 1, buyerNet: 5, accepted: false })]);
+    check(!rows[0].hiddenAlt && rows[1].hiddenAlt === true, 'paid rows: an accepted row stays over a rejected one with a better gain per price (accepted rows first)');
 }
 {
     const rows = run([trig('free', 1, { gain: 10, buyerNet: 5, accepted: true }), trig('paid', 2, { cost: 100, gain: 12, buyerNet: 6, accepted: true })]);
-    check(hidden(rows).length === 0, 'a free row and a paid row of one setting are both kept while paid rows are not grouped');
+    check(!rows[0].hiddenAlt && rows[1].hiddenAlt === true, 'a free row and a paid row of one setting: the free row (score Infinity) stays, the paid one is hidden');
 }
 {
     const rows = run([trig('f1', 1, { gain: 10, buyerNet: 5, accepted: true, hiddenFood: true }), trig('f2', 2, { gain: 20, buyerNet: 6, accepted: true, hiddenFood: true }), { ...trig('x', 3, { gain: 5, buyerNet: 1, accepted: true }), ops: [] }]);
     check(hidden(rows).length === 0, 'a food-filling row (hiddenFood) and a row with no ops are left alone');
 }
 {
-    // The same helper with the paid switch on (called directly, the constant stays off).
+    // The generic function takes any key function: the policy (which rows are grouped) is the caller's.
     const rows = [trig('p5', 5, { cost: 100, gain: 10, buyerNet: 5, accepted: true }), trig('p6', 6, { cost: 200, gain: 12, buyerNet: 6, accepted: true })];
-    A.hideAlternatives(rows, { keyOf: (r) => A.settingKey(r.ops), estOf: (r) => ({ score: r.buyerNet / r.cost, net: r.buyerNet, gain: r.gain }) });
-    check(hidden(rows).join() === 'p6', 'hideAlternatives with a key for every row groups paid rows too (one function; the grouping policy is the key function)');
+    A.hideAlternatives(rows, { keyOf: (r) => (r.cost > 150 ? null : A.settingKey(r.ops)), estOf: est });
+    check(hidden(rows).length === 0, 'hideAlternatives: a row the key function gives null is never grouped (the policy is the caller\'s)');
 }
 
 // ---- The foods case: hideFoodRows is the same function keyed by player, flag hiddenFood ----
