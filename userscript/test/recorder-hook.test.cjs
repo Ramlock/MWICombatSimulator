@@ -16,12 +16,12 @@ function boot(store, opts) {
     class ME { constructor(d, url) { this._d = d; this.currentTarget = { url }; } get data() { return this._d; } }
     const commands = {}, clip = [], toasts = [], reqs = [], tokenReqs = [], removed = [], timers = [], downloads = [], intervals = [], created = [];
     const el = () => { const e = { style: {}, remove() { removed.push(this._t); }, appendChild(c) { (this.kids = this.kids || []).push(c); }, addEventListener(ev, fn) { this.on = fn; }, click() { downloads.push({ href: this.href, name: this.download }); }, set textContent(v) { this._t = v; toasts.push(v); } }; created.push(e); return e; };
-    const blobs = [];
+    const blobs = [], docEl = { lang: opts.lang === undefined ? 'en' : opts.lang };
     const sandbox = {
         console, setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, JSON, Date, WeakSet, Object, Promise, Math, Set, Map, Array, String, Number, Error, RegExp, Blob: class { constructor(parts) { blobs.push(parts.join('')); } },
         URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
         unsafeWindow: { MessageEvent: ME, addEventListener() {}, prompt: () => opts.prompt },
-        document: { body: { appendChild() {} }, createElement: el, createTextNode: (text) => ({ text }), addEventListener() {}, getElementById: (id) => (opts.dom && opts.dom[id]) || null, visibilityState: 'visible' }, location: opts.location, setInterval: (fn) => { intervals.push(fn); return intervals.length; }, clearInterval: (i) => { intervals[i - 1] = null; },
+        document: { documentElement: docEl, body: { appendChild() {} }, createElement: el, createTextNode: (text) => ({ text }), addEventListener() {}, getElementById: (id) => (opts.dom && opts.dom[id]) || null, visibilityState: 'visible' }, location: opts.location, setInterval: (fn) => { intervals.push(fn); return intervals.length; }, clearInterval: (i) => { intervals[i - 1] = null; },
         GM_registerMenuCommand: (n, f) => { commands[n] = f; },
         GM_setClipboard: (t) => clip.push(t),
         GM_getValue: (k, d) => (k in store ? store[k] : d),
@@ -41,7 +41,7 @@ function boot(store, opts) {
     };
     vm.runInNewContext(SRC, sandbox);
     const send = (msg, url) => new ME(typeof msg === 'string' ? msg : JSON.stringify(msg), url || 'wss://api.milkywayidle.com/ws').data;
-    return { commands, clip, toasts, send, reqs, tokenReqs, removed, timers, downloads, blobs, intervals, created };
+    return { commands, clip, toasts, send, reqs, tokenReqs, removed, timers, downloads, blobs, intervals, created, docEl };
 }
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -139,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.9.1/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.9.2/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -244,9 +244,43 @@ await test('the snapshot carries selected and fight, kept live by party_updated,
     assert.deepEqual([els.player1.checked, els.player2.checked, els.selectZone.value, els.selectDifficulty.value], [true, false, '/actions/combat/zone_a', '2']);
 });
 
+await test('simulator page: the import button is in the page language (en, pt, zh), another language gets English, and it follows a live language change', () => {
+    const mk = (lang) => {
+        const dom = { buttonImportExport: { closest() { return { insertAdjacentElement() {} }; } } };
+        const sim = boot({}, { location: { hostname: 'ramlock.github.io' }, dom, lang });
+        sim.intervals[0]();
+        const button = sim.created.find((e) => e.id === 'mwicsImportParty');
+        dom.mwicsImportParty = button; // the page now holds it, as getElementById would find it
+        return { sim, button };
+    };
+    const EN = 'Import party from game (MWI Combat Tracker)', PT = 'Importar grupo do jogo (MWI Combat Tracker)', ZH = '从游戏导入队伍 (MWI Combat Tracker)';
+    // the page sets <html lang> to 'en', 'zh' or 'pt-BR'
+    assert.equal(mk('en').button._t, EN);
+    assert.equal(mk('pt-BR').button._t, PT);
+    assert.equal(mk('pt').button._t, PT);
+    assert.equal(mk('zh').button._t, ZH);
+    assert.equal(mk('fr').button._t, EN, 'an unknown language falls back to English');
+    assert.equal(mk('').button._t, EN);
+    assert.equal(mk(undefined).button._t, EN);
+    // a live change: a check once a second (the second interval) relabels the button already on the page
+    const a = mk('en');
+    assert.equal(a.sim.intervals.length, 2, 'the add-button timer and the language check');
+    const poll = a.sim.intervals[1];
+    for (const [lang, want] of [['pt-BR', PT], ['zh', ZH], ['en', EN], ['fr', EN]]) {
+        a.sim.docEl.lang = lang; poll();
+        assert.equal(a.button._t, want, lang);
+    }
+    // before the button exists the check does nothing
+    const early = boot({}, { location: { hostname: 'ramlock.github.io' }, dom: {}, lang: 'pt-BR' });
+    assert.doesNotThrow(() => early.intervals[1]());
+    // the table: every language has "(MWI Combat Tracker)" and the page's own word for the party
+    for (const t of [EN, PT, ZH]) assert.ok(t.endsWith('(MWI Combat Tracker)'));
+    assert.ok(PT.includes('grupo') && ZH.includes('队伍'));
+});
+
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.9.1/);
-    assert.ok(SRC.includes("const VERSION = '0.9.1'"));
+    assert.match(SRC, /@version\s+0.9.2/);
+    assert.ok(SRC.includes("const VERSION = '0.9.2'"));
     assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
     assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });
