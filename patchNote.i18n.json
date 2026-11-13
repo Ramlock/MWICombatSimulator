@@ -672,6 +672,29 @@
             ]
         }
     },
+    "2026-11-12": {
+        "from": "en",
+        "zh": {
+            "title": "2026年11月12日",
+            "notes": [
+                "假设分析搜索：正在运行的阶段现有两个按钮，“采纳当前领先者”和“跳过<阶段名>”，都会在当前轮结束后结束该阶段。“采纳当前领先者”在尚未锁定的地方采用目前最好的改动，前提是其平均净收益大于0；“跳过”保留已锁定的选择，其余保持不变。无论哪种，每个选择仍会用新的运行核对",
+                "假设分析搜索：每一组互相竞争的改动现在通过淘汰来结束。当一项改动即使在最好情况下也无法胜过另一项，或低于该玩家每日利润的1 %这条线时，它被永久淘汰。付费改动如果无法在365天内回本也会被淘汰，显示为“回本太慢”。当其余改动与最好的一项之间的差距都小于该线时，它们视为并列，保留最好的一项",
+                "假设分析搜索：尚未分出高下的一组会显示可能还需多久，例如“约还需 4 轮才能分出高下”",
+                "假设分析搜索：每个选择加入前都会用新的运行核对，进度行会说明是谁的核对，并从一开始就显示总数，例如“正在用新的运行核对已接受的选择 · 第 3 位，共 3 位 · 48 / 64 次运行”",
+                "假设分析窗口：新的运行未能确认的选择列在“未能确认”下，带有数量和显示/隐藏按钮，不再混在选定的改动中"
+            ]
+        },
+        "pt": {
+            "title": "12/11/2026",
+            "notes": [
+                "Busca E se: a etapa que está rodando agora tem dois botões, Aceitar o vencedor atual e Pular <nome da etapa>. Os dois encerram a etapa ao fim da rodada em que ela está. Aceitar o vencedor atual pega a melhor alteração até agora onde nada foi travado ainda, desde que seu ganho líquido médio seja maior que 0; Pular mantém o que um grupo já travou e deixa os outros como estão. Em ambos os casos, toda escolha ainda é conferida em execuções novas",
+                "Busca E se: cada grupo de alterações agora termina por eliminação. Uma alteração sai de vez quando não consegue superar outra nem no melhor caso, ou quando fica abaixo de uma barra de 1 % do lucro por dia do próprio jogador. Uma alteração paga também sai quando não consegue se pagar em 365 dias, mostrado como Retorno lento demais. Quando todas as outras alterações estão mais perto da melhor do que essa barra, elas contam como empatadas e a melhor fica",
+                "Busca E se: um grupo que ainda não se separou mostra quanto tempo pode levar, por exemplo cerca de mais 4 rodadas para separar",
+                "Busca E se: toda escolha é conferida em execuções novas antes de entrar na cadeia, e a linha de progresso diz de quem é a conferência e o total completo desde o início, por exemplo conferindo as escolhas aceitas em execuções novas · jogador 3 de 3 · 48 / 64 execuções",
+                "Janela E se: as escolhas que as execuções novas não confirmaram ficam listadas em Não confirmadas, com a contagem e um botão Mostrar / Ocultar, em vez de ficarem entre as alterações escolhidas"
+            ]
+        }
+    },
     "2026-11-10": {
         "from": "en",
         "zh": {

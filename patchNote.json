@@ -1,4 +1,16 @@
 {
+    "2026-11-12":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "What-if search: the stage that is running now has two buttons, Accept current winner and Skip <stage name>. Both end the stage after the round it is in. Accept current winner takes the best change so far where nothing has locked yet, as long as its average net gain is above 0; Skip keeps what a pool has already locked and leaves the others as they are. Either way every pick is still checked on fresh runs",
+            "What-if search: each pool now ends by elimination. A change is out for good when it cannot beat another change even at its best, or when it falls under a bar of 1 % of that player's own profit per day. A paid change is also out when it cannot pay back within 365 days, shown as Pays back too slowly. When every other change is closer to the best one than that bar, they all count as tied and the best one stays",
+            "What-if search: a pool that has not separated yet shows how long it may take, for example about 4 more rounds to separate",
+            "What-if search: every pick is checked on fresh runs before it joins the chain, and the progress row says whose check it is and the full total from the start, for example checking the accepted picks on fresh runs · player 3 of 3 · 48 / 64 runs",
+            "What-if window: the picks the fresh runs did not confirm are listed under Not confirmed, with their count and a Show / Hide button, instead of among the chosen changes"
+        ]
+    },
     "2026-11-10":
     {
         "fork": "Ramlock",

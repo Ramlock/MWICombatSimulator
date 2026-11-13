@@ -8,6 +8,13 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = json.load(open(os.path.join(root, 'patchNote.json'), encoding='utf-8'))
 
 ZH = {
+    "2026-11-12": [
+        "假设分析搜索：正在运行的阶段现有两个按钮，“采纳当前领先者”和“跳过<阶段名>”，都会在当前轮结束后结束该阶段。“采纳当前领先者”在尚未锁定的地方采用目前最好的改动，前提是其平均净收益大于0；“跳过”保留已锁定的选择，其余保持不变。无论哪种，每个选择仍会用新的运行核对",
+        "假设分析搜索：每一组互相竞争的改动现在通过淘汰来结束。当一项改动即使在最好情况下也无法胜过另一项，或低于该玩家每日利润的1 %这条线时，它被永久淘汰。付费改动如果无法在365天内回本也会被淘汰，显示为“回本太慢”。当其余改动与最好的一项之间的差距都小于该线时，它们视为并列，保留最好的一项",
+        "假设分析搜索：尚未分出高下的一组会显示可能还需多久，例如“约还需 4 轮才能分出高下”",
+        "假设分析搜索：每个选择加入前都会用新的运行核对，进度行会说明是谁的核对，并从一开始就显示总数，例如“正在用新的运行核对已接受的选择 · 第 3 位，共 3 位 · 48 / 64 次运行”",
+        "假设分析窗口：新的运行未能确认的选择列在“未能确认”下，带有数量和显示/隐藏按钮，不再混在选定的改动中",
+    ],
     "2026-11-10": [
         "全区域结果上方新增图表：每张地图是一个点，一个坐标轴为每小时经验，另一个为每日利润。可选择总经验或某一技能的经验，以及队伍平均或某位玩家。连线上的点是没有其他地图在两项上都胜过的地图；悬停可查看地图、难度、两项数值和每小时死亡次数，点击可跳转到表格中该地图的行",
         "所有价格查询（掉落、消耗品和宝箱内容物）现在采用相同的回退顺序：所选一侧，否则另一侧，否则商店价格。按当前市场，数值不变",
@@ -179,6 +186,13 @@ EN = [
 ]
 
 PT = [
+    [
+        "Busca E se: a etapa que está rodando agora tem dois botões, Aceitar o vencedor atual e Pular <nome da etapa>. Os dois encerram a etapa ao fim da rodada em que ela está. Aceitar o vencedor atual pega a melhor alteração até agora onde nada foi travado ainda, desde que seu ganho líquido médio seja maior que 0; Pular mantém o que um grupo já travou e deixa os outros como estão. Em ambos os casos, toda escolha ainda é conferida em execuções novas",
+        "Busca E se: cada grupo de alterações agora termina por eliminação. Uma alteração sai de vez quando não consegue superar outra nem no melhor caso, ou quando fica abaixo de uma barra de 1 % do lucro por dia do próprio jogador. Uma alteração paga também sai quando não consegue se pagar em 365 dias, mostrado como Retorno lento demais. Quando todas as outras alterações estão mais perto da melhor do que essa barra, elas contam como empatadas e a melhor fica",
+        "Busca E se: um grupo que ainda não se separou mostra quanto tempo pode levar, por exemplo cerca de mais 4 rodadas para separar",
+        "Busca E se: toda escolha é conferida em execuções novas antes de entrar na cadeia, e a linha de progresso diz de quem é a conferência e o total completo desde o início, por exemplo conferindo as escolhas aceitas em execuções novas · jogador 3 de 3 · 48 / 64 execuções",
+        "Janela E se: as escolhas que as execuções novas não confirmaram ficam listadas em Não confirmadas, com a contagem e um botão Mostrar / Ocultar, em vez de ficarem entre as alterações escolhidas",
+    ],
     [
         "Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, com EXP por hora em um eixo e lucro por dia no outro. Escolha o total ou a EXP de uma habilidade, e a média do grupo ou um jogador. Os pontos ligados pela linha são os mapas que nenhum outro mapa supera nos dois; passe o mouse sobre um ponto para ver o mapa, o nível, os dois valores e as mortes por hora, e clique nele para ir às linhas desse mapa na tabela",
         "Toda busca de preço (drops, consumíveis e o conteúdo de um baú) agora usa o mesmo plano B: o lado escolhido, senão o outro lado, senão o preço de vendedor. Com o mercado de hoje, nenhum número muda",
