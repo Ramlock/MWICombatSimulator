@@ -147,7 +147,14 @@
             "step1": "把压缩包解压到任意位置，打开 WhatIfRunner 文件夹，双击 start-runner.cmd。",
             "step2": "如果 Windows 显示“打开文件 - 安全警告”（“无法验证发布者”），请点击“运行”。如果显示“Windows 已保护你的电脑”（SmartScreen），请点击“更多信息”，再点击“仍要运行”。该程序没有签名，所以第一次出现这样的警告是正常的。",
             "step3": "会打开一个黑色窗口，浏览器也会打开 http://127.0.0.1:8787/ 的标签页。使用页面期间请保持黑色窗口打开。",
-            "step4": "在那个标签页里，“导入/导出”旁边的“假设分析”按钮会打开搜索窗口。请用“导入/导出”带入一次你的配置：那个页面有自己单独保存的配置。"
+            "step4": "在那个标签页里，“导入/导出”旁边的“假设分析”按钮会打开搜索窗口。请用“导入/导出”带入一次你的配置：那个页面有自己单独保存的配置。",
+            "linuxHeading": "Linux（尚未测试，请告诉我们结果）",
+            "linuxDownload": "下载压缩包（同一个文件）",
+            "linuxStep1": "解压：unzip WhatIfRunner.zip，会生成文件夹 WhatIfRunner。",
+            "linuxStep2": "安装 Node.js 24 或更新版本（用包管理器、nodejs.org，或 nvm install 24）。node --version 必须显示 v24 或更高。",
+            "linuxStep3": "在终端中运行：cd WhatIfRunner，然后 node tools/whatif/runner/server.mjs --port 8787",
+            "linuxStep4": "在浏览器中打开 http://127.0.0.1:8787/ ，并保持终端打开。在终端中按 Ctrl+C 可停止运行器。",
+            "linuxReport": "请告诉我们每一步发生了什么：确切的错误信息、你的发行版和 Node 版本。"
         },
         "version": "运行器 {{runner}}，引擎 {{engine}}",
         "goalLabel": "目标",

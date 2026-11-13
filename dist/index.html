@@ -1812,6 +1812,17 @@
                             <li data-i18n="common:whatIf.get.step3">A black window opens, and your browser opens a tab on http://127.0.0.1:8787/. Leave the black window open while you use the page.</li>
                             <li data-i18n="common:whatIf.get.step4">On that tab, the What-if button, next to Import/Export, opens the search window. Bring your setup once with Import/Export: that page keeps its own saved setups.</li>
                         </ol>
+                        <div id="whatIfGetRunnerLinux" class="mt-4">
+                            <h6 data-i18n="common:whatIf.get.linuxHeading">Linux (not tested yet, tell us how it went)</h6>
+                            <p><a id="linkWhatIfRunnerLinux" class="btn btn-secondary btn-sm" href="#" target="_blank" rel="noopener" data-i18n="common:whatIf.get.linuxDownload">Download the zip (the same file)</a></p>
+                            <ol>
+                                <li data-i18n="common:whatIf.get.linuxStep1">Unzip it: unzip WhatIfRunner.zip. It makes a folder WhatIfRunner.</li>
+                                <li data-i18n="common:whatIf.get.linuxStep2">Install Node.js 24 or newer (your package manager, nodejs.org, or nvm install 24). node --version must print v24 or higher.</li>
+                                <li data-i18n="common:whatIf.get.linuxStep3">In a terminal: cd WhatIfRunner, then node tools/whatif/runner/server.mjs --port 8787</li>
+                                <li data-i18n="common:whatIf.get.linuxStep4">Open http://127.0.0.1:8787/ in your browser and leave the terminal open. Ctrl+C in the terminal stops the runner.</li>
+                            </ol>
+                            <p data-i18n="common:whatIf.get.linuxReport">Tell us what happened at each step: the exact error, your distribution and your Node version.</p>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-md-5 whatif-col">
@@ -2239,10 +2250,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=c1cfce93"></script>
+    <script src="js/i18n.js?v=3876df1a"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.c1cfce93.js" type="module"></script>
+    <script src="bundle.3876df1a.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">
