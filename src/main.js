@@ -37,7 +37,9 @@ import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { parseMinGain, MIN_GAIN_PCT as WHATIF_MIN_GAIN_PCT } from './whatif/minGain.mjs';
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData, stageLabel as whatIfStageLabel, localizeDesc as whatIfLocalizeDesc } from "./whatif/panel.mjs";
+import { buildHistory as whatIfBuildHistory } from "./whatif/history.mjs";
+import { createChartHost as whatIfCreateCharts } from "./whatif/chartView.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import { talismanViewHtml } from "./talismanView.mjs";
 import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
@@ -4119,7 +4121,47 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, resultLoaded: false, earlier: [], partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
+const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, resultLoaded: false, earlier: [], partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null, rounds: [], roundsFor: null, roundsLoaded: null, charts: null, hotCand: null };
+
+// The search chart (src/whatif/chartView.mjs): one block per stage and pool, above the rounds tables. Its history is the search's round records: the status' `rounds` while the
+// search runs (kept in whatIf.rounds), GET /api/results/<id>/rounds for a finished or an earlier one; both go through buildHistory, so a finished search draws what the live one drew.
+// The table row of the candidate the chart points at (hover or click) is marked; the table is drawn again every poll, so the id is kept and the mark put back after each draw.
+function whatIfMarkHot(id) {
+    whatIf.hotCand = id ?? null;
+    for (const row of document.querySelectorAll('#whatIfRounds tr[data-cand]')) row.classList.toggle('whatif-hot', whatIf.hotCand !== null && row.dataset.cand === whatIf.hotCand);
+}
+function whatIfDrawCharts() {
+    // The chart is a picture of the rounds: a fault in it is logged and never stops the status handling (the poll's catch reads any throw as "the runner is gone").
+    try { whatIfDrawChartsNow(); } catch (err) { console.error('What-if chart:', err); }
+}
+function whatIfDrawChartsNow() {
+    const box = document.getElementById('whatIfCharts');
+    if (!box) return;
+    const live = whatIf.state === 'running' && whatIf.status?.state === 'running';
+    const first = live && whatIf.round?.provisional === true ? whatIf.round : null;
+    if (!whatIf.rounds.length && !first && !whatIf.result?.endedByUser) { whatIf.charts?.clear(); return; }
+    if (!whatIf.charts) {
+        const names = () => whatIfNames();
+        whatIf.charts = whatIfCreateCharts(box, {
+            t: whatIfT, format: (v) => formatNumber(v), stageLabel: (stage) => whatIfStageLabel(stage, whatIfT),
+            labelOf: (d) => whatIfLocalizeDesc(d.label ?? d.id, names(), d.player ? [d.player] : [], d.player ?? null),
+            onHover: (id) => whatIfMarkHot(id),
+            onPick: (id) => { whatIfMarkHot(id); document.querySelector('#whatIfRounds tr.whatif-hot')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
+        });
+    }
+    const progress = live ? whatIf.status?.progress : null;
+    whatIf.charts.update(whatIfBuildHistory(whatIf.rounds, { firstLook: first }), { running: live ? progress?.stage ?? null : null, flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
+}
+
+// The round records of a search the window did not watch run (an earlier search, or one finished before the window looked): fetched once per search id.
+async function whatIfLoadRounds(id) {
+    if (!id || whatIf.roundsLoaded === id) return;
+    whatIf.roundsLoaded = id;
+    try {
+        const { ok, body } = await whatIfRequest(WHATIF_API.rounds(id));
+        if (ok && Array.isArray(body) && whatIf.roundsLoaded === id) { whatIf.rounds = body; whatIfDrawCharts(); }
+    } catch (err) { /* the runner is gone; the chart stays as it is */ }
+}
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4406,7 +4448,9 @@ function whatIfShowDiff() {
 function whatIfClearResult() {
     whatIf.round = null;
     document.getElementById('whatIfRounds').innerHTML = '';
+    whatIf.rounds = []; whatIf.roundsFor = null; whatIf.roundsLoaded = null;
     whatIfShowResult(null);
+    whatIfDrawCharts();
 }
 
 // Redraws the progress box in place (whatIfMorphInto, morph.mjs): a stage button, or any part of a row, whose markup did not change keeps its node in
@@ -4436,11 +4480,18 @@ function whatIfShowStatus(status) {
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
     else if (status.state === 'done' && status.result?.round) whatIf.round = status.result.round;
     whatIfMorphInto(document.getElementById('whatIfRounds'), whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : ''); // in place, as the progress box (a help mark keeps its hover)
+    if (whatIf.hotCand) whatIfMarkHot(whatIf.hotCand);
+    // The chart's history: every finished round after `since` comes with the status (the runner's `rounds`); a search that is no longer running and brought none (the window
+    // opened on it, or the runner restarted) is read from its file. A resumed search keeps what it had: its replayed rounds come again and buildHistory keeps each stage's last run.
+    if (whatIf.roundsFor !== whatIf.searchId) { whatIf.rounds = []; whatIf.roundsFor = whatIf.searchId; whatIf.roundsLoaded = null; }
+    if (Array.isArray(status.rounds)) whatIf.rounds.push(...status.rounds);
+    if (status.state !== 'running' && !whatIf.rounds.length) whatIfLoadRounds(whatIf.searchId);
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
     else if (status.state === 'running' && whatIf.resultRunning === 'stopped' && !whatIf.resultLoaded) whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
     else if (status.state === 'running' && whatIf.resultRunning === true && whatIf.result && whatIfSoFarKey(whatIfSoFarOf(whatIf.result, true)) !== whatIf.soFarKey) whatIfShowResult(whatIf.result, true); // the "so far" rows follow a new round or stage
+    whatIfDrawCharts(); // after the result: the chart notes a stage the user ended before its first round (result.endedByUser)
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done' || status.state === 'stopped') whatIfLoadList(); // a stopped search is listed too
     whatIfShowSetup();
@@ -4645,6 +4696,7 @@ async function whatIfLoadResult() {
             whatIf.round = body.round ?? null;
             document.getElementById('whatIfRounds').innerHTML = whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : '';
             whatIfShowResult(body, whatIf.earlier.find((r) => r.id === id)?.stopped ? 'stopped' : false, true);
+            whatIf.rounds = []; whatIf.roundsFor = id; whatIf.roundsLoaded = null; whatIfDrawCharts(); whatIfLoadRounds(id); // its chart, from its rounds.jsonl
         }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
@@ -4728,7 +4780,7 @@ async function initWhatIf() {
         fold(event);
     });
     document.getElementById('whatIfDiff').addEventListener('click', fold);
-    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded); });
+    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded); whatIfDrawCharts(); });
 }
 // #endregion
 

@@ -43,15 +43,19 @@ function pointOf(row, round, cols) {
 //          rank (1-based in the latest round, null when not among its leaders), inLatest, lastRound }; the points are the rounds where the candidate had a figure.
 //   toBeat: [{ round, value }] per round, the lowest lower end among the leaders that have a figure (for a payback, the highest upper end: the worse end).
 //   latest: the latest round's leaders in the table's order: { id, rank, prev (the position in the round before, null when new or not given), value, low, high, openHigh }.
-export function buildHistory(records) {
-    return {
-        stages: lastRuns(records).map(({ stage, records: recs }) => {
-            const keys = [];
-            for (const r of recs) for (const p of r.pools) if (!keys.includes(p.key)) keys.push(p.key);
-            const last = recs[recs.length - 1];
-            return { stage, rounds: last.round, firstRound: recs[0].round, lastRound: last.round, pools: keys.map((key) => poolHistory(key, recs)) };
-        }),
-    };
+// `firstLook`: the provisional record of the round being run (the first look at a stage's round 1, `provisional: true`), or null. A stage that has no finished round
+// yet gets its pools from it, with no lines and `firstLook: true`: the chart shows the first look as bars only. A stage with finished rounds ignores it.
+export function buildHistory(records, { firstLook = null } = {}) {
+    const stages = lastRuns(records).map(({ stage, records: recs }) => {
+        const keys = [];
+        for (const r of recs) for (const p of r.pools) if (!keys.includes(p.key)) keys.push(p.key);
+        const last = recs[recs.length - 1];
+        return { stage, rounds: last.round, firstRound: recs[0].round, lastRound: last.round, firstLook: false, pools: keys.map((key) => poolHistory(key, recs)) };
+    });
+    if (firstLook && firstLook.provisional === true && typeof firstLook.stage === 'string' && Array.isArray(firstLook.pools) && !stages.some((s) => s.stage === firstLook.stage)) {
+        stages.push({ stage: firstLook.stage, rounds: 0, firstRound: firstLook.round, lastRound: 0, firstLook: true, pools: firstLook.pools.map((p) => poolHistory(p.key, [{ ...firstLook, provisional: false }])) });
+    }
+    return { stages };
 }
 
 function poolHistory(key, recs) {

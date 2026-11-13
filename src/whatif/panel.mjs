@@ -37,6 +37,8 @@ export const API = {
     done: (id) => '/api/search/' + encodeURIComponent(id) + '/done',
     results: '/api/results',
     result: (id) => '/api/results/' + encodeURIComponent(id),
+    // A saved search's round records (rounds.jsonl as one array): the chart's history of an earlier search.
+    rounds: (id) => '/api/results/' + encodeURIComponent(id) + '/rounds',
 };
 
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -277,6 +279,11 @@ export function pollDelay(status, pressed, now, fastUntil) {
 // The name of a greedy-step race by the change it looks for: the screen is the race for change 1 (progress.partScreen), the race of
 // "greedy step n" (the search's stage name, tools/whatif/core.mjs) runs after change n and looks for change n + 1. The one place the +1 is made.
 const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 });
+// The name a stage of a round record goes by in the window ('foods', 'drinks', 'screen', 'greedy step N'): the same words the progress parts use (the chart's titles).
+export function stageLabel(stage, t) {
+    const s = String(stage), step = /^greedy step (\d+)$/.exec(s);
+    return s === 'foods' ? t('progress.partFoods') : s === 'drinks' ? t('progress.partDrinks') : s === 'screen' ? t('progress.partScreen') : step ? stepLabel(t, step[1]) : s;
+}
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
 // lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Both end the stage at once (its runs in flight
 // are ended): Accept with its pick as it is, Skip with nothing taken. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn
@@ -369,7 +376,9 @@ export function renderParts(status, t, pressed = null, stopping = false, names =
             : [...(r.kept && r.state !== 'waiting' ? [`<span class="whatif-part-kept">${plural(t, 'progress.keptRuns', r.kept.total, { kept: num(r.kept.kept), total: num(r.kept.total) })}</span>`] : []),
                 ...(lastFail ? [`<span class="whatif-part-what" data-left-out="${failed.length}" data-ending="${esc(lastFail.ending ?? '')}">${esc(t(lastFail.ending === 'unsure' ? (over ? 'progress.unsureEnded' : 'progress.unsureGoesOn') : over ? 'progress.leftOutEnded' : 'progress.leftOutGoesOn'))} ${whatHtml(lastFail)}</span>`] : []),
                 // The changes that winner had put out and that came back into the race (progress.stageBack), while the race goes on.
-                ...(lastFail && !over && Number(r.back) > 0 ? [`<span class="whatif-part-runs whatif-part-back">${plural(t, 'progress.backInRace', r.back, { n: num(r.back) })}</span>`] : [])];
+                ...(lastFail && !over && Number(r.back) > 0 ? [`<span class="whatif-part-runs whatif-part-back">${plural(t, 'progress.backInRace', r.back, { n: num(r.back) })}</span>`] : []),
+                // The runs going at this moment (progress.inFlight.runs, the core's count), on the running race stage's row only.
+                ...(race && Number(p.inFlight?.runs) > 0 ? [`<span class="whatif-part-runs whatif-part-flying">${plural(t, 'progress.inFlight', p.inFlight.runs, { n: num(p.inFlight.runs) })}</span>`] : [])];
         const failTip = failed.map((f) => plainOf(t('progress.leftOutTip', { change: whatHtml(f), ending: f.ending ? endingText(f, t, f.goal) : esc(t('progress.leftOutPlain')), gain: pm(f.gainPerUser, f.sePerUser), buyer: pm(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) }))).join('\n');
         const detail = bits.length ? `<td class="whatif-part-detail"><div class="whatif-part-detail-in" title="${esc(bits.map(plainOf).join(' · '))}">${bits.join('')}</div>${help(esc(failTip))}</td>` : '<td class="whatif-part-detail"></td>';
         return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(over ? null : rounded ? r.contending : left)}${cell(over ? null : r.paused)}${cell(r.dropped)}${pctCell}${detail}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed, stopping) : ''}</td></tr>`;
@@ -445,7 +454,7 @@ export function renderRounds(round, t, names = null) {
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
             const figSeeds = figureSeeds(l);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: formatNumber(l.searchHours), fresh: formatNumber(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
@@ -787,8 +796,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
     if (!running || result.steps?.length || soFar.length) L.push(`<div class="whatif-h">${esc(t('result.steps'))}${result.best ? help(esc(t('result.bestBaseline'))) : ''}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     for (const [stage, n] of endedStages) {
-        const m = /^greedy step (\d+)$/.exec(stage), name = m ? stepLabel(t, Number(m[1])) : stage === 'screen' ? t('progress.partScreen') : stage;
-        L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
+        L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(stageLabel(stage, t))} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
     }
     if (!result.steps?.length && !soFar.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
     else {

@@ -51,6 +51,9 @@
         .whatif-weak td { color: #999 !important; }
         .whatif-warn { color: #b07800; }
         .whatif-dim { color: #888; }
+        .whatif-chart-stage { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .5rem; }
+        .whatif-chart-box { position: relative; width: 100%; background-color: #16181c; border: 1px solid #343a40; border-radius: 4px; }
+        .whatif-table tr.whatif-hot td { background-color: rgba(255, 226, 122, 0.14); }
         .talisman-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding-top: calc(0.375rem + 1px); }
         .talisman-grade { color: #aaa; }
         .talisman-power { color: #aaa; }
@@ -1975,6 +1978,7 @@
                     <div id="whatIfMessage" class="whatif-warn"></div>
                     <div id="whatIfDiff"></div>
                     <div id="whatIfResult"></div>
+                    <div id="whatIfCharts"></div>
                     <div id="whatIfRounds"></div>
                 </div>
             </div>
