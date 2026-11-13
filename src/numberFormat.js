@@ -82,12 +82,31 @@ export function formatNumber(value, options = {}) {
     return isIso(options) ? text.replace(/(\d)([kMBT])$/, "$1 $2") : text;
 }
 
+// The unit another number is written in to match this one as displayed: { base, decimals } (the suffix's base, 1 for none, and the
+// decimals the value shows on its own). Used with the `scale` option.
+export function unitOf(value) {
+    const abs = Math.abs(Number(value));
+    return { base: pickScale(abs).base, decimals: ownDecimals(abs) };
+}
+
+// `scale` option: write the number in a given unit (base 1, 1e3, 1e6, 1e9, 1e12) with `decimals` decimals (default 0), rounded UP when
+// `up` is set (a margin is never written smaller than it is), else to nearest. A whole unit stays (7000 in k is 7k).
+function scaledText(number, abs, options, separator) {
+    const { suffix } = SUFFIXES.find((s) => s.base === options.scale) ?? { suffix: "" };
+    const decimals = options.decimals ?? 0;
+    const scaled = abs / options.scale;
+    const factor = 10 ** decimals;
+    const mantissa = (options.up ? Math.ceil(Math.round(scaled * factor * 1e6) / 1e6) : Math.round(scaled * factor)) / factor;
+    return (number < 0 && mantissa !== 0 ? "-" : "") + mantissaText(mantissa, decimals, separator) + suffix;
+}
+
 function formatNumberAttached(value, options) {
     const separator = options.thousandsSeparator ?? (isIso(options) ? " " : ",");
     const number = typeof value === "string" ? Number(value) : value;
     if (typeof number !== "number" || !Number.isFinite(number)) return String(value);
 
     const abs = Math.abs(number);
+    if (options.scale !== undefined) return scaledText(number, abs, options, separator);
     const { base, suffix } = pickScale(abs);
     const decimals = options.decimals ?? ownDecimals(abs);
     let shown;
@@ -143,9 +162,11 @@ function escapeAttribute(text) {
 // HTML for innerHTML sites: the display text with the exact value on hover. `unit` is appended to both.
 // The raw value rides along (data-num / data-pct) so refreshFormattedNumbers can re-format after a toggle.
 // `minDecimals` (data-min) is the least decimals the column pass gives this kind of number (attack interval: 2).
+// `scale` (+ `decimals`) writes it in a fixed unit rounded up (data-scale, data-dec; see scaledText): a margin beside a value, the column pass leaves it be.
 export function numberHtml(value, unit = "", options = {}) {
-    return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '"' + minAttribute(options.minDecimals) +
-        ' title="' + escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit) + "</span>";
+    const scaleAttributes = options.scale === undefined ? "" : ' data-scale="' + options.scale + '" data-dec="' + (options.decimals ?? 0) + '"';
+    return '<span data-num="' + escapeAttribute(String(value)) + '" data-unit="' + escapeAttribute(unit) + '"' + minAttribute(options.minDecimals) + scaleAttributes +
+        ' title="' + escapeAttribute(exactUnit(value, unit)) + '">' + formatUnit(value, unit, options.scale === undefined ? {} : { scale: options.scale, up: true, decimals: options.decimals ?? 0 }) + "</span>";
 }
 
 function minAttribute(minDecimals) {
@@ -183,6 +204,11 @@ export function cellValue(cell) {
 const NUMBER_SELECTOR = "[data-num], [data-pct]";
 
 function renderSpan(element, decimals) {
+    // A span with a fixed unit (data-scale) keeps it, rounded up, and its own decimals: the column pass does not touch it.
+    if (element.dataset.scale !== undefined) {
+        element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "", { scale: Number(element.dataset.scale), up: true, decimals: Number(element.dataset.dec ?? 0) });
+        return;
+    }
     const options = decimals === undefined ? {} : { decimals };
     if (element.dataset.pct !== undefined) element.textContent = formatPercent(element.dataset.pct, options);
     else element.textContent = formatUnit(element.dataset.num, element.dataset.unit ?? "", options);
@@ -215,6 +241,7 @@ export function alignNumberColumns(root) {
     const groups = new Map();
     const perCell = new Map();
     root.querySelectorAll(NUMBER_SELECTOR).forEach((element) => {
+        if (element.dataset.scale !== undefined) return;
         const column = columnOf(element);
         if (!column) return;
         const inCell = perCell.get(column.cell) ?? 0;

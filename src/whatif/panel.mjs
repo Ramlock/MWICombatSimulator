@@ -4,7 +4,7 @@
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
 import { applyOps } from './applyOps.mjs';
-import { numberHtml, formatNumber } from '../numberFormat.js';
+import { numberHtml, formatNumber, unitOf } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
 import { paybackDays } from './payback.mjs';
 import { FIGURE_MIN_SEEDS, figureSeeds } from './figure.mjs';
@@ -55,6 +55,13 @@ export function fit(v, half) {
     const unit = 10 ** (Math.floor(Math.log10(half)) - 1);
     return Number((Math.round(v / unit) * unit).toFixed(Math.max(0, Math.round(-Math.log10(unit)))));
 }
+// The margin (±) beside a figure is written in the figure's own unit and decimals as it is displayed (`shown`, after fit), rounded UP from the
+// raw error `raw` (a margin is never written smaller than it is): 2,293k ± 7,500 reads "2,293k ± 8k", 303k ± 300 reads "303k ± 1k". A margin of 0
+// or none has no unit to round up in: it reads as the plain number. The one helper every ± in the window goes through (html and plain text);
+// the hover titles keep the full figures. The html span carries its unit (data-scale) so the ISO toggle and the column pass keep it.
+const marginOptions = (shown) => { const u = unitOf(shown); return { scale: u.base, decimals: u.decimals }; };
+const marginHtml = (shown, raw) => (raw > 0 ? numberHtml(raw, '', marginOptions(shown)) : num(raw));
+export const marginText = (shown, raw) => (raw > 0 ? formatNumber(raw, { ...marginOptions(shown), up: true }) : formatNumber(raw));
 // Half the width of a range [low, high] (the ± of a t range), null without one.
 export const halfOf = (low, high) => (Number.isFinite(low) && Number.isFinite(high) ? (high - low) / 2 : null);
 // The parts of "<figure> ± <error>": { main, err, zero }. A figure whose range reaches 0 (|v| <= ±) reads "≈ 0"; no error known (one run): the
@@ -63,7 +70,7 @@ function pmParts(v, half) {
     if (!Number.isFinite(v)) return null;
     if (!(half > 0)) return { main: num(v), err: null, zero: false };
     const zero = Math.abs(v) <= half;
-    return { main: zero ? '≈ 0' : num(fit(v, half)), err: num(fit(half, half)), zero };
+    return { main: zero ? '≈ 0' : num(fit(v, half)), err: zero ? num(fit(half, half)) : marginHtml(fit(v, half), half), zero };
 }
 // "<figure> ± <error>" in one cell, greyed when the range reaches 0; "—" without a figure.
 function pm(v, half) {
@@ -79,11 +86,11 @@ function pmCell(v, half, t, seeds = null) {
     return `<td class="num">${pm(v, half)}</td>`;
 }
 // One figure in a line of text: "no change", or "<value> ± <error>".
-const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + num(fit(se, se)));
+const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + marginHtml(fit(v, se), se));
 // One cell for a gain and its error, "<value> ± <error>": "no change" (the real value as title) when it reads as no change.
 function gainCell(v, se, t, floor) {
     if (isNoChange(v, se, floor)) return `<td class="num" title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</td>`;
-    return `<td class="num">${num(fit(v, se))}${Number.isFinite(se) ? ' ± ' + num(fit(se, se)) : ''}</td>`;
+    return `<td class="num">${num(fit(v, se))}${Number.isFinite(se) ? ' ± ' + marginHtml(fit(v, se), se) : ''}</td>`;
 }
 // A chosen change or filling shows its fresh reading (the optimizer's pick check: the same change measured again on fresh seeds
 // against what was chosen before it) in place of the search's own: [value, error] of a pair of fields from `fresh` when it has both,
@@ -538,7 +545,7 @@ export function bestBlock(result, t, names = null, running = false, floor = null
             // The core flags a leader without a clear gain (`unclear`, and `loses` when the shared loot falls): the row shows the player's current items
             // (the final's unchanged form) and the status; the leader's items and figures are the status cell's tooltip, a fact.
             const unclear = e.soFar && e.unclear;
-            const plainPm = (v, half) => (Number.isFinite(v) ? formatNumber(fit(v, half)) +(half > 0 ? ' ± ' + formatNumber(fit(half, half)) : '') : '—');
+            const plainPm = (v, half) => (Number.isFinite(v) ? formatNumber(fit(v, half)) +(half > 0 ? ' ± ' + (Math.abs(v) <= half ? formatNumber(fit(half, half)) : marginText(fit(v, half), half)) : '') : '—');
             const tip = !unclear ? '' : e.loses ? t('rounds.status.losesTip') : t('rounds.status.bestTip', {
                 items: (e.candidate || []).map((x) => names?.get('itemNames', slugOf(x.item)) ?? slugOf(x.item)).join(', ') || '—',
                 figures: e.tooFew ? t('rounds.tooFew') : `${t('col.partyGain')} ${plainPm(e.gainPerUser, halfOf(e.low, e.high))}; ${t('col.buyerGain')} ${plainPm(e.buyerNet, halfOf(e.netLow, e.netHigh))}`,

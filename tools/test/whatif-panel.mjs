@@ -14,6 +14,7 @@ const panel = await imp('src/whatif/panel.mjs');
 const { applyOps } = await imp('src/whatif/applyOps.mjs');
 const variants = await imp('tools/whatif/variants.mjs');
 const M = await imp('src/marketplace.mjs');
+const { formatNumber } = await imp('src/numberFormat.js');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const locales = Object.fromEntries(['en', 'pt', 'zh'].map((l) => [l, JSON.parse(read(`locales/${l}/common.json`)).whatIf]));
 
@@ -27,7 +28,9 @@ const t = (key, params = {}) => { used.add(key); const s = lookup(locales.en, ke
 const tablesOf = (h) => [...h.matchAll(/<table([^>]*)>([^]*?)<\/table>/g)].filter((m) => !/whatif-best-table|whatif-confirm/.test(m[1])).map((m) => m[2]);
 const confOf = (h) => [...h.matchAll(/<table([^>]*whatif-confirm[^>]*)>([^]*?)<\/table>/g)].map((m) => m[2])[0];
 const bestOf = (h, kind) => [...h.matchAll(/<table([^>]*)data-best="(\w+)"([^>]*)>([^]*?)<\/table>/g)].filter((m) => m[2] === kind).map((m) => m[4])[0];
-const txt = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<br>/g, ' | ').replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<');
+// A span as the page shows it: its exact number, or (a margin, data-scale) the number written in its unit rounded up.
+const nums = (s) => s.replace(/<span data-num="([^"]+)"([^>]*)>[^<]*<\/span>/g, (_, n, rest) => { const sc = rest.match(/data-scale="([^"]+)"/); return sc ? formatNumber(n, { scale: Number(sc[1]), up: true, decimals: Number(rest.match(/data-dec="([^"]+)"/)?.[1] ?? 0), iso: false }) : n; });
+const txt = (s) => nums(s).replace(/<br>/g, ' | ').replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<');
 const bodyRows = (tb) => tb ? [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => !/whatif-group/.test(m[1])).map((m) => [...m[2].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => txt(c[1]))) : [];
 
 // A generic party of two, in the page's slot format (ability levels are strings on the page).
@@ -143,7 +146,7 @@ const result = {
     const html = panel.renderResult(full, t);
     // The steps table and the Each change alone table (the best-foods tables and the confirmation table are picked by their own class).
     const heads = (tb) => [...tb.slice(tb.indexOf('<thead>'), tb.indexOf('</thead>')).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
-    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const plain = (s) => nums(s).replace(/<[^>]+>/g, '');
     const rowsOf = (tb) => [...tb.slice(tb.indexOf('<tbody')).matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => !/whatif-group/.test(m[1])).map((m) => [...m[2].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => plain(c[1])));
     const [stepsTb, eachTb] = tablesOf(html);
     const tail = ['Cost', 'Payback days', 'How it is bought', ''], pair = ['Shared loot gain per user', "Buyer's gain"];
@@ -252,7 +255,7 @@ const result = {
     const html = panel.renderRounds(rec, t);
     check('rounds: nothing without a record', panel.renderRounds(null, t) === '' && panel.renderRounds({}, t) === '');
     check('rounds: the round counter, the contention counts and the dropped count', html.includes('data-rounds="round"><span data-num="7"') && html.includes('data-rounds="contending"><span data-num="31"') && html.includes('data-rounds="paused"><span data-num="80"') && html.includes('data-num="2"') && html.includes(t('rounds.coverage', { pct: 99 })));
-    check('rounds: a leader shows its figure ± half its range, cut to the precision of the ± (1234, 1100-1368 -> 1230 ± 130)', html.includes('data-num="1230"') && html.includes('data-num="130"') && html.includes(' ± ') && !html.includes('data-num="1234"') && !html.includes('data-num="1100"') && !html.includes(' – '));
+    check('rounds: a leader shows its figure ± half its range, cut to the precision of the ± (1234, 1100-1368 -> 1230 ± 134: the margin is written in the unit of the figure, rounded up, and keeps its exact half range)', html.includes('data-num="1230"') && /data-num="134"[^>]*data-scale="1"/.test(html) && html.includes(' ± ') && !html.includes('data-num="1234"') && !html.includes('data-num="1100"') && !html.includes(' – '));
     check('rounds: a leader with too few reading seeds is shown as such, with no figure', html.includes(t('rounds.tooFew', { n: 3 })) && !html.includes('data-num="999"'));
     check('rounds: a pool per key, the player named in a per-player pool, the empty pool is ONE grey "None." line with no title and no table', !html.includes('Player 2 · ') && html.includes('data-none>None.</div>') && (html.match(/<table class="whatif-table"/g) || []).length === 1 && (html.match(/data-none/g) || []).length === 1);
     const emptyPools = panel.renderRounds({ ...rec, pools: ['free', 'paid', 'Zed:free'].map((k) => ({ key: k, size: 1, contending: 1, paused: 0, leaders: [] })) }, t);
@@ -292,7 +295,7 @@ const result = {
     const bs = (n) => bodyRows(bestOf(panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: n, gainPerUser: 12, low: 9, high: 15, buyerNet: 40, netLow: 30, netHigh: 50 } }, drinks: {} } }, t, undefined, null, true), 'foods'))[0];
     check('best so far: 3 seeds draw the dash in both gain columns, 4 draw value ± range', bs(3)[2] === '—' && bs(3)[3] === '—' && bs(4)[2] === '12 ± 3' && bs(4)[3] === '40 ± 10', JSON.stringify([bs(3), bs(4)]));
     const bf = (n) => bodyRows(bestOf(panel.renderResult({ ...result, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], gainPerUser: 123456, sePerUser: 20000, buyerNet: 98765, buyerNetSe: 1234, fresh: { seeds: n, gainPerUser: 123456, sePerUser: 20000, buyerNet: 98765, buyerNetSe: 1234 } } }, drinks: {} } }, t), 'foods'))[0];
-    check('best (final): the fresh reading seeds decide: 3 draw the dash in both columns, 4 draw as before', bf(3)[2] === '—' && bf(3)[3] === '—' && bf(4)[2] === '123000 ± 20000' && bf(4)[3] === '98800 ± 1200', JSON.stringify([bf(3), bf(4)]));
+    check('best (final): the fresh reading seeds decide: 3 draw the dash in both columns, 4 draw as before', bf(3)[2] === '—' && bf(3)[3] === '—' && bf(4)[2] === '123000 ± 20k' && bf(4)[3] === '98800 ± 2k', JSON.stringify([bf(3), bf(4)]));
     // Best foods so far: the pool leader with figure and range, marked so far; a few-seeds note below the minimum; one seed has no range.
     const so = (o) => ({ items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 40, netLow: 30, netHigh: 50, ...o });
     const res = (e) => ({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: e }, drinks: {} } });
@@ -339,6 +342,14 @@ const result = {
     check('ruled out: a refuted candidate is not listed in its pool table', bodyRows(tablesOf(refHtml)[0]).length === 1 && !refHtml.includes('data-status="refuted"'), String(bodyRows(tablesOf(refHtml)[0]).length));
     // fit / precision: no digit finer than the ±; a range that reaches 0 reads ≈ 0.
     check('fit: -2118 with a ± of 337412 is 0; 90412 is 90000; 1234 with 134 is 1230; 0.123456 with 0.0456 is 0.123', panel.fit(-2118, 337412) === 0 && panel.fit(90412, 337412) === 90000 && panel.fit(1234, 134) === 1230 && panel.fit(0.123456, 0.0456) === 0.123);
+    // The margin is written in the figure's unit and decimals, rounded up from the raw error (one assertion per row of the case table).
+    for (const [v, h, want] of [[2293000, 7500, '2,293k ± 8k'], [2293000, 7001, '2,293k ± 8k'], [2293000, 7000, '2,293k ± 7k'], [303000, 8200, '303k ± 9k'], [1488000, 12000, '1,488k ± 12k'],
+        [303000, 300, '303k ± 1k'], [1230000, 45000, '1,230k ± 45k'], [1250000, 3000, '1,250k ± 3k'], [5400, 120, '5,400 ± 120'], [-2118000, 337412, '-2,120k ± 338k'],
+        [12300000, 450000, '12M ± 1M'], [4.7, 0.12, '4.7 ± 0.2'], [4.7, 0.1, '4.7 ± 0.1'], [25000000000, 450000000, '25B ± 1B'], [5400000000, 120000000, '5,400M ± 120M']]) {
+        const got = formatNumber(panel.fit(v, h), { iso: false }) + ' ± ' + panel.marginText(panel.fit(v, h), h);
+        check(`margin: ${v} ± ${h} reads ${want}`, got === want, got);
+    }
+    check('margin: an error of 0 reads as the plain number (no unit to round up in)', panel.marginText(303000, 0) === '0');
     const zeroHtml = panel.renderRounds(rec([pool({ leaders: [leader({ status: 'zero', buyerNet: -2118, netLow: -339530, netHigh: 335294 }), leader({ id: 'y', buyerNet: 90412, netLow: -247000, netHigh: 427000 })] })]), t);
     const zr = bodyRows(tablesOf(zeroHtml)[0]);
     check('precision: a buyer\'s gain whose range reaches 0 reads "≈ 0 ± 337" (never -2,118 ± 337k), greyed', zr[0][4].startsWith('≈ 0 ± ') && !zr[0][4].includes('-2118') && zeroHtml.includes('<span class="whatif-dim">≈ 0 ± '), JSON.stringify(zr[0]));
@@ -371,7 +382,7 @@ const result = {
     check('best so far: a buyer\'s gain whose range reaches 0 shows the current food and the status no clear change yet, not the candidate', bz[1] === 'cake' && bz[0].includes('no clear change yet') && !bz.join('').includes('donut'), JSON.stringify(bz));
     // Each change alone / Best (final): the digits follow the error
     const fin = bodyRows(bestOf(panel.renderResult({ ...result, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], gainPerUser: 123456, sePerUser: 20000, buyerNet: 98765, buyerNetSe: 1234 } }, drinks: {} } }, t), 'foods'))[0];
-    check('best (final): the figure is cut to the precision of its error (123456 ± 20000 -> 123000 ± 20000; 98765 ± 1234 -> 98800 ± 1200)', fin[2] === '123000 ± 20000' && fin[3] === '98800 ± 1200', JSON.stringify(fin));
+    check('best (final): the figure is cut to the precision of its error and the margin is written in the unit of the figure, rounded up (123456 ± 20000 -> 123k ± 20k; 98765 ± 1234 -> 99k ± 2k; the test shows the figure as its exact number)', fin[2] === '123000 ± 20k' && fin[3] === '98800 ± 2k', JSON.stringify(fin));
     // the closed "Unknown cost, not ranked" list
     const ap = panel.renderResult({ ...result, apart: [{ id: 'q', player: 'Alpha', desc: 'Ring unknown', note: 'no price' }] }, t);
     check('apart: "Unknown cost, not ranked" starts closed behind one toggle, like the other lists', ap.includes('data-whatif-more="whatIfApart"') && /<ul class="small whatif-more" id="whatIfApart" hidden>/.test(ap) && ap.includes('Show the 1 with no known cost'));
@@ -734,7 +745,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 }
 // ---- Best foods and drinks block (result.best), the baseline line and the cost-0 wording ----
 {
-    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<');
+    const plain = (s) => nums(s).replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<');
     const nm = panel.namesFrom({ itemNames: { '/items/donut': 'Donut', '/items/cake': 'Cake', '/items/gummy': 'Gummy', '/items/coffee_x': 'Coffee X' }, combatTriggerDependencyNames: { '/combat_trigger_dependencies/self': 'Self' }, combatTriggerConditionNames: { '/combat_trigger_conditions/current_hp': 'Current HP' } });
     const best = { foods: { Alpha: { items: [{ item: '/items/donut', trigger: 'self current_hp <= 60' }, { item: '/items/cake', trigger: null }], gain: 10, se: 2 }, Beta: { items: [{ item: '/items/gummy', trigger: null }], unchanged: true } }, drinks: { Alpha: { items: [{ item: '/items/coffee_x' }], gain: 4, se: 1 } } };
     const withBest = { ...result, best };
@@ -777,14 +788,14 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 }
 // The pick check (sure.mjs): a step's fresh reading is a small second line inside each gain cell; the picks left out sit closed.
 {
-    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const plain = (s) => nums(s).replace(/<[^>]+>/g, '');
     const step ={ id: 's', player: 'Alpha', desc: 'Ring one', lastStage: '8x300', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, sharedGainPerUser: 10, sharedSePerUser: 2, buyerNet: 30, buyerNetSe: 5, cost: 500, payback: 20, paybackOwn: 20, costPath: 'market', accepted: true, ops: [{ op: 'enhance', player: 'Alpha', slot: 'ring', delta: 1 }], fresh: { seeds: 32, seedFrom: 20001, seedTo: 20032, gain: 18, se: 5, gainPerUser: 9, sePerUser: 2.5, buyerNet: 25, buyerNetSe: 6, accepted: true } };
     const plainStep = { ...step, id: 'p', desc: 'Ring two', fresh: undefined };
     const out = panel.renderResult({ ...result, steps: [step, plainStep], notConfirmed: [] }, t);
     const cells = (name) => { const tr = out.split('<tr').find((x) => x.includes(name)); return [...tr.matchAll(/<td([^>]*)>([^]*?)<\/td>/g)].map((m) => plain(m[2])); };
     const c1 = cells('Ring one'), c2 = cells('Ring two');
     const cellsOf = (r, name) => { const tr = panel.renderResult(r, t).split('<tr').find((x) => x.includes(name)); return [...tr.matchAll(/<td([^>]*)>([^]*?)<\/td>/g)].map((m) => plain(m[2])); };
-    check('fresh: a chosen change shows its fresh reading in place of the search reading (party 9 ± 2.5, buyer 25 ± 6), and no second line', c1[3] === '9 ± 2.5' && c1[4] === '25 ± 6' && !out.includes('whatif-fresh') && !out.includes('seeds'), JSON.stringify(c1));
+    check('fresh: a chosen change shows its fresh reading in place of the search reading (party 9 ± 2.5 shows 9 ± 3: the margin takes the decimals of the figure, rounded up; buyer 25 ± 6), and no second line', c1[3] === '9 ± 3' && c1[4] === '25 ± 6' && !out.includes('whatif-fresh') && !out.includes('seeds'), JSON.stringify(c1));
     check('fresh: a step without a reading shows its search reading (10 ± 2, 30 ± 5)', c2[3] === '10 ± 2' && c2[4] === '30 ± 5', JSON.stringify(c2));
     check('fresh: no legend line for a second line that is gone', !('freshLegend' in locales.en.result) && !out.includes('Second line'));
     check('fresh: a fresh gain within one error reads no change (the word replaces the value and its error)', cellsOf({ ...result, steps: [{ ...step, fresh: { ...step.fresh, gainPerUser: 1, sePerUser: 2 } }] }, 'Ring one')[3] === locales.en.result.noChange);
@@ -814,7 +825,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 // The live report (his go 2026-11-11: the whole report unfolds as the search goes): the same renderer, with a running mark; a partial
 // result with only the foods, then with steps, then the final one. The foods and drinks carry their own fresh line.
 {
-    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const plain = (s) => nums(s).replace(/<[^>]+>/g, '');
     const fresh = { seeds: 32, gainPerUser: 12, sePerUser: 3.5, buyerNet: 41, buyerNetSe: 6.5, accepted: true };
     const foods = { Alpha: { items: [{ item: '/items/donut', trigger: null }], gain: 22, se: 6, gainPerUser: 11, sePerUser: 3, buyerNet: 40, buyerNetSe: 6, ownSuppliesPerDay: -29, stage: '8x300', fresh }, Beta: { items: [{ item: '/items/cake', trigger: null }], unchanged: true } };
     const live0 = { goal: 'profit', budgets: { Alpha: 100 }, setups: [], options: { zone: '/actions/combat/fly', tier: 0 }, best: { foods, drinks: {} }, steps: [], singles: [{ id: 'hf', player: 'Alpha', desc: 'Alpha food', hiddenFood: true }], notConfirmed: [] };
@@ -822,7 +833,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('live: the running mark shows, with only the foods the foods group shows and nothing else of the table', h0.includes(locales.en.result.running) && h0.includes(locales.en.result.bestFoods) && !h0.includes(locales.en.result.bestDrinks) && tablesOf(h0).length === 0 && !h0.includes('data-best="drinks"'));
     check('live: no "no steps" and no "no singles" message and no steps heading while running; the baseline line waits for both groups', !h0.includes(locales.en.result.noSteps) && !h0.includes(locales.en.result.noSingles) && !h0.includes(locales.en.result.steps) && !h0.includes(locales.en.result.singles) && !h0.includes(locales.en.result.bestBaseline));
     check('live: no totals line while running (the confirmation is not in a snapshot)', !h0.includes('data-confirm="players"'));
-    check('live: the foods line shows the filling\'s fresh reading in place of the search one (party 12 ± 3.5, buyer 41 ± 6.5), no second line and no seeds; an unchanged player has none', JSON.stringify(bodyRows(bestOf(h0, 'foods'))[0].slice(0, 4)) === JSON.stringify(['Alpha', 'donut', '12 ± 3.5', '41 ± 6.5']) && !h0.includes('whatif-fresh') && !plain(h0).includes('seeds'));
+    check('live: the foods line shows the filling\'s fresh reading in place of the search one (party 12 ± 3.5 shows 12 ± 4, buyer 41 ± 6.5 shows 41 ± 7: rounded up), no second line and no seeds; an unchanged player has none', JSON.stringify(bodyRows(bestOf(h0, 'foods'))[0].slice(0, 4)) === JSON.stringify(['Alpha', 'donut', '12 ± 4', '41 ± 7']) && !h0.includes('whatif-fresh') && !plain(h0).includes('seeds'));
     const old = JSON.parse(JSON.stringify(live0)); delete old.best.foods.Alpha.fresh;
     check('live: a filling with no fresh reading (an older result) shows its search reading (11 ± 3, 40 ± 6)', JSON.stringify(bodyRows(bestOf(panel.renderResult(old, t, undefined, null, true), 'foods'))[0].slice(0, 4)) === JSON.stringify(['Alpha', 'donut', '11 ± 3', '40 ± 6']));
     const step = { id: 's', player: 'Alpha', desc: 'Ring one', lastStage: '8x300', gain: 20, se: 4, gainPerUser: 10, sePerUser: 2, sharedGainPerUser: 10, sharedSePerUser: 2, buyerNet: 30, buyerNetSe: 5, ownSuppliesPerDay: -20, cost: 100, payback: 3, paybackOwn: 3, costPath: 'market', accepted: true, ops: [], fresh };
@@ -843,7 +854,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 // The payback limit (his picks 2026-11-11): the list of changes left out for paying back too slowly, closed by default after the
 // over-budget list, in the one list renderer; and the field in the request.
 {
-    const plain = (s) => s.replace(/<span data-num="([^"]+)"[^>]*>[^<]*<\/span>/g, '$1').replace(/<[^>]+>/g, '');
+    const plain = (s) => nums(s).replace(/<[^>]+>/g, '');
     const slow = { id: 'sl', player: 'Alpha', desc: 'Ring nine', cost: 90000, costPath: 'market', paybackDays: 612, accepted: true, ops: [] };
     const res = { ...result, options: { ...(result.options || {}), maxPaybackDays: 365 }, overBudget: [{ id: 'ob', player: 'Alpha', desc: 'Ring eight', cost: 5e9, costPath: 'market' }], overPayback: [slow, { ...slow, id: 'sl2', desc: 'Ring ten', paybackDays: null }] };
     const h = panel.renderResult(res, t), j = h.indexOf('id="whatIfOverPayback"');

@@ -248,7 +248,34 @@ if (!/totalTd\.innerHTML = numberHtml\(newTotal\)/.test(tableBody) || !/totalTd\
     if (texts(sfx).join() !== '12.3k,2.4') failures.push(`suffixed cell in a decimals column: ${texts(sfx)}`);
 }
 
-const total = cases.length + optionCases.length;
+// The `scale` option (a margin written in a fixed unit, rounded up) and a span carrying it (data-scale, data-dec).
+const scaleCases = [
+    [[2293000, { scale: 1e3, up: true }], '2,293k'], [[7500, { scale: 1e3, up: true }], '8k'], [[7001, { scale: 1e3, up: true }], '8k'], [[7000, { scale: 1e3, up: true }], '7k'],
+    [[300, { scale: 1e3, up: true }], '1k'], [[0, { scale: 1e3, up: true }], '0k'], [[450000, { scale: 1e6, up: true }], '1M'], [[450000000, { scale: 1e9, up: true }], '1B'],
+    [[337412, { scale: 1e3, up: true }], '338k'], [[-7500, { scale: 1e3, up: true }], '-8k'], [[120, { scale: 1, up: true }], '120'], [[0.12, { scale: 1, up: true, decimals: 1 }], '0.2'],
+    [[0.1, { scale: 1, up: true, decimals: 1 }], '0.1'], [[8200, { scale: 1e3 }], '8k'], [[7500, { scale: 1e3 }], '8k'], [[7400, { scale: 1e3 }], '7k'], [[1234, { scale: 1, up: true }], '1,234'],
+    [[1234, { scale: 1e3, up: true, decimals: 1 }], '1.3k'], [[5400000000, { scale: 1e6, up: true }], '5,400M'],
+];
+for (const [[value, options], expected] of scaleCases) {
+    const got = formatNumber(value, { iso: false, ...options });
+    if (got !== expected) failures.push(`scale ${value} ${JSON.stringify(options)}: expected ${expected}, got ${got}`);
+}
+{
+    const span = (value, scale, decimals) => { const html = numberHtml(value, '', { scale, decimals }); const e = { dataset: {}, textContent: html.replace(/<[^>]*>/g, ''), title: '' }; for (const m of html.matchAll(/data-(num|unit|scale|dec)="([^"]*)"/g)) e.dataset[m[1]] = m[2]; e.title = html.match(/title="([^"]*)"/)[1]; return e; };
+    const e = span(7500, 1e3, 0), small = span(0.12, 1, 1);
+    const root = { querySelectorAll: (sel) => (sel.includes('data-num') ? [e, small] : []) };
+    if (e.textContent !== '8k' || e.title !== '7,500' || e.dataset.scale !== '1000') failures.push(`scaled span: ${JSON.stringify(e)}`);
+    setNumberFormatSettings({ iso: true });
+    refreshFormattedNumbers(root);
+    if (e.textContent.replaceAll(' ', ' ') !== '8 k' || small.textContent !== '0.2') failures.push(`scaled span after the ISO refresh keeps its unit and its round-up: ${e.textContent} / ${small.textContent}`);
+    setNumberFormatSettings({ iso: false });
+    refreshFormattedNumbers(root);
+    if (e.textContent !== '8k' || e.title !== '7,500' || small.textContent !== '0.2') failures.push(`scaled span after the refresh, ISO off: ${e.textContent} / ${e.title} / ${small.textContent}`);
+    alignNumberColumns(root);
+    if (small.textContent !== '0.2' || e.textContent !== '8k') failures.push(`the column pass leaves a scaled span alone: ${e.textContent} / ${small.textContent}`);
+}
+
+const total = cases.length + optionCases.length + scaleCases.length + 3;
 if (failures.length) {
     console.log(failures.join('\n'));
     console.log(`FAIL ${failures.length}/${total}`);
