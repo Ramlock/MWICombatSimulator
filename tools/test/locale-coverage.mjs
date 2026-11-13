@@ -100,6 +100,7 @@ const notTheGameWord = {
     'whatIf.rounds.status.pausedTip:back': '"comes back by itself" is the verb phrase (volta sozinha), not the Back equipment slot (Costas)',
     'whatIf.rounds.status.bestTip:items': 'the word is the placeholder name {{items}}; the text names the candidate, no game Items label is meant',
     'whatIf.result.bestGainExp:party': 'the placeholder is named party; the text is "gain {{value}}", no game party (grupo) is meant',
+    'controls.equipmentSets:equipment': 'renamed on purpose to the short Conjuntos so the three buttons fit on one row; the game\'s Equipamento is left out',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;
