@@ -39,7 +39,8 @@ try {
         return r.result.value;
     };
     const until = async (expression, ms = 30000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await js(expression)) return true; await sleep(200); } return false; };
-    const load = async () => { await page.send('Page.navigate', { url: base }); return until(`document.getElementById('selectZone')?.options.length > 3`); };
+    // The page keeps the imported group (src/savedGroup.mjs); each load here starts blank, as these tests expect.
+    const load = async () => { try { await js(`localStorage.removeItem('importedGroup'), true`); } catch {} await page.send('Page.navigate', { url: base }); return until(`document.getElementById('selectZone')?.options.length > 3`); };
     const tabs = () => js(`[...document.querySelectorAll('#playerTab .nav-link')].map((t) => t.textContent.trim())`);
     const labels = () => js(`[1, 2, 3, 4, 5].map((i) => document.querySelector('label[for="player' + i + '"]').textContent.trim())`);
     const hideImport = async () => { await js(`(() => { const m = bootstrap.Modal.getInstance(document.getElementById('importExportModal')); if (m) m.hide(); return true; })()`); await sleep(500); };

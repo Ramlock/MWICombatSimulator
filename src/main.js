@@ -34,6 +34,7 @@ import { unitPrice } from "./unitPrice.mjs";
 import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
+import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
@@ -4498,6 +4499,7 @@ function initImportExportModal() {
         applySlotNames();
         updateState();
         updateUI();
+        saveImportedGroup();
         resetImportInputs();
     });
 }
@@ -4624,43 +4626,68 @@ function mergePlayerImport(priorJson, incomingJson) {
     return JSON.stringify(merged);
 }
 
-function setPlayerData(playerId, inputElementId) {
-    const inputElement = document.getElementById(inputElementId);
-    const value = inputElement ? inputElement.value.trim() : "";
-
-    // Only set the value in the map if it's not null, undefined, or empty
-    if (value) {
-        playerDataMap[playerId] = mergePlayerImport(playerDataMap[playerId], value);
-        return true;
+// The one function that builds the page's players from a group (slot id -> that player's JSON, a string or an object): the
+// Import button (All players and the per-player boxes) and the restore on page load both call it. The current tab's slot is
+// saved first (the screen may hold edits since); the screen is reloaded when the group wrote the current tab's slot.
+function importGroupSlots(importMap) {
+    savePreviousPlayer(currentPlayerTabId);
+    for (const id of Object.keys(importMap)) {
+        const slotJson = typeof importMap[id] === "string" ? importMap[id] : JSON.stringify(importMap[id]);
+        playerDataMap[id] = mergePlayerImport(playerDataMap[id], slotJson);
     }
-    return false;
+    if (currentPlayerTabId in importMap) {
+        updateNextPlayer(currentPlayerTabId);
+    }
+}
+
+// The non-empty per-player boxes of the Group tab, as a group.
+function groupFromPlayerBoxes() {
+    const importMap = {};
+    for (const i of ['1', '2', '3', '4', '5']) {
+        const value = document.getElementById("inputSetGroupCombatplayer" + i)?.value.trim() ?? "";
+        if (value) importMap[i] = value;
+    }
+    return importMap;
 }
 
 function doGroupImport() {
-    let needUpdateCurrentTab = false;
-    // The current tab's slot holds what was last saved; the screen may hold edits since, so save it first.
-    savePreviousPlayer(currentPlayerTabId);
     const value = document.getElementById("inputSetGroupCombatAll")?.value || "";
     if (!value.trim()) {
-        for (let i of ['1', '2', '3', '4', '5']) {
-            if (setPlayerData(i, "inputSetGroupCombatplayer" + i) && currentPlayerTabId == i) {
-                needUpdateCurrentTab = true;
-            }
-        }
+        importGroupSlots(groupFromPlayerBoxes());
     } else {
         // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
         const { slots: importMap, selected, fight } = splitGroupImport(JSON.parse(value));
-        for (const id of Object.keys(importMap)) {
-            const slotJson = typeof importMap[id] === "string" ? importMap[id] : JSON.stringify(importMap[id]);
-            playerDataMap[id] = mergePlayerImport(playerDataMap[id], slotJson);
-        }
-        needUpdateCurrentTab = true;
+        importGroupSlots(importMap);
         const applied = applyGroupSelection(document, { selected, fight });
         if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
     }
+}
 
-    if (needUpdateCurrentTab) {
-        updateNextPlayer(currentPlayerTabId);
+// The imported group is kept in the browser's own storage (src/savedGroup.mjs) and restored when the page loads.
+function browserStorage() {
+    try { return window.localStorage; } catch (err) { return null; }
+}
+
+// After an Import: the screen's player is saved into its slot, then every slot is kept, replacing the group kept before.
+function saveImportedGroup() {
+    savePreviousPlayer(currentPlayerTabId);
+    keepGroup(browserStorage(), playerDataMap);
+}
+
+// On page load: the kept group (when it is there and of the shape this page writes) goes through the same function as an
+// import. A value that is not usable is ignored and the page starts blank.
+function restoreImportedGroup() {
+    const slots = loadKeptGroup(browserStorage());
+    if (!slots) return;
+    const before = { ...playerDataMap };
+    try {
+        importGroupSlots(slots);
+        applySlotNames();
+        updateState();
+        updateUI();
+    } catch (err) {
+        playerDataMap = before;
+        console.warn("The kept group could not be restored: " + err);
     }
 }
 
@@ -5487,3 +5514,4 @@ initHpMpVisualization();
 
 updateState();
 updateUI();
+restoreImportedGroup();
