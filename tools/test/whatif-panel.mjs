@@ -458,7 +458,19 @@ const result = {
     // The part's own line for a stage the user skipped: "round N · ended by you" in place of "round N finished" (en/pt/zh).
     const plainHtml = (h) => h.replace(/<[^>]+>/g, '');
     const skRow = { kind: 'foods', state: 'done', round: 1, phase: 'search', contending: 2, paused: 0, dropped: 0, runs: 5, simHours: 20, skipped: true };
-    for (const l of ['en', 'pt', 'zh']) { const h = plainHtml(panel.renderParts({ state: 'running', progress: { parts: [skRow] } }, tFor(l))); check(`part line: a skipped stage reads "round 1 · ended by you" in place of "round 1 finished", ${l}`, h.includes(locales[l].rounds.roundSkipped.replace('{{n}}', '1')) && !h.includes(locales[l].rounds.roundFinished.replace('{{n}}', '1')) && !h.includes('#rounds.roundSkipped')); }
+    for (const l of ['en', 'pt', 'zh']) {
+        const h = plainHtml(panel.renderParts({ state: 'running', progress: { parts: [skRow] } }, tFor(l))), h3 = plainHtml(panel.renderParts({ state: 'running', progress: { parts: [{ ...skRow, round: 3 }] } }, tFor(l)));
+        const P = locales[l].progress;
+        check(`part line: a skipped one-round stage is one line, "ended by you", its counts, no zero count, no "round 1", no "done", ${l}`, h.endsWith(`✓${P.partFoods} · ${P.endedByYou} · ${P.runsCount.replace('{{n}}', '5')} · ${P.hoursCount.replace('{{n}}', '20')} · ${P.contendingCount.replace('{{n}}', '2')}`), h);
+        check(`part line: a skipped stage of several rounds reads "round N · ended by you", ${l}`, h3.includes(locales[l].rounds.roundSkipped.replace('{{n}}', '3')) && !h3.includes(locales[l].rounds.roundFinished.replace('{{n}}', '3')), h3);
+    }
+    {
+        // A finished race stage of several rounds says "round N finished"; a running one keeps its live counts, the phase and the buttons on the same line.
+        const done = plainHtml(panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'screen', state: 'done', round: 4, phase: 'reading', contending: 0, paused: 3, dropped: 7, runs: 50, simHours: 900 }] } }, t));
+        check('part line: a finished race of several rounds is one line with its counts and no zero count', done.endsWith('✓Change 1 · round 4 finished · 50 runs · 900 simulated hours · 3 set aside for now · 7 ruled out'), done);
+        const run = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 2, phase: 'search', contending: 9, paused: 1, dropped: 0, runs: 12, simHours: 80, acceptable: 0 }] } }, t);
+        check('part line: a running race is one label with round, phase, counts and its button, no text cell', plainHtml(run).includes('▶︎Change 1 · round 2 running · searching the candidates still in the running · 12 runs · 80 simulated hours · 9 still in the running · 1 set aside for now') && run.includes('data-whatif-done="skip"') && !run.includes('whatif-part-text'), plainHtml(run));
+    }
     const lo = panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'picks', index: 0, state: 'done', runsPlanned: 0, runsDone: 0, leftOut: 9 }] } }, t), loText = plainHtml(lo);
     check('picks part: a check that ran inside the race and left 9 out reads "None confirmed (left out: 9).", done, no bar, never "Not run"', loText.includes('None confirmed (left out: 9).') && !loText.includes('Not run') && !lo.includes('whatif-part-skipped') && !lo.includes('class="progress whatif-progress"'), lo.slice(0, 300));
     for (const l of ['pt', 'zh']) check(`picks part: ${l} has its own none-confirmed line`, plainHtml(panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'picks', index: 0, state: 'done', runsPlanned: 0, runsDone: 0, leftOut: 9 }] } }, tFor(l))).includes(locales[l].progress.picksNoneConfirmed.replace('{{n}}', '9')));

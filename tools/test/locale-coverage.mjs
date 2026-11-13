@@ -96,7 +96,6 @@ const notTheGameWord = {
     'whatIf.result.overPaybackHide:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.overPaybackDays:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.overPaybackNever:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
-    'whatIf.progress.stageCounters:hours': 'the word is the placeholder name {{hours}}; the figure is built from runsCount / hoursCount (horas simuladas)',
     'whatIf.rounds.status.pausedTip:back': '"comes back by itself" is the verb phrase (volta sozinha), not the Back equipment slot (Costas)',
     'whatIf.rounds.status.bestTip:items': 'the word is the placeholder name {{items}}; the text names the candidate, no game Items label is meant',
     'whatIf.result.bestGainExp:party': 'the placeholder is named party; the text is "gain {{value}}", no game party (grupo) is meant',

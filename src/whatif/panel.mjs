@@ -277,9 +277,13 @@ export function renderParts(status, t, pressed = null) {
         const phase = r.phase === 'reading' ? t('progress.phaseReading') : t('progress.phaseSearch');
         // The pool nearest to ending (two or three changes standing): the rounds it still needs to separate, after the still-in-the-running count of the stage that runs.
         const separate = race && r.separate ? ' · ' + (r.separate.rounds === null ? t('progress.separateFar') : plural(t, 'progress.separateRounds', r.separate.rounds, { n: num(r.separate.rounds) })) : '';
-        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { separate, round: t(r.state === 'running' ? 'rounds.roundRunning' : r.state === 'halted' ? 'rounds.roundStopped' : r.skipped ? 'rounds.roundSkipped' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
-            : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + plural(t, 'progress.optionsLeft', r.candidatesLeft, { n: num(r.candidatesLeft) }) : '';
-        const counters = rounded ? fill(t, 'progress.stageCounters', { runs: plural(t, 'progress.runsCount', r.runs, { n: num(r.runs) }), hours: plural(t, 'progress.hoursCount', r.simHours, { n: num(r.simHours) }), dropped: num(r.dropped) }) : '';
+        // A race stage is ONE line: its name, how it stands, then its counts. A count of 0, "done" (the tick says it) and "round 1" of a stage
+        // that had a single round are left out; a running stage keeps its live counts on the same line (it wraps, never scrolls sideways).
+        const count = (key, n) => (Number(n) > 0 ? plural(t, key, n, { n: num(n) }) : '');
+        const stand = !rounded ? '' : r.state === 'running' ? t('rounds.roundRunning', { n: num(r.round) }) : r.state === 'halted' ? t('rounds.roundStopped', { n: num(r.round) })
+            : r.skipped ? (Number(r.round) <= 1 ? esc(t('progress.endedByYou')) : t('rounds.roundSkipped', { n: num(r.round) })) : Number(r.round) <= 1 ? '' : t('rounds.roundFinished', { n: num(r.round) });
+        const raceLine = !rounded ? '' : [stand, race ? esc(phase) : '', count('progress.runsCount', r.runs), count('progress.hoursCount', r.simHours), count('progress.contendingCount', r.contending), separate.replace(/^ · /, ''), count('progress.pausedCount', r.paused), count('progress.droppedCount', r.dropped)].filter(Boolean).join(' · ');
+        const left = rounded ? '' : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + plural(t, 'progress.optionsLeft', r.candidatesLeft, { n: num(r.candidatesLeft) }) : '';
         // The picks part of a search whose picks were all left out inside a race (no pick reached the check on fresh runs, so it counted no runs): done, with none confirmed.
         const noneConfirmed = r.state === 'done' && r.kind === 'picks' && !(r.runsPlanned > 0) && r.leftOut > 0;
         let text = '', cls;
@@ -290,12 +294,13 @@ export function renderParts(status, t, pressed = null) {
             // The total is the stage's so far (it grows as the next player's check plans his own arm), so the row names whose check it is: "player N of M".
             const runs = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
             const checking = r.checking ? (r.checkWho ? fill(t, 'progress.checkingPicksOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs }) : fill(t, 'progress.checkingPicks', { runs })) : null;
-            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : (rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + (checking ?? esc(t('progress.done')));
+            // A done row says no "done": the tick says it. A race stage's counts are on its one line already.
+            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : rounded ? (checking ?? '') : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + (checking ? ' · ' + checking : '');
             cls = checking ? 'running' : 'done';
         }
         else if (r.state === 'skipped') { text = esc(t(r.kind === 'confirmation' ? 'progress.skippedNoStep' : 'progress.skippedNoPick')); cls = 'skipped'; } // a part of a finished search that never started (progress.mjs)
-        else if (r.state === 'halted') { text = rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'halted'; } // the part that was running when the search stopped (or failed): its figures, no running mark
-        else if (rounded) { cls = 'running'; } // a race stage's counters follow its status text on the stage's own line (below), not a line of their own
+        else if (r.state === 'halted') { text = rounded ? '' : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'halted'; } // the part that was running when the search stopped (or failed): its figures, no running mark
+        else if (rounded) { cls = 'running'; } // a race stage's counts are on its one line
         else {
             text = plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) });
             if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
@@ -307,7 +312,7 @@ export function renderParts(status, t, pressed = null) {
         // A race stage's row in any state (running, done, halted) has no bar and wraps like the running one: its status text is long, and a
         // done row's grid columns cut it and pushed its figures past the window edge.
         const bar = rounded || cls === 'skipped' || noneConfirmed ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
-        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
+        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${raceLine ? ' · ' + raceLine : ''}${rounded && text ? ' · ' + text : ''}${race ? ' ' + stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</span>${bar}${rounded ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
