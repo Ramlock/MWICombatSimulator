@@ -22,6 +22,8 @@ ZH = {
         "葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行",
         "假设分析：窗口现在也列出 Linux 步骤（尚未测试）",
         "战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐",
+        "假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）",
+        "运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面",
     ],
     "2026-11-12": [
         "假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮",
@@ -214,6 +216,8 @@ PT = [
         "Português: o botão e a janela de conjuntos de equipamento agora se chamam \"Conjuntos\", e os botões não quebram mais de linha",
         "E se: a janela agora também lista os passos para Linux (ainda não testado)",
         "Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números",
+        "E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)",
+        "Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página",
     ],
     [
         "E se: botões Aceitar o vencedor atual e Pular na etapa em andamento",

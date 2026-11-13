@@ -16,7 +16,9 @@
             "Importing a profile with an aura now selects the aura and puts the abilities in the right slots",
             "Portuguese: the equipment sets button and window are now called \"Conjuntos\", so the buttons no longer wrap",
             "What-if: the window now also lists Linux steps (not tested yet)",
-            "Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers"
+            "Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers",
+            "What-if: every ± margin is now written in the same unit as the figure beside it (rounded up)",
+            "Runner: the window no longer says the runner stopped when it is starting up, and starting it a second time just opens the page"
         ]
     },
     "2026-11-12":
