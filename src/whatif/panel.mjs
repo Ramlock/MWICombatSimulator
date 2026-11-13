@@ -369,7 +369,7 @@ export function renderRounds(round, t, names = null) {
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
-        return `<div class="whatif-sec">${listTable(t, leaders.length, () => `<table class="whatif-table"><thead>${thead}</thead><tbody>${rows}</tbody></table>`, title, 'rounds.none')}</div>`;
+        return `<div class="whatif-sec">${listTable(t, leaders.length, () => `<table class="whatif-table"><thead>${thead}</thead><tbody>${rows}</tbody></table>`)}</div>`;
     }).join('');
     return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
 }
@@ -572,10 +572,10 @@ function closedList(key, id, items, note, t) {
         `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 }
 // The one renderer of every list the window draws as a table: with no row it is ONE grey line ("None."), never a header row over nothing and never a label
-// of its own; `lead` (a pool's title, which carries its counts) may stand before the word. `table` is the whole table's html, built only when there are rows.
-function listTable(t, count, table, lead = '', none = 'result.none') {
+// of its own. `table` makes the whole table's html, called only when there are rows.
+function listTable(t, count, table) {
     if (count > 0) return table();
-    return `<div class="whatif-dim" data-none>${lead ? lead + ' · ' : ''}${esc(t(none))}</div>`;
+    return `<div class="whatif-dim" data-none>${esc(t('result.none'))}</div>`;
 }
 const colHead = (t) => [
     gainTh(t, 'partyGain'), gainTh(t, 'buyerGain')].join('');
