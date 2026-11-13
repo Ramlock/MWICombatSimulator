@@ -24,7 +24,7 @@
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { fork, execFileSync } from 'node:child_process';
+import { fork, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, createWriteStream, createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -277,6 +277,7 @@ export function createRunner(opts = {}) {
     return {
         server,
         get running() { return running; },
+        get version() { return version; },
         listen: (p = 8787, host = '127.0.0.1') => new Promise((resolve, reject) => {
             server.once('error', reject);
             server.listen(p, host, () => { port = server.address().port; resolve(`http://${host}:${port}/`); });
@@ -285,9 +286,54 @@ export function createRunner(opts = {}) {
     };
 }
 
+// Is the holder of this loopback port one of our runners? Its /api/version answers { runner, engine }; a stranger's server does not.
+// Returns that version, or null for a stranger.
+export async function holderVersion(port) {
+    try {
+        const r = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(2000) });
+        const j = await r.json();
+        return r.ok && typeof j?.runner === 'string' && typeof j?.engine === 'string' ? { runner: j.runner, engine: j.engine } : null;
+    } catch { return null; }
+}
+
+// Opens the page in the default browser (or in $BROWSER, the usual override: a program that takes the address). Only ever
+// called once a runner answers on that address.
+export function openBrowser(url) {
+    const [cmd, args] = process.env.BROWSER ? [process.env.BROWSER, [url]]
+        : process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+            : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+    try { spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true }).on('error', () => {}).unref(); } catch { /* no browser to open: the address is printed anyway */ }
+}
+
+// Exit codes of a start: 1 = could not start (the port is used by something that is not our runner, or any other failure),
+// 3 = a runner of the same version already answers on the port (the page is opened on it with --open, nothing is started),
+// 4 = a runner of another version holds the port (nothing is started, nothing is opened).
+export const EXIT_ALREADY_RUNNING = 3;
+export const EXIT_OTHER_VERSION = 4;
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i < 0 ? d : process.argv[i + 1]; };
+    const log = (m) => console.log(`${new Date().toISOString()} ${m}`);
+    const open = process.argv.includes('--open');
+    const port = Number(arg('port', 8787));
     const r = createRunner({ resultsDir: arg('results', DEFAULT_RESULTS), distDir: arg('dist', undefined), demoRuns: arg('demo-runs', undefined), demoPrices: arg('demo-prices', undefined), synthetic: arg('synthetic', undefined) });
-    const url = await r.listen(Number(arg('port', 8787)));
-    console.log(`${new Date().toISOString()} What-if runner ${url} (results: ${path.resolve(arg('results', DEFAULT_RESULTS))}, lowest priority)`);
+    let url;
+    try { url = await r.listen(port); } catch (e) {
+        const held = e.code === 'EADDRINUSE' ? await holderVersion(port) : null;
+        if (held) {
+            const there = `http://127.0.0.1:${port}/`;
+            const fmt = (v) => `runner ${v.runner}, engine ${v.engine}`;
+            if (held.runner === r.version.runner && held.engine === r.version.engine) {
+                log(`The What-if runner is already running on ${there} (${fmt(held)}).`);
+                if (open) { log('Opening the page on it in your browser.'); openBrowser(there); }
+                process.exit(EXIT_ALREADY_RUNNING);
+            }
+            log(`A What-if runner of another version is already running on ${there}: ${fmt(held)}. This one is ${fmt(r.version)}. Close that one and start this again. The page is not opened.`);
+            process.exit(EXIT_OTHER_VERSION);
+        }
+        log(e.code === 'EADDRINUSE' ? `EADDRINUSE: port ${port} is used by another program (not the What-if runner).` : `The runner could not start: ${e.message}`);
+        process.exit(1);
+    }
+    log(`What-if runner ${url} (results: ${path.resolve(arg('results', DEFAULT_RESULTS))}, lowest priority)`);
+    if (open) { log('Opening the page in your browser.'); openBrowser(url); }
 }
