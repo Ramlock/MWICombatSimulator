@@ -1,8 +1,11 @@
-// Test: the talisman module (src/combatsimulator/talismans.js) and its one call site (createSimPlayer in src/simSetup.js):
-// the modifier table, the effects of a mocked talisman, the buff / stat split, the optional `talismans` field of the player
-// DTO, and that an absent field changes nothing (same extra buffs, same stats, a byte-equal simulation). Generic setup, no private data.
+// Test: the talisman module (src/combatsimulator/talismans.js) and its one call site (createSimPlayer / applyTalismans in
+// src/simSetup.js, the extra line in Player.updateCombatDetails): the modifier table, the effects and stats of a mocked
+// talisman, the optional `talismans` field of the player DTO as gear stats, that every modifier moves the engine (the unique
+// ones have no effect), that a gear stat gives the same player as the buff it replaces (and Damage Taken adds to the buffs'), and that an absent field changes nothing (same stats, a byte-equal simulation).
+// Generic setup, no private data.
 // Usage: node tools/test/talismans.mjs        Exit code 0 on pass, 1 on fail.
 import { register } from 'node:module';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -16,7 +19,7 @@ const { default: Zone } = await import(src('combatsimulator/zone.js'));
 const { default: Equipment } = await import(src('combatsimulator/equipment.js'));
 const { default: Consumable } = await import(src('combatsimulator/consumable.js'));
 const { default: Ability } = await import(src('combatsimulator/ability.js'));
-const { buildExtraBuffs, createZoneAndLabyrinth, createSimPlayer, startPlayerAtTimeZero } = await import(src('simSetup.js'));
+const { buildExtraBuffs, createZoneAndLabyrinth, createSimPlayer, applyTalismans, startPlayerAtTimeZero } = await import(src('simSetup.js'));
 
 let fails = 0;
 const check = (ok, what, extra = '') => { if (!ok) { fails++; console.log('FAIL', what, extra); } else console.log('ok  ', what); };
@@ -38,40 +41,32 @@ check(ids.every((i) => !/[A-Z]/.test(i)), 'table: ids are lower snake case');
 // Values the game showed on screen (generic game facts): Armor Penetration G1 +2 %, G3 +4 %; Auto Attack Damage G2 +1.8 %; Max Manapoints G1 +20; Damage Taken G1 -0.5 %.
 const g = (id, n) => T.TALISMAN_MODIFIERS[id].grades[n - 1];
 check(g('armor_penetration', 1) === 0.02 && g('armor_penetration', 3) === 0.04 && g('auto_attack_damage', 2) === 0.018 && g('max_manapoints', 1) === 20 && g('damage_taken', 1) === -0.005, 'table: the grade values the game showed');
-// Every buff type named in the table is one the engine's stat code reads.
-const unitSrc = (await import('node:fs')).readFileSync(path.join(root, 'src/combatsimulator/combatUnit.js'), 'utf8');
-const buffTypes = [...new Set(mods.flatMap((m) => m.effects).filter((e) => e.buff).map((e) => e.buff.type))];
-check(buffTypes.every((t) => unitSrc.includes('"/buff_types/' + t + '"')), 'table: every buff type is read by the engine', buffTypes.filter((t) => !unitSrc.includes('"/buff_types/' + t + '"')).join(','));
-// Every stat named in the table is one the player sums from equipment (or damageTaken, which only buffs set).
-const playerSrc = (await import('node:fs')).readFileSync(path.join(root, 'src/combatsimulator/player.js'), 'utf8');
+check(mods.every((m) => m.effects.every((e) => Object.keys(e).join() === 'stat')), 'table: an effect is only a stat name (every line is a gear stat, no buff)');
+// Every stat named in the table is one the player sums from equipment.
+const playerSrc = readFileSync(path.join(root, 'src/combatsimulator/player.js'), 'utf8');
 const stats = [...new Set(mods.flatMap((m) => m.effects).map((e) => e.stat))];
-check(stats.every((s) => s === 'damageTaken' || playerSrc.includes('"' + s + '"')), 'table: every stat is one the player sums', stats.filter((s) => s !== 'damageTaken' && !playerSrc.includes('"' + s + '"')).join(','));
+const unsummed = stats.filter((s) => !playerSrc.includes('"' + s + '"'));
+check(unsummed.length === 0, 'table: every stat is one the player sums', unsummed.join(','));
 
-// ---- The function on a mocked talisman ----
+// ---- The functions on a mocked talisman ----
 check(same(T.talismanEffects(undefined), []) && same(T.talismanEffects({}), []) && same(T.talismanEffects({ lines: [] }), []), 'effects: none for no talismans');
 const mock = { power: 0, lines: [{ modifier: 'armor', grade: 3 }, { modifier: 'elemental_amplify', grade: 1 }, { modifier: 'auto_attack_damage', grade: 2 }, { modifier: 'echo', grade: 1 }] };
 const eff = T.talismanEffects(mock);
 check(eff.length === 5, 'effects: armor 1, elemental amplify 3, auto attack 1, echo 0', String(eff.length));
-check(same(eff[0], { modifier: 'armor', stat: 'armor', value: 4, buff: { type: 'armor', field: 'flatBoost' } }), 'effects: Armor G3 is +4 flat armor');
+check(same(eff[0], { modifier: 'armor', stat: 'armor', value: 4 }), 'effects: Armor G3 is +4 armor');
 check(same(eff.slice(1, 4).map((e) => e.stat), ['waterAmplify', 'natureAmplify', 'fireAmplify']) && eff.slice(1, 4).every((e) => e.value === 0.01), 'effects: Elemental Amplify G1 is +0.01 on all three elements');
-check(eff[4].stat === 'autoAttackDamage' && eff[4].value === 0.018 && eff[4].buff === null, 'effects: Auto Attack Damage G2 is a stat with no buff');
+check(eff[4].stat === 'autoAttackDamage' && eff[4].value === 0.018, 'effects: Auto Attack Damage G2 is +0.018');
 check(same(T.talismanEffects({ lines: mock.lines }), eff) && same(T.talismanEffects({ power: 0, lines: mock.lines }), eff), 'effects: power defaults to 0, the raw grade value');
 check(T.talismanEffects({ power: 0.4, lines: [{ modifier: 'armor', grade: 3 }] })[0].value > 4, 'effects: a power above 0 raises the value (the formula itself is unverified)');
 check(throws(() => T.talismanEffects({ lines: [{ modifier: 'nope', grade: 1 }] })), 'effects: an unknown modifier throws');
 for (const bad of [0, 7, 1.5, '3', null, undefined]) check(throws(() => T.talismanEffects({ lines: [{ modifier: 'armor', grade: bad }] })), `effects: grade ${JSON.stringify(bad)} throws`);
 check(same(T.talismanEffects({ lines: [{ modifier: 'fortify', grade: 4 }, { modifier: 'smite', grade: 1 }] }), []), 'effects: unique modifiers give no effect');
 check(T.talismanEffects({ lines: [{ modifier: 'threat_reduction', grade: 2 }] })[0].value === -6, 'effects: Reduced Threat is negative');
-check(T.talismanEffects({ lines: [{ modifier: 'damage_taken', grade: 1 }] })[0].value === -0.005, 'effects: Damage Taken is negative');
-
-// ---- The split ----
-const split = T.splitEffects(eff);
-check(split.buffs.length === 4 && same(split.stats, { autoAttackDamage: 0.018 }), 'split: 4 buffs (armor, three amplifies), one stat-only effect');
-check(same(split.buffs[0], { uniqueHrid: '/buff_uniques/talisman_armor', typeHrid: '/buff_types/armor', flatBoost: 4, ratioBoost: 0, flatBoostLevelBonus: 0, ratioBoostLevelBonus: 0, startTime: '0001-01-01T00:00:00Z', duration: 0 }), 'split: a buff has the shape extraBuffs take');
-const spd = T.splitEffects(T.talismanEffects({ lines: [{ modifier: 'attack_speed', grade: 1 }] }));
-check(spd.buffs[0].typeHrid === '/buff_types/attack_speed' && spd.buffs[0].ratioBoost === 0.01 && spd.buffs[0].flatBoost === 0, 'split: Attack Speed is a ratio buff');
-const sum = T.splitEffects(T.talismanEffects({ lines: [{ modifier: 'ranged_damage', grade: 2 }, { modifier: 'ranged_damage', grade: 1 }] }));
-check(Math.abs(sum.stats.rangedDamage - 0.075) < 1e-12 && sum.buffs.length === 0, 'split: stat-only effects of the same stat add up');
-check(same(T.splitEffects([]), { buffs: [], stats: {} }), 'split: nothing in, nothing out');
+check(same(T.talismanStats(mock), { armor: 4, waterAmplify: 0.01, natureAmplify: 0.01, fireAmplify: 0.01, autoAttackDamage: 0.018 }), 'stats: the mocked talisman as five gear stats');
+const sum = T.talismanStats({ lines: [{ modifier: 'ranged_damage', grade: 2 }, { modifier: 'ranged_damage', grade: 1 }] });
+check(Math.abs(sum.rangedDamage - 0.075) < 1e-12, 'stats: lines of the same stat add up');
+check(same(T.talismanStats(undefined), {}) && same(T.talismanStats({ lines: [] }), {}), 'stats: nothing in, nothing out');
+check(same(T.talismanStats({ lines: [{ modifier: 'damage_taken', grade: 3 }] }), { damageTaken: -0.01 }), 'stats: Damage Taken is listed as a stat');
 
 // ---- The player setup (createSimPlayer, the one call site) ----
 const ZONE = { zoneHrid: '/actions/combat/fly', difficultyTier: 0 };
@@ -90,28 +85,71 @@ const mkDto = () => ({
 const { zone, labyrinth } = createZoneAndLabyrinth(ZONE, null);
 const extra = buildExtraBuffs(EXTRA);
 const atZero = (dto) => startPlayerAtTimeZero(createSimPlayer(dto, zone, labyrinth, extra));
+const withTal = (lines, power) => ({ ...mkDto(), talismans: { power, lines } });
 
-// Absent field: the extra buffs are the very array given; the stats equal those of the setup built the old way.
+// Absent field: the extra buffs are the very array given, no talisman stats; the stats equal those of the setup built the old way.
 const plain = createSimPlayer(mkDto(), zone, labyrinth, extra);
-check(plain.extraBuffs === extra, 'setup: no talismans field, the extra buffs are passed as given');
+check(plain.extraBuffs === extra && plain.talismanStats === undefined, 'setup: no talismans field, nothing is added');
 const oldWay = Player.createFromDTO(structuredClone(mkDto())); oldWay.zoneBuffs = zone.buffs || []; oldWay.extraBuffs = extra; startPlayerAtTimeZero(oldWay);
 const base = atZero(mkDto());
 check(same(base.combatDetails, oldWay.combatDetails), 'setup: no talismans field, the stats equal the setup before the module');
+check(applyTalismans(plain, undefined) === plain && plain.talismanStats === undefined, 'setup: applyTalismans with no talismans leaves the player as it is');
 
 // With talismans: Armor G3 is +4 armor, and the shared extra buffs are not touched.
-const withT = atZero({ ...mkDto(), talismans: { power: 0, lines: [{ modifier: 'armor', grade: 3 }, { modifier: 'combat_experience', grade: 6 }] } });
+const withT = atZero(withTal([{ modifier: 'armor', grade: 3 }, { modifier: 'combat_experience', grade: 6 }], 0));
 check(Math.abs(withT.combatDetails.totalArmor - (base.combatDetails.totalArmor + 4)) < 1e-9, 'setup: Armor G3 adds 4 to total armor', `${base.combatDetails.totalArmor} -> ${withT.combatDetails.totalArmor}`);
 check(Math.abs(withT.combatDetails.combatStats.combatExperience - (base.combatDetails.combatStats.combatExperience + 0.04)) < 1e-9, 'setup: Combat Experience G6 adds 0.04 on top of the Moo Pass buff');
-check(extra.length === 1 && extra[0].typeHrid === '/buff_types/wisdom', 'setup: the shared extra buffs array is not changed');
-const other = atZero(mkDto());
-check(same(other.combatDetails, base.combatDetails), 'setup: another player built after it has no talisman buffs');
-const uniqueOnly = atZero({ ...mkDto(), talismans: { lines: [{ modifier: 'echo', grade: 6 }, { modifier: 'fortify', grade: 1 }] } });
-check(same(uniqueOnly.combatDetails, base.combatDetails), 'setup: unique modifiers only, nothing changes');
-check(same(atZero({ ...mkDto(), talismans: { power: 0.2, lines: [] } }).combatDetails, base.combatDetails), 'setup: a power with no lines, nothing changes');
-const noExtra = createSimPlayer({ ...mkDto(), talismans: { lines: [{ modifier: 'armor', grade: 1 }] } }, zone, labyrinth, undefined);
-check(noExtra.extraBuffs.length === 1, 'setup: talismans work when no extra buffs are given');
-const dmg = atZero({ ...mkDto(), talismans: { lines: [{ modifier: 'damage_taken', grade: 6 }] } });
-check(dmg.combatDetails.combatStats.damageTaken === -0.02, 'setup: Damage Taken G6 is -0.02 in the stats');
+check(extra.length === 1 && extra[0].typeHrid === '/buff_types/wisdom' && withT.extraBuffs === extra, 'setup: the extra buffs are untouched');
+check(same(atZero(mkDto()).combatDetails, base.combatDetails), 'setup: another player built after it has no talisman stats');
+check(same(atZero(withTal([{ modifier: 'echo', grade: 6 }, { modifier: 'fortify', grade: 1 }])).combatDetails, base.combatDetails), 'setup: unique modifiers only, nothing changes');
+check(same(atZero(withTal([], 0.2)).combatDetails, base.combatDetails), 'setup: a power with no lines, nothing changes');
+check(createSimPlayer(withTal([{ modifier: 'armor', grade: 1 }]), zone, labyrinth, undefined).talismanStats.armor === 2, 'setup: talismans work when no extra buffs are given');
+// A talisman stat adds to the gear's own: same stat from a worn item and a talisman.
+const gearAndTal = atZero(withTal([{ modifier: 'magic_damage', grade: 1 }]));
+check(Math.abs(gearAndTal.combatDetails.combatStats.magicDamage - (base.combatDetails.combatStats.magicDamage + 0.03)) < 1e-9, 'setup: a talisman stat adds to the gear stat of the same name');
+
+// ---- Every modifier moves the engine ----
+const movers = [], idle = [];
+for (const id of ids) {
+    const p = atZero(withTal([{ modifier: id, grade: 6 }]));
+    (!same(p.combatDetails, base.combatDetails) ? movers : idle).push(id);
+}
+check(same(idle.sort(), [...UNIQUE].sort()) && movers.length === 43, 'engine: all 43 combat modifiers change the player at G6, the five unique ones do not', idle.join(','));
+
+// ---- A gear stat gives the same player as the buff it replaces ----
+// The 18 modifiers that have a buff type of the same bonus, checked on a bare player with no other
+// buff and no other gear stat of that kind: the stat is summed where the buff would be added, same number. [buff types, field].
+const BUFF_OF = {
+    attack_speed: [['attack_speed'], 'ratioBoost'], cast_speed: [['cast_speed']], critical_rate: [['critical_rate']], critical_damage: [['critical_damage']],
+    healing_amplify: [['healing_amplify']], physical_amplify: [['physical_amplify']], elemental_amplify: [['water_amplify', 'nature_amplify', 'fire_amplify']],
+    thorns: [['physical_thorns', 'elemental_thorns']], armor: [['armor']], tenacity: [['tenacity']], hp_regen: [['hp_regen']], mp_regen: [['mp_regen']],
+    elemental_resistance: [['water_resistance', 'nature_resistance', 'fire_resistance']], threat: [['threat']], threat_reduction: [['threat']],
+    damage_taken: [['damage_taken']], combat_drop_rate: [['combat_drop_rate']], combat_rare_find: [['rare_find']], combat_experience: [['wisdom']],
+};
+// The raw inputs the engine reads and then folds into a derived number are left out of the comparison: combatStats.attackSpeed,
+// armor and the three resistances (folded into attackInterval, totalArmor and the totalXResistance values, which are compared) and totalThreat (display only; the engine uses
+// combatStats.threat, which is compared). Everything else must be identical.
+const derived = (cd) => { const c = structuredClone(cd); delete c.combatStats.attackSpeed; for (const k of ['armor', 'waterResistance', 'natureResistance', 'fireResistance']) delete c.combatStats[k]; delete c.totalThreat; return c; };
+const bareDto = () => ({ ...mkDto(), equipment: {}, drinks: [null, null, null], abilities: [null, null, null, null, null] });
+const bareBase = atZero(bareDto());
+for (const [id, [types, field = 'flatBoost']] of Object.entries(BUFF_OF)) {
+    for (const grade of [1, 6]) {
+        const value = T.TALISMAN_MODIFIERS[id].grades[grade - 1];
+        const viaStat = atZero({ ...bareDto(), talismans: { lines: [{ modifier: id, grade }] } });
+        const viaBuff = Player.createFromDTO(structuredClone(bareDto())); viaBuff.zoneBuffs = zone.buffs || [];
+        viaBuff.extraBuffs = [...extra, ...types.map((t) => ({ uniqueHrid: '/buff_uniques/t_' + t, typeHrid: '/buff_types/' + t, flatBoost: field === 'flatBoost' ? value : 0, ratioBoost: field === 'ratioBoost' ? value : 0, flatBoostLevelBonus: 0, ratioBoostLevelBonus: 0, startTime: '0001-01-01T00:00:00Z', duration: 0 }))];
+        startPlayerAtTimeZero(viaBuff);
+        check(same(derived(viaStat.combatDetails), derived(viaBuff.combatDetails)) && !same(derived(viaStat.combatDetails), derived(bareBase.combatDetails)), `engine: ${id} G${grade} as a gear stat equals the buff`);
+    }
+}
+
+// Damage Taken: the gear part adds to the buffs' part, and a rebuild after the crowd-control reset restores both.
+const dtPlayer = createSimPlayer(withTal([{ modifier: 'damage_taken', grade: 6 }]), zone, labyrinth, extra);
+dtPlayer.extraBuffs = [...extra, { uniqueHrid: '/buff_uniques/t_dt', typeHrid: '/buff_types/damage_taken', flatBoost: 0.05, ratioBoost: 0, flatBoostLevelBonus: 0, ratioBoostLevelBonus: 0, startTime: '0001-01-01T00:00:00Z', duration: 0 }];
+startPlayerAtTimeZero(dtPlayer);
+check(Math.abs(dtPlayer.combatDetails.combatStats.damageTaken - 0.03) < 1e-12, 'damage taken: gear -0.02 plus buff +0.05 is 0.03', String(dtPlayer.combatDetails.combatStats.damageTaken));
+dtPlayer.clearCCs(); dtPlayer.removeExpiredBuffs(1e9);
+check(Math.abs(dtPlayer.combatDetails.combatStats.damageTaken - 0.03) < 1e-12, 'damage taken: restored after the crowd-control reset', String(dtPlayer.combatDetails.combatStats.damageTaken));
 
 // ---- A byte-equal simulation without the field ----
 function lcg(seed) { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
@@ -128,7 +166,7 @@ async function run(makePlayer) {
 const viaSetup = await run((z) => createSimPlayer(mkDto(), z, null, buildExtraBuffs(EXTRA)));
 const viaOld = await run((z) => { const p = Player.createFromDTO(structuredClone(mkDto())); p.zoneBuffs = z.buffs || []; p.extraBuffs = buildExtraBuffs(EXTRA); return p; });
 check(viaSetup === viaOld && viaSetup.length > 1000, 'run: a 10 minute simulation without the field is byte-equal to the one built the old way', String(viaSetup.length));
-const viaTal = await run((z) => createSimPlayer({ ...mkDto(), talismans: { lines: [{ modifier: 'armor', grade: 6 }, { modifier: 'damage_taken', grade: 6 }] } }, z, null, buildExtraBuffs(EXTRA)));
+const viaTal = await run((z) => createSimPlayer(withTal([{ modifier: 'armor', grade: 6 }, { modifier: 'critical_rate', grade: 6 }]), z, null, buildExtraBuffs(EXTRA)));
 check(viaTal !== viaOld, 'run: with talismans the same simulation differs');
 
 console.log(fails === 0 ? 'PASS: talismans.' : `FAIL: ${fails} problems.`);

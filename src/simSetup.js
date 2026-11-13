@@ -4,7 +4,7 @@ import Player from "./combatsimulator/player";
 import Zone from "./combatsimulator/zone";
 import Labyrinth from "./combatsimulator/labyrinth";
 import { scaleConsumableBuff, scaleAbilityBuff } from "./combatsimulator/buffScaling";
-import { talismanEffects, splitEffects } from "./combatsimulator/talismans";
+import { talismanStats } from "./combatsimulator/talismans";
 
 // Buffs from the page's extra toggles: Moo Pass, community buffs and personal buffs (seals).
 export function buildExtraBuffs(extra) {
@@ -143,15 +143,20 @@ export function createZoneAndLabyrinth(zoneSpec, labyrinthSpec) {
     return { zone, labyrinth };
 }
 
-// The engine player for one player DTO, with the zone (or labyrinth) buffs and the extra buffs. The optional DTO field
-// `talismans` ({ power, lines: [{ modifier, grade }] }, see combatsimulator/talismans.js) adds that player's talisman buffs
-// to the extra buffs; this is the only place it is read. Absent: the extra buffs are passed as given.
+// The player's talisman stats: the optional DTO field `talismans` ({ power, lines: [{ modifier, grade }] }, see
+// combatsimulator/talismans.js) becomes gear stats summed with the equipment's (Player.talismanStats). This is the only
+// place the field is read, shared by the page's worker and the what-if engine. Absent: the player is left as it is.
+export function applyTalismans(simPlayer, talismans) {
+    if (talismans) simPlayer.talismanStats = talismanStats(talismans);
+    return simPlayer;
+}
+
+// The engine player for one player DTO, with the zone (or labyrinth) buffs and the extra buffs.
 export function createSimPlayer(playerDTO, zone, labyrinth, extraBuffs) {
     let simPlayer = Player.createFromDTO(structuredClone(playerDTO));
     simPlayer.zoneBuffs = zone?.buffs || labyrinth?.buffs || [];
-    simPlayer.extraBuffs = playerDTO.talismans
-        ? [...(extraBuffs || []), ...splitEffects(talismanEffects(playerDTO.talismans)).buffs]
-        : extraBuffs;
+    simPlayer.extraBuffs = extraBuffs;
+    applyTalismans(simPlayer, playerDTO.talismans);
     return simPlayer;
 }
 
