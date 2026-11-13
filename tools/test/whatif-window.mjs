@@ -483,9 +483,10 @@ try {
         await page.send('Page.enable');
         await page.send('Page.navigate', { url: `http://127.0.0.1:${plain.address().port}/` });
         await new Promise((r) => setTimeout(r, 4000));
-        const r = await page.send('Runtime.evaluate', { expression: `[!!document.getElementById('buttonWhatIf'), document.getElementById('buttonWhatIf')?.style.display, !!document.getElementById('selectZone')?.options.length]`, returnByValue: true });
-        const [exists, display, loaded] = r.result.value;
-        check('without a runner the page loads and the button stays hidden', exists && display === 'none' && loaded, JSON.stringify(r.result.value));
+        const r = await page.send('Runtime.evaluate', { expression: `[!!document.getElementById('buttonWhatIf'), document.getElementById('buttonWhatIf')?.style.display, !!document.getElementById('selectZone')?.options.length, document.getElementById('whatIfModal')?.classList.contains('whatif-norunner')]`, returnByValue: true });
+        const [exists, display, loaded, getRunner] = r.result.value;
+        // The button shows the "get the runner" state of the window (full test: tools/test/whatif-get-runner-page.mjs).
+        check('without a runner the page loads and the button opens the "get the runner" window', exists && display === '' && loaded && getRunner, JSON.stringify(r.result.value));
         page.close();
     } finally { await chrome2.close(); plain.close(); try { fs.rmSync(prof2, { recursive: true, force: true }); } catch {} }
 }

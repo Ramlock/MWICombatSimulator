@@ -48,6 +48,12 @@
         .whatif-weak td { color: #999 !important; }
         .whatif-warn { color: #b07800; }
         .whatif-dim { color: #888; }
+        /* The window has two states: the search (a runner answers) and "get the runner" (none does; initWhatIf sets .whatif-norunner). */
+        #whatIfModal.whatif-norunner .modal-body > :not(#whatIfGetRunner) { display: none; }
+        #whatIfModal:not(.whatif-norunner) #whatIfGetRunner { display: none; }
+        #whatIfGetRunner { max-width: 52rem; }
+        #whatIfGetRunner ol { padding-left: 1.25rem; }
+        #whatIfGetRunner li { margin-bottom: 0.5rem; }
         #whatIfPlayers { display: grid; grid-template-columns: repeat(var(--whatif-n, 5), minmax(0, 1fr)); gap: .25rem .75rem; }
         #whatIfPlayers .form-check { min-width: 0; margin: 0; }
         #whatIfPlayers .form-check-label { font-size: .875rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1797,6 +1803,16 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="whatIfGetRunner">
+                        <p data-i18n="common:whatIf.get.why">What-if runs a long search in the background, often for hours, on every core of your PC at the lowest priority, so you can keep using the PC. A web page cannot do that, so it needs a small program on your own PC: the runner. It sends nothing out; the search and the page both run on your machine.</p>
+                        <p><a id="linkWhatIfRunner" class="btn btn-primary" href="#" target="_blank" rel="noopener" data-i18n="common:whatIf.get.download">Download the runner (Windows)</a></p>
+                        <ol>
+                            <li data-i18n="common:whatIf.get.step1">Unzip the file anywhere, open the WhatIfRunner folder and double-click start-runner.cmd.</li>
+                            <li data-i18n="common:whatIf.get.step2">If Windows says "Windows protected your PC" (SmartScreen), click More info, then Run anyway. The program is not signed, so this is expected the first time.</li>
+                            <li data-i18n="common:whatIf.get.step3">A black window opens, and your browser opens a tab on http://127.0.0.1:8787/. Leave the black window open while you use the page.</li>
+                            <li data-i18n="common:whatIf.get.step4">On that tab, the What-if button, next to Import/Export, opens the search window. Bring your setup once with Import/Export: that page keeps its own saved setups.</li>
+                        </ol>
+                    </div>
                     <div class="row">
                         <div class="col-md-5 whatif-col">
                             <div class="row g-1">
@@ -2223,10 +2239,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=420b3961"></script>
+    <script src="js/i18n.js?v=4b4ff508"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.420b3961.js" type="module"></script>
+    <script src="bundle.4b4ff508.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">

@@ -8,7 +8,8 @@ Documents upstream `testing` at commit `95db2f6` of `https://github.com/shykai/M
 - `inputs.md`: every UI input, where it is read, how it reaches the engine.
 - `engine.md`: event queue, main loop, events, unit stat formulas, damage resolution, abilities, triggers, consumables, enrage, zones, labyrinth.
 - `buffs-and-modifiers.md`: every modifier source, its data file, reader and affected stats; the full house-room trace.
-- `whatif-window.md`: the What-if window the local what-if runner serves: its files, the runner's interface, what it reads from a result, Apply.
+- `whatif-window.md`: the What-if window the local what-if runner serves: its files, the runner's interface, what it reads from a result, Apply; its "get the runner" state on a page with no runner.
+- `runner-zip.md`: the Windows zip of the runner (build script, pinned Node, what is inside, why not one executable).
 - `results-and-profit.md`: what `SimResult` counts; drop, revenue, expense and profit arithmetic and its assumptions.
 - `game-data.md`: one row per file in `src/combatsimulator/data/`, with unused fields.
 - `observed-gaps.md`: unused data, dead code, TODOs, hard-coded constants, ignored inputs.

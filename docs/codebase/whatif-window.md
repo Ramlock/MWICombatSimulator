@@ -1,6 +1,10 @@
 # The What-if window
 
-The page's What-if window runs the what-if optimizer (`tools/whatif/optimize.mjs`) through the local what-if runner: a program on the user's own PC that serves this page and runs the search at low priority on every core. The public website has no runner, so it shows no What-if button.
+The page's What-if window runs the what-if optimizer (`tools/whatif/optimize.mjs`) through the local what-if runner: a program on the user's own PC that serves this page and runs the search at low priority on every core. The public website has no runner, so there the same button opens the window in its "get the runner" state (below).
+
+## Two states
+
+`initWhatIf` (`src/main.js`) asks `/api/version`. When no runner answers, `whatIfShowGetRunner` shows the button and puts `whatif-norunner` on `#whatIfModal`; the CSS in `index.html` then shows only `#whatIfGetRunner` (one paragraph on why, the download link, four steps: start, SmartScreen, the black window, the What-if button) and hides the search; with a runner the class is absent and that pane is hidden. The link target is `RUNNER_DOWNLOAD_URL` (`src/whatif/runnerDownload.mjs`), the one constant. Strings: `common:whatIf.get.*` in en, pt and zh (pt and zh not checked by a native speaker; the pt SmartScreen names are Microsoft's own). The zip itself: `runner-zip.md`. Test: `tools/test/whatif-get-runner-page.mjs`.
 
 ## Files
 

@@ -4259,6 +4259,24 @@ function overPaybackLimit(cost, buyerNet, limit) {
 
 /***/ }),
 
+/***/ "./src/whatif/runnerDownload.mjs":
+/*!***************************************!*\
+  !*** ./src/whatif/runnerDownload.mjs ***!
+  \***************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   RUNNER_DOWNLOAD_URL: () => (/* binding */ RUNNER_DOWNLOAD_URL)
+/* harmony export */ });
+// Where the page sends a visitor who has no what-if runner: the one place that names the download.
+// The hosting is not decided (docs/codebase/runner-zip.md, "Hosting"); this URL is the proposal (the fork's latest
+// release, one asset with a fixed name; the commit is inside the zip, in VERSION.txt). Change only this line.
+const RUNNER_DOWNLOAD_URL = 'https://github.com/Ramlock/MWICombatSimulator/releases/latest/download/WhatIfRunner.zip';
+
+
+/***/ }),
+
 /***/ "./src/xpChart.mjs":
 /*!*************************!*\
   !*** ./src/xpChart.mjs ***!
@@ -4705,8 +4723,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _slotNames_mjs__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ./slotNames.mjs */ "./src/slotNames.mjs");
 /* harmony import */ var _savedGroup_mjs__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ./savedGroup.mjs */ "./src/savedGroup.mjs");
 /* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ./whatif/runnerDownload.mjs */ "./src/whatif/runnerDownload.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
 
 
 
@@ -9144,12 +9164,20 @@ function whatIfApply(key) {
     whatIfShowDiff();
 }
 
+// No runner answers: the same button opens the same window in its "get the runner" state (the CSS in index.html shows
+// that pane and hides the search). Its strings are data-i18n like the rest of the page; the link is the one constant.
+function whatIfShowGetRunner() {
+    document.getElementById('linkWhatIfRunner').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_37__.RUNNER_DOWNLOAD_URL;
+    document.getElementById('whatIfModal').classList.add('whatif-norunner');
+    document.getElementById('buttonWhatIf').style.display = '';
+}
+
 async function initWhatIf() {
     try {
         const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.version);
-        if (!ok || !body || body.runner === undefined) return;
+        if (!ok || !body || body.runner === undefined) { whatIfShowGetRunner(); return; }
         whatIf.version = body;
-    } catch (err) { return; } // not served by the runner (the public page): no What-if window
+    } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
     document.getElementById('buttonWhatIf').style.display = '';
     // Strings are read when the window opens: i18next may not be ready when this runs.
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
@@ -9916,15 +9944,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_37__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_38__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_37__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_37__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_37__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_38__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_38__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_38__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_38__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_39__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -9935,7 +9963,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_38__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_39__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -10200,4 +10228,4 @@ restoreImportedGroup();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.420b3961.js.map
+//# sourceMappingURL=bundle.4b4ff508.js.map
