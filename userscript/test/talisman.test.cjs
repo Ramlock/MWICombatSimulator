@@ -427,6 +427,39 @@ test('tools/echo-analysis.mjs: a same-update extra, a heal, a combined update (2
     assert.equal(A.format(A.analyze([], {}), {}).split('\n').length, 1);
 });
 
+test('tools/echo-analysis.mjs candidates: a same-target half repeat is listed; an area hit on another unit and a food tick heal are only counted', async () => {
+    const A = await import(pathToUrl(path.join(__dirname, '..', '..', 'tools', 'echo-analysis.mjs')));
+    // [msg, ms, side, idx, dAtk, dDmg, drop, rise, crit, src, atk, dmg, critN]
+    const rows = [
+        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],      // the player casts
+        [0, 0, 1, 0, 0, 1, 100, 0, 0, 1, 0, 1, 0],    // first event: monster 0 loses 100
+        [0, 0, 1, 1, 0, 1, 80, 0, 0, 1, 0, 1, 0],     // area: monster 1 loses 80 in the same update (also a first event)
+        [1, 200, 1, 0, 0, 1, 50, 0, 0, 1, 0, 2, 0],   // monster 0 loses 50: the candidate, ratio 0.5 to its own first event
+        [1, 200, 1, 2, 0, 1, 60, 0, 0, 1, 0, 1, 0],   // an area hit on monster 2, which had no first event: other units
+        [2, 900, 0, 0, 0, 0, 0, 40, 0, 0, 1, 0, 0],   // a food tick heals the player: other units
+    ];
+    const enc = { trace: { fields: TRACE_FIELDS, src: ['/abilities/fireball', 'auto'], rows } };
+    const res = A.analyze([enc], { windowMs: 2000 });
+    const c = res.list[0];
+    assert.equal(c.candidates.length, 1);
+    assert.equal(c.candidates[0].amount, 50); assert.equal(c.candidates[0].ratio, 0.5); assert.equal(c.candidates[0].side, 1); assert.equal(c.candidates[0].idx, 0);
+    assert.equal(c.otherUnits, 2);
+    const a = res.byAbility['/abilities/fireball'];
+    assert.equal(a.candCasts, 1); assert.equal(a.candidates, 1); assert.equal(a.candDamage, 1); assert.equal(a.candHeal, 0); assert.equal(a.otherUnits, 2);
+    assert.deepEqual(J(a.candRatios), { '0.5-0.6': 1 });
+    const txt = A.format(res, { casts: true });
+    assert.match(txt, /\| \+200ms update \+1 1:0 damage 50 ratio 0\.500 \| other units: 2/);
+    assert.ok(!/damage 60|heal 40/.test(txt), 'other units are counted, not listed');
+    assert.match(txt, /candidates \(same unit as a first event\): casts with one 1, events 1 \(damage 1, heal 0\), other units 2/);
+    assert.match(A.format(res, { casts: true, all: true }), /damage 60 ratio 0\.600/);
+    // a repeat on the player's own unit (a heal echo): a first heal event, then a half heal on the same unit
+    const heal = A.analyze([{ trace: { fields: TRACE_FIELDS, src: ['/abilities/h'], rows: [[0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 0, 0, 200, 0, 0, 1, 0, 0], [1, 100, 0, 0, 0, 0, 0, 100, 0, 0, 1, 0, 0]] } }], {});
+    assert.equal(heal.list[0].candidates.length, 1); assert.equal(heal.list[0].candidates[0].kind, 'heal'); assert.equal(heal.list[0].candidates[0].ratio, 0.5);
+    // no events, or nothing after the first: no candidates, no other units
+    const none = A.analyze([{ trace: { fields: TRACE_FIELDS, src: ['a'], rows: [[0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0]] } }], {});
+    assert.equal(none.list[0].candidates.length, 0); assert.equal(none.list[0].otherUnits, 0);
+});
+
 test('tools/echo-analysis.mjs on the command line: prints counts for a file, a usage line without one', async () => {
     const { spawnSync } = require('node:child_process');
     const script = path.join(__dirname, '..', '..', 'tools', 'echo-analysis.mjs');
@@ -436,7 +469,9 @@ test('tools/echo-analysis.mjs on the command line: prints counts for a file, a u
     const ok = spawnSync(process.execPath, [script, f, '--window-ms', '2000', '--casts'], { encoding: 'utf8' });
     assert.equal(ok.status, 0, ok.stderr);
     assert.match(ok.stdout, /casts 2/);
-    assert.match(ok.stdout, /enc 0 \+100ms slot 0 \/abilities\/fireball first damage 100 \| \+200ms update \+1 damage 50 ratio 0\.500/);
+    assert.match(ok.stdout, /enc 0 \+100ms slot 0 \/abilities\/fireball first damage 100 \| \+200ms update \+1 1:0 damage 50 ratio 0\.500 \| other units: 0/);
+    const all = spawnSync(process.execPath, [script, f, '--casts', '--all'], { encoding: 'utf8' });
+    assert.match(all.stdout, /first damage 100 \| \+200ms update \+1 damage 50 ratio 0\.500/);
     const js = spawnSync(process.execPath, [script, f, '--json'], { encoding: 'utf8' });
     assert.equal(JSON.parse(js.stdout).casts, 2);
     const bad = spawnSync(process.execPath, [script], { encoding: 'utf8' });

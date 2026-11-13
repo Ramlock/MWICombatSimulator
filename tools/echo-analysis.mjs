@@ -2,12 +2,18 @@
 // Echo check: reads the combat tracker's test-server file and lists, per ability cast, the events that follow it and the ratio of each to the
 // cast's first event. It prints counts only and concludes nothing (no proc is decided here).
 //
-// Usage:  node tools/echo-analysis.mjs <file> [--window-ms 2000] [--casts] [--json]
+// Usage:  node tools/echo-analysis.mjs <file> [--window-ms 2000] [--casts] [--all] [--candidates] [--json]
 //   <file>        what the helper wrote for the test server (combat-test-YYYY-MM.jsonl): one JSON per line, each { v, seen, rec: { key, type, data } } (an
 //                 `encounter` record carries the row in `data`), or a bare record { key, type, data }, a bare encounter row, or a whole recording ({ encounters: [...] }, e.g. the tracker's "Save combat recording").
 //                 Only encounters that carry a `trace` (the tracker 0.10.0 writes it on the test server) are used; the rest are counted and skipped.
 //   --window-ms   how long after a cast an event still counts as following it (default 2000); a later cast by the same player also ends it.
-//   --casts       one line per cast with its events (ms after the cast, damage or heal, amount, ratio to the first event).
+//   --casts       one line per cast with its candidates (below): ms after the cast, damage or heal, amount, ratio to that unit's first event, and one
+//                 count "other units: N" for the events that are not candidates. `--all` lists every event after the first instead.
+//   --candidates  the candidate summary (on by default with --casts; the summary lines are always printed).
+//
+// Candidates: an extra damage or heal event on the SAME unit (side and index) as one of the cast's first events (the events of the first update that
+// has any), later than that unit's first event and inside the window. Its ratio is to that unit's first event of the cast. Events on other units
+// (area hits, food ticks and other heals on someone else) are counted as "other units" and not listed.
 //   --json        the same numbers as one JSON object.
 //
 // What it reads: the trace rows (docs/codebase/combat-tracker.md, "Echo check"). A cast is a player row with dAtk > 0 (the ability is the row's
@@ -76,12 +82,12 @@ export function analyze(encounters, opts) {
             for (let j = i; j < end; j++) {
                 const e = rows[j];
                 if (e.ms - r.ms > windowMs) break;
-                if (e.side === 1 && e.drop > 0) events.push({ kind: 'damage', msg: e.msg - r.msg, ms: e.ms - r.ms, amount: e.drop, splats: e.dDmg, crit: !!e.crit });
-                else if (e.side === 0 && e.rise > 0) events.push({ kind: 'heal', msg: e.msg - r.msg, ms: e.ms - r.ms, amount: e.rise, splats: 0, crit: false });
+                if (e.side === 1 && e.drop > 0) events.push({ kind: 'damage', side: 1, idx: e.idx, msg: e.msg - r.msg, ms: e.ms - r.ms, amount: e.drop, splats: e.dDmg, crit: !!e.crit });
+                else if (e.side === 0 && e.rise > 0) events.push({ kind: 'heal', side: 0, idx: e.idx, msg: e.msg - r.msg, ms: e.ms - r.ms, amount: e.rise, splats: 0, crit: false });
             }
             const base = events[0] || null;
             const extras = base ? events.slice(1).map((e) => ({ ...e, ratio: base.amount > 0 ? e.amount / base.amount : null })) : [];
-            const a = res.byAbility[r.ability] || (res.byAbility[r.ability] = { casts: 0, noEvent: 0, noExtra: 0, oneExtra: 0, manyExtra: 0, extraSameUpdate: 0, extraLater: 0, extraDamage: 0, extraHeal: 0, multiSplatRows: 0, ratios: {} });
+            const a = res.byAbility[r.ability] || (res.byAbility[r.ability] = { casts: 0, noEvent: 0, noExtra: 0, oneExtra: 0, manyExtra: 0, candCasts: 0, candidates: 0, candDamage: 0, candHeal: 0, otherUnits: 0, candRatios: {}, extraSameUpdate: 0, extraLater: 0, extraDamage: 0, extraHeal: 0, multiSplatRows: 0, ratios: {} });
             a.casts++; res.casts++;
             if (!base) a.noEvent++;
             else if (!extras.length) a.noExtra++;
@@ -93,7 +99,19 @@ export function analyze(encounters, opts) {
                 if (e.kind === 'damage') a.extraDamage++; else a.extraHeal++;
                 if (e.ratio !== null) { const k = binLabel(e.ratio); a.ratios[k] = (a.ratios[k] || 0) + 1; }
             }
-            res.list.push({ encounter: ei, ms: r.ms, slot: r.idx, ability: r.ability, base, extras });
+            // candidates: later events on a unit that already had a first event in the cast's first event update
+            const firstUpdate = base ? base.msg : 0, firstOf = new Map(), cands = [];
+            let otherUnits = 0;
+            for (const e of events) {
+                const k = e.side + ':' + e.idx;
+                if (e.msg === firstUpdate && !firstOf.has(k)) { firstOf.set(k, e); continue; }
+                const f = firstOf.get(k);
+                if (f && e !== f) cands.push({ ...e, ratio: f.amount > 0 ? e.amount / f.amount : null }); else otherUnits++;
+            }
+            if (cands.length) a.candCasts++;
+            a.candidates += cands.length; a.otherUnits += otherUnits;
+            for (const e of cands) { if (e.kind === 'damage') a.candDamage++; else a.candHeal++; if (e.ratio !== null) { const k = binLabel(e.ratio); a.candRatios[k] = (a.candRatios[k] || 0) + 1; } }
+            res.list.push({ encounter: ei, ms: r.ms, slot: r.idx, ability: r.ability, base, extras, candidates: cands, otherUnits });
         });
     });
     res.castingPlayers = castingSlots.size ? new Set([...castingSlots].map((s) => s.split(':')[1])).size : 0;
@@ -109,12 +127,15 @@ export function format(res, opts) {
         L.push('  extra events: same update ' + a.extraSameUpdate + ', later update ' + a.extraLater + '; damage ' + a.extraDamage + ', heal ' + a.extraHeal + '; update rows with 2+ splats ' + a.multiSplatRows);
         const bins = Object.entries(a.ratios).sort((x, y) => parseFloat(x[0]) - parseFloat(y[0]));
         L.push('  ratio of an extra event to the first event: ' + (bins.length ? bins.map(([k, v]) => k + ' x' + v).join(', ') : 'none'));
+        const cb = Object.entries(a.candRatios).sort((x, y) => parseFloat(x[0]) - parseFloat(y[0]));
+        L.push('  candidates (same unit as a first event): casts with one ' + a.candCasts + ', events ' + a.candidates + ' (damage ' + a.candDamage + ', heal ' + a.candHeal + '), other units ' + a.otherUnits + '; ratio to that unit\'s first event: ' + (cb.length ? cb.map(([k, v]) => k + ' x' + v).join(', ') : 'none'));
     }
     if (opts && opts.casts) {
         L.push('');
         for (const c of res.list) {
+            const shown = opts.all ? c.extras : c.candidates;
             L.push('enc ' + c.encounter + ' +' + c.ms + 'ms slot ' + c.slot + ' ' + c.ability + ' first ' + (c.base ? c.base.kind + ' ' + c.base.amount : 'none') +
-                c.extras.map((e) => ' | +' + e.ms + 'ms ' + (e.msg === 0 ? 'same update' : 'update +' + e.msg) + ' ' + e.kind + ' ' + e.amount + ' ratio ' + (e.ratio === null ? 'n/a' : e.ratio.toFixed(3))).join(''));
+                shown.map((e) => ' | +' + e.ms + 'ms ' + (e.msg === 0 ? 'same update' : 'update +' + e.msg) + ' ' + (opts.all ? '' : e.side + ':' + e.idx + ' ') + e.kind + ' ' + e.amount + ' ratio ' + (e.ratio === null ? 'n/a' : e.ratio.toFixed(3))).join('') + (opts.all ? '' : ' | other units: ' + c.otherUnits));
         }
     }
     return L.join('\n');
@@ -123,11 +144,11 @@ export function format(res, opts) {
 async function main() {
     const args = process.argv.slice(2);
     const file = args.find((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--window-ms');
-    if (!file) { console.error('usage: node tools/echo-analysis.mjs <file> [--window-ms 2000] [--casts] [--json]'); process.exit(2); }
+    if (!file) { console.error('usage: node tools/echo-analysis.mjs <file> [--window-ms 2000] [--casts] [--all] [--json]'); process.exit(2); }
     const wi = args.indexOf('--window-ms');
     const windowMs = wi >= 0 ? Number(args[wi + 1]) : 2000;
     if (!Number.isFinite(windowMs) || windowMs < 0) { console.error('--window-ms needs a number of milliseconds'); process.exit(2); }
     const res = analyze(await readEncounters(file), { windowMs });
-    console.log(args.includes('--json') ? JSON.stringify(res) : format(res, { casts: args.includes('--casts') }));
+    console.log(args.includes('--json') ? JSON.stringify(res) : format(res, { casts: args.includes('--casts'), all: args.includes('--all') }));
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) main();
