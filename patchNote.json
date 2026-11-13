@@ -15,7 +15,8 @@
             "What-if: the What-if button on the public page explains how to get the runner",
             "Importing a profile with an aura now selects the aura and puts the abilities in the right slots",
             "Portuguese: the equipment sets button and window are now called \"Conjuntos\", so the buttons no longer wrap",
-            "What-if: the window now also lists Linux steps (not tested yet)"
+            "What-if: the window now also lists Linux steps (not tested yet)",
+            "Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers"
         ]
     },
     "2026-11-12":
