@@ -125,7 +125,28 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     const skip = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 3, 'skip') });
     check('button: Skip on the foods stage ends it after that round with nothing taken ("ended by you after round 3")', skip.result.endedByUser.foods === 3 && Object.values(skip.result.best.foods).every((e) => e.unchanged) && skip.rounds.filter((r) => r.stage === 'foods').length === 3);
     const accept = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('drinks', 8, 'accept') });
-    check('button: Accept current winner on the drinks stage ends it after that round, taking the best leader of each pool that has a clear positive reading, then the pick check decides it', accept.result.endedByUser.drinks === 8 && accept.rounds.filter((r) => r.stage === 'drinks').length === 8 && !accept.result.best.drinks.Alice.unchanged);
+    check('button: Accept current winner on the drinks stage ends it after that round, taking the best leader of each pool that has a clear positive reading', accept.result.endedByUser.drinks === 8 && accept.rounds.filter((r) => r.stage === 'drinks').length === 8 && !accept.result.best.drinks.Alice.unchanged);
+    // The accepted pick joins as it is: no pick check, no fresh reading, marked acceptedAsIs; a pick the search locked itself is still checked (it has `fresh`).
+    const dEntries = Object.entries(accept.result.best.drinks).filter(([, e]) => !e.unchanged), asIsD = dEntries.filter(([, e]) => e.acceptedAsIs), checkedD = dEntries.filter(([, e]) => !e.acceptedAsIs);
+    check('button: an accepted drinks pick is marked acceptedAsIs and has no fresh reading; one the search locked has a fresh reading and no mark', asIsD.length > 0 && asIsD.every(([, e]) => !('fresh' in e)) && checkedD.every(([, e]) => e.fresh && !('acceptedAsIs' in e)), JSON.stringify(dEntries.map(([p, e]) => [p, e.acceptedAsIs, !!e.fresh])));
+    const checkingD = [...accept.seen.checkingWho].filter((s) => s.startsWith('drinks'));
+    check('button: no pick check runs for an accepted pick (the drinks check names only the players the search locked)', checkedD.length ? checkingD.every((s) => s.endsWith(`of ${checkedD.length}`)) : checkingD.length === 0 && !accept.seen.checking.has('drinks'), [...accept.seen.checkingWho].join('|'));
+    check('button: an accepted pick is never in the not-confirmed list', asIsD.every(([p]) => !accept.result.notConfirmed.some((x) => x.player === p && x.kind === 'drink')));
+    // Accept is offered only for a leader whose figure is shown: after round 1 every leader has 2 reading seeds (under 4), so nothing is taken.
+    const early = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 1, 'accept') });
+    check('button: Accept pressed while no leader has a shown figure (2 reading seeds) ends the stage and takes nothing', early.result.endedByUser.foods === 1 && Object.values(early.result.best.foods).every((e) => e.unchanged && !e.acceptedAsIs));
+
+    // Skip ends the stage at once: the lanes take no new run, the runs in flight finish and are stored, nothing is killed, and the search goes on.
+    const short = { 'max-steps': 0, 'max-rounds': 3 }, finished = (r) => !r.result.incomplete && r.result.stoppedBy === undefined && r.rounds.some((x) => x.stage === 'drinks') && r.records.length === r.runs;
+    let st1 = null, done1 = false;
+    const skip1 = await runSynthetic(scenario, short, { onRound: (rec, stop) => { st1 = stop; if (rec.provisional && rec.stage === 'foods' && rec.firstLook?.have > 0 && !done1) { done1 = true; stop.done = 'skip'; } } });
+    check('button: Skip pressed before the first round finishes ends the foods stage at once with nothing taken ("ended before the first round finished": endedByUser 0), no foods round record', done1 && skip1.result.endedByUser.foods === 0 && !skip1.rounds.some((r) => r.stage === 'foods') && Object.values(skip1.result.best.foods).every((e) => e.unchanged), JSON.stringify(skip1.result.endedByUser));
+    check('button: after that Skip the search goes on (the drinks stage runs, result.incomplete and stoppedBy unset) and every run that finished is in the store', finished(skip1), `${skip1.result.incomplete} ${skip1.result.stoppedBy} ${skip1.records.length} ${skip1.runs}`);
+    check('button: that Skip is not a stop request (nothing was killed: the pool was never asked to kill)', skip1.stop.requested === false && /before its first round finished/.test(skip1.markdown));
+    let st2 = null, foodsRounds = 0, nRuns = 0;
+    const skip2 = await runSynthetic(scenario, short, { onRound: (rec, stop) => { st2 = stop; if (!rec.provisional && rec.stage === 'foods') foodsRounds++; }, poolWrap: (p) => ({ run: async (t) => { const r = await p.run(t); if (st2 && foodsRounds === 1 && ++nRuns === 3) st2.done = 'skip'; return r; }, kill: p.kill }) });
+    check('button: Skip pressed in round 2 ends the foods stage at once: round 1 stays, round 2 never publishes, ended after round 1', nRuns >= 3 && skip2.result.endedByUser.foods === 1 && skip2.rounds.filter((r) => r.stage === 'foods').length === 1, `${nRuns} ${JSON.stringify(skip2.result.endedByUser)} ${skip2.rounds.filter((r) => r.stage === 'foods').length}`);
+    check('button: after the round 2 Skip the search goes on, incomplete is unset and every run that finished is in the store', finished(skip2), `${skip2.result.incomplete} ${skip2.result.stoppedBy} ${skip2.records.length} ${skip2.runs}`);
 }
 
 process.exit(failed ? 1 : 0);

@@ -53,15 +53,18 @@ export async function firstConfirmed(ok, check, onFail) {
 // the original setup (`baseOps`, the stage's start), never against the earlier players' confirmed fillings. `pool` is the stage's
 // pool in rank order; a player's candidates are his accepted ones. `check(baseOps, c)` is the pick check ({ passed, fresh } or null
 // on a stop). A filling that fails is passed to `onFail({ cand, fresh })` and the player's next best is tried; none left leaves
-// him unchanged (no entry in `chosen`).
+// him unchanged (no entry in `chosen`). `asIs(c)` is true for a pick the user took with "Accept current winner": it joins with no check
+// and no fresh reading (`fresh[player]` is null), as it is.
 // Returns { baseOps, chosen: { <player>: cand }, fresh: { <player>: reading } }, or null when a check was stopped; its baseOps is
 // the given baseOps extended with every chosen filling's ops, which the rest of the search is measured on.
-export async function confirmFillings(players, pool, baseOps, check, onFail, isOk = (c) => c.est.accepted) {
+export async function confirmFillings(players, pool, baseOps, check, onFail, isOk = (c) => c.est.accepted, asIs = () => false) {
     const chosen = {}, fresh = {};
     let ops = baseOps;
     for (const p of players) {
         const mine = pool.filter((c) => c.player === p && isOk(c));
         if (!mine.length) continue;
+        // A pick the user accepted as it is (`asIs(c)`, the first of his candidates) joins with no check and no fresh reading.
+        if (asIs(mine[0])) { chosen[p] = mine[0]; ops = [...ops, ...mine[0].ops]; continue; }
         const picked = await firstConfirmed(mine, (c) => check(baseOps, c), onFail);
         if (picked === null) return null;
         if (!picked.best) continue;

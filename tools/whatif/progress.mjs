@@ -11,7 +11,7 @@
 // With plan.kinds (the ticked ones of the foods and drinks levers, in that order) a part comes first for each: 'foods' (Stage F) and 'drinks' (Stage D), each its
 // own three halvings run as one part; the runner reports stage 'foods' / 'drinks' and the part shows the current batch).
 // A part: { kind: 'foods'|'drinks'|'screen'|'halving'|'steps'|'step'|'moreSteps'|'confirmation', index, state: 'waiting'|'running'|
-// 'done', runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
+// 'done'|'skipped' (a finished search: the part never started and will not), runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
 // stepsLeft ('moreSteps'), and on a part of a race stage: round, phase ('search' | 'reading'), contending, paused, dropped, simHours
 // (the stage's counters: runs and simHours are cumulative over the stage, dropped never falls; contending and paused are the last finished
 // round's and may rise and fall, so the window shows them as numbers). A part with a round has no bar: a race stage has no known total. }. A stop leaves the running part running: the rows stay as they were.
@@ -113,6 +113,9 @@ export function createParts(plan) {
             const k = steps.length ? steps[steps.length - 1].index : 0, more = maxSteps - k;
             if (steps.length && more > 0 && !conf) out.push({ kind: 'moreSteps', index: k, state: 'waiting', stepsLeft: more });
             out.push(conf ? { ...conf } : { kind: 'confirmation', index: 0, state: 'waiting' });
+            // A finished search (progress.stage 'done'): a part that never started will not run any more, so it is 'skipped' (the window says so, with no bar), and
+            // the 'moreSteps' row (the steps the search could still have taken) goes. A part that ran is as it was.
+            if (progress.stage === 'done') return out.filter((r) => r.kind !== 'moreSteps').map((r) => { if (r.state !== 'waiting') return r; const { runsUpTo, ...rest } = r; return { ...rest, state: 'skipped' }; });
             return out;
         },
     };

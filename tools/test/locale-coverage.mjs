@@ -89,6 +89,7 @@ const notTheGameWord = {
     'whatIf.result.playerLine:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.playerLineNoChange:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.gainLegend:change': '"a mudança" is the noun (a change in the loot), not the verb Alterar of the game',
+    'whatIf.progress.skippedNoPick:change': '"nenhuma mudança" is the noun (no change was picked), not the verb Alterar of the game',
     'whatIf.result.overPayback:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.overPaybackNote:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',
     'whatIf.result.overPaybackShow:back': '"pays back" is the verb phrase (retorno), not the Back equipment slot (Costas)',

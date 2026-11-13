@@ -299,6 +299,14 @@ try {
         const fitRow = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), btn = l.querySelector('[data-whatif-done]'), edge = body.getBoundingClientRect().right; return { noOverflow: body.scrollWidth <= body.clientWidth, labelWraps: getComputedStyle(l).whiteSpace === 'normal' && l.scrollWidth <= l.clientWidth + 1, textWraps: !x && /ruled out/.test(l.textContent) && !!btn && l.getBoundingClientRect().right <= edge + 0.5 && [...l.querySelectorAll('[data-whatif-done]')].length === 2 && [...l.querySelectorAll('[data-whatif-done]')].every((b) => b.getBoundingClientRect().right <= edge + 0.5), ellipsis: getComputedStyle(l).textOverflow === 'ellipsis' && getComputedStyle(l).overflow !== 'visible', text: l.textContent }; })()`);
         check(`at ${w}x${h} a race stage row (counters after the status text, on the stage's own line, then the done button) is not cut, wraps, and the window has no horizontal scroll`, !!fitRow && fitRow.noOverflow && fitRow.labelWraps && fitRow.textWraps && !fitRow.ellipsis, JSON.stringify(fitRow));
     }
+    // The progress redraw keeps an unchanged stage button: the same node across polls (a replaced node loses its hover state: the flicker), and a later poll with a changed part still draws it.
+    {
+        await until(`!!document.querySelector('#whatIfProgress [data-whatif-done="skip"]')`);
+        await js(`(() => { window.__skipBtn = document.querySelector('#whatIfProgress [data-whatif-done="skip"]'); window.__skipBtn.__mark = 1; return true; })()`);
+        const n0 = sinces.length;
+        for (let i = 0; i < 100 && sinces.length < n0 + 2; i++) await new Promise((r) => setTimeout(r, 100));
+        check('the Skip button is the same node after two more polls (the progress redraw does not replace it: no hover flicker)', sinces.length >= n0 + 2 && await js(`document.querySelector('#whatIfProgress [data-whatif-done="skip"]') === window.__skipBtn`));
+    }
     // The same row once its race has ended (done): wraps like the running one, is never cut, its figures stay inside the window, one scroll axis.
     raceDone = true; raceProgress = true;
     for (const [w, h] of [[1920, 1080], [1366, 768]]) {

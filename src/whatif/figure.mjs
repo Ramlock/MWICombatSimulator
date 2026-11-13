@@ -10,3 +10,8 @@ export const figureSeeds = (row) => (row.tooFew ? 0 : row.status === 'first' ? r
 
 // True when the row's figure has enough runs to be drawn (a row with an unknown count, from an older result, counts as drawn).
 export const hasFigure = (row) => { const n = figureSeeds(row); return !(Number.isFinite(n) && n < FIGURE_MIN_SEEDS); };
+
+// True when the leader's figure is shown as a figure: it has the runs for one (hasFigure) and its range does not reach 0 (the window writes a figure
+// whose range reaches 0 as "≈ 0", and the core's row status says 'zero' then). The window's "Accept current winner" is offered only for such a
+// leader, so the pick the user takes is the figure the user saw. Read by the search core (acceptTakes) so the button and the pick share one rule.
+export const showsFigure = (row) => hasFigure(row) && !row.tooFew && row.status !== 'zero';

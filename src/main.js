@@ -4059,7 +4059,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, timer: null, result: null, resultRunning: false, partialVersion: 0 };
+const whatIf = { searchId: null, state: null, timer: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4286,10 +4286,25 @@ function whatIfShowDiff() {
     box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT, whatIfNames());
 }
 
+// Redraws the progress box without replacing a stage button whose markup did not change: a button replaced under the pointer loses its hover until the
+// mouse moves (the flicker), so an unchanged button (same part, same mode, same markup) keeps its node. `whatIf.pressed` ({ key, mode }) is in the markup,
+// so a pressed button is drawn disabled (with Accept's note) by every redraw, not only by the click.
+function whatIfDrawProgress() {
+    const box = document.getElementById('whatIfProgress');
+    if (!whatIf.status) return;
+    const next = document.createElement('div');
+    next.innerHTML = whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed);
+    const buttonKey = (b) => b.dataset.whatifPart + '/' + b.dataset.whatifDone;
+    const old = new Map([...box.querySelectorAll('[data-whatif-done]')].map((b) => [buttonKey(b), b]));
+    for (const b of next.querySelectorAll('[data-whatif-done]')) { const o = old.get(buttonKey(b)); if (o && o.outerHTML === b.outerHTML) b.replaceWith(o); }
+    box.replaceChildren(...next.childNodes);
+    alignNumbers();
+}
+
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
-    document.getElementById('whatIfProgress').innerHTML = whatIfRenderProgress(status, whatIfT);
-    alignNumbers();
+    whatIf.status = status;
+    whatIfDrawProgress();
     const stop = document.getElementById('buttonWhatIfStop');
     stop.disabled = !(status.state === 'running' || status.state === 'stopped');
     stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
@@ -4313,6 +4328,7 @@ function whatIfStopWatching() {
 
 function whatIfWatch(id) {
     whatIf.searchId = id;
+    whatIf.pressed = null; whatIf.status = null;
     whatIf.partialVersion = 0; // the report so far is asked for again (the runner sends it only when newer than this)
     whatIf.round = null;
     whatIfStopWatching();
@@ -4425,13 +4441,16 @@ async function initWhatIf() {
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
-    // "Accept current winner" / "Skip <stage>" (the buttons on the race stage that runs now): the runner ends that stage after its round, in that mode.
+    // "Accept current winner" / "Skip <stage>" (the buttons on the race stage that runs now): the runner ends that stage in that mode (Accept after its round in flight, its pick taken as it is; Skip at once).
     document.getElementById('whatIfProgress').addEventListener('click', async (event) => {
         const button = event.target.closest('[data-whatif-done]');
         if (!button || !whatIf.searchId) return;
-        button.disabled = true;
-        try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: button.dataset.whatifDone }) }); if (!ok) whatIfMessage(body.error || whatIfT('runnerError')); }
-        catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+        if (button.disabled) return;
+        const pressed = { key: button.dataset.whatifPart, mode: button.dataset.whatifDone };
+        whatIf.pressed = pressed; whatIfDrawProgress(); // the press shows at once (disabled, and Accept's note), and stays in every redraw until the stage ends
+        const failed = (message) => { if (whatIf.pressed === pressed) whatIf.pressed = null; whatIfMessage(message); whatIfDrawProgress(); };
+        try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); }
+        catch (err) { failed(whatIfT('runnerGone')); }
     });
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');

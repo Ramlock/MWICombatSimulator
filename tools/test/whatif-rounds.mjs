@@ -230,4 +230,14 @@ console.log(fails ? `${fails} FAILED` : 'all passed');
     check(ok.best === live[1], 'accept: a taken leader that passes the fresh-run check is chosen');
 }
 
+// The window's figure rule, shared with the core (src/whatif/figure.mjs): Accept is offered only for a leader whose figure is shown as a figure.
+{
+    const F = await import(pathToFileURL(path.join(root, 'src/whatif/figure.mjs')).href);
+    check(F.showsFigure({ status: 'ok', readingSeeds: 4 }) === true && F.showsFigure({ status: 'ok', readingSeeds: 20 }) === true, 'showsFigure: four or more seeds and a clear range is shown');
+    check(F.showsFigure({ status: 'ok', readingSeeds: 3 }) === false && F.showsFigure({ status: 'ok', readingSeeds: 2 }) === false, 'showsFigure: under four seeds is not shown');
+    check(F.showsFigure({ status: 'zero', readingSeeds: 20 }) === false, 'showsFigure: a range that reaches 0 (written as ≈ 0) is not shown');
+    check(F.showsFigure({ status: 'ok', readingSeeds: 20, tooFew: true }) === false, 'showsFigure: a row flagged too few is not shown');
+    check(F.showsFigure({ status: 'first', seeds: 6 }) === true && F.showsFigure({ status: 'first', seeds: 3 }) === false, 'showsFigure: a first-look row counts its own seeds');
+}
+
 process.exit(fails ? 1 : 0);
