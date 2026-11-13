@@ -146,7 +146,7 @@
             "why": "O \"E se\" faz uma busca longa em segundo plano, muitas vezes por horas, em todos os núcleos do seu PC e na prioridade mais baixa, para você continuar usando o PC. Uma página da web não consegue fazer isso, então é preciso um programa pequeno no seu próprio PC: o executor. Ele não envia nada para fora; a busca e a página rodam as duas na sua máquina.",
             "download": "Baixar o executor (Windows)",
             "step1": "Extraia o zip em qualquer pasta, abra a pasta WhatIfRunner e dê dois cliques em start-runner.cmd.",
-            "step2": "Se o Windows mostrar \"Windows protegeu seu computador\" (SmartScreen), clique em Mais informações e depois em Executar assim mesmo. O programa não é assinado, então esse aviso é esperado na primeira vez.",
+            "step2": "Se o Windows mostrar \"Abrir Arquivo - Aviso de Segurança\" (\"O fornecedor não pôde ser verificado\"), clique em Executar. Se mostrar \"Windows protegeu seu computador\" (SmartScreen), clique em Mais informações e depois em Executar assim mesmo. O programa não é assinado, então um aviso assim é esperado na primeira vez.",
             "step3": "Uma janela preta abre e o seu navegador abre uma aba em http://127.0.0.1:8787/. Deixe a janela preta aberta enquanto usa a página.",
             "step4": "Nessa aba, o botão E se, ao lado de Importar/Exportar, abre a janela de busca. Traga o seu setup uma única vez com Importar/Exportar: essa página guarda os próprios setups salvos."
         },

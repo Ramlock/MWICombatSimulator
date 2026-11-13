@@ -146,7 +146,7 @@
             "why": "What-if runs a long search in the background, often for hours, on every core of your PC at the lowest priority, so you can keep using the PC. A web page cannot do that, so it needs a small program on your own PC: the runner. It sends nothing out; the search and the page both run on your machine.",
             "download": "Download the runner (Windows)",
             "step1": "Unzip the file anywhere, open the WhatIfRunner folder and double-click start-runner.cmd.",
-            "step2": "If Windows says \"Windows protected your PC\" (SmartScreen), click More info, then Run anyway. The program is not signed, so this is expected the first time.",
+            "step2": "If Windows shows \"Open File - Security Warning\" (\"The publisher could not be verified\"), click Run. If it shows \"Windows protected your PC\" (SmartScreen) instead, click More info, then Run anyway. The program is not signed, so a warning like this is expected the first time.",
             "step3": "A black window opens, and your browser opens a tab on http://127.0.0.1:8787/. Leave the black window open while you use the page.",
             "step4": "On that tab, the What-if button, next to Import/Export, opens the search window. Bring your setup once with Import/Export: that page keeps its own saved setups."
         },
