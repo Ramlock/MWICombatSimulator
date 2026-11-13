@@ -4501,6 +4501,8 @@ function initImportExportModal() {
         updateUI();
         saveImportedGroup();
         resetImportInputs();
+        // A successful import closes the popup (a failed one threw above: the popup stays open with the error and the pasted text).
+        bootstrap.Modal.getOrCreateInstance(document.getElementById("importExportModal")).hide();
     });
 }
 
