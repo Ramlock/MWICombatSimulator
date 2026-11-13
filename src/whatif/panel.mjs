@@ -692,9 +692,14 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // accepted, in a table of their own (hidden whole, header included), so that no header stands over an empty list.
         const weakBody = '<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>';
         const eachTable = (inner, attrs = '') => `<table class="table table-sm whatif-table whatif-each"${attrs}>${eachHead}${inner}</table>`;
+        // The whole table (its accepted rows, its grey rows and their own toggle) sits closed behind one toggle under the heading, as the closed lists below do;
+        // the toggle shows the count of rows in it, the folds' own "Show"/"Hide" words.
+        const eachCount = rows.length;
+        L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="whatIfEachChange" data-show="${esc(t('result.dominatedShow'))} (${eachCount})" data-hide="${esc(t('result.dominatedHide'))} (${eachCount})">${esc(t('result.dominatedShow'))} (${eachCount})</button><div class="whatif-more" id="whatIfEachChange" hidden>`);
         L.push(listTable(t, accepted.length, () => eachTable('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>' + (weak.length ? weakBody : ''))));
         if (!accepted.length && weak.length) L.push(`<table class="table table-sm whatif-table whatif-each" id="whatIfMoreSingles" hidden>${eachHead}<tbody class="whatif-more">${weak.map(([s, i]) => row(s, i)).join('')}</tbody></table>`);
         if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
+        L.push('</div>');
     }
     if (result.singlesNotShown > 0 && (anySingles || !running)) L.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
     if (result.overBudget?.length) {
