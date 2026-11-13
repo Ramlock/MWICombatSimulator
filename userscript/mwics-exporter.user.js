@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.9.1
+// @version      0.9.2
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -1057,8 +1057,20 @@
     }
 
 
+    // The label of the button this script adds to the simulator page, in the page's own language (the page sets <html lang> to pt-BR, zh or en).
+    // "party" is the page's own word for it (locales/pt/common.json "grupo", locales/zh/common.json "队伍"); an unknown language gets English.
+    const SIM_IMPORT_LABELS = {
+        en: 'Import party from game (MWI Combat Tracker)',
+        pt: 'Importar grupo do jogo (MWI Combat Tracker)',
+        zh: '从游戏导入队伍 (MWI Combat Tracker)',
+    };
+    function simImportLabel(lang) {
+        const key = String(lang || '').toLowerCase().split('-')[0];
+        return Object.prototype.hasOwnProperty.call(SIM_IMPORT_LABELS, key) ? SIM_IMPORT_LABELS[key] : SIM_IMPORT_LABELS.en;
+    }
+
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
+        module.exports = { simImportLabel, SIM_IMPORT_LABELS, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES };
         return;
     }
 
@@ -1074,7 +1086,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.9.1'; // keep equal to @version (a test checks it)
+    const VERSION = '0.9.2'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1312,7 +1324,7 @@
         col.className = 'col-md-auto';
         const b = document.createElement('button');
         b.id = 'mwicsImportParty'; b.type = 'button'; b.className = 'btn btn-primary';
-        b.textContent = 'Import party from game (MWI Combat Tracker)';
+        b.textContent = simImportLabel(document.documentElement.lang);
         b.addEventListener('click', importPartyFromGame);
         col.appendChild(b);
         wrap.appendChild(col);
@@ -1333,6 +1345,8 @@
     }
     function startSim() {
         const timer = setInterval(() => { if (addSimButton()) clearInterval(timer); }, 500);
+        // The page changes <html lang> when its language buttons are pressed: the button follows (a check once a second, no DOM observer).
+        setInterval(() => { const b = document.getElementById('mwicsImportParty'), t = simImportLabel(document.documentElement.lang); if (b && b.textContent !== t) b.textContent = t; }, 1000);
     }
 
     // The combat recording as one JSON text; null (with a toast) when there is nothing to give.
