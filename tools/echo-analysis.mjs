@@ -3,8 +3,8 @@
 // cast's first event. It prints counts only and concludes nothing (no proc is decided here).
 //
 // Usage:  node tools/echo-analysis.mjs <file> [--window-ms 2000] [--casts] [--json]
-//   <file>        what the helper wrote for the test server: one JSON per line, each a record { key, type, data } (an `encounter` record carries the
-//                 row in `data`), a bare encounter row, or a whole recording ({ encounters: [...] }, e.g. the tracker's "Save combat recording").
+//   <file>        what the helper wrote for the test server (combat-test-YYYY-MM.jsonl): one JSON per line, each { v, seen, rec: { key, type, data } } (an
+//                 `encounter` record carries the row in `data`), or a bare record { key, type, data }, a bare encounter row, or a whole recording ({ encounters: [...] }, e.g. the tracker's "Save combat recording").
 //                 Only encounters that carry a `trace` (the tracker 0.10.0 writes it on the test server) are used; the rest are counted and skipped.
 //   --window-ms   how long after a cast an event still counts as following it (default 2000); a later cast by the same player also ends it.
 //   --casts       one line per cast with its events (ms after the cast, damage or heal, amount, ratio to the first event).
@@ -31,6 +31,7 @@ const binLabel = (r) => {
 export function encountersIn(obj) {
     if (Array.isArray(obj)) return obj.flatMap(encountersIn);
     if (!obj || typeof obj !== 'object') return [];
+    if (obj.rec && typeof obj.rec === 'object') return encountersIn(obj.rec); // a helper line: { v, seen, rec: { key, type, data } }
     if (Array.isArray(obj.records)) return obj.records.flatMap(encountersIn);
     if (obj.type === 'encounter' && obj.data) return [obj.data];
     if (Array.isArray(obj.encounters)) return obj.encounters;

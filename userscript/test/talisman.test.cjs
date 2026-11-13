@@ -417,6 +417,12 @@ test('tools/echo-analysis.mjs: a same-update extra, a heal, a combined update (2
     assert.equal((await A.readEncounters(f3)).length, 1);
     const f4 = recFile(['', 'x']);
     assert.equal((await A.readEncounters(f4)).length, 0);
+    // the helper's own line shape
+    const f5 = recFile([JSON.stringify({ v: 1, seen: '2030-01-01T00:00:00.000-03:00', rec: { key: 'test:enc:1:1', type: 'encounter', data: enc } }), JSON.stringify({ v: 1, seen: 'x', rec: { key: 'test:win:1#1', type: 'window', data: { players: [] } } }), JSON.stringify({ v: 1, seen: 'x', rec: { key: 'test:task:1', type: 'task', data: { t: 1, tasks: [] } } })]);
+    const got = await A.readEncounters(f5);
+    assert.equal(got.length, 1, 'only the encounter record; window and task records are not encounters');
+    assert.equal(A.analyze(got, {}).used, 1);
+    assert.equal(A.analyze(got, {}).casts, 3);
     assert.equal(A.analyze([], {}).casts, 0);
     assert.equal(A.format(A.analyze([], {}), {}).split('\n').length, 1);
 });
