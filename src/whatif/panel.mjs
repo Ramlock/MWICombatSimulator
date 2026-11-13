@@ -274,11 +274,13 @@ export function renderParts(status, t, pressed = null) {
             : r.kind === 'drinks' ? t('progress.partDrinks')
             : r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
-            : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
+            : r.kind === 'steps' ? t('progress.partStepsShort')
             : r.kind === 'picks' ? t('progress.partPicks')
             : r.kind === 'step' ? stepLabel(t, r.index)
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
-            : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
+            : t('progress.partConfirmation');
+        // A long stage name is a short label; its sentence (the step limit, when the final check runs) is the label's help mark.
+        const labelTip = r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps }) : r.kind === 'confirmation' && r.state === 'waiting' ? t('progress.partConfirmationWaiting') : '';
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
         const race = rounded && r.state === 'running';
         const noneConfirmed = r.state === 'done' && r.kind === 'picks' && !(r.runsPlanned > 0) && r.leftOut > 0;
@@ -307,7 +309,7 @@ export function renderParts(status, t, pressed = null) {
             ? `<td class="num">${num(r.state === 'done' ? r.runsPlanned : r.runsDone)} / ${num(r.runsPlanned)}${cls !== 'done' ? `<div class="progress whatif-progress mt-1" style="height: 4px;"><div class="progress-bar" style="width: ${pct}%"></div></div>` : ''}</td>` : '<td></td>';
         const round = rounded && (Number(r.round) > 1 || race) ? `<td class="num">${num(r.round)}</td>` : '<td></td>';
         const left = !rounded && (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? r.candidatesLeft : null;
-        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b></td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</td></tr>`;
+        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</td></tr>`;
     }).join('');
     const cols = ['', 'stage', 'state', 'round', 'runs', 'hours', 'contending', 'paused', 'dropped', ''];
     const head = cols.map((c, i) => `<th${i >= 3 && i <= 8 ? ' class="num"' : ''}>${c ? esc(t('progress.col.' + c)) : ''}</th>`).join('');
@@ -352,7 +354,7 @@ export function renderRounds(round, t, names = null) {
         // A pool the core has not sorted yet (no row has enough runs for a figure; `sortedBy` null, the column it will sort by in `sortPending`) keeps the build order.
         const colName = (c) => t(c === 'reading' ? 'col.partyGain' : c === 'buyerNet' ? 'col.buyerGain' : 'rounds.col.' + c);
         const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: colName(p.sortedBy) }) : p.sortPending ? ' · ' + t('rounds.sortedByLater', { col: colName(p.sortPending) }) : '';
-        const title = `${esc(t('rounds.pool.' + kind))}</b> ${owner ? chip(esc(who(owner))) : ''}${chip(esc(counts))}${order ? chip(esc(order.replace(/^ · /, ''))) : ''}${help(esc(width.replace(/^ · /, '')))}<b>`;
+        const title = `${esc(t('rounds.pool.' + kind))}</b> ${owner ? chip(esc(who(owner))) : ''}${prov ? chip(esc(counts)) : chip(`<span class="whatif-chip-k">${esc(t('progress.col.contending'))}</span> ${num(p.contending)}`) + chip(`<span class="whatif-chip-k">${esc(t('progress.col.paused'))}</span> ${num(p.paused)}`)}${order ? chip(esc(order.replace(/^ · /, ''))) : ''}${help(esc(width.replace(/^ · /, '')))}<b>`;
         // A candidate ruled out is not listed (the heading counts it).
         const leaders = (p.leaders || []).filter((l) => l.status !== 'refuted');
         // A foods or drinks pool: one column per slot, the cell holding only the new item of a slot the candidate changes and nothing where the slot
@@ -365,7 +367,7 @@ export function renderRounds(round, t, names = null) {
                 const s = l.change.slots.find((x) => x.index === i), cur = (l.change.current || [])[i];
                 return `<td class="chg">${s ? itemLabel(s, names) : cur ? greyed(itemLabel({ item: cur }, names)) : i < (l.change.current || []).length ? emptyWord(t) : ''}</td>`;
             }).join('')
-            : `<td class="chg">${arrowed(esc(localizeDesc(l.desc, names, players, owner)))}</td>`);
+            : `<td class="chg">${!owner && l.player ? chip(esc(who(l.player))) + ' ' : ''}${arrowed(esc(localizeDesc(l.desc, names, players, owner || l.player)))}</td>`);
         // The pool's title is the header of its own table: it takes the place of the first column's header (the Change column). A table with one
         // column per slot puts it over the slot columns (a header row of its own), the slot names under it; the other columns span both rows.
         const titleTh = `<th class="whatif-pool-title"${bySlot ? ` colspan="${nSlots}"` : ''} data-pool="${esc(p.key)}"><b>${title}</b></th>`;
@@ -377,7 +379,7 @@ export function renderRounds(round, t, names = null) {
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
             const figSeeds = figureSeeds(l);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: formatNumber(l.searchHours), fresh: formatNumber(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap" title="${esc(statusTip)}">${esc(status)}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
@@ -454,7 +456,7 @@ export function localizeDesc(desc, names, players = [], dropPlayer = null) {
 const supplyNote = (c, p, t, se, floor) => {
     const loot = c?.sharedGainPerUser, own = c?.ownSuppliesByPlayer?.[p];
     if (!Number.isFinite(loot) || !Number.isFinite(own)) return '';
-    return ` <span class="whatif-dim">(${t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: isNoChange(loot, se, floor) ? noChange(loot, se, t) : num(loot), amount: num(Math.abs(own)) })})</span>`;
+    return help(esc(String(t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: isNoChange(loot, se, floor) ? noChange(loot, se, t) : num(loot), amount: num(Math.abs(own)) })).replace(/<[^>]+>/g, '')));
 };
 // A cost cell: "≤" when the cost is only an upper bound.
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
@@ -601,13 +603,14 @@ function foldLine(id, heading, note, show, hide, n = null) {
 }
 // A closed list: its fold line and the items (html of <li>s) hidden behind it. The over-budget, pays-back-too-slowly, left-out, not-confirmed and
 // unknown-cost lists are this one renderer; `key` names their locale keys: <key>, <key>Note, <key>Show, <key>Hide.
-function closedList(key, id, items, note, t) {
-    const n = items.length;
-    return foldLine(id, esc(t('result.' + key)), esc(t('result.' + key + 'Note', { n, ...note })), t('result.' + key + 'Show', { n }), t('result.' + key + 'Hide', { n }), n) +
-        `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
+function closedList(key, id, rows, note, t, head) {
+    const n = rows.length;
+    return foldLine(id, esc(t('result.' + key)), esc(t('result.' + key + 'Note', { n, ...note })), t('result.dominatedShow'), t('result.dominatedHide'), n) + detailTable(id, head, rows);
 }
+// The table behind a detail list: `head` the column titles ([text, numeric?]), `rows` the html of its <tr>s.
+const detailTable = (id, head, rows) => `<table class="table table-sm whatif-table whatif-list whatif-more" id="${id}" hidden><thead><tr>${head.map(([h, isNum]) => `<th${isNum ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
 // A count line (the skipped swaps, the players skipped for want of an export): the same fold line, Show / Hide, its list behind it.
-const countList = (heading, id, items, t) => foldLine(id, esc(heading), '', t('result.dominatedShow'), t('result.dominatedHide')) + `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
+const countList = (label, sentence, id, rows, head, t) => foldLine(id, esc(label), esc(sentence), t('result.dominatedShow'), t('result.dominatedHide'), rows.length) + detailTable(id, head, rows);
 // The one renderer of every list the window draws as a table: with no row it is ONE grey line ("None."), never a header row over nothing and never a label
 // of its own. `table` makes the whole table's html, called only when there are rows.
 function listTable(t, count, table) {
@@ -631,8 +634,9 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => arrowed(esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player)));
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
-    const zone = zoneLine(result, t, names);
-    L.push(`<div class="mb-2 whatif-chips whatif-context">${chip(`<span class="whatif-chip-k">${esc(t('result.goal'))}</span> ${esc(goal)}`)}${zone ? zone.split(' · ').map((z) => chip(z)).join('') : ''}</div>`);
+    const zp = zoneParts(result, names);
+    const kv = (k, v, tip = '') => chip(`<span class="whatif-chip-k">${esc(k)}</span> ${v}`, '', tip);
+    L.push(`<div class="mb-2 whatif-chips whatif-context">${kv(t('result.goal'), esc(goal))}${zp ? kv(t('zone'), esc(zp.name) + (Number.isFinite(zp.tier) ? ' · T' + zp.tier : '')) : ''}${zp && Number.isFinite(zp.base) ? kv(t('result.baseProfit'), num(zp.base), esc(t('result.perUserDay'))) : ''}</div>`);
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn whatif-callout">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     const pricesChip = prices ? `<span data-prices-stale>${chip(esc(t('result.pricesChip')), 'whatif-chip-warn', esc(prices.replace(/<[^>]+>/g, '')))}</span>` : '';
@@ -721,21 +725,23 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // The whole table (its accepted rows, its grey rows and their own toggle) sits closed behind one toggle under the heading, as the closed lists below do;
         // the toggle shows the count of rows in it (result.eachShow / eachHide).
         const eachCount = rows.length;
-        D.push(foldLine('whatIfEachChange', esc(t('result.singles')), singlesNote, t('result.eachShow', { n: eachCount }), t('result.eachHide', { n: eachCount })) + '<div class="whatif-more" id="whatIfEachChange" hidden>');
+        D.push(foldLine('whatIfEachChange', esc(t('result.singles')), singlesNote, t('result.dominatedShow'), t('result.dominatedHide'), eachCount) + '<div class="whatif-more" id="whatIfEachChange" hidden>');
         D.push(listTable(t, accepted.length, () => eachTable('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>' + (weak.length ? weakBody : ''))));
         if (!accepted.length && weak.length) D.push(`<table class="table table-sm whatif-table whatif-each" id="whatIfMoreSingles" hidden>${eachHead}<tbody class="whatif-more">${weak.map(([s, i]) => row(s, i)).join('')}</tbody></table>`);
         if (weak.length) D.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
         D.push('</div>');
     }
     if (result.singlesNotShown > 0 && (anySingles || !running)) D.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
+    const H = { player: [t('col.player')], change: [t('col.change')], cost: [t('col.cost'), true], payback: [t('col.payback'), true] };
+    const td = (html, isNum = false) => `<td${isNum ? ' class="num"' : ''}>${html}</td>`;
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
-        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`), {}, t));
+        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a), true)}</tr>`), {}, t, [H.player, H.change, H.cost]));
     }
     if (result.overPayback?.length) {
         // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
-        const days = (a) => (Number.isFinite(a.paybackDays) ? t('result.overPaybackDays', { days: num(a.paybackDays) }) : esc(t('result.overPaybackNever')));
-        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}, ${days(a)}</li>`), { days: formatNumber(result.options?.maxPaybackDays) }, t));
+        const days = (a) => (Number.isFinite(a.paybackDays) ? num(a.paybackDays) : chip(esc(t('result.overPaybackNever'))));
+        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a), true)}${td(days(a), true)}</tr>`), { days: formatNumber(result.options?.maxPaybackDays) }, t, [H.player, H.change, H.cost, H.payback]));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
@@ -745,24 +751,24 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem';
             // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
             const at = a.kind === 'food' ? t('result.notConfirmedAtFood') : a.kind === 'drink' ? t('result.notConfirmedAtDrink') : t('result.notConfirmedAtStep', { step: num(a.step) });
-            const text = Number.isFinite(f.buyerNet) && !goalExp
-                ? t('result.' + key, { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor), buyerGain: figure(f.buyerNet, f.buyerNetSe, t, floor) })
-                : t('result.' + key + 'Exp', { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor) });
-            return `<li>${esc(a.player)}, ${shown(a)}: ${text}</li>`;
+            const buyer = Number.isFinite(f.buyerNet) && !goalExp ? figure(f.buyerNet, f.buyerNetSe, t, floor) : '—';
+            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(esc(at), '', esc(t('result.' + key + 'Tip'))))}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
         };
+        const ncHead = [H.player, H.change, [t('progress.col.stage')], [t('col.partyGain'), true], [t('col.buyerGain'), true]];
         const inRace = result.notConfirmed.filter((a) => a.inRace), confirmed = result.notConfirmed.filter((a) => !a.inRace);
-        if (inRace.length) D.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t));
-        if (confirmed.length) D.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t));
+        if (inRace.length) D.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t, ncHead));
+        if (confirmed.length) D.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t, ncHead));
     }
     // The swaps the search skipped (no better on any stat; only another style's bonuses) and the players the export levers skipped: one count line each.
-    if (result.dominated?.length) D.push(countList(plural(t, 'result.dominated', result.dominated.length, { n: result.dominated.length }), 'whatIfDominated', result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`), t));
-    if (result.otherStyle?.length) D.push(countList(plural(t, 'result.otherStyle', result.otherStyle.length, { n: result.otherStyle.length }), 'whatIfOtherStyle', result.otherStyle.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`), t));
+    const swapRow = (a) => `<tr>${td(esc(a.player))}${td(shown(a))}</tr>`;
+    if (result.dominated?.length) D.push(countList(t('result.dominatedK'), plural(t, 'result.dominated', result.dominated.length, { n: result.dominated.length }), 'whatIfDominated', result.dominated.map(swapRow), [H.player, H.change], t));
+    if (result.otherStyle?.length) D.push(countList(t('result.otherStyleK'), plural(t, 'result.otherStyle', result.otherStyle.length, { n: result.otherStyle.length }), 'whatIfOtherStyle', result.otherStyle.map(swapRow), [H.player, H.change], t));
     if (result.skippedNoExport?.length) {
         const lever = (g) => t('lever.' + g.lever + '.name');
         const n = new Set(result.skippedNoExport.flatMap((g) => g.players)).size;
-        D.push(countList(plural(t, 'result.skippedNoExport', n, { n, levers: result.skippedNoExport.map(lever).join(', ') }), 'whatIfSkippedNoExport', result.skippedNoExport.map((g) => `<li>${esc(lever(g))}: ${esc(g.players.join(', '))}</li>`), t));
+        D.push(countList(t('result.skippedNoExportK'), plural(t, 'result.skippedNoExport', n, { n, levers: result.skippedNoExport.map(lever).join(', ') }), 'whatIfSkippedNoExport', result.skippedNoExport.map((g) => `<tr>${td(chip(esc(lever(g))))}${td(g.players.map((x) => chip(esc(x))).join(' '))}</tr>`), [[t('progress.col.stage')], H.player], t));
     }
-    if (result.apart?.length) D.push(closedList('apart', 'whatIfApart', result.apart.map((a) => `<li>${shown(a)}: ${esc(a.note)}</li>`), {}, t));
+    if (result.apart?.length) D.push(closedList('apart', 'whatIfApart', result.apart.map((a) => `<tr>${td(shown(a))}${td(chip(esc(a.note)))}</tr>`), {}, t, [H.change, ['']]));
     if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) D.push(`<div class="mt-2">${chip('≤ ' + esc(t('result.upperChip')))}${help(esc(t('result.upperNote')))}</div>`);
     // The "See details" toggle opens the details and the search rounds (#whatIfRounds, drawn by main.js under the result) together.
     if (D.length || result.round || running) L.push(`<div class="whatif-details-line">${foldLine('whatIfDetails whatIfRounds', '', '', t('result.detailsShow'), t('result.detailsHide'))}</div><div class="whatif-more whatif-details" id="whatIfDetails" hidden>${D.join('')}</div>`);
@@ -774,13 +780,18 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
 // zone name is the page's own name for the zone in the shown language (the id's last part when there is none).
 // Returns '' when the result holds no zone (an older result), and omits what it lacks.
 export function zoneLine(result, t, names) {
-    const hrid = result?.options?.zone;
-    if (typeof hrid !== 'string' || !hrid) return '';
-    const name = names?.get('actionNames', hrid.replace(/^\/actions\//, '')) ?? hrid.split('/').pop();
-    const tier = result.options.tier;
-    const parts = [esc(Number.isFinite(tier) ? t('result.zone', { zone: name, tier }) : t('result.zoneNoTier', { zone: name }))];
-    if (result.goal !== 'exp' && Number.isFinite(result.basePerUser)) parts.push(esc(t('result.baseProfit')) + ' ' + num(result.basePerUser) + ' ' + esc(t('result.perUserDay')));
+    const z = zoneParts(result, names);
+    if (!z) return '';
+    const parts = [esc(Number.isFinite(z.tier) ? t('result.zone', { zone: z.name, tier: z.tier }) : t('result.zoneNoTier', { zone: z.name }))];
+    if (Number.isFinite(z.base)) parts.push(esc(t('result.baseProfit')) + ' ' + num(z.base) + ' ' + esc(t('result.perUserDay')));
     return parts.join(' · ');
+}
+// The zone's shown name, its tier and the party base profit per user (profit goal only); null when the result holds no zone.
+function zoneParts(result, names) {
+    const hrid = result?.options?.zone;
+    if (typeof hrid !== 'string' || !hrid) return null;
+    const name = names?.get('actionNames', hrid.replace(/^\/actions\//, '')) ?? hrid.split('/').pop();
+    return { name, tier: result.options.tier, base: result.goal !== 'exp' && Number.isFinite(result.basePerUser) ? result.basePerUser : null };
 }
 
 // The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`
