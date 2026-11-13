@@ -20,15 +20,14 @@ function arg(name, def) {
 
 if (arg('child', false) === true) {
     const { runParty } = await import('./engine.mjs');
-    const { readParty, applyOps } = await import('./variants.mjs');
+    const { readParty } = await import('./variants.mjs');
+    const { runTask } = await import('./runTask.mjs');
     const cache = new Map();
     process.on('message', async (t) => {
         if (t === 'exit') process.exit(0);
         const key = t.setupsDir || '';
         if (!cache.has(key)) cache.set(key, readParty(t.setupsDir || undefined));
-        const setups = applyOps(cache.get(key), t.ops);
-        const res = await runParty({ ...t.options, setups, seed: t.seed, checkpoints: t.checkpoints });
-        process.send({ variant: t.variant, seed: t.seed, ...res });
+        process.send(await runTask(t, { runParty, setups: cache.get(key) }));
     });
 } else {
     const spec = JSON.parse(readFileSync(arg('spec'), 'utf8'));
