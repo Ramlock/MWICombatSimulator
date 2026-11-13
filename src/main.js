@@ -4439,7 +4439,7 @@ function whatIfApply(key) {
 // No runner answers: the same button opens the same window in its "get the runner" state (the CSS in index.html shows
 // that pane and hides the search). Its strings are data-i18n like the rest of the page; the link is the one constant.
 function whatIfShowGetRunner() {
-    document.getElementById('linkWhatIfRunner').href = RUNNER_DOWNLOAD_URL;
+    for (const id of ['linkWhatIfRunner', 'linkWhatIfRunnerLinux']) document.getElementById(id).href = RUNNER_DOWNLOAD_URL;
     document.getElementById('whatIfModal').classList.add('whatif-norunner');
     document.getElementById('buttonWhatIf').style.display = '';
 }

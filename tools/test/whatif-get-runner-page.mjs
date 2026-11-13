@@ -66,9 +66,15 @@ try {
     check('no runner: the get-the-runner pane is shown, the search controls are not', (await visible('whatIfGetRunner')) && !(await visible('buttonWhatIfStart')) && !(await visible('whatIfPlayers')) && !(await visible('selectWhatIfGoal')));
     check('no runner: the download link is the one constant', (await js(`document.getElementById('linkWhatIfRunner').href`)) === RUNNER_DOWNLOAD_URL && (await visible('linkWhatIfRunner')), await js(`document.getElementById('linkWhatIfRunner').href`));
     check('no runner: the link opens in a new tab without leaking the page', (await js(`document.getElementById('linkWhatIfRunner').target + ' ' + document.getElementById('linkWhatIfRunner').rel`)) === '_blank noopener');
-    const paras = await text('#whatIfGetRunner p:not(:has(a)), #whatIfGetRunner li');
+    const winPart = '#whatIfGetRunner > p:not(:has(a)), #whatIfGetRunner > ol > li';
+    const linuxPart = '#whatIfGetRunnerLinux > h6, #whatIfGetRunnerLinux > ol > li, #whatIfGetRunnerLinux > p:not(:has(a))';
+    const linuxKeys = ['linuxHeading', 'linuxStep1', 'linuxStep2', 'linuxStep3', 'linuxStep4', 'linuxReport'];
+    const linuxOk = async (l) => { const t = await text(linuxPart); return t.length === 6 && linuxKeys.every((k, i) => t[i] === locales[l].get[k]); };
+    const paras = await text(winPart);
     check('no runner: one paragraph and the four steps, in English', paras.length === 5 && paras[0] === locales.en.get.why && [1, 2, 3, 4].every((i) => paras[i] === locales.en.get['step' + i]), JSON.stringify(paras));
     check('no runner: the link reads in English', (await text('#linkWhatIfRunner'))[0] === locales.en.get.download);
+    check('no runner: the Linux part follows the Windows steps: heading, four steps, report line, in English', await linuxOk('en') && await js(`document.getElementById('whatIfGetRunner').children[3].id === 'whatIfGetRunnerLinux'`) && (await text('#whatIfGetRunnerLinux > h6'))[0].startsWith('Linux (not tested yet'));
+    check('no runner: the Linux link is the same constant, new tab, no leak', (await js(`document.getElementById('linkWhatIfRunnerLinux').href`)) === RUNNER_DOWNLOAD_URL && (await js(`document.getElementById('linkWhatIfRunnerLinux').target + ' ' + document.getElementById('linkWhatIfRunnerLinux').rel`)) === '_blank noopener' && (await visible('linkWhatIfRunnerLinux')));
     check('no runner: no runner version in the header', (await text('#whatIfVersion'))[0] === '');
     check('no runner: no horizontal scroll inside the window', await js(`(() => { const b = document.querySelector('#whatIfModal .modal-body'); return b.scrollWidth <= b.clientWidth; })()`));
     check('no runner: the page is dark', await js(`document.body.classList.contains('dark-mode')`));
@@ -83,9 +89,10 @@ try {
     for (const l of ['pt', 'zh']) {
         check(`${l}: the page loads`, await load('?lng=' + l));
         check(`${l}: the window opens`, await until(`document.getElementById('buttonWhatIf').style.display === ''`) && await open());
-        const p = await text('#whatIfGetRunner p:not(:has(a)), #whatIfGetRunner li');
+        const p = await text(winPart);
         check(`${l}: the paragraph and the four steps are the ${l} strings, none left in English`, p.length === 5 && p[0] === locales[l].get.why && [1, 2, 3, 4].every((i) => p[i] === locales[l].get['step' + i]) && locales[l].get.why !== locales.en.get.why, JSON.stringify(p));
         check(`${l}: the link reads in ${l}`, (await text('#linkWhatIfRunner'))[0] === locales[l].get.download);
+        check(`${l}: the Linux part is the ${l} strings, none left in English`, await linuxOk(l) && locales[l].get.linuxHeading !== locales.en.get.linuxHeading && (await text('#linkWhatIfRunnerLinux'))[0] === locales[l].get.linuxDownload);
         if (shots) { await sleep(1200); fs.writeFileSync(path.join(shots, `whatif-get-runner-${l}.png`), Buffer.from((await page.send('Page.captureScreenshot', { format: 'png' })).data, 'base64')); }
         await closeModal();
     }

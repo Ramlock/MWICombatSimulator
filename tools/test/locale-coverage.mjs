@@ -101,6 +101,8 @@ const notTheGameWord = {
     'whatIf.rounds.status.bestTip:items': 'the word is the placeholder name {{items}}; the text names the candidate, no game Items label is meant',
     'whatIf.result.bestGainExp:party': 'the placeholder is named party; the text is "gain {{value}}", no game party (grupo) is meant',
     'controls.equipmentSets:equipment': 'renamed on purpose to the short Conjuntos so the three buttons fit on one row; the game\'s Equipamento is left out',
+    'whatIf.get.linuxStep2:install': 'Instale is the imperative of Instalar; the English "nvm install 24" is a shell command kept as written',
+    'whatIf.get.linuxStep3:tools': 'the word is the folder name tools/ in the command, not the game\'s Ferramentas',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
 };
 let termChecks = 0;
