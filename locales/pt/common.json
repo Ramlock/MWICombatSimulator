@@ -291,11 +291,12 @@
             "poolSize": "{{n}} candidatas",
             "poolSizeOne": "{{n}} candidata",
             "sortedBy": "ordenado por {{col}}, melhor primeiro",
+            "sortedByLater": "ordenado por {{col}} quando houver valores",
             "col": { "candidate": "Mudança", "cost": "Custo", "hours": "Horas simuladas", "payback": "Dias de retorno", "status": "Estado" },
             "hoursTitle": "{{search}} h de execuções da busca + {{fresh}} h de execuções novas",
             "status": { "contending": "ainda medindo", "contendingTip": "na disputa; ainda sem execuções novas suficientes", "paused": "deixada de lado", "pausedTip": "volta sozinha se os intervalos dos líderes se alargarem", "confirmed": "ganho claro", "confirmedTip": "o intervalo fica inteiro acima de 0, conferido em execuções novas", "few": "ainda medindo", "fewTip": "{{n}} execuções novas até agora; faltam {{more}} para o intervalo ficar final", "first": "ainda medindo", "firstTip": "primeiro olhar, execuções até agora: {{n}}", "tooFew": "ainda medindo", "tooFewTip": "ainda sem execuções novas", "refuted": "descartada", "refutedTip": "descartada", "zero": "sem mudança clara ainda", "zeroTip": "ainda não difere de nenhuma mudança", "loses": "o grupo perde loot", "losesTip": "o loot compartilhado por usuário cai, mesmo que o ganho do próprio comprador não seja claramente diferente de 0", "bestTip": "Melhor candidato até agora: {{items}} ({{figures}}; execuções novas: {{n}})" },
             "tooFew": "ainda sem execuções novas",
-            "noRange": "ainda sem intervalo",
+            "needsMoreRuns": "Precisa de mais execuções para mostrar um valor",
             "rangeWidth": "largura do intervalo {{now}}",
             "rangeWidthWas": "largura do intervalo {{now}} (era {{before}})",
             "none": "ainda sem líderes"

@@ -29,6 +29,7 @@ import { playerFit, misfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
 import { SURE_BLOCK, SURE_MAX, verdict, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
 import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
+import { hasFigure } from '../../src/whatif/figure.mjs';
 // A count with its noun, singular for 1 ("1 run", "2 runs").
 const nOf = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 import { refineTrigger } from './refine.mjs';
@@ -611,16 +612,22 @@ export async function main(settings, seams) {
     // A shared loot gain whose whole range is below 0 (profit goal): the party loses on this row, whatever the buyer's gain reads. Status 'loses' only (the search's choice is unchanged).
     const loses = (r) => goal === 'profit' && r.k >= 2 && Number.isFinite(r.high) && r.high < 0;
     // `r`: the reading { k, figure, low, high, net, netLow, netHigh, payback } or null (none yet).
-    function rowShape(base, c, r, { seeds, readingSeeds, few, status, screen }) {
+    // `built`: the candidate's place in the list the race was built from, the order of a pool's table while no row has the runs for a figure (display only).
+    function rowShape(base, c, r, { seeds, readingSeeds, few, status, screen, built }) {
         const has = !!r && r.net !== undefined, searchHours = seeds * unitH, readHours = readingSeeds * unitH;
-        return { id: c.id, player: c.player, desc: c.desc, change: changeOf(base, c), cost: c.cost.cost, seeds, readingSeeds, searchHours, readHours, hours: searchHours + readHours, tooFew: !r, few, status: status !== 'refuted' && r && loses(r) ? 'loses' : status !== 'refuted' && r && zeroed(r) ? 'zero' : status, screen,
+        return { id: c.id, built, player: c.player, desc: c.desc, change: changeOf(base, c), cost: c.cost.cost, seeds, readingSeeds, searchHours, readHours, hours: searchHours + readHours, tooFew: !r, few, status: status !== 'refuted' && r && loses(r) ? 'loses' : status !== 'refuted' && r && zeroed(r) ? 'zero' : status, screen,
             reading: r ? r.figure : null, low: r ? r.low : null, high: r ? r.high : null,
             buyerNet: has ? r.net : null, netLow: has ? r.netLow : null, netHigh: has ? r.netHigh : null, payback: r ? r.payback ?? null : null };
     }
     // The order of a pool's table, by one column: a free pool by the buyer's gain (largest first), a paid pool by its payback (shortest first, none
-    // last), a goal without a buyer's gain by the figure; a tie by the larger buyer's gain, then the id. Returns the column's name.
+    // last), a goal without a buyer's gain by the figure; a tie by the larger buyer's gain, then the id.
+    // While no row of the pool has the runs for a figure (FIGURE_MIN_SEEDS, src/whatif/figure.mjs) the rows stay in the order the candidates were built
+    // (`built`) and `sortedBy` is null, the column it will sort by going in `sortPending`; once some row has, the rows with a figure sort as above and the
+    // rows without follow in build order. Display order only: no choice of the search reads the order of these rows. Returns the pool's order fields.
     function sortRows(rows, key) {
         const col = goal !== 'profit' ? 'reading' : String(key).endsWith('free') ? 'buyerNet' : 'payback', down = col !== 'payback';
+        const byBuilt = (a, b) => a.built - b.built;
+        if (!rows.some(hasFigure)) { rows.sort(byBuilt); return { sortedBy: null, sortPending: col }; }
         // The order is the order of what the column shows: a figure whose range reaches 0 is written "≈ 0" (|figure| <= half the range), so it ranks as 0.
         const of = (r) => {
             if (col === 'payback') return r.payback;
@@ -628,8 +635,9 @@ export async function main(settings, seams) {
             return Number.isFinite(v) && Number.isFinite(lo) && Number.isFinite(hi) && Math.abs(v) <= (hi - lo) / 2 ? 0 : v;
         };
         const tie = (a, b) => ((b.buyerNet ?? b.reading ?? -Infinity) - (a.buyerNet ?? a.reading ?? -Infinity)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-        rows.sort((a, b) => { const x = of(a), y = of(b), fx = Number.isFinite(x), fy = Number.isFinite(y); if (fx !== fy) return fx ? -1 : 1; if (fx && x !== y) return down ? y - x : x - y; return tie(a, b); });
-        return col;
+        const cmp = (a, b) => { const x = of(a), y = of(b), fx = Number.isFinite(x), fy = Number.isFinite(y); if (fx !== fy) return fx ? -1 : 1; if (fx && x !== y) return down ? y - x : x - y; return tie(a, b); };
+        rows.sort((a, b) => { const fa = hasFigure(a), fb = hasFigure(b); return fa !== fb ? (fa ? -1 : 1) : fa ? cmp(a, b) : byBuilt(a, b); });
+        return { sortedBy: col };
     }
     // The first look at a race (round 1): a provisional round record from the cache alone, with the candidates that have a first figure (a seed
     // with both arms cached; the figure is the mean of the paired differences, its range from two seeds on). Same rows, same order, same pools as a
@@ -639,7 +647,7 @@ export async function main(settings, seams) {
         const bk = keyOf(base), n = setups0.length, party = goal === 'profit' ? lootOf : metric, mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
         const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
         const pools = new Map(); let have = 0, total = 0;
-        for (const c of cands) {
+        for (const [built, c] of cands.entries()) {
             if (c.refuted) continue;
             total++;
             const key = poolKey(c, byPlayer), pool = pools.get(key) || pools.set(key, { size: 0, rows: [] }).get(key);
@@ -659,11 +667,11 @@ export async function main(settings, seams) {
             const range = (a) => { const m = mean(a); if (k < 2) return { m, low: null, high: null }; const h = tMult(coverage, k - 1) * sd(a) / Math.sqrt(k); return { m, low: m - h, high: m + h }; };
             const g = range(d), r = { k, figure: g.m, low: g.low, high: g.high };
             if (goal === 'profit') { const e = range(q); Object.assign(r, { net: e.m, netLow: e.low, netHigh: e.high, payback: e.m > 0 && c.cost.cost > 0 ? paybackDays(c.cost.cost, e.m) : null }); }
-            pool.rows.push(rowShape(base, c, r, { seeds: k, readingSeeds: 0, few: false, status: 'first', screen: g.m }));
+            pool.rows.push(rowShape(base, c, r, { seeds: k, readingSeeds: 0, few: false, status: 'first', screen: g.m, built }));
         }
         return { provisional: true, round, stage, simHours: wallLog.reduce((a, r) => a + r.h, 0), unitHours: unitH, coverage, pauseMult, leadersK, goal, readingMin: readMin, firstLook: { have, total },
             candidates: { total, contending: total, paused: 0, refuted: 0, locked: 0 },
-            pools: [...pools].sort(poolSorter(players)).map(([key, p]) => { const sortedBy = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, sortedBy, leaders: p.rows.slice(0, leadersK) }; }) };
+            pools: [...pools].sort(poolSorter(players)).map(([key, p]) => { const order = sortRows(p.rows, key); return { key, size: p.size, contending: p.size, paused: 0, line: null, rangeWidth: null, ...order, leaders: p.rows.slice(0, leadersK) }; }) };
     }
     // The bar of each player: BAR_FRACTION of his own profit per day under the unchanged setup (Owner: "1 % of the player's profit per day as the
     // bar for any change"), the mean over the base's seeds the round already has (cached runs, none of its own). His own profit is what the buyer's
@@ -745,12 +753,13 @@ export async function main(settings, seams) {
                 if (p.verdict === 'fail') { c.refuted = true; onRefute?.(c, p); }
             }
             const live = leaders.filter((c) => !c.refuted);
+            const builtAt = new Map(cands.map((c, i) => [c, i]));
             const rows = (p) => p.leaders.map((c) => {
                 // The figure shows from the first reading seed and its range from the second (low / high are null with one seed): `few` while the
                 // leader has fewer than --reading-min (its status says so), `tooFew` only with no reading seed at all. 'confirmed' (the fresh seeds
                 // word) needs --reading-min seeds. 'zero': the range reaches 0 (rowShape).
                 const r = read.get(c), few = !!r && r.k < readMin;
-                return rowShape(base, c, r, { seeds: c.k, readingSeeds: r ? r.k : 0, few, status: c.refuted ? 'refuted' : few ? 'few' : peek.get(c).verdict === 'pass' ? 'confirmed' : c.status, screen: goal === 'profit' ? c.est.net / n : c.est.gain / n });
+                return rowShape(base, c, r, { seeds: c.k, readingSeeds: r ? r.k : 0, few, status: c.refuted ? 'refuted' : few ? 'few' : peek.get(c).verdict === 'pass' ? 'confirmed' : c.status, screen: goal === 'profit' ? c.est.net / n : c.est.gain / n, built: builtAt.get(c) });
             });
             const wallH = wallLog.reduce((a, r) => a + r.h, 0);
             const rec = { round: stageRound, stage, simHours: wallH, simHoursAll: [...cache.values()].reduce((a, r) => a + r.hours, 0), unitHours: H, coverage, pauseMult, leadersK, goal, readingMin: readMin,
@@ -758,9 +767,9 @@ export async function main(settings, seams) {
                 // rangeWidth: the width (high minus low, per user per day) of the pool's top leader's range; rangeWidthPrev: the same pool's width one round
                 // earlier of this race (absent on the stage's first round, or when that round had no range). Computed here once; the panel only prints them.
                 pools: cont.pools.map((p) => {
-                    const lr = rows(p), sortedBy = sortRows(lr, p.key), t = lr[0], w = t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
+                    const lr = rows(p), order = sortRows(lr, p.key), t = lr[0], w = t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
                     widthPrev.set(p.key, w);
-                    return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), sortedBy, leaders: lr };
+                    return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), ...order, leaders: lr };
                 }) };
             lastRound = rec;
             // The pool nearest to ending (two or three changes standing): the rounds it still needs to separate its top two, for the stage row (rounds.mjs nearestSeparation).

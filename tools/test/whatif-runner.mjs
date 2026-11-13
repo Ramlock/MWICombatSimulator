@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { hasFigure } from '../../src/whatif/figure.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const mod = (p) => import(pathToFileURL(path.join(root, p)).href);
@@ -342,9 +343,13 @@ if (res) {
         const rl = readFileSync(path.join(dir, 'rounds.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
         // The order is that of what the column shows: a figure whose range reaches 0 is written "≈ 0", so it ranks as 0.
         const shown = (l, col) => { const v = l[col]; if (col === 'payback') return v; const lo = col === 'buyerNet' ? l.netLow : l.low, hi = col === 'buyerNet' ? l.netHigh : l.high; return Number.isFinite(v) && Number.isFinite(lo) && Number.isFinite(hi) && Math.abs(v) <= (hi - lo) / 2 ? 0 : v; };
-        const sortedOk = (p) => p.leaders.every((l, i) => { if (i === 0) return true; const col = p.sortedBy, x = shown(p.leaders[i - 1], col), y = shown(l, col); return !Number.isFinite(y) || (Number.isFinite(x) && (col === 'payback' ? x <= y : x >= y)); });
+        // The order: while no row has the runs for a figure (hasFigure, src/whatif/figure.mjs) the pool is in build order and says sortedBy null; once some
+        // has, the rows with a figure come first sorted by the column and the rows without follow in build order.
+        const builtUp = (rows) => rows.every((l, i) => i === 0 || rows[i - 1].built <= l.built);
+        const sortedCol = (rows, col) => rows.every((l, i) => { if (i === 0) return true; const x = shown(rows[i - 1], col), y = shown(l, col); return !Number.isFinite(y) || (Number.isFinite(x) && (col === 'payback' ? x <= y : x >= y)); });
+        const sortedOk = (p) => { const fig = p.leaders.filter(hasFigure), rest = p.leaders.filter((l) => !hasFigure(l)); return fig.length === 0 ? p.sortedBy === null && ['buyerNet', 'payback', 'reading'].includes(p.sortPending) && builtUp(p.leaders) : ['buyerNet', 'payback', 'reading'].includes(p.sortedBy) && sortedCol(fig, p.sortedBy) && builtUp(rest) && p.leaders.slice(0, fig.length).every(hasFigure); };
         check(rl.length > 0 && rl.every((r) => !r.provisional && r.readingMin === res.rounds.readingMin && r.pools.every((p) => p.leaders.every((l) => Number.isFinite(l.hours) && l.hours === l.searchHours + l.readHours))), 'rounds.jsonl: only finished rounds (no provisional record), each with the reading minimum and the hours of every leader (search + fresh)');
-        check(rl.every((r) => r.pools.every((p) => ['buyerNet', 'payback', 'reading'].includes(p.sortedBy) && sortedOk(p))), 'rounds.jsonl: each pool is sorted by its one column (free by the buyer\'s gain, paid by payback shortest first), the column named in the pool');
+        check(rl.every((r) => r.pools.every(sortedOk)), 'rounds.jsonl: each pool is sorted by its one column (free by the buyer\'s gain, paid by payback shortest first) among the rows with a figure (4 seeds or more), the others after them in build order; a pool with no such row stays in build order, sortedBy null, its column in sortPending');
         check(rl.every((r) => r.pools.every((p) => p.leaders.every((l) => l.status !== 'zero' || (Number.isFinite(l.netLow) ? l.netLow <= 0 && l.netHigh >= 0 : l.low <= 0 && l.high >= 0)))), 'rounds.jsonl: a leader is "zero" only when its range reaches 0');
         // round 1 asks for the runs seed by seed (seed 1 of every candidate, then seed 2, ...): in the order they finished (2 lanes), no run finishes
         // 4 places before one of a lower seed.

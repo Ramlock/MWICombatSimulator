@@ -7,6 +7,7 @@ import { applyOps } from './applyOps.mjs';
 import { numberHtml, formatNumber } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
 import { paybackDays } from './payback.mjs';
+import { FIGURE_MIN_SEEDS, figureSeeds } from './figure.mjs';
 
 // The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
 // Labyrinth are not levers. Books (ability levels, new abilities) are left out until the long-term model can say what
@@ -71,11 +72,11 @@ function pm(v, half) {
     const body = p.err === null ? p.main : p.main + ' ± ' + p.err;
     return p.zero ? `<span class="whatif-dim">${body}</span>` : body;
 }
-// The same as one table cell; a figure with no range yet says so after it.
-function pmCell(v, half, t) {
-    const p = pmParts(v, half);
-    if (!p) return '<td class="num">—</td>';
-    return `<td class="num">${pm(v, half)}${p.err === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : ''}</td>`;
+// One table cell for the party gain or the buyer's gain, in the rounds tables and the Best tables (the one helper for both columns). `seeds`: the
+// runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than FIGURE_MIN_SEEDS: a dim "—" and a hover text.
+function pmCell(v, half, t, seeds = null) {
+    if (Number.isFinite(seeds) && seeds < FIGURE_MIN_SEEDS) return `<td class="num whatif-dim" title="${esc(t('rounds.needsMoreRuns'))}">—</td>`;
+    return `<td class="num">${pm(v, half)}</td>`;
 }
 // One figure in a line of text: "no change", or "<value> ± <error>".
 const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + num(fit(se, se)));
@@ -326,7 +327,9 @@ export function renderRounds(round, t, names = null) {
         // The top leader's range width and the one a round earlier (the core's fields; a first round, or one with no range before, has no "was").
         const width = Number.isFinite(p.rangeWidth) ? ' · ' + (Number.isFinite(p.rangeWidthPrev) ? t('rounds.rangeWidthWas', { now: num(p.rangeWidth), before: num(p.rangeWidthPrev) }) : t('rounds.rangeWidth', { now: num(p.rangeWidth) })) : '';
         const counts = prov ? plural(t, 'rounds.poolSize', p.size, { n: p.size }) : t('rounds.poolCounts', { contending: p.contending, paused: p.paused });
-        const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: t(p.sortedBy === 'reading' ? 'col.partyGain' : p.sortedBy === 'buyerNet' ? 'col.buyerGain' : 'rounds.col.' + p.sortedBy) }) : '';
+        // A pool the core has not sorted yet (no row has enough runs for a figure; `sortedBy` null, the column it will sort by in `sortPending`) keeps the build order.
+        const colName = (c) => t(c === 'reading' ? 'col.partyGain' : c === 'buyerNet' ? 'col.buyerGain' : 'rounds.col.' + c);
+        const order = p.sortedBy ? ' · ' + t('rounds.sortedBy', { col: colName(p.sortedBy) }) : p.sortPending ? ' · ' + t('rounds.sortedByLater', { col: colName(p.sortPending) }) : '';
         const title = esc((owner ? who(owner) + ' · ' : '') + t('rounds.pool.' + kind) + ' · ' + counts) + width + esc(order);
         // A candidate ruled out is not listed (the heading counts it).
         const leaders = (p.leaders || []).filter((l) => l.status !== 'refuted');
@@ -351,8 +354,9 @@ export function renderRounds(round, t, names = null) {
             // One or two words that say what a user can do with the row; the counts and the internal state are the cell's tooltip (facts only).
             const sk = l.tooFew ? 'tooFew' : l.status, vals = { n: l.status === 'first' ? l.seeds : l.readingSeeds, more: Math.max(0, readingMin - (l.readingSeeds ?? 0)), min: readingMin };
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
+            const figSeeds = figureSeeds(l);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: formatNumber(l.searchHours), fresh: formatNumber(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}<td class="num">${l.tooFew ? '—' : pm(l.reading, halfOf(l.low, l.high)) + (halfOf(l.low, l.high) === null ? ` <span class="whatif-dim">${esc(t('rounds.noRange'))}</span>` : '')}</td><td class="num">${l.tooFew ? '—' : pm(l.buyerNet, halfOf(l.netLow, l.netHigh))}</td><td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap" title="${esc(statusTip)}">${esc(status)}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td class="wrap" title="${esc(statusTip)}">${esc(status)}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
@@ -520,10 +524,11 @@ export function bestBlock(result, t, names = null, running = false, floor = null
             else if (e.unchanged) nums = spanCell(t('result.noChange'));
             else if (e.soFar && e.tooFew) nums = spanCell(t('rounds.tooFew'));
             else if (e.soFar) {
-                nums = pmCell(e.gainPerUser, halfOf(e.low, e.high), t) + pmCell(e.buyerNet, halfOf(e.netLow, e.netHigh), t);
+                nums = pmCell(e.gainPerUser, halfOf(e.low, e.high), t, e.readingSeeds) + pmCell(e.buyerNet, halfOf(e.netLow, e.netHigh), t, e.readingSeeds);
             } else {
                 const [gain, gainSe] = reading(e.fresh, e, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(e.fresh, e, 'buyerNet', 'buyerNetSe');
-                nums = pmCell(gain, gainSe, t) + (Number.isFinite(net) ? pmCell(net, netSe, t) : '<td class="num">—</td>');
+                const seeds = e.fresh?.seeds ?? e.readingSeeds;
+                nums = pmCell(gain, gainSe, t, seeds) + (Number.isFinite(net) ? pmCell(net, netSe, t, seeds) : '<td class="num">—</td>');
                 if (Number.isFinite(net)) note = supplyNote({ sharedGainPerUser: gain, ownSuppliesByPlayer: { [p]: e.ownSuppliesPerDay } }, p, t, gainSe, floor);
             }
             return `<tr><td>${esc(p)}${few}</td>${cells}${nums}<td class="small">${note}</td></tr>`;

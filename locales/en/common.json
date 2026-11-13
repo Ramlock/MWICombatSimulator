@@ -293,11 +293,12 @@
             "poolSize": "{{n}} candidates",
             "poolSizeOne": "{{n}} candidate",
             "sortedBy": "sorted by {{col}}, best first",
+            "sortedByLater": "sorted by {{col}} once figures exist",
             "col": { "candidate": "Change", "cost": "Cost", "hours": "Hours simulated", "payback": "Payback days", "status": "Status" },
             "hoursTitle": "{{search}} h of search runs + {{fresh}} h of fresh runs",
             "status": { "contending": "still measuring", "contendingTip": "in the running; not yet checked on enough fresh runs", "paused": "set aside", "pausedTip": "comes back by itself if the leaders' ranges widen", "confirmed": "clear gain", "confirmedTip": "the range lies entirely above 0, checked on fresh runs", "few": "still measuring", "fewTip": "{{n}} fresh runs so far; {{more}} more before the range is final", "first": "still measuring", "firstTip": "first look, runs so far: {{n}}", "tooFew": "still measuring", "tooFewTip": "no fresh runs yet", "refuted": "ruled out", "refutedTip": "ruled out", "zero": "no clear change yet", "zeroTip": "not yet different from no change", "loses": "party loses loot", "losesTip": "the shared loot per user falls, even though the buyer's own gain is not clearly different from 0", "bestTip": "Best candidate so far: {{items}} ({{figures}}; fresh runs: {{n}})" },
             "tooFew": "no fresh runs yet",
-            "noRange": "no range yet",
+            "needsMoreRuns": "Needs more runs before a figure can be shown",
             "rangeWidth": "range width {{now}}",
             "rangeWidthWas": "range width {{now}} (was {{before}})",
             "none": "no leaders yet"
