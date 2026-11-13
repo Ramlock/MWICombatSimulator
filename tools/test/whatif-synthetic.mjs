@@ -31,7 +31,7 @@ check('scenario: generic names, no coin in any setup, a price snapshot with a ti
     const pool = createSyntheticPool(scenario), r = await pool.run({ variant: 'v', seed: 1, ops: [], checkpoints: [50, 300] });
     check('pool: answers { variant, seed, wallSeconds, checkpoints } with one checkpoint per hour asked; kill() makes it answer null', r.variant === 'v' && r.seed === 1 && r.checkpoints.map((c) => c.simHours).join() === '50,300' && (pool.kill(), await pool.run({ variant: 'v', seed: 2, ops: [], checkpoints: [50] })) === null);
     const body = applyScenarioToRequest({ goal: 'exp', options: { prices: 'x', zone: 'z' }, levers: ['all'] }, scenario);
-    check('request: the scenario\'s party, prices, budgets and levers replace the window\'s; the id follows the scenario', body.setups === scenario.players && body.options.marketplace === scenario.market && !('prices' in body.options) && body.options.zone === 'z' && body.goal === 'profit' && body.levers.join() === 'equip,consumables' && body.budgets === scenario.budgets && typeof body.synthetic === 'string');
+    check('request: the scenario\'s party, prices, budgets and levers replace the window\'s; the id follows the scenario', body.setups === scenario.players && body.options.marketplace === scenario.market && !('prices' in body.options) && body.options.zone === 'z' && body.goal === 'profit' && body.levers.join() === 'equip,foods,drinks' && body.budgets === scenario.budgets && typeof body.synthetic === 'string');
 }
 
 // ---- Part 1: the elimination rule on the scenario's true numbers ----
