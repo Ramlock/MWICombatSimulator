@@ -4148,12 +4148,14 @@ function whatIfKeptExport(name) {
     try { const text = localStorage.getItem(whatIfExportKey(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
-// A paste: a valid export replaces the kept one and the box is emptied; a bad one is not kept (it stays in the box,
-// and the status says so).
-function whatIfKeepExport(box) {
-    const parsed = whatIfParseExport(box.value);
+// Keeps one player's character export under the player's name (browser storage), then redraws the status and the two boxes.
+// The one function a paste and a party import both end in. `data`: the export object, or its text (a paste); a valid one replaces
+// the kept one (and empties `box`, the paste field, when given); a bad one is not kept (a pasted one stays in the box, and the
+// status says so).
+function whatIfKeepExport(name, data, box = null) {
+    const parsed = whatIfParseExport(typeof data === 'string' ? data : JSON.stringify(data));
     if (parsed.ok) {
-        try { localStorage.setItem(whatIfExportKey(box.dataset.player), JSON.stringify(parsed.data)); box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+        try { localStorage.setItem(whatIfExportKey(name), JSON.stringify(parsed.data)); if (box) box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
     }
     whatIfShowExportStatus();
     whatIfApplyExportLevers();
@@ -4226,7 +4228,7 @@ function whatIfRenderSetup() {
         paste.dataset.player = slot.name;
         paste.placeholder = whatIfT('exportLabel');
         paste.value = pasted[slot.name] ?? '';
-        paste.addEventListener('input', () => whatIfKeepExport(paste));
+        paste.addEventListener('input', () => whatIfKeepExport(paste.dataset.player, paste.value, paste));
         const status = document.createElement('div');
         status.className = 'small whatif-dim whatif-pstatus';
         status.dataset.exportStatus = slot.name;
@@ -4291,10 +4293,14 @@ function whatIfShowResult(result, running = false) {
     whatIf.resultRunning = running;
     box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
     for (const id of open) {
-        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more="${id}"]`);
+        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more~="${id}"]`);
         if (body) body.hidden = false;
         if (toggle) toggle.textContent = toggle.dataset.hide;
     }
+    // The search rounds sit under the result but open and close with its "See details" toggle (data-whatif-more lists both ids); with no toggle
+    // (no result yet) they show.
+    const details = document.getElementById('whatIfDetails');
+    document.getElementById('whatIfRounds').hidden = !!box.querySelector('[data-whatif-more~="whatIfRounds"]') && (!details || details.hidden);
     alignNumbers();
     whatIfShowDiff();
 }
@@ -4491,9 +4497,11 @@ async function initWhatIf() {
         if (button) whatIfApply(button.dataset.whatifApply);
         const more = event.target.closest('[data-whatif-more]');
         if (more) {
-            const body = document.getElementById(more.dataset.whatifMore);
-            body.hidden = !body.hidden;
-            more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
+            // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
+            const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
+            const hide = !bodies[0].hidden;
+            for (const body of bodies) body.hidden = hide;
+            more.textContent = hide ? more.dataset.show : more.dataset.hide;
         }
     });
     i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
@@ -4515,8 +4523,9 @@ function initImportExportModal() {
     let importSetButton = document.getElementById("buttonImportSet");
     importSetButton.addEventListener("click", (event) => {
         const activeTab = document.querySelector('#importTab .nav-link.active');
+        let ownExports = {};
         if (activeTab.id === 'group-combat-tab') {
-            doGroupImport();
+            ownExports = doGroupImport();
         } else if (activeTab.id === 'solo-tab') {
             doSoloImport();
         }
@@ -4524,6 +4533,7 @@ function initImportExportModal() {
         updateState();
         updateUI();
         saveImportedGroup();
+        whatIfKeepImportedExports(ownExports);
         resetImportInputs();
         // A successful import closes the popup (a failed one threw above: the popup stays open with the error and the pasted text).
         bootstrap.Modal.getOrCreateInstance(document.getElementById("importExportModal")).hide();
@@ -4682,10 +4692,22 @@ function doGroupImport() {
         importGroupSlots(groupFromPlayerBoxes());
     } else {
         // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
-        const { slots: importMap, selected, fight } = splitGroupImport(JSON.parse(value));
+        const { slots: importMap, selected, fight, exports } = splitGroupImport(JSON.parse(value));
         importGroupSlots(importMap);
         const applied = applyGroupSelection(document, { selected, fight });
         if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
+        return exports;
+    }
+    return {};
+}
+
+// The own character's export an import carried (slot id -> export, from doGroupImport) goes to the What-if window's kept exports,
+// through the same function a paste ends in, under the name the window shows that player by (so after applySlotNames).
+function whatIfKeepImportedExports(exports) {
+    const names = whatIfPlayerNames();
+    for (const id of Object.keys(exports || {})) {
+        const name = names[Number(id) - 1];
+        if (name) whatIfKeepExport(name, exports[id]);
     }
 }
 

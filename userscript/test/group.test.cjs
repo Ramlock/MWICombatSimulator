@@ -11,7 +11,7 @@ const client = {
 const self = {
     type: 'init_character_data', character: { id: 10, name: 'SelfName' },
     characterSkills: [{ skillHrid: '/skills/attack', level: 50 }, { skillHrid: '/skills/stamina', level: 60 }],
-    characterItems: [{ itemLocationHrid: '/item_locations/head', itemHrid: '/items/hat', enhancementLevel: 2 }, { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/junk', count: 5 }],
+    characterItems: [{ itemLocationHrid: '/item_locations/head', itemHrid: '/items/hat', enhancementLevel: 2 }, { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/junk', count: 5 }, { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/coin', count: 77 }],
     actionTypeFoodSlotsMap: { [COMBAT]: [{ itemHrid: '/items/snack_one' }] }, actionTypeDrinkSlotsMap: { [COMBAT]: [{ itemHrid: '/items/tonic_one' }] },
     combatUnit: { combatAbilities: [{ abilityHrid: '/abilities/x', level: 5 }, { abilityHrid: '/abilities/aura_a', level: 7 }] },
     abilityCombatTriggersMap: { '/abilities/x': [{ t: 1 }] }, consumableCombatTriggersMap: { '/items/snack_one': [{ t: 2 }] },
@@ -39,7 +39,7 @@ let n = 0;
 function test(name, fn) { fn(); n++; console.log('ok - ' + name); }
 const ctx = (extra) => ({ characterObj: self, clientObj: client, toggles: {}, members: trimBattle(battle), profiles: [], ...extra });
 
-test('slots follow the battle order, self is built like the character export without inventory, coin and learned abilities', () => {
+test('slots follow the battle order, self is built like the character export without inventory, coin and learned abilities (clipboard copy)', () => {
     const r = buildGroupExport(ctx());
     assert.deepEqual(r.slots.map((s) => [s.slot, s.name, s.self]), [[1, 'Bravo', false], [2, 'SelfName', true], [3, 'Charlie', false]]);
     assert.deepEqual(Object.keys(r.group), ['1', '2', '3']);
@@ -47,6 +47,23 @@ test('slots follow the battle order, self is built like the character export wit
     assert.deepEqual(own, ref);
     assert.ok(!('inventory' in own) && !('coin' in own) && !('learnedAbilities' in own));
     assert.deepEqual(r.slots[1].missing, []);
+});
+
+test('the snapshot (ownExport): own slot also has inventory and learned abilities as the character export writes them, no coin; others have none', () => {
+    const r = buildGroupExport(ctx({ ownExport: true }));
+    const own = r.group['2'], full = buildExport(self, client, { coin: false });
+    assert.deepEqual(own, full);
+    assert.deepEqual(own.inventory, [{ itemHrid: '/items/junk', enhancementLevel: 0, count: 5 }]);
+    assert.deepEqual(own.learnedAbilities, [{ abilityHrid: '/abilities/x', level: 5, experience: 9 }]);
+    assert.ok(!('coin' in own));
+    for (const k of ['1', '3']) for (const f of ['inventory', 'learnedAbilities', 'coin']) assert.ok(!(f in r.group[k]), k + ' has no ' + f);
+    assert.deepEqual(r.slots[1].have, buildGroupExport(ctx()).slots[1].have, 'have and missing do not change');
+    assert.deepEqual(r.slots[1].missing, []);
+});
+
+test('the snapshot keeps the character export switches: inventory off leaves it out', () => {
+    const own = buildGroupExport(ctx({ ownExport: true, toggles: { inventory: false } })).group['2'];
+    assert.ok(!('inventory' in own) && Array.isArray(own.learnedAbilities));
 });
 
 test('another player: abilities, food and drinks from the battle; nothing else is invented', () => {

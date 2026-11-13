@@ -28,6 +28,18 @@ const odd = splitGroupImport({ 1: slot, selected: [1, 1, 7, 'x', '2'], fight: [1
 check('split: duplicates, out-of-range and junk are dropped; a non-object fight is ignored', same(odd.selected, [1, 2]) && odd.fight === null);
 check('split: selected that is not a list is ignored', splitGroupImport({ selected: 'all' }).selected === null);
 
+// The own character's export fields (userscript 0.9.3's snapshot) come out of the slot and into `exports`
+const ownSlot = { name: 'Ayla', player: { attackLevel: 1 }, inventory: [{ itemHrid: '/items/x', enhancementLevel: 0, count: 2 }], learnedAbilities: [{ abilityHrid: '/abilities/y', level: 1, experience: 0 }] };
+const own = splitGroupImport({ 1: ownSlot, 2: slot, selected: [1, 2] });
+check('split: the export fields leave the slot (the rest of it untouched, in order) and come out per slot id with the name', same(own.slots['1'], { name: 'Ayla', player: { attackLevel: 1 } }) && same(Object.keys(own.exports), ['1']) && same(own.exports['1'], { name: 'Ayla', inventory: ownSlot.inventory, learnedAbilities: ownSlot.learnedAbilities }));
+check('split: a slot without them is the same value and has no export', own.slots['2'] === slot && !('2' in own.exports) && same(own.selected, [1, 2]));
+check('split: an older paste has no exports', same(none.exports, {}));
+const ownText = splitGroupImport({ 1: JSON.stringify(ownSlot), 2: JSON.stringify(slot) });
+check('split: a slot given as text is cut the same way; one without the fields stays the very same text', ownText.slots['1'] === JSON.stringify({ name: 'Ayla', player: { attackLevel: 1 } }) && ownText.slots['2'] === JSON.stringify(slot) && same(Object.keys(ownText.exports), ['1']));
+const onlyAbil = splitGroupImport({ 1: { name: 'Ayla', learnedAbilities: [], inventory: 'junk' } });
+check('split: one list is enough; a field that is not a list is dropped from the slot and kept nowhere', same(onlyAbil.exports['1'], { name: 'Ayla', learnedAbilities: [] }) && !('inventory' in onlyAbil.slots['1']));
+check('split: a slot that is not an object passes through', splitGroupImport({ 1: 'not json' }).slots['1'] === 'not json' && same(splitGroupImport({ 1: null }).exports, {}));
+
 // The userscript's Copy group output goes back through the page's paste
 import { createRequire } from 'node:module';
 const { groupWithSelection } = createRequire(import.meta.url)('../../userscript/mwics-exporter.user.js');

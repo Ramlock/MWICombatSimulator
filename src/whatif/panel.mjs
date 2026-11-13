@@ -237,16 +237,19 @@ const fill = (t, key, params) => t(key, params);
 const plural = (t, key, n, params) => t(Number(n) === 1 ? key + 'One' : key, params);
 // A part's key (the buttons' data-whatif-part, and the pressed button main.js keeps): the same part keeps the same key across polls.
 export const partKey = (r) => r.kind + ':' + (r.index ?? 0);
+// The name of a greedy-step race by the change it looks for: the screen is the race for change 1 (progress.partScreen), the race of
+// "greedy step n" (the search's stage name, tools/whatif/core.mjs) runs after change n and looks for change n + 1. The one place the +1 is made.
+const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 });
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
 // lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Accept ends the stage after the round it is in,
 // with its pick as it is; Skip ends it at once. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn, both buttons disabled
 // (the second press would change the first), and Accept's note says the round is being finished (Skip ends at once: no note). The state is in the
 // markup, so the redraw of the next poll gives the same button.
-function stageButtons(t, label, acceptable, key, pressed) {
+function stageButtons(t, acceptable, key, pressed) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
     const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done ? ' disabled' : ''}>${esc(text)}</button>`;
     const note = done === 'accept' ? ` <span class="whatif-dim small" data-whatif-note="accept">${esc(t('progress.stageFinishing'))}</span>` : '';
-    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip', { stage: label }), 'progress.stageSkipTip') + note;
+    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip') + note;
 }
 export function renderParts(status, t, pressed = null) {
     const p = status.progress || {}, parts = p.parts;
@@ -262,7 +265,7 @@ export function renderParts(status, t, pressed = null) {
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
             : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
             : r.kind === 'picks' ? t('progress.partPicks')
-            : r.kind === 'step' ? t('progress.partStep', { n: r.index })
+            : r.kind === 'step' ? stepLabel(t, r.index)
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
             : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
         // A part of a race stage (it carries `round`) has no total known in advance, so it has no filling bar (a bar only ever moves forward):
@@ -274,9 +277,13 @@ export function renderParts(status, t, pressed = null) {
         const phase = r.phase === 'reading' ? t('progress.phaseReading') : t('progress.phaseSearch');
         // The pool nearest to ending (two or three changes standing): the rounds it still needs to separate, after the still-in-the-running count of the stage that runs.
         const separate = race && r.separate ? ' · ' + (r.separate.rounds === null ? t('progress.separateFar') : plural(t, 'progress.separateRounds', r.separate.rounds, { n: num(r.separate.rounds) })) : '';
-        const left = rounded ? ' · ' + fill(t, 'progress.stageLabel', { separate, round: t(r.state === 'running' ? 'rounds.roundRunning' : r.state === 'halted' ? 'rounds.roundStopped' : r.skipped ? 'rounds.roundSkipped' : 'rounds.roundFinished', { n: num(r.round) }), phase: r.state === 'running' ? ' · ' + esc(phase) : '', contending: num(r.contending), paused: num(r.paused) })
-            : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + plural(t, 'progress.optionsLeft', r.candidatesLeft, { n: num(r.candidatesLeft) }) : '';
-        const counters = rounded ? fill(t, 'progress.stageCounters', { runs: plural(t, 'progress.runsCount', r.runs, { n: num(r.runs) }), hours: plural(t, 'progress.hoursCount', r.simHours, { n: num(r.simHours) }), dropped: num(r.dropped) }) : '';
+        // A race stage is ONE line: its name, how it stands, then its counts. A count of 0, "done" (the tick says it) and "round 1" of a stage
+        // that had a single round are left out; a running stage keeps its live counts on the same line (it wraps, never scrolls sideways).
+        const count = (key, n) => (Number(n) > 0 ? plural(t, key, n, { n: num(n) }) : '');
+        const stand = !rounded ? '' : r.state === 'running' ? t('rounds.roundRunning', { n: num(r.round) }) : r.state === 'halted' ? t('rounds.roundStopped', { n: num(r.round) })
+            : r.skipped ? (Number(r.round) <= 1 ? esc(t('progress.endedByYou')) : t('rounds.roundSkipped', { n: num(r.round) })) : Number(r.round) <= 1 ? '' : t('rounds.roundFinished', { n: num(r.round) });
+        const raceLine = !rounded ? '' : [stand, race ? esc(phase) : '', count('progress.runsCount', r.runs), count('progress.hoursCount', r.simHours), count('progress.contendingCount', r.contending), separate.replace(/^ · /, ''), count('progress.pausedCount', r.paused), count('progress.droppedCount', r.dropped)].filter(Boolean).join(' · ');
+        const left = rounded ? '' : (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? ' · ' + plural(t, 'progress.optionsLeft', r.candidatesLeft, { n: num(r.candidatesLeft) }) : '';
         // The picks part of a search whose picks were all left out inside a race (no pick reached the check on fresh runs, so it counted no runs): done, with none confirmed.
         const noneConfirmed = r.state === 'done' && r.kind === 'picks' && !(r.runsPlanned > 0) && r.leftOut > 0;
         let text = '', cls;
@@ -287,12 +294,13 @@ export function renderParts(status, t, pressed = null) {
             // The total is the stage's so far (it grows as the next player's check plans his own arm), so the row names whose check it is: "player N of M".
             const runs = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
             const checking = r.checking ? (r.checkWho ? fill(t, 'progress.checkingPicksOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs }) : fill(t, 'progress.checkingPicks', { runs })) : null;
-            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : (rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + (checking ?? esc(t('progress.done')));
+            // A done row says no "done": the tick says it. A race stage's counts are on its one line already.
+            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : rounded ? (checking ?? '') : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) }) + (checking ? ' · ' + checking : '');
             cls = checking ? 'running' : 'done';
         }
         else if (r.state === 'skipped') { text = esc(t(r.kind === 'confirmation' ? 'progress.skippedNoStep' : 'progress.skippedNoPick')); cls = 'skipped'; } // a part of a finished search that never started (progress.mjs)
-        else if (r.state === 'halted') { text = rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'halted'; } // the part that was running when the search stopped (or failed): its figures, no running mark
-        else if (rounded) { cls = 'running'; } // a race stage's counters follow its status text on the stage's own line (below), not a line of their own
+        else if (r.state === 'halted') { text = rounded ? '' : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) }); cls = 'halted'; } // the part that was running when the search stopped (or failed): its figures, no running mark
+        else if (rounded) { cls = 'running'; } // a race stage's counts are on its one line
         else {
             text = plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsDone), total: num(r.runsPlanned) });
             if (r.etaSeconds !== null && r.etaSeconds !== undefined) text += ' · ' + esc(t('progress.timeLeft', { time: duration(r.etaSeconds) }));
@@ -304,7 +312,7 @@ export function renderParts(status, t, pressed = null) {
         // A race stage's row in any state (running, done, halted) has no bar and wraps like the running one: its status text is long, and a
         // done row's grid columns cut it and pushed its figures past the window edge.
         const bar = rounded || cls === 'skipped' || noneConfirmed ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
-        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + stageButtons(t, label, r.acceptable, partKey(r), pressed) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
+        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${raceLine ? ' · ' + raceLine : ''}${rounded && text ? ' · ' + text : ''}${race ? ' ' + stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</span>${bar}${rounded ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
@@ -530,8 +538,11 @@ export function bestBlock(result, t, names = null, running = false, floor = null
     // its range in place of the error (one reading seed: "no range yet"), and a "few seeds (n)" note while it has fewer than --reading-min seeds.
     const table = (kind, label) => {
         const per = best[kind] || {};
-        const who = Object.keys(per);
-        if (!who.length) return '';
+        const all = Object.keys(per);
+        if (!all.length) return '';
+        // A player the search left alone (the final's "no change", not a so-far leader that carries a status) has no row: his row holds no
+        // information. When every player is that, the table is one line: the heading, "no change" and the stage note.
+        const who = all.filter((p) => !(per[p].unchanged && !(per[p].soFar && per[p].unclear)));
         const slots = Math.max(1, ...who.map((p) => Math.max(per[p].slots ?? 0, ...(per[p].items || []).map((x, k) => (x.slot ?? k) + 1))));
         const rows = who.map((p) => {
             const e = per[p], items = e.items || [];
@@ -573,6 +584,7 @@ export function bestBlock(result, t, names = null, running = false, floor = null
         // A stage the user has ended no longer reads "so far": it says "ended by you after round N" alone (its pick check shows on its progress row).
         const soFar = (endedRound === undefined && who.some((p) => per[p].soFar) ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : '')
             + (endedRound !== undefined ? ` <span class="text-secondary fw-normal small" data-ended="${kind}">· ${esc(endedText(t, endedRound, result.endedBySkip?.[kind]))}</span>` : '');
+        if (!who.length) return `<div class="mt-2" data-best="${kind}" data-best-none><span class="fw-bold">${esc(label)}:</span> ${esc(t('result.noChange'))}${soFar}</div>`;
         const head = `<th>${esc(t('col.player'))}</th>` + Array.from({ length: slots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') + colHead(t) + '<th></th>';
         // The search picks on its own runs and the rounds table orders by the fresh ones: when a player's pick is not the table's first row, one line says so.
         const pickNote = who.some((p) => per[p].soFar && per[p].notFirst) ? `<div class="small text-secondary" data-best-note="${kind}">${esc(t('result.pickNote'))}</div>` : '';
@@ -585,14 +597,21 @@ export function bestBlock(result, t, names = null, running = false, floor = null
     const baseline = running && (!(foods && drinks) || anySoFar) ? '' : `<div class="small text-secondary mt-1">${esc(t('result.bestBaseline'))}</div>`;
     return `<div class="whatif-best">${foods}${drinks}${baseline}</div>`;
 }
-// A closed list: a bold heading with a small note, one toggle link, and the items (html of <li>s) hidden behind it. The over-budget,
-// pays-back-too-slowly and not-confirmed lists are this one renderer; `key` names their locale keys: <key>, <key>Note, <key>Show, <key>Hide.
+// The one line of every detail list: its bold heading (html), its small grey note (html, may be '') and, at the right end of the same line, the toggle
+// that opens the body with id `id` (none when `id` is null: a heading with nothing to open). `show` / `hide` are the toggle's two texts (plain).
+function foldLine(id, heading, note, show, hide) {
+    const toggle = id ? `<button type="button" class="btn btn-link btn-sm p-0 whatif-fold" data-whatif-more="${id}" data-show="${esc(show)}" data-hide="${esc(hide)}">${esc(show)}</button>` : '';
+    return `<div class="whatif-fold-line"><span class="fw-bold">${heading}</span>${note ? `<span class="text-secondary small">${note}</span>` : ''}${toggle}</div>`;
+}
+// A closed list: its fold line and the items (html of <li>s) hidden behind it. The over-budget, pays-back-too-slowly, left-out, not-confirmed and
+// unknown-cost lists are this one renderer; `key` names their locale keys: <key>, <key>Note, <key>Show, <key>Hide.
 function closedList(key, id, items, note, t) {
     const n = items.length;
-    return `<div class="fw-bold mt-3">${esc(t('result.' + key))} <span class="text-secondary fw-normal small">${esc(t('result.' + key + 'Note', { n, ...note }))}</span></div>` +
-        `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="${id}" data-show="${esc(t('result.' + key + 'Show', { n }))}" data-hide="${esc(t('result.' + key + 'Hide', { n }))}">${esc(t('result.' + key + 'Show', { n }))}</button>` +
+    return foldLine(id, esc(t('result.' + key)), esc(t('result.' + key + 'Note', { n, ...note })), t('result.' + key + 'Show', { n }), t('result.' + key + 'Hide', { n })) +
         `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 }
+// A count line (the skipped swaps, the players skipped for want of an export): the same fold line, Show / Hide, its list behind it.
+const countList = (heading, id, items, t) => foldLine(id, esc(heading), '', t('result.dominatedShow'), t('result.dominatedHide')) + `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 // The one renderer of every list the window draws as a table: with no row it is ONE grey line ("None."), never a header row over nothing and never a label
 // of its own. `table` makes the whole table's html, called only when there are rows.
 function listTable(t, count, table) {
@@ -621,7 +640,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (zone) L.push(`<div class="mb-2">${zone}</div>`);
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
-    if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
+    if (prices) L.push(`<div class="mb-2 small whatif-warn" data-prices-stale>${prices}</div>`);
     const goalExp = result.goal === 'exp';
     // The size floor of the "no change" rule, worked out once here and passed down to every figure with an error.
     const floor = Number.isFinite(result.basePerUser) ? result.basePerUser / 10000 : null;
@@ -631,7 +650,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
     if (!running || result.steps?.length) L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     for (const [stage, n] of endedStages) {
-        const m = /^greedy step (\d+)$/.exec(stage), name = m ? t('progress.partStep', { n: m[1] }) : stage === 'screen' ? t('progress.partScreen') : stage;
+        const m = /^greedy step (\d+)$/.exec(stage), name = m ? stepLabel(t, Number(m[1])) : stage === 'screen' ? t('progress.partScreen') : stage;
         L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
     }
     if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
@@ -669,12 +688,14 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     }
     const hiddenRow = (s) => s.hiddenFood || s.hiddenAlt; // hiddenFood: a food row the search left out (one per player); hiddenAlt: another value of a setting a kept row already changes (one row per setting)
     const anySingles = (result.singles || []).some((s) => !hiddenRow(s));
-    if (!running || anySingles) L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
+    // Everything below is detail: it sits closed behind one "See details" toggle (each list still closed on its own under it).
+    const D = [];
+    const singlesNote = esc(t('result.singlesNote'));
     // With a round table (the race has run and the first figures exist) a change is counted as not measured only for want of the reading minimum:
     // the line says how many were searched and that none is checked on that many fresh runs yet, not that none was measured.
     const readMin = result.round?.readingMin;
     const yet = Number.isFinite(readMin) && readMin > 0 && result.singlesNotShown > 0;
-    if (!result.singles?.length) { if (!running) L.push(`<div class="text-secondary">${yet ? plural(t, 'result.noSinglesYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : esc(t('result.noSingles'))}</div>`); }
+    if (!result.singles?.length) { if (!running) D.push(foldLine(null, esc(t('result.singles')), singlesNote) + `<div class="text-secondary">${yet ? plural(t, 'result.noSinglesYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : esc(t('result.noSingles'))}</div>`); }
     else if (running && !anySingles) { /* only the foods and drinks fillings are in so far: they are not a table */ }
     else {
         const eachHead = '<thead><tr>' + [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>';
@@ -692,19 +713,24 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // accepted, in a table of their own (hidden whole, header included), so that no header stands over an empty list.
         const weakBody = '<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>';
         const eachTable = (inner, attrs = '') => `<table class="table table-sm whatif-table whatif-each"${attrs}>${eachHead}${inner}</table>`;
-        L.push(listTable(t, accepted.length, () => eachTable('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>' + (weak.length ? weakBody : ''))));
-        if (!accepted.length && weak.length) L.push(`<table class="table table-sm whatif-table whatif-each" id="whatIfMoreSingles" hidden>${eachHead}<tbody class="whatif-more">${weak.map(([s, i]) => row(s, i)).join('')}</tbody></table>`);
-        if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
+        // The whole table (its accepted rows, its grey rows and their own toggle) sits closed behind one toggle under the heading, as the closed lists below do;
+        // the toggle shows the count of rows in it (result.eachShow / eachHide).
+        const eachCount = rows.length;
+        D.push(foldLine('whatIfEachChange', esc(t('result.singles')), singlesNote, t('result.eachShow', { n: eachCount }), t('result.eachHide', { n: eachCount })) + '<div class="whatif-more" id="whatIfEachChange" hidden>');
+        D.push(listTable(t, accepted.length, () => eachTable('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>' + (weak.length ? weakBody : ''))));
+        if (!accepted.length && weak.length) D.push(`<table class="table table-sm whatif-table whatif-each" id="whatIfMoreSingles" hidden>${eachHead}<tbody class="whatif-more">${weak.map(([s, i]) => row(s, i)).join('')}</tbody></table>`);
+        if (weak.length) D.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
+        D.push('</div>');
     }
-    if (result.singlesNotShown > 0 && (anySingles || !running)) L.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
+    if (result.singlesNotShown > 0 && (anySingles || !running)) D.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
-        L.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`), {}, t));
+        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`), {}, t));
     }
     if (result.overPayback?.length) {
         // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
         const days = (a) => (Number.isFinite(a.paybackDays) ? t('result.overPaybackDays', { days: num(a.paybackDays) }) : esc(t('result.overPaybackNever')));
-        L.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}, ${days(a)}</li>`), { days: formatNumber(result.options?.maxPaybackDays) }, t));
+        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}, ${days(a)}</li>`), { days: formatNumber(result.options?.maxPaybackDays) }, t));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
@@ -720,34 +746,21 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             return `<li>${esc(a.player)}, ${shown(a)}: ${text}</li>`;
         };
         const inRace = result.notConfirmed.filter((a) => a.inRace), confirmed = result.notConfirmed.filter((a) => !a.inRace);
-        if (inRace.length) L.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t));
-        if (confirmed.length) L.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t));
+        if (inRace.length) D.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t));
+        if (confirmed.length) D.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t));
     }
-    if (result.dominated?.length) {
-        // One line with the count and its toggle; the swaps the search skipped (no better on any stat) sit closed behind it.
-        L.push(`<div class="mt-3"><span class="fw-bold">${esc(plural(t, 'result.dominated', result.dominated.length, { n: result.dominated.length }))}</span> ` +
-            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfDominated" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
-            '<ul class="small whatif-more" id="whatIfDominated" hidden>' +
-            result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
-    }
-    if (result.otherStyle?.length) {
-        // The swaps to gear whose only bonuses are another combat style's or element's (the search never offers them): same fold.
-        L.push(`<div class="mt-3"><span class="fw-bold">${esc(plural(t, 'result.otherStyle', result.otherStyle.length, { n: result.otherStyle.length }))}</span> ` +
-            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfOtherStyle" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
-            '<ul class="small whatif-more" id="whatIfOtherStyle" hidden>' +
-            result.otherStyle.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`).join('') + '</ul>');
-    }
+    // The swaps the search skipped (no better on any stat; only another style's bonuses) and the players the export levers skipped: one count line each.
+    if (result.dominated?.length) D.push(countList(plural(t, 'result.dominated', result.dominated.length, { n: result.dominated.length }), 'whatIfDominated', result.dominated.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`), t));
+    if (result.otherStyle?.length) D.push(countList(plural(t, 'result.otherStyle', result.otherStyle.length, { n: result.otherStyle.length }), 'whatIfOtherStyle', result.otherStyle.map((a) => `<li>${esc(a.player)}, ${shown(a)}</li>`), t));
     if (result.skippedNoExport?.length) {
-        // One folded line: the players the levers that need a character export skipped; the list sits closed behind it.
         const lever = (g) => t('lever.' + g.lever + '.name');
         const n = new Set(result.skippedNoExport.flatMap((g) => g.players)).size;
-        L.push(`<div class="mt-3"><span class="fw-bold">${esc(plural(t, 'result.skippedNoExport', n, { n, levers: result.skippedNoExport.map(lever).join(', ') }))}</span> ` +
-            `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-whatif-more="whatIfSkippedNoExport" data-show="${esc(t('result.dominatedShow'))}" data-hide="${esc(t('result.dominatedHide'))}">${esc(t('result.dominatedShow'))}</button></div>` +
-            '<ul class="small whatif-more" id="whatIfSkippedNoExport" hidden>' +
-            result.skippedNoExport.map((g) => `<li>${esc(lever(g))}: ${esc(g.players.join(', '))}</li>`).join('') + '</ul>');
+        D.push(countList(plural(t, 'result.skippedNoExport', n, { n, levers: result.skippedNoExport.map(lever).join(', ') }), 'whatIfSkippedNoExport', result.skippedNoExport.map((g) => `<li>${esc(lever(g))}: ${esc(g.players.join(', '))}</li>`), t));
     }
-    if (result.apart?.length) L.push(closedList('apart', 'whatIfApart', result.apart.map((a) => `<li>${shown(a)}: ${esc(a.note)}</li>`), {}, t));
-    if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) L.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    if (result.apart?.length) D.push(closedList('apart', 'whatIfApart', result.apart.map((a) => `<li>${shown(a)}: ${esc(a.note)}</li>`), {}, t));
+    if ((result.steps || []).some(upper) || (result.singles || []).some(upper) || (result.overBudget || []).some(upper)) D.push(`<div class="small text-secondary">${esc(t('result.upperNote'))}</div>`);
+    // The "See details" toggle opens the details and the search rounds (#whatIfRounds, drawn by main.js under the result) together.
+    if (D.length || result.round || running) L.push(`<div class="whatif-details-line">${foldLine('whatIfDetails whatIfRounds', '', '', t('result.detailsShow'), t('result.detailsHide'))}</div><div class="whatif-more whatif-details" id="whatIfDetails" hidden>${D.join('')}</div>`);
     return L.join('');
 }
 
@@ -767,12 +780,16 @@ export function zoneLine(result, t, names) {
 
 // The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`
 // (a clock reading of that field, as duration() is); "committed file" when the request carried no snapshot.
+// Only a stale-prices warning (the caller draws it in the warning colour): a market snapshot under STALE_PRICES_SECONDS old
+// when shown has no line; one of that age or older has it; the simulator's own saved snapshot always has it.
+export const STALE_PRICES_SECONDS = 24 * 3600;
 export function pricesLine(result, t, now = Date.now()) {
     const ts = result?.options?.pricesTimestamp;
     if (!Number.isFinite(ts)) return '';
+    const elapsed = (now / 1000) - ts, committed = result.options.pricesSource === 'committed';
+    if (!committed && elapsed < STALE_PRICES_SECONDS) return '';
     const when = new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-    const key = result.options.pricesSource === 'committed' ? 'result.pricesCommitted' : 'result.pricesSnapshot';
-    return esc(t(key, { when, elapsed: age((now / 1000) - ts, t) }));
+    return esc(t(committed ? 'result.pricesCommitted' : 'result.pricesSnapshot', { when, elapsed: age(elapsed, t) }));
 }
 // Seconds as the largest whole unit (days, hours or minutes).
 export function age(s, t) {
