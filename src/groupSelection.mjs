@@ -5,14 +5,38 @@
 
 const SLOT_COUNT = 5;
 
-// Splits a pasted group object into the slot map and the selection. The slot map never contains the two selection keys.
+// The own character's export fields a party import may carry in its slot (the userscript's character export writes the same two).
+// They are for the What-if window's kept export, never for the sim slot.
+export const OWN_EXPORT_FIELDS = ['inventory', 'learnedAbilities'];
+
+// Takes OWN_EXPORT_FIELDS out of one slot (an object, or the JSON text of one). Returns the slot without them (the very same value
+// when it carried none) and the export they make up (the slot's name beside them, as a character export has it), or null.
+function takeOwnExport(slot) {
+    let obj = slot;
+    if (typeof slot === 'string') { try { obj = JSON.parse(slot); } catch (e) { return { slot, exported: null }; } }
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { slot, exported: null };
+    const found = OWN_EXPORT_FIELDS.filter((k) => Array.isArray(obj[k]));
+    if (!found.length) return { slot, exported: null };
+    const exported = {};
+    if (obj.name) exported.name = obj.name;
+    const rest = {};
+    for (const k of Object.keys(obj)) { if (OWN_EXPORT_FIELDS.includes(k)) { if (Array.isArray(obj[k])) exported[k] = obj[k]; } else rest[k] = obj[k]; }
+    return { slot: typeof slot === 'string' ? JSON.stringify(rest) : rest, exported };
+}
+
+// Splits a pasted group object into the slot map, the selection and the own exports (slot id -> export). The slot map never
+// contains the two selection keys, nor the own export fields: the sim's slots are what they were without them.
 export function splitGroupImport(importMap) {
-    const slots = {};
+    const slots = {}, exports = {};
     let selected = null, fight = null;
     for (const key of Object.keys(importMap || {})) {
         if (key === 'selected') selected = importMap[key];
         else if (key === 'fight') fight = importMap[key];
-        else slots[key] = importMap[key];
+        else {
+            const t = takeOwnExport(importMap[key]);
+            slots[key] = t.slot;
+            if (t.exported) exports[key] = t.exported;
+        }
     }
     if (Array.isArray(selected)) {
         const seen = new Set();
@@ -21,7 +45,7 @@ export function splitGroupImport(importMap) {
         selected = null;
     }
     if (!fight || typeof fight !== 'object' || Array.isArray(fight)) fight = null;
-    return { slots, selected, fight };
+    return { slots, selected, fight, exports };
 }
 
 const offers = (select, value) => !!select && Array.from(select.options || []).some((o) => o.value === value && !o.disabled);
