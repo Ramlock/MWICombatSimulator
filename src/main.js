@@ -33,6 +33,7 @@ import { profitPerDay, mapKey } from "./xpChart.mjs";
 import { unitPrice } from "./unitPrice.mjs";
 import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
+import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView } from "./whatif/panel.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
@@ -2905,6 +2906,29 @@ function createElement(tagName, className, innerHTML = "", id = "") {
 
 // #region Simulation Controls
 
+// The labels that copy a player tab's text (the Select Players boxes).
+function updatePlayerNames() {
+    const tabLinks = document.querySelectorAll('#playerTab .nav-link');
+    tabLinks.forEach((tabLink, index) => {
+        const label = document.querySelectorAll(`label[for="player${index + 1}"]`);
+        if (label) {
+            label.forEach((l) => {
+                l.textContent = tabLink.textContent.trim();
+            });
+        }
+    });
+}
+
+// Every import path ends here: each player tab, and every label that copies it, shows the character name its slot carries
+// (src/slotNames.mjs: a name two slots share, or none, leaves the tab's text). The What-if window and search read the same names.
+function applySlotNames() {
+    const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
+    const names = uniqueSlotNames(tabs.map((_, i) => playerDataMap[i + 1]));
+    // A tab is written once per name: its own edit after that stays until the slot's name changes.
+    tabs.forEach((tab, i) => { if (names[i] && tab.dataset.slotName !== names[i]) { tab.textContent = names[i]; tab.dataset.slotName = names[i]; } });
+    updatePlayerNames();
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const simDungeonToggle = document.getElementById('simDungeonToggle');
     const playerContainer = document.getElementById('playerCheckBox');
@@ -2920,18 +2944,6 @@ document.addEventListener('DOMContentLoaded', function () {
     function removePlayers() {
         player4Input.parentElement.style.display = 'none';
         player5Input.parentElement.style.display = 'none';
-    }
-
-    function updatePlayerNames() {
-        const tabLinks = document.querySelectorAll('#playerTab .nav-link');
-        tabLinks.forEach((tabLink, index) => {
-            const label = document.querySelectorAll(`label[for="player${index + 1}"]`);
-            if (label) {
-                label.forEach((l) => {
-                    l.textContent = tabLink.textContent.trim();
-                });
-            }
-        });
     }
 
     function updatePlayersCheckbox(isCheck) {
@@ -4079,10 +4091,7 @@ function whatIfSlots(onlySelected) {
 // (its `name`), else the tab's own text. A name two slots share, or an empty one, falls back to the tab's text.
 function whatIfPlayerNames() {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
-    const own = tabs.map((_, i) => {
-        try { const n = JSON.parse(playerDataMap[i + 1] || 'null')?.name; return typeof n === 'string' ? n.trim() : ''; } catch { return ''; }
-    });
-    return tabs.map((tab, i) => (own[i] && own.indexOf(own[i]) === own.lastIndexOf(own[i]) ? own[i] : tab.textContent.trim()));
+    return shownNames(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
 }
 
 // The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. Copied
@@ -4486,6 +4495,7 @@ function initImportExportModal() {
         } else if (activeTab.id === 'solo-tab') {
             doSoloImport();
         }
+        applySlotNames();
         updateState();
         updateUI();
         resetImportInputs();
@@ -4658,11 +4668,7 @@ function doSoloImport() {
     let importSet = document.getElementById("inputSetSolo").value;
     importSet = JSON.parse(importSet);
     // The character's name goes with the slot (the what-if window and search show it instead of "Player N").
-    if (typeof importSet.name === "string" && importSet.name.trim()) {
-        try {
-            playerDataMap[currentPlayerTabId] = JSON.stringify({ ...(JSON.parse(playerDataMap[currentPlayerTabId] || "null") ?? {}), name: importSet.name.trim() });
-        } catch (err) { /* the slot keeps its tab name */ }
-    }
+    playerDataMap[currentPlayerTabId] = withSlotName(playerDataMap[currentPlayerTabId], importSet.name);
     // A kind missing from the import is unknown, never empty: it leaves what the sim already holds for it
     // (docs/proposals/what-if.md 4.4 item 2; the MWICS Exporter leaves out each kind switched off).
     const importPlayer = importSet.player ?? {};
