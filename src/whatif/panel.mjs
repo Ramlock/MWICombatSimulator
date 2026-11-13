@@ -370,7 +370,7 @@ export function renderRounds(round, t, names = null) {
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
         return `<div class="whatif-sec">${listTable(t, leaders.length, () => `<table class="whatif-table"><thead>${thead}</thead><tbody>${rows}</tbody></table>`)}</div>`;
-    }).join('');
+    }).filter((h, i, all) => !(i > 0 && h.includes('data-none') && all[i - 1].includes('data-none'))).join(''); // a run of empty pools is ONE "None." line, not one per pool
     return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
 }
 

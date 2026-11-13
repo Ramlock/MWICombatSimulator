@@ -255,6 +255,8 @@ const result = {
     check('rounds: a leader shows its figure ± half its range, cut to the precision of the ± (1234, 1100-1368 -> 1230 ± 130)', html.includes('data-num="1230"') && html.includes('data-num="130"') && html.includes(' ± ') && !html.includes('data-num="1234"') && !html.includes('data-num="1100"') && !html.includes(' – '));
     check('rounds: a leader with too few reading seeds is shown as such, with no figure', html.includes(t('rounds.tooFew', { n: 3 })) && !html.includes('data-num="999"'));
     check('rounds: a pool per key, the player named in a per-player pool, the empty pool is ONE grey "None." line with no title and no table', !html.includes('Player 2 · ') && html.includes('data-none>None.</div>') && (html.match(/<table class="whatif-table"/g) || []).length === 1 && (html.match(/data-none/g) || []).length === 1);
+    const emptyPools = panel.renderRounds({ ...rec, pools: ['free', 'paid', 'Zed:free'].map((k) => ({ key: k, size: 1, contending: 1, paused: 0, leaders: [] })) }, t);
+    check('rounds: a run of empty pools is ONE "None." line (no title, no table), not one per pool', (emptyPools.match(/data-none/g) || []).length === 1 && !emptyPools.includes('<table'), emptyPools.slice(0, 300));
     check('rounds: no payback is a dash, never NaN or undefined', !html.includes('NaN') && !html.includes('undefined') && !html.includes('null'));
     check('rounds: text is escaped', html.includes('&lt;books&gt;') && !html.includes('<books>'));
     check('rounds: no buttons or inputs (output only)', !/<(button|input|select|textarea)/.test(html));
