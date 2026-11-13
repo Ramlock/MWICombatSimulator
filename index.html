@@ -49,6 +49,13 @@
         .whatif-weak td { color: #999 !important; }
         .whatif-warn { color: #b07800; }
         .whatif-dim { color: #888; }
+        /* A detail list is one line: heading, grey note, its toggle at the right end (foldLine in panel.mjs). */
+        .whatif-fold-line { display: flex; align-items: baseline; gap: .5rem; margin-top: .5rem; }
+        .whatif-fold-line > .text-secondary { min-width: 0; }
+        .whatif-fold-line > .whatif-fold { margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+        .whatif-details-line .whatif-fold-line { margin-top: 1rem; }
+        .whatif-details-line .whatif-fold-line > .whatif-fold { margin-left: 0; }
+        .whatif-details-line .whatif-fold-line > .fw-bold:empty { display: none; }
         /* The window has two states: the search (a runner answers) and "get the runner" (none does; initWhatIf sets .whatif-norunner). */
         #whatIfModal.whatif-norunner .modal-body > :not(#whatIfGetRunner) { display: none; }
         #whatIfModal:not(.whatif-norunner) #whatIfGetRunner { display: none; }

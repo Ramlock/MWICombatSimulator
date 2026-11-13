@@ -4293,10 +4293,14 @@ function whatIfShowResult(result, running = false) {
     whatIf.resultRunning = running;
     box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
     for (const id of open) {
-        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more="${id}"]`);
+        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more~="${id}"]`);
         if (body) body.hidden = false;
         if (toggle) toggle.textContent = toggle.dataset.hide;
     }
+    // The search rounds sit under the result but open and close with its "See details" toggle (data-whatif-more lists both ids); with no toggle
+    // (no result yet) they show.
+    const details = document.getElementById('whatIfDetails');
+    document.getElementById('whatIfRounds').hidden = !!box.querySelector('[data-whatif-more~="whatIfRounds"]') && (!details || details.hidden);
     alignNumbers();
     whatIfShowDiff();
 }
@@ -4493,9 +4497,11 @@ async function initWhatIf() {
         if (button) whatIfApply(button.dataset.whatifApply);
         const more = event.target.closest('[data-whatif-more]');
         if (more) {
-            const body = document.getElementById(more.dataset.whatifMore);
-            body.hidden = !body.hidden;
-            more.textContent = body.hidden ? more.dataset.show : more.dataset.hide;
+            // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
+            const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
+            const hide = !bodies[0].hidden;
+            for (const body of bodies) body.hidden = hide;
+            more.textContent = hide ? more.dataset.show : more.dataset.hide;
         }
     });
     i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });

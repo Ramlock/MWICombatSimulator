@@ -386,6 +386,8 @@
             "overBudgetHide": "隐藏这 {{n}} 项超出预算",
             "eachShow": "显示 {{n}} 项变更",
             "eachHide": "隐藏 {{n}} 项变更",
+            "detailsShow": "查看详情",
+            "detailsHide": "隐藏详情",
             "overPayback": "回本太慢",
             "overPaybackNote": "（{{n}} 项，未选用：每项回本都超过 {{days}} 天）",
             "overPaybackShow": "显示这 {{n}} 项回本太慢的改动",

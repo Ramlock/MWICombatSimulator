@@ -748,6 +748,18 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const cfRows = [...cf.slice(cf.indexOf('<tbody')).matchAll(/<tr[^>]*>([^]*?)<\/tr>/g)].map((m) => m[1]);
     check('no change: the confirmation table shows the words, titled, on the party row and on a small player row; a clear one keeps its numbers', /title="[^"]*">no change</.test(cfRows[0]) && /title="[^"]*">no change</.test(cfRows[1]) && cfRows[1].includes('Alpha') && cfRows[2].includes('Beta') && cfRows[2].includes('data-num="600"'), cfRows.join('\n'));
 }
+// ---- See details: one toggle over every detail list, each list one line with its toggle at the right end ----
+{
+    const full = { ...result, overBudget: [{ player: 'Alpha', desc: 'Alpha x', cost: 5 }], apart: [{ desc: 'y', note: 'no seller' }], dominated: [{ player: 'Alpha', desc: 'Alpha z' }], notConfirmed: [{ player: 'Alpha', desc: 'Alpha w', step: 1, fresh: {} }] };
+    const html = panel.renderResult(full, t);
+    const at = html.indexOf('id="whatIfDetails"'), toggle = html.indexOf('data-whatif-more="whatIfDetails whatIfRounds"');
+    check('details: one See details toggle, closed, opening the details and the search rounds together', toggle > 0 && toggle < at && html.includes(`>${locales.en.result.detailsShow}</button>`) && /id="whatIfDetails" hidden/.test(html));
+    check('details: Each change alone, the closed lists, the swaps line and the unknown-cost list sit inside it', ['whatIfEachChange', 'whatIfOverBudget', 'whatIfApart', 'whatIfDominated', 'whatIfNotConfirmed'].every((id) => html.indexOf(`data-whatif-more="${id}"`) > at));
+    check('details: the chosen changes and the confirmation stay outside', html.indexOf(locales.en.result.steps) < toggle && html.indexOf('data-confirm') < toggle);
+    const lines = [...html.matchAll(/<div class="whatif-fold-line">([^]*?)<\/div>/g)].map((m) => m[1]);
+    check('details: every detail list is one line, heading, note and its toggle in it', ['whatIfEachChange', 'whatIfOverBudget', 'whatIfApart', 'whatIfDominated'].every((id) => lines.some((l) => l.includes(`data-whatif-more="${id}"`) && l.includes('fw-bold'))));
+    check('details: the toggle handler opens every listed body (main.js)', read('src/main.js').includes(".dataset.whatifMore.split(' ')") && read('src/main.js').includes(`[data-whatif-more~="whatIfRounds"]`));
+}
 // ---- Best foods and drinks block (result.best), the baseline line and the cost-0 wording ----
 {
     const plain = (s) => nums(s).replace(/<[^>]+>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<');
@@ -760,8 +772,14 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const fr = bodyRows(bestOf(html, 'foods')), dr = bodyRows(bestOf(html, 'drinks'));
     check('best: one row per player in slot order; a food shows its trigger in parentheses with the names, one without a trigger shows none', fr[0][0] === 'Alpha' && fr[0][1] === 'Donut (Self Current HP <= 60)' && fr[0][2] === 'Cake' && !fr[0][2].includes('('), JSON.stringify(fr));
     check('best: a drink never shows a trigger', dr[0][0] === 'Alpha' && dr[0][1] === 'Coffee X' && !dr[0][1].includes('('), JSON.stringify(dr));
-    check('best: a player left unchanged shows his current items and a no change cell; a changed one does not', fr[1][0] === 'Beta' && fr[1][1] === 'Gummy' && fr[1].some((c) => c === locales.en.result.noChange) && !fr[0].some((c) => c === locales.en.result.noChange), JSON.stringify(fr));
-    check('best: the no change cell is one cell over the two gain columns, centred (whatif-span)', /<td colspan="2" class="whatif-dim whatif-span">no change<\/td>/.test(bestOf(html, 'foods')) && read('index.html').includes('.whatif-table td.whatif-span { text-align: center; }'), bestOf(html, 'foods'));
+    check('best: a player left unchanged has no row, even beside a changed one', fr.length === 1 && fr[0][0] === 'Alpha' && !fr.some((r) => r[0] === 'Beta'), JSON.stringify(fr));
+    {
+        // Every player unchanged: the table is one line, the heading, "no change" and the stage note; nothing of it is behind See details.
+        const allSame = panel.renderResult({ ...result, best: { foods: { Beta: best.foods.Beta }, drinks: best.drinks }, endedByUser: { foods: 0 }, endedBySkip: { foods: true } }, t, undefined, nm);
+        const line = (allSame.match(/<div[^>]*data-best="foods" data-best-none>([^]*?)<\/div>/) || [])[1] || '';
+        check('best: all unchanged is one line with the heading, no change and the stage note, no table', !bestOf(allSame, 'foods') && plain(line) === 'Best foods: no change · ended by you during round 1, its finished runs kept' && allSame.indexOf('data-best-none') < allSame.indexOf('id="whatIfDetails"'), plain(line));
+        check('best: a changed kind beside it still draws its table', !!bestOf(allSame, 'drinks'));
+    }
     check('best: one table per kind with Player, a column per slot, gain, error, buyer gain, error', bestOf(html, 'foods').includes('<th>Player</th><th>Slot 1</th><th>Slot 2</th>') && bestOf(html, 'drinks').includes('<th>Player</th><th>Slot 1</th><th class="num"'));
     check('best: the baseline line follows the block', idx(locales.en.result.bestBaseline) > idx(locales.en.result.bestDrinks) && idx(locales.en.result.bestBaseline) < idx(locales.en.result.steps));
     check('best: without names the ids show as they came (item slug, trigger text)', bodyRows(bestOf(panel.renderResult(withBest, t), 'foods'))[0].slice(0, 3).join('|') === 'Alpha|donut (self current_hp <= 60)|cake');
@@ -775,7 +793,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
         const g2 = bodyRows(bestOf(panel.renderResult({ ...result, best: { foods: { Beta: { ...bestG.foods.Beta, ownSuppliesPerDay: -300 } }, drinks: {} } }, t, undefined, nm), 'foods'));
         check('best: a loot share that is not inside its error shows its number in the note', g2[0][4].includes('500 loot share + 300 food and drink saved'), JSON.stringify(g2[0]));
         check('best: a loot share inside one error of the party gain reads no change in the note (the old bare -13 is gone)', !g[0][4].includes('-13 loot share'));
-        check('best: a changed row without the saved figure has an empty note; an unchanged one is the no change row', g[1][2] === '500 ± 50' && g[1][3] === '900 ± 40' && g[1][4] === '' && g[2][1] === 'Cake' && g[2][2] === nc, JSON.stringify(g));
+        check('best: a changed row without the saved figure has an empty note; an unchanged one has no row', g[1][2] === '500 ± 50' && g[1][3] === '900 ± 40' && g[1][4] === '' && g.length === 2, JSON.stringify(g));
         check('best: the pt and zh bestGain strings exist and differ from en', ['pt', 'zh'].every((l) => typeof locales[l].result.bestGain === 'string' && locales[l].result.bestGain !== locales.en.result.bestGain));
     }
     check('best: the pt and zh strings exist for every new key', ['bestFoods', 'bestDrinks', 'bestBaseline', 'noCost', 'playerLineFree', 'playerLineFreeNoChange'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')) && locales.pt.result.bestBaseline !== locales.en.result.bestBaseline);
