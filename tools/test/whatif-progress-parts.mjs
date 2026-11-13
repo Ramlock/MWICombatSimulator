@@ -84,10 +84,10 @@ check('no pick: a skipped part keeps no up-to count, and the same search before 
     check('picks, no accepted step: before the end the confirmation is only waiting', before.at(-1).state === 'waiting' && before.some((p) => p.kind === 'moreSteps'), kinds(before));
     const end = t4.sync({ stage: 'done', runsPlanned: 4, runsDone: 4, candidatesLeft: 0 });
     check('picks, no accepted step: only the confirmation is skipped (picks and the steps that ran are done), and the more-steps row is gone', kinds(end) === 'screen0:done halving1:done halving2:done picks0:done step1:done step2:done confirmation:skipped', kinds(end));
-    const tfd = createParts({ ...plan, candidates: null, fillings: true }); tfd.setCandidates(40);
+    const tfd = createParts({ ...plan, candidates: null, kinds: ['foods', 'drinks'] }); tfd.setCandidates(40);
     const fEnd = tfd.sync({ stage: 'done' });
     check('a done search whose foods and drinks parts never ran (in the plan) skips them too; one that ran keeps them done', kinds(fEnd).startsWith('foods0:skipped drinks0:skipped screen0:skipped') && !kinds(tfd.sync({ stage: 'done' })).includes('waiting'));
-    const tfr = createParts({ ...plan, candidates: null, fillings: true }); tfr.setCandidates(40);
+    const tfr = createParts({ ...plan, candidates: null, kinds: ['foods', 'drinks'] }); tfr.setCandidates(40);
     tfr.sync({ stage: 'foods', runsPlanned: 4, runsDone: 4 }); tfr.sync({ stage: 'drinks', runsPlanned: 4, runsDone: 4 });
     check('foods and drinks that ran are done, not skipped, when the search ends after them', kinds(tfr.sync({ stage: 'done' })).startsWith('foods0:done drinks0:done screen0:skipped'), kinds(tfr.sync({ stage: 'done' })));
     const html = panel.renderParts({ state: 'done', progress: { parts: end } }, t), skippedRow = html.split('<div class="whatif-part ').slice(1).find((r) => r.includes('data-kind="confirmation"'));
