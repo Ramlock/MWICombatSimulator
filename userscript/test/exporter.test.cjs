@@ -105,9 +105,13 @@ for (const k of KINDS) {
 // 3. The setup part through the sim's own solo import (doSoloImport, extracted from src/main.js and run on a stub page).
 // The stub page starts with PRIOR values everywhere, as if another character was loaded before.
 const mainSrc = fs.readFileSync(path.join(ROOT, 'src', 'main.js'), 'utf8');
-const start = mainSrc.indexOf('function doSoloImport()');
+// The slice starts at applyAbilitySlots (the helper doSoloImport calls, just above it). doSoloImport also keeps the character's name in the
+// current slot (playerDataMap, currentPlayerTabId, withSlotName): the stub page gets the same, with withSlotName taken from src/slotNames.mjs
+// (its text, `export` removed), as the real page imports it.
+const start = mainSrc.indexOf('function applyAbilitySlots');
 const end = mainSrc.indexOf('\nfunction savePreviousPlayer');
-assert.ok(start > 0 && end > start, 'doSoloImport not found in src/main.js');
+assert.ok(start > 0 && mainSrc.indexOf('function doSoloImport()') > start && end > start, 'applyAbilitySlots / doSoloImport not found in src/main.js');
+const slotNamesSrc = fs.readFileSync(path.join(ROOT, 'src', 'slotNames.mjs'), 'utf8').replace(/^export /gm, '');
 const PRIOR = 'PRIOR';
 function runImport(exportObj) {
     const els = {};
@@ -120,11 +124,12 @@ function runImport(exportObj) {
         triggerMap: { '/abilities/prior_ability': ['prior'], '/items/prior_item': ['prior'] },
         fixTriggerMap: () => {}, applyLabyrinthUpgradesToState: () => {}, refreshAchievementStatics: () => {},
         guildSeen: undefined, guildApplied: 0,
+        playerDataMap: { 1: '{}', 2: '{}', 3: '{}', 4: '{}', 5: '{}' }, currentPlayerTabId: '1', JSON, Object, String,
     };
     ctx.getImportedGuildBuffs = (s) => { ctx.guildSeen = s.guildCombatBuffLevels; return {}; };
     ctx.applyGuildBuffsToState = () => { ctx.guildApplied++; };
     el('inputSetSolo').value = JSON.stringify(exportObj);
-    vm.runInNewContext(mainSrc.slice(start, end) + '\ndoSoloImport();', ctx);
+    vm.runInNewContext(slotNamesSrc + '\n' + mainSrc.slice(start, end) + '\ndoSoloImport();', ctx);
     return { els, ctx, priorHouseRooms };
 }
 // What each kind writes on the page, as [element id, imported value from the fixture]; a kind off must leave PRIOR there.
