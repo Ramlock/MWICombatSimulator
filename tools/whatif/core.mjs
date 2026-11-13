@@ -767,7 +767,7 @@ export async function main(settings, seams) {
                 // rangeWidth: the width (high minus low, per user per day) of the pool's top leader's range; rangeWidthPrev: the same pool's width one round
                 // earlier of this race (absent on the stage's first round, or when that round had no range). Computed here once; the panel only prints them.
                 pools: cont.pools.map((p) => {
-                    const lr = rows(p), order = sortRows(lr, p.key), t = lr[0], w = t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
+                    const lr = rows(p), order = sortRows(lr, p.key), t = lr[0], w = order.sortedBy !== null && t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
                     widthPrev.set(p.key, w);
                     return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), ...order, leaders: lr };
                 }) };
