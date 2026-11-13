@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.9.2 (2026-11-13)
+
+- The "Import party from game (MWI Combat Tracker)" button the script adds to the simulator page now follows the page's language: in Portuguese it reads "Importar grupo do jogo (MWI Combat Tracker)", in Chinese "从游戏导入队伍 (MWI Combat Tracker)", in English and in any other language as before; it changes when the page's language buttons are pressed. Nothing else changes: the script's other texts (menus, settings, notices) stay English.
+
 ### 0.9.1 (2026-11-13)
 
 - Changed default, for fresh installs only: an install that has never held a helper token now starts with **Send to the helper** switched off, so without a helper there is no "no helper token" warning, no token ask and no retries, and nothing to set. An install that holds a token, or has a stored choice for the switch, behaves as before. Reading "ever held": no switch choice is stored and the script's token entry does not exist (an entry emptied by hand counts as held; one lost with the browser's data counts as never held, so a helper user in that case ticks the switch once).
