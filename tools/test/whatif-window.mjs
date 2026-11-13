@@ -261,10 +261,22 @@ try {
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('a failed price fetch starts no search and says so', await until(`document.getElementById('whatIfMessage').textContent.includes('could not be fetched')`) && received === null && (await js('window.__mpCalls')) >= 1);
     await js(`(window.__mpFail = false, true)`);
+    // The budget field reads what the page writes (parseNumber): each text reaches the request as the whole number of coin; "abc" blocks the start and marks the field invalid.
+    // The search POST is answered here with an error for these starts, so no search runs; the real start follows.
+    await js(`(() => { const f = window.fetch; window.__posts = []; window.__realFetch = f; window.fetch = (u, o) => { if (String(u).endsWith('/api/search') && o?.method === 'POST') { window.__posts.push(JSON.parse(o.body)); return Promise.resolve(new Response(JSON.stringify({ error: 'test' }), { status: 400 })); } return f(u, o); }; return true; })()`);
+    for (const [text, coins] of [['1 500 k', 1500000], ['1,500,000', 1500000], ['1.5M', 1500000], ['2.6', 3]]) {
+        await js(`(() => { window.__posts.length = 0; document.querySelector('#whatIfBudgets input').value = ${JSON.stringify(text)}; document.getElementById('buttonWhatIfStart').click(); return true; })()`);
+        check(`budget typed as "${text}" reaches the search request as ${coins}, and the field keeps what was typed`, await until('window.__posts.length === 1') && (await js('window.__posts[0].budgets["Player 1"]')) === coins && (await js("document.querySelector('#whatIfBudgets input').value")) === text);
+    }
+    await js(`(() => { window.__posts.length = 0; document.querySelector('#whatIfBudgets input').value = 'abc'; document.getElementById('buttonWhatIfStart').click(); return true; })()`);
+    await new Promise((r) => setTimeout(r, 600));
+    check('a budget typed as "abc" blocks the start (no request) and the field is marked invalid; a good text clears the mark', (await js('window.__posts.length')) === 0 && await js(`document.querySelector('#whatIfBudgets input').classList.contains('is-invalid')`) && await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = '1 500 k'; i.dispatchEvent(new Event('input', { bubbles: true })); return !i.classList.contains('is-invalid'); })()`));
+    check('the budget field is a text field with a decimal keypad hint', await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); return i.type === 'text' && i.inputMode === 'decimal'; })()`));
+    await js(`(window.fetch = window.__realFetch, document.querySelector('#whatIfBudgets input').value = '1.5M', true)`);
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('progress is shown while it runs', await until(`document.getElementById('whatIfProgress').textContent.includes('candidates left')`));
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
-        received.budgets['Player 1'] === 1000000 && received.maxPayback === 365 && received.levers.join() === 'equip,foods,drinks,owned,abilities,order,triggers,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
+        received.budgets['Player 1'] === 1500000 && received.maxPayback === 365 && received.levers.join() === 'equip,foods,drinks,owned,abilities,order,triggers,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
     check('the request follows the window\'s zone, tier and players, not the page\'s', received.options.zone === windowZone && windowZone !== pageChoices.zone && received.options.tier === 1 && received.players.join() === 'Player 1', JSON.stringify(received.options.zone) + ' ' + JSON.stringify(received.players));
     check('the request carries the export map for the ticked players that have one, nobody else', !!received.export && Object.keys(received.export).join() === 'Player 1' && received.export['Player 1'].coin === 6, JSON.stringify(received.export)?.slice(0, 200));
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);

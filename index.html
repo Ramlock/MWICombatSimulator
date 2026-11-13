@@ -17,6 +17,7 @@
         }
 
         body.dark-mode input[type="number"],
+        body.dark-mode #whatIfBudgets input.form-control,
         body.dark-mode .form-select,
         body.dark-mode .input-group-text,
         body.dark-mode .accordion-button,
@@ -65,6 +66,7 @@
         .whatif-sec { display: flex; flex-direction: column; gap: .25rem; }
         #whatIfLevers .form-check:last-child { margin-bottom: 0; }
         #whatIfBudgets.whatif-sec { gap: .125rem; }
+        body.dark-mode #whatIfBudgets input.form-control.is-invalid { border-color: #dc3545; }
         .whatif-prow { display: grid; grid-template-columns: 5.5rem 7rem minmax(0, 1fr) minmax(0, 1fr); gap: .5rem; align-items: center; height: 31px; }
         .whatif-prow > * { min-width: 0; }
         .whatif-prow .whatif-pname { font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

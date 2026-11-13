@@ -120,6 +120,25 @@ function formatNumberAttached(value, options) {
     return (number < 0 && !isZero ? "-" : "") + shown + suffix;
 }
 
+// The inverse of formatNumber, for text a person types. Spaces (plain, no-break U+00A0, narrow no-break U+202F) and commas are thousands
+// separators, dropped between digits; a period is the decimal point (the page never writes one as a thousands separator); a suffix
+// k, M, B, T (also k K m b t, with or without a space before it) multiplies. Leading and trailing spaces are ignored.
+// Returns the number (exact, not rounded), null for empty text (no value) and NaN for anything else (two suffixes, letters, two periods, a
+// minus sign): never a silent 0.
+const PARSE_SEPARATORS = " ,  ";
+const PARSE_PATTERN = new RegExp("^(\\d+(?:[" + PARSE_SEPARATORS + "]\\d+)*)?(\\.\\d*)?[ \\u00a0\\u202f]*([kKmMbBtT])?$");
+const PARSE_BASES = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 };
+export function parseNumber(text) {
+    const trimmed = String(text ?? "").replace(/^[   \t]+|[   \t]+$/g, "");
+    if (trimmed === "") return null;
+    const match = PARSE_PATTERN.exec(trimmed);
+    if (!match) return NaN;
+    const [, whole = "", fraction = "", suffix] = match;
+    if (whole === "" && fraction.length < 2) return NaN;
+    const mantissa = Number((whole.replace(/[ ,  ]/g, "") || "0") + (fraction.length > 1 ? fraction : ""));
+    return Number((mantissa * (suffix ? PARSE_BASES[suffix.toLowerCase()] : 1)).toPrecision(15));
+}
+
 // A value already in percent units (12.5 for 12.5%).
 export function formatPercent(value, options = {}) {
     const text = formatNumber(value, options);

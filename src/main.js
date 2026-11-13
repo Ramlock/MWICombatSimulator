@@ -15,7 +15,7 @@ import { getTimeZeroPlayer } from "./simSetup.js";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
-import { cellValue, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers, alignNumberColumns } from "./numberFormat.js";
+import { cellValue, parseNumber, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers, alignNumberColumns } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
 import combatTriggerComparatorDetailMap from "./combatsimulator/data/combatTriggerComparatorDetailMap.json";
@@ -4186,6 +4186,15 @@ function whatIfMessage(text) {
     document.getElementById('whatIfMessage').textContent = text || '';
 }
 
+// A budget is a number of coin: parseNumber's reading, rounded to a whole coin; null when empty or not readable (the field is then marked invalid).
+function whatIfBudgetValue(input) {
+    const value = parseNumber(input.value);
+    return value === null || Number.isNaN(value) ? null : Math.round(value);
+}
+function whatIfMarkBudget(input) {
+    input.classList.toggle('is-invalid', whatIfBudgetValue(input) === null);
+}
+
 function whatIfRenderSetup() {
     const budgets = document.getElementById('whatIfBudgets');
     const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
@@ -4200,11 +4209,14 @@ function whatIfRenderSetup() {
         label.textContent = slot.name;
         label.title = slot.name;
         const input = document.createElement('input');
-        input.type = 'number';
-        input.min = '0';
+        // A text field, not a number one: the budget takes what the page writes ("1 500 k", "1,500,000", "1.5M"); parseNumber reads it and the text stays as typed.
+        input.type = 'text';
+        input.inputMode = 'decimal';
+        input.autocomplete = 'off';
         input.className = 'form-control form-control-sm';
         input.dataset.player = slot.name;
         input.value = typed[slot.name] ?? '0';
+        input.addEventListener('input', () => whatIfMarkBudget(input));
         // The player's character export (optional): a paste field whose valid content is kept in the browser's storage
         // under the player's name; the status beside it is rebuilt from the storage and the field.
         const paste = document.createElement('textarea');
@@ -4359,11 +4371,14 @@ async function whatIfStart() {
     const slots = whatIfSlots(true);
     if (!slots.length) { whatIfMessage(whatIfT('noPlayers')); return; }
     const budgets = {};
+    let badBudget = null;
     for (const input of document.querySelectorAll('#whatIfBudgets input')) {
-        const value = Number(input.value);
-        if (input.value === '' || !Number.isFinite(value) || value < 0) { whatIfMessage(whatIfT('badBudget', { player: input.dataset.player })); return; }
+        whatIfMarkBudget(input);
+        const value = whatIfBudgetValue(input);
+        if (value === null) { badBudget ??= input; continue; }
         budgets[input.dataset.player] = value;
     }
+    if (badBudget) { whatIfMessage(whatIfT('badBudget', { player: badBudget.dataset.player })); return; }
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
     if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) { whatIfMessage(whatIfT('badMaxPayback')); return; }
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);

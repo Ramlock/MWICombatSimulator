@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 register(pathToFileURL(path.join(root, 'tools/calibration/hooks.mjs')).href);
-const { cellValue, setNumberText, setNumberFormatSettings, formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml, refreshFormattedNumbers, alignNumberColumns } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
+const { parseNumber, cellValue, setNumberText, setNumberFormatSettings, formatNumber, formatUnit, percentSign, exactUnit, formatPercent, exactNumber, numberHtml, percentHtml, refreshFormattedNumbers, alignNumberColumns } = await import(pathToFileURL(path.join(root, 'src/numberFormat.js')).href);
 
 const cases = [
     [0, '0'],
@@ -275,7 +275,30 @@ for (const [[value, options], expected] of scaleCases) {
     if (small.textContent !== '0.2' || e.textContent !== '8k') failures.push(`the column pass leaves a scaled span alone: ${e.textContent} / ${small.textContent}`);
 }
 
-const total = cases.length + optionCases.length + scaleCases.length + 3;
+
+// parseNumber: the inverse of formatNumber for typed text. number = the value, null = empty (no value), NaN = invalid.
+const parseCases = [
+    ['1500000', 1500000], ['1 500 000', 1500000], ['1 500 000', 1500000], ['1 500 000', 1500000], ['1,500,000', 1500000], ['  1,500,000  ', 1500000],
+    ['1.5M', 1500000], ['1.5m', 1500000], ['1 500 k', 1500000], ['1 500k', 1500000], ['1,500K', 1500000], ['1500 k', 1500000], ['2.5B', 2500000000], ['3b', 3000000000], ['2T', 2000000000000], ['0.5t', 500000000000],
+    ['950', 950], ['0', 0], ['1,234.5', 1234.5], ['.5k', 500], ['1.1B', 1100000000], ['2,293k', 2293000], ['12M', 12000000], ['5.', 5],
+    ['', null], ['   ', null],
+    ['abc', NaN], ['1kk', NaN], ['1k M', NaN], ['1.2.3', NaN], ['1.5.5M', NaN], ['-5', NaN], ['-1k', NaN], ['1x', NaN], ['k', NaN], ['.', NaN], ['1,,5', NaN], [' , 5', NaN], ['1.234,5', NaN], ['1e3', NaN], ['5k5', NaN],
+];
+for (const [text, expected] of parseCases) {
+    const got = parseNumber(text);
+    const ok = expected === null ? got === null : Number.isNaN(expected) ? Number.isNaN(got) : got === expected;
+    if (!ok) failures.push(`parseNumber(${JSON.stringify(text)}): expected ${expected}, got ${got}`);
+}
+for (const iso of [false, true]) {
+    for (const value of [0, 950, 1500, 1234567, 2.5e9]) {
+        const text = formatNumber(value, { iso });
+        const got = parseNumber(text);
+        if (got !== value && Math.abs(got - value) > Math.abs(value) * 5e-4) failures.push(`parseNumber round trip (iso ${iso}) of ${value}: wrote ${JSON.stringify(text)}, read ${got}`);
+        if ([0, 950, 1500].includes(value) && got !== value) failures.push(`parseNumber round trip (iso ${iso}) of ${value} is not exact: ${text} -> ${got}`);
+    }
+}
+
+const total = cases.length + optionCases.length + scaleCases.length + 3 + parseCases.length + 10;
 if (failures.length) {
     console.log(failures.join('\n'));
     console.log(`FAIL ${failures.length}/${total}`);
