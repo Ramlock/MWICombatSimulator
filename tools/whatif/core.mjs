@@ -560,6 +560,7 @@ export async function main(settings, seams) {
     // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
     let roundNo = 0, liveCands = null, lastRound = null, lastBase = [];
     const endedByUser = {}; // stage -> the rounds the stage finished when the user ended it (result.endedByUser)
+    const endedByCap = {}; // stage -> { rounds, left }: the stage ended on --max-rounds with `left` candidates still in the running (no lock, not ended by the user): result.endedByCap
     const endedBySkip = {}; // stage -> true when the end was a Skip (during round endedByUser + 1, its finished runs kept), absent for an Accept (result.endedBySkip)
     const haveSeeds = (ops, seeds, h) => { const key = keyOf(ops); return seeds.every((s) => cache.get(key + '#' + s)?.byHours[h]); };
     // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached).
@@ -839,6 +840,7 @@ export async function main(settings, seams) {
             if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart; // a Skip that lands at the end of a round is still a Skip (the round in flight is the next one)
             if (byUser && !settled && mode === 'skip') endedBySkip[stage] = true;
             const accepted = mode === 'accept' ? takes : new Map();
+            if (!settled && !byUser && maxRounds > 0 && roundNo - sinceStart >= maxRounds) endedByCap[stage] = { rounds: roundNo - sinceStart, left: cont.contending + cont.paused }; // the round limit ended the stage with no pick
             if (settled || byUser || (maxRounds > 0 && roundNo - sinceStart >= maxRounds)) {
                 for (const [k, c] of accepted) lockedBy.set(k, c);
                 return endStage(live, [...accepted.values()], byUser && !settled && mode === 'skip'); // the race has ended (by its lock, the round limit or a button)
@@ -912,6 +914,7 @@ export async function main(settings, seams) {
         result.best = { foods: {}, drinks: {} };
         result.endedByUser = endedByUser;
         result.endedBySkip = endedBySkip;
+        result.endedByCap = endedByCap;
         result.baselineOps = [];
         if (kinds.length) {
             // STAGE F, then STAGE D: the foods and the drinks are decided first, whole fillings of every open slot, each against the
@@ -923,7 +926,7 @@ export async function main(settings, seams) {
                 const fc = players.flatMap((p) => (kind === 'foods' ? foodStageCands(setupsNow, p) : drinkStageCands(setupsNow, p)));
                 const flag = kind === 'foods' ? 'food' : 'drink';
                 const refute = (c, p) => { // a leader that failed the pick check on its reading seeds leaves the race (as a failed pick does today)
-                    result.notConfirmed.push({ ...row(c), step: null, kind: flag, fresh: p.fresh });
+                    result.notConfirmed.push({ ...row(c), step: null, kind: flag, fresh: p.fresh, inRace: true }); // inRace: left out by the pick check on the race's reading seeds (no run of its own), not by a confirmation
                     console.log(`${kind}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`);
                 };
                 // Each round the report shows the current best of the stage (soFar), the same data as the rounds table.
@@ -1007,7 +1010,7 @@ export async function main(settings, seams) {
             // (result.overPayback), any other is a pick that is not confirmed (result.notConfirmed, never tried again).
             const refuteStep = (c, p) => {
                 if (p.slow) { if (!result.overPayback.some((x) => x.id === c.id)) result.overPayback.push({ ...row(c), paybackDays: paybackDays(c.cost.cost, p.fresh.buyerNet) }); }
-                else { dead.add(c.id); result.notConfirmed.push({ ...row(c), step: step + 1, fresh: p.fresh }); console.log(`${label}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`); }
+                else { dead.add(c.id); result.notConfirmed.push({ ...row(c), step: step + 1, fresh: p.fresh, inRace: true }); console.log(`${label}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`); }
                 publish(result);
             };
             const res = await race(cur, baseOps, { stage: step === 0 ? 'screen' : `greedy step ${step}`, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result) });

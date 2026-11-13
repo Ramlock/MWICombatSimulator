@@ -494,6 +494,21 @@ const greyed = (html) => `<span class="whatif-dim">${html}</span>`;
 const emptyWord = (t) => greyed(esc(t('rounds.slotEmpty')));
 const slotText = (x, label) => (x.same ? greyed(label(x)) : label(x));
 // "ended by you after round N" (Accept; result.endedByUser: the rounds the stage finished), or for a Skip (result.endedBySkip) "ended by you during round N+1, its finished runs kept".
+// Why no change was picked (the "Chosen changes" line of a search that picked none): "No change gains beyond its error" only when every candidate was decided. A search whose
+// picking stage (the screen or a greedy step, not the foods or drinks) ended on the round limit, or by the user, with changes still in the running was never decided.
+// (noStepsText returns html: the cap line holds `num` spans, the other two are escaped.)
+const pickStage = (stage) => stage !== 'foods' && stage !== 'drinks';
+function noStepsWhy(result) {
+    if (Object.entries(result.endedByCap || {}).some(([s, e]) => pickStage(s) && e.left > 0)) return 'cap';
+    if (Object.keys(result.endedByUser || {}).some(pickStage)) return 'user';
+    return 'none';
+}
+function noStepsText(result, t) {
+    const why = noStepsWhy(result);
+    if (why === 'cap') { const [, e] = Object.entries(result.endedByCap).filter(([s, x]) => pickStage(s) && x.left > 0).pop(); return plural(t, 'result.noStepsCap', e.left, { rounds: num(e.rounds), n: num(e.left) }); }
+    if (why === 'user') return esc(t('result.noStepsUser'));
+    return esc(t('result.noSteps'));
+}
 const endedText = (t, n, skip) => skip ? t('result.endedByUserDuring', { n: n + 1 }) : t('result.endedByUser', { n });
 // The mark of a pick the user took with "Accept current winner": taken as it is, with no check on fresh runs (result.steps[] / result.best[kind][p] acceptedAsIs).
 const asIsMark = (t) => `<br><span class="whatif-dim small" data-accepted-as-is>${esc(t('result.acceptedAsIs'))}</span>`;
@@ -612,7 +627,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         const m = /^greedy step (\d+)$/.exec(stage), name = m ? t('progress.partStep', { n: m[1] }) : stage === 'screen' ? t('progress.partScreen') : stage;
         L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
     }
-    if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary">${esc(t('result.noSteps'))}</div>`); }
+    if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
@@ -685,16 +700,20 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
+        // Two causes, two lists (one label each): a leader the pick check on the race's own reading seeds refused (`inRace`: it led a race at some point, no run of its own),
+        // and a pick that was locked and then not confirmed on its own fresh runs (a greedy step, or the foods and drinks confirmation).
         const item = (a) => {
-            const f = a.fresh || {};
+            const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem';
             // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
             const at = a.kind === 'food' ? t('result.notConfirmedAtFood') : a.kind === 'drink' ? t('result.notConfirmedAtDrink') : t('result.notConfirmedAtStep', { step: num(a.step) });
             const text = Number.isFinite(f.buyerNet) && !goalExp
-                ? t('result.notConfirmedItem', { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor), buyerGain: figure(f.buyerNet, f.buyerNetSe, t, floor) })
-                : t('result.notConfirmedItemExp', { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor) });
+                ? t('result.' + key, { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor), buyerGain: figure(f.buyerNet, f.buyerNetSe, t, floor) })
+                : t('result.' + key + 'Exp', { at, partyGain: figure(f.gainPerUser, f.sePerUser, t, floor) });
             return `<li>${esc(a.player)}, ${shown(a)}: ${text}</li>`;
         };
-        L.push(closedList('notConfirmed', 'whatIfNotConfirmed', result.notConfirmed.map(item), {}, t));
+        const inRace = result.notConfirmed.filter((a) => a.inRace), confirmed = result.notConfirmed.filter((a) => !a.inRace);
+        if (inRace.length) L.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t));
+        if (confirmed.length) L.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t));
     }
     if (result.dominated?.length) {
         // One line with the count and its toggle; the swaps the search skipped (no better on any stat) sit closed behind it.
