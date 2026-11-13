@@ -6,7 +6,8 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ### 0.9.1 (2026-11-13)
 
-- No helper, no warning: with **Send to the helper** switched off in Settings, the script no longer asks the helper for a token and no longer shows the "no helper token" warning on the game page. Switching it on in Settings asks again at once. Nothing else changes: with it on (the default), a missing token still shows the warning when the helper cannot be reached, a held token is never asked for again, and the recording stays in the browser either way.
+- Changed default, for fresh installs only: an install that has never held a helper token now starts with **Send to the helper** switched off, so without a helper there is no "no helper token" warning, no token ask and no retries, and nothing to set. An install that holds a token, or has a stored choice for the switch, behaves as before. Reading "ever held": no switch choice is stored and the script's token entry does not exist (an entry emptied by hand counts as held; one lost with the browser's data counts as never held, so a helper user in that case ticks the switch once).
+- Ticking **Send to the helper** in Settings asks the helper for the token at once; with the switch off the script never asks, warns or retries. With it on, a missing token still shows the warning when the helper cannot be reached, and a held token is never asked for again. The recording stays in the browser either way.
 
 ### 0.9.0 (2026-11-09)
 

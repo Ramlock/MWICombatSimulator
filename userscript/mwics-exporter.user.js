@@ -1079,6 +1079,8 @@
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
     function helperToken() { return String(GM_getValue(HELPER_TOKEN_KEY, '')); }
+    // Sending to the helper: the stored toggle when there is one; with none stored (a fresh install) it is on only when a helper token has ever been stored (the key exists, even if emptied by hand), so a fresh install without a helper starts off and asks for nothing.
+    function sendToHelperOn() { return recToggles.sendToHelper !== undefined ? recToggles.sendToHelper !== false : GM_getValue(HELPER_TOKEN_KEY, null) !== null; }
     function loadSent() { try { const a = JSON.parse(GM_getValue(SENT_KEY, '[]')); return Array.isArray(a) ? a : []; } catch { return []; } }
     function helperRequest(body) {
         return new Promise((resolve) => {
@@ -1096,7 +1098,7 @@
     }
     const sink = createSink({
         recorder,
-        enabled: () => !!recToggles.recorder && recToggles.sendToHelper !== false && helperToken() !== '',
+        enabled: () => !!recToggles.recorder && sendToHelperOn() && helperToken() !== '',
         selfOnly: () => !!recToggles.selfOnly,
         sent: loadSent(),
         saveSent: (keys) => { try { GM_setValue(SENT_KEY, JSON.stringify(keys)); } catch (err) { console.error('[MWI Combat Tracker] could not save the sent keys', err); } },
@@ -1132,7 +1134,7 @@
     }
     function clearNoTokenWarning() { if (noTokenEl) { try { noTokenEl.remove(); } catch { /* already gone */ } noTokenEl = null; } noTokenWarned = false; }
     async function askForToken() {
-        if (tokenAsking || helperToken() !== '' || !recToggles.recorder || recToggles.sendToHelper === false) return; // sending to the helper off: no ask, no warning, no retries
+        if (tokenAsking || helperToken() !== '' || !recToggles.recorder || !sendToHelperOn()) return; // sending to the helper off: no ask, no warning, no retries
         tokenAsking = true;
         let got = '';
         try {
@@ -1373,7 +1375,7 @@
     }
     function helperStatus() {
         const s = sink.state.stats;
-        const on = recToggles.sendToHelper !== false && recToggles.recorder;
+        const on = sendToHelperOn() && recToggles.recorder;
         toast('MWI Combat Tracker v' + VERSION + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + '.');
     }
 
@@ -1409,7 +1411,7 @@
             row.style.cssText = 'display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer';
             const cb = document.createElement('input');
             cb.type = 'checkbox';
-            cb.checked = key === 'sendToHelper' ? recToggles.sendToHelper !== false : !!recToggles[key];
+            cb.checked = key === 'sendToHelper' ? sendToHelperOn() : !!recToggles[key];
             cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); if (key === 'sendToHelper' && cb.checked) { sink.scan(true); sink.flush(); askForToken(); } if (key === 'recorder' && cb.checked) askForToken(); });
             row.appendChild(cb);
             row.appendChild(document.createTextNode(label));

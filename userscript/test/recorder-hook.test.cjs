@@ -277,12 +277,14 @@ await test('Copy group export: reads the battle start and a shared profile from 
     assert.equal(JSON.parse(again.clip[0])['1'].player.attackLevel, 33, 'the shared profile and the party survive a reload');
 });
 
+// A fresh install starts with sending to the helper off (0.9.1); the tests that exercise the helper switch it on explicitly.
+const ON = { mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper: true }) };
 const WARN = 'MWI Combat Tracker: no helper token, so nothing is sent to the helper. The recording stays in this browser.';
 const TOK = 'fetched-token-0123456789abcdef';
 const ok = (token) => () => ({ status: 200, responseText: JSON.stringify({ token }) });
 
 await test('no token, recorder on: the script asks the helper (GET /token, no token header) and, when refused, warns once per page load', async () => {
-    const store = {};
+    const store = { ...ON };
     const b = boot(store);
     await tick(); await tick();
     assert.equal(b.tokenReqs.length, 1);
@@ -314,7 +316,7 @@ await test('recorder off: the script neither asks the helper nor warns', async (
 });
 
 await test('the helper answers: the token is stored, the warning is cleared, the next send carries it', async () => {
-    const store = {};
+    const store = { ...ON };
     let answer = { status: 403, responseText: '' };
     const b = boot(store, { tokenRespond: () => answer });
     await tick(); await tick();
@@ -337,7 +339,7 @@ await test('the helper answers: the token is stored, the warning is cleared, the
 });
 
 await test('the helper answers on the first ask: no warning at all, and sending starts without a reload', async () => {
-    const store = {};
+    const store = { ...ON };
     const b = boot(store, { tokenRespond: ok(TOK) });
     await tick(); await tick();
     assert.equal(store.mwicsHelperToken, TOK);
@@ -354,7 +356,7 @@ await test('a stored token is never asked for again (the manual override stays),
     await tick(); await tick();
     assert.equal(withToken.tokenReqs.length, 0, 'a held token is not replaced by the helper');
     assert.ok(!withToken.toasts.includes(WARN));
-    const store = {};
+    const store = { ...ON };
     const b = boot(store, { prompt: 'manual-override', tokenRespond: ok(TOK) });
     await tick(); await tick();
     assert.equal(store.mwicsHelperToken, TOK);
@@ -369,7 +371,7 @@ await test('a stored token is never asked for again (the manual override stays),
 
 await test('an unreachable helper, a 404 from an older helper and a 200 with no usable token all leave it empty, warn once and keep retrying', async () => {
     for (const respond of ['error', { status: 404, responseText: '' }, { status: 200, responseText: 'not json' }, { status: 200, responseText: '{"token":""}' }, { status: 200, responseText: '{"token":"has space"}' }, { status: 200, responseText: '{}' }]) {
-        const store = {};
+        const store = { ...ON };
         const b = boot(store, { tokenRespond: () => respond });
         await tick(); await tick();
         assert.equal(store.mwicsHelperToken, undefined, JSON.stringify(respond));
@@ -380,7 +382,7 @@ await test('an unreachable helper, a 404 from an older helper and a 200 with no 
 });
 
 await test('turning the recorder on in Settings asks the helper when no token is held', async () => {
-    const store = { mwicsRecorderToggles: JSON.stringify({ recorder: false }) };
+    const store = { mwicsRecorderToggles: JSON.stringify({ recorder: false, sendToHelper: true }) };
     const b = boot(store, { tokenRespond: ok(TOK) });
     await tick(); await tick();
     assert.equal(b.tokenReqs.length, 0, 'recorder off at load: no ask');
@@ -413,27 +415,50 @@ await test('sending to the helper off: no ask, no warning, no retries; turning i
     assert.equal(store.mwicsHelperToken, TOK);
 });
 
-await test('helper toggle on (or never set), no token, helper refuses: the warning shows once (the case after 0.9.1 unchanged); recorder off or helper off: never', async () => {
+await test('a fresh install (no toggle, no token ever stored) starts with sending off: no ask, no warning, no retries; the cases around it', async () => {
     const cases = [
-        ['toggle never set', { recorder: true }, true],
-        ['toggle on', { recorder: true, sendToHelper: true }, true],
-        ['toggle off', { recorder: true, sendToHelper: false }, false],
-        ['recorder off, toggle on', { recorder: false, sendToHelper: true }, false],
-        ['recorder off, toggle off', { recorder: false, sendToHelper: false }, false],
+        ['fresh install: no toggle, no token key', {}, false],
+        ['toggle explicitly on, no token', { mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper: true }) }, true],
+        ['toggle explicitly off, no token', { mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper: false }) }, false],
+        ['no toggle, a token held before and emptied by hand (the key exists)', { mwicsHelperToken: '' }, true],
+        ['recorder off, toggle on', { mwicsRecorderToggles: JSON.stringify({ recorder: false, sendToHelper: true }) }, false],
+        ['recorder off, toggle off', { mwicsRecorderToggles: JSON.stringify({ recorder: false, sendToHelper: false }) }, false],
     ];
-    for (const [what, toggles, warns] of cases) {
-        const b = boot({ mwicsRecorderToggles: JSON.stringify(toggles) });
+    for (const [what, store, warns] of cases) {
+        const b = boot({ ...store });
         await tick(); await tick();
-        assert.equal(b.toasts.filter((t) => t === WARN).length, warns ? 1 : 0, what);
-        assert.equal(b.tokenReqs.length, warns ? 1 : 0, what + ': the ask');
-    }
-    // a held token: never a warning or an ask, whatever the toggle
-    for (const sendToHelper of [true, false]) {
-        const b = boot({ mwicsHelperToken: 'held', mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper }) });
+        b.timers.forEach((t) => t.fn && t.fn());
         await tick(); await tick();
-        assert.equal(b.tokenReqs.length, 0);
-        assert.ok(!b.toasts.includes(WARN));
+        assert.equal(b.toasts.filter((t) => t === WARN).length, warns ? 1 : 0, what + ': the warning');
+        assert.ok(warns ? b.tokenReqs.length >= 1 : b.tokenReqs.length === 0, what + ': the ask (' + b.tokenReqs.length + ')');
     }
+    // a held token, toggle unset: no ask, no warning, and what is recorded is sent (the existing install is unchanged)
+    const held = boot({ mwicsHelperToken: 'held' });
+    held.send({ type: 'init_character_data', character: { id: 1 } });
+    for (let id = 1; id <= 8; id++) held.send(NB(id));
+    await tick(); await tick();
+    assert.equal(held.tokenReqs.length, 0);
+    assert.ok(!held.toasts.includes(WARN));
+    assert.ok(held.reqs.length > 0, 'a held token with no toggle stored sends as before');
+    // a fresh install with no token sends nothing
+    const fresh = boot({});
+    fresh.send({ type: 'init_character_data', character: { id: 1 } });
+    for (let id = 1; id <= 8; id++) fresh.send(NB(id));
+    await tick(); await tick();
+    assert.equal(fresh.reqs.length, 0);
+    // a fresh install: ticking Send to the helper in Settings asks at once and stores the answer
+    const store2 = {};
+    const c = boot(store2, { tokenRespond: ok(TOK) });
+    await tick(); await tick();
+    assert.equal(c.tokenReqs.length, 0);
+    c.commands.Settings();
+    const row = c.created.find((e) => e.kids && e.kids[1] && /^Send to the helper/.test(e.kids[1].text));
+    assert.equal(row.kids[0].checked, false, 'a fresh install shows the box unticked');
+    row.kids[0].checked = true;
+    row.kids[0].on();
+    await tick(); await tick();
+    assert.equal(c.tokenReqs.length, 1);
+    assert.equal(store2.mwicsHelperToken, TOK);
 });
 
 console.log(n + ' tests passed');
