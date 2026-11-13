@@ -139,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.9.0/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.9.1/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -245,8 +245,8 @@ await test('the snapshot carries selected and fight, kept live by party_updated,
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.9.0/);
-    assert.ok(SRC.includes("const VERSION = '0.9.0'"));
+    assert.match(SRC, /@version\s+0.9.1/);
+    assert.ok(SRC.includes("const VERSION = '0.9.1'"));
     assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
     assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });
@@ -392,6 +392,48 @@ await test('turning the recorder on in Settings asks the helper when no token is
     await tick(); await tick();
     assert.equal(b.tokenReqs.length, 1);
     assert.equal(store.mwicsHelperToken, TOK);
+});
+
+await test('sending to the helper off: no ask, no warning, no retries; turning it on in Settings asks', async () => {
+    const store = { mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper: false }) };
+    const b = boot(store, { tokenRespond: ok(TOK) });
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 0, 'helper off at load: no ask');
+    assert.ok(!b.toasts.includes(WARN), 'helper off: no warning');
+    b.timers.forEach((t) => t.fn && t.fn());
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 0, 'helper off: no retries either');
+    b.commands.Settings();
+    const row = b.created.find((e) => e.kids && e.kids[1] && /^Send to the helper/.test(e.kids[1].text));
+    const cb = row.kids[0];
+    cb.checked = true;
+    cb.on();
+    await tick(); await tick();
+    assert.equal(b.tokenReqs.length, 1, 'helper switched on in Settings: the script asks');
+    assert.equal(store.mwicsHelperToken, TOK);
+});
+
+await test('helper toggle on (or never set), no token, helper refuses: the warning shows once (the case after 0.9.1 unchanged); recorder off or helper off: never', async () => {
+    const cases = [
+        ['toggle never set', { recorder: true }, true],
+        ['toggle on', { recorder: true, sendToHelper: true }, true],
+        ['toggle off', { recorder: true, sendToHelper: false }, false],
+        ['recorder off, toggle on', { recorder: false, sendToHelper: true }, false],
+        ['recorder off, toggle off', { recorder: false, sendToHelper: false }, false],
+    ];
+    for (const [what, toggles, warns] of cases) {
+        const b = boot({ mwicsRecorderToggles: JSON.stringify(toggles) });
+        await tick(); await tick();
+        assert.equal(b.toasts.filter((t) => t === WARN).length, warns ? 1 : 0, what);
+        assert.equal(b.tokenReqs.length, warns ? 1 : 0, what + ': the ask');
+    }
+    // a held token: never a warning or an ask, whatever the toggle
+    for (const sendToHelper of [true, false]) {
+        const b = boot({ mwicsHelperToken: 'held', mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper }) });
+        await tick(); await tick();
+        assert.equal(b.tokenReqs.length, 0);
+        assert.ok(!b.toasts.includes(WARN));
+    }
 });
 
 console.log(n + ' tests passed');

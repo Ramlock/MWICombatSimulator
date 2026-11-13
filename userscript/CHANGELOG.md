@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.9.1 (2026-11-13)
+
+- No helper, no warning: with **Send to the helper** switched off in Settings, the script no longer asks the helper for a token and no longer shows the "no helper token" warning on the game page. Switching it on in Settings asks again at once. Nothing else changes: with it on (the default), a missing token still shows the warning when the helper cannot be reached, a held token is never asked for again, and the recording stays in the browser either way.
+
 ### 0.9.0 (2026-11-09)
 
 - Simpler install: you no longer paste the helper's token. When the script holds no token it asks the helper for it, once when the game page loads (and again at 2 s, 4 s, 8 s and so on, up to 60 s, while it still has none), and stores the answer. The helper hands the token only to a script manager on the same machine; a web page cannot read it. The menu entry **Set helper token** stays as a manual override, and a token you pasted is never replaced. After updating the script, restart the helper once (the helper needs the new `/token` route).

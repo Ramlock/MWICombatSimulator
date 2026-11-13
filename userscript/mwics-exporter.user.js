@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.9.0
+// @version      0.9.1
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -1074,7 +1074,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.9.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.9.1'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1132,7 +1132,7 @@
     }
     function clearNoTokenWarning() { if (noTokenEl) { try { noTokenEl.remove(); } catch { /* already gone */ } noTokenEl = null; } noTokenWarned = false; }
     async function askForToken() {
-        if (tokenAsking || helperToken() !== '' || !recToggles.recorder) return;
+        if (tokenAsking || helperToken() !== '' || !recToggles.recorder || recToggles.sendToHelper === false) return; // sending to the helper off: no ask, no warning, no retries
         tokenAsking = true;
         let got = '';
         try {
@@ -1410,7 +1410,7 @@
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = key === 'sendToHelper' ? recToggles.sendToHelper !== false : !!recToggles[key];
-            cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); if (key === 'sendToHelper' && cb.checked) { sink.scan(true); sink.flush(); } if (key === 'recorder' && cb.checked) askForToken(); });
+            cb.addEventListener('change', () => { recToggles[key] = cb.checked; GM_setValue(RECORDER_KEY, JSON.stringify(recToggles)); if (key === 'sendToHelper' && cb.checked) { sink.scan(true); sink.flush(); askForToken(); } if (key === 'recorder' && cb.checked) askForToken(); });
             row.appendChild(cb);
             row.appendChild(document.createTextNode(label));
             box.appendChild(row);
