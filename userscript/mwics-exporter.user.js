@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.9.4
+// @version      0.10.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -516,10 +516,32 @@
     // ================= Combat recorder (read-only) =================
     // Spec: docs/codebase/toolasha-loot-tracker.md ("Recorder spec"). Pure state machine: handle(message, nowMs) per game message,
     // exportData(selfOnly) for the file, no DOM and no network. The likelihood split, shares and closed-form checks are NOT here.
-    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000 };
-    const REC_TYPES = ['new_battle', 'battle_updated', 'action_completed', 'quests_updated', 'init_character_data'];
+    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000, MAX_TRACE: 1500 };
+    const REC_TYPES = ['new_battle', 'battle_updated', 'action_completed', 'quests_updated', 'init_character_data', 'talismans_updated', 'character_stats_updated'];
+    // Which game server a tab is on: the test server (test.milkywayidle.com) is told from the live one by host name. Everything the tab records,
+    // stores or sends is tagged with it (a record carries `server`), and the test server's storage keys and sink keys carry a suffix or prefix.
+    const serverOf = (host) => (/^test\./i.test(String(host || '')) ? 'test' : 'live');
+    const serverKey = (key, server) => (server && server !== 'live' ? key + '.' + server : key);
+    const talismanSlotted = (t) => t && Number(t.slotIndex) > 0;
+    // The equipped talismans as the encounter records them: the game's own lines (modifier, grade), the line the talisman has locked, and from the
+    // game's client data (talismanModifierDetailMap) the value at that grade and whether it is a unique line (group /special). pendingModifiers
+    // (a roll not accepted yet) are not part of the talisman and are left out. A value the client data does not give is null, never guessed.
+    function talismanLines(list, clientObj) {
+        const detail = (clientObj && clientObj.talismanModifierDetailMap) || {};
+        return (list || []).filter(talismanSlotted).sort((a, b) => a.slotIndex - b.slotIndex).map((t) => ({
+            id: t.id, type: t.talismanTypeHrid || null, slotIndex: t.slotIndex, locked: t.lockedModifierHrid || '',
+            lines: (t.modifiers || []).map((m) => {
+                const d = detail[m.hrid], gv = d && Array.isArray(d.gradeValues) ? d.gradeValues[m.grade - 1] : undefined;
+                return { hrid: m.hrid, grade: m.grade, value: typeof gv === 'number' ? gv : null, locked: !!t.lockedModifierHrid && t.lockedModifierHrid === m.hrid, unique: d && d.groupHrid ? String(d.groupHrid).endsWith('/special') : null };
+            }),
+        }));
+    }
     const DOT_FALLBACK = { '/abilities/firestorm': { ratio: 1, ms: 6000 }, '/abilities/maim': { ratio: 1, ms: 9000 } };
     const HEAL_FALLBACK = ['/abilities/quick_aid'];
+    // The columns of a trace row: update number within the encounter, ms since the encounter start, side (0 player, 1 monster), unit index, the
+    // unit's attack-attempt, damage-splat and HP-drop/rise changes in that update, crit-splat changed (0/1), index into the trace's `src` (the ability
+    // or 'auto' being executed before the update), then the unit's attack, damage-splat and crit-splat counters after the update.
+    const TRACE_FIELDS = ['msg', 'ms', 'side', 'idx', 'dAtk', 'dDmg', 'drop', 'rise', 'crit', 'src', 'atk', 'dmg', 'critN'];
     const LEVEL_KEYS = ['stamina', 'intelligence', 'attack', 'melee', 'defense', 'ranged', 'magic'].map((s) => s + 'Level');
     const bump = (o, k, v) => { o[k] = (o[k] || 0) + v; };
     const nz = (x, d) => (typeof x === 'number' && isFinite(x) ? x : d);
@@ -589,14 +611,17 @@
     // Views of a row for the file and for the helper: the window without its internal key, and the party cut to the self slot.
     const plainWin = (w) => ({ ...w, key: undefined });
     const pickSelfWin = (w) => ({ ...w, key: undefined, players: w.players.filter((p) => p.self) });
-    const pickSelfEnc = (e) => ({ ...e, ...(e.hits ? { hits: filterHits(e.hits, e.players.filter((p) => p.self).map((p) => p.slot), e.startedAt) } : {}), players: e.players.filter((p) => p.self), ambiguous: e.ambiguous.filter((a) => (a.target.side === 'p' && e.players.some((p) => p.self && p.slot === a.target.idx)) || a.target.side === 'm') });
+    const selfTrace = (tr, slots) => ({ ...tr, rows: tr.rows.filter((r) => r[2] === 1 || slots.includes(r[3])) });
+    const pickSelfEnc = (e) => ({ ...e, ...(e.trace ? { trace: selfTrace(e.trace, e.players.filter((p) => p.self).map((p) => p.slot)) } : {}), ...(e.hits ? { hits: filterHits(e.hits, e.players.filter((p) => p.self).map((p) => p.slot), e.startedAt) } : {}), players: e.players.filter((p) => p.self), ambiguous: e.ambiguous.filter((a) => (a.target.side === 'p' && e.players.some((p) => p.self && p.slot === a.target.idx)) || a.target.side === 'm') });
     const hasSelf = (S) => S.windows.some((w) => w.players.some((p) => p.self)) || S.encounters.some((e) => e.players.some((p) => p.self));
 
     function createRecorder(opts) {
         opts = opts || {};
         const getClient = opts.clientData || (() => null);
+        const server = opts.server === 'test' ? 'test' : 'live';
+        const trace = opts.trace !== undefined ? !!opts.trace : server === 'test'; // the raw per-update rows: on for the test server only (they make the stored rows larger)
         const S = {
-            selfId: null, zone: null, cur: null, prev: null, win: null, windows: [], encounters: [], quests: [], lastT: 0,
+            server, tal: { list: [], power: null, slots: null, belt: null }, selfId: null, zone: null, cur: null, prev: null, win: null, windows: [], encounters: [], quests: [], lastT: 0,
             dot: [], series: [], carry: [], idx: 0, stats: { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 },
         };
         let gd = gameData(getClient());
@@ -605,7 +630,10 @@
         function handle(msg, t) {
             if (!msg || typeof msg !== 'object') return;
             switch (msg.type) {
-                case 'init_character_data': if (msg.character && msg.character.id != null) S.selfId = msg.character.id; setQuests(msg.characterQuests, t); break;
+                case 'init_character_data': if (msg.character && msg.character.id != null) S.selfId = msg.character.id; setTalismans(msg); setQuests(msg.characterQuests, t); break;
+                // The talisman messages only update what is known about the equipped talismans; they do not move the encounter gap clock.
+                case 'talismans_updated': updateTalismans(msg); return;
+                case 'character_stats_updated': setTalismanStats(msg.combatUnit && msg.combatUnit.combatDetails && msg.combatUnit.combatDetails.combatStats); return;
                 case 'quests_updated': setQuests(msg.endCharacterQuests, t); break;
                 case 'action_completed': onAction(msg.endCharacterAction); break;
                 case 'new_battle': gd = gameData(getClient()); onNewBattle(msg, t); break;
@@ -615,12 +643,39 @@
             S.lastT = t;
         }
 
+        // ---- the self character's talismans, kept from init_character_data (characterTalismans), talismans_updated and character_stats_updated ----
+        function setTalismanStats(cs) {
+            if (!cs || typeof cs !== 'object') return;
+            if (typeof cs.talismanPower === 'number') S.tal.power = cs.talismanPower;
+            if (typeof cs.talismanSlots === 'number') S.tal.slots = cs.talismanSlots;
+        }
+        function setTalismans(msg) {
+            if (Array.isArray(msg.characterTalismans)) S.tal.list = msg.characterTalismans.filter((x) => x && x.id != null);
+            setTalismanStats(msg.combatUnit && msg.combatUnit.combatDetails && msg.combatUnit.combatDetails.combatStats);
+            const belt = (msg.characterItems || []).find((i) => i && /\/belt$/.test(String(i.itemLocationHrid || '')));
+            S.tal.belt = belt ? belt.itemHrid || null : null;
+        }
+        function updateTalismans(msg) {
+            const m = new Map(S.tal.list.map((x) => [x.id, x]));
+            for (const x of Array.isArray(msg.endCharacterTalismans) ? msg.endCharacterTalismans : []) if (x && x.id != null) m.set(x.id, x);
+            for (const id of Array.isArray(msg.deletedTalismanIds) ? msg.deletedTalismanIds : []) m.delete(id);
+            S.tal.list = [...m.values()];
+        }
+        // What an encounter records per player: the talisman power and slot count the game shows in the unit's combat stats (null when it shows none),
+        // and for the self player the equipped talismans' lines and the belt.
+        function talismanOf(p, isSelf) {
+            const cs = (p.combatDetails && p.combatDetails.combatStats) || {};
+            const t = { power: nz(cs.talismanPower, isSelf ? S.tal.power : null), slots: nz(cs.talismanSlots, isSelf ? S.tal.slots : null) };
+            if (isSelf) { t.belt = S.tal.belt; t.talismans = talismanLines(S.tal.list, getClient()); }
+            return t;
+        }
+
         function setQuests(list, t) {
             if (!Array.isArray(list)) return;
             const tasks = list.filter((q) => q && q.status === '/quest_status/in_progress').map((q) => ({ category: q.category, monsterHrid: q.monsterHrid || null, actionHrid: q.actionHrid || null, goalCount: q.goalCount, currentCount: q.currentCount }));
             const last = S.quests[S.quests.length - 1];
             if (last && JSON.stringify(last.tasks) === JSON.stringify(tasks)) return;
-            S.quests.push({ t, tasks });
+            S.quests.push({ t, tasks, server });
             if (S.quests.length > REC.MAX_QUESTLOG) S.quests.shift();
         }
 
@@ -636,10 +691,10 @@
             if (S.cur) closeEncounter(S.cur, snap, msg, t);
             ensureWindow(msg, players, monsters, snap, t, gap);
             const enc = {
-                index: ++S.idx, battleId: msg.battleId, combatStartTime: msg.combatStartTime, startedAt: t, endedAt: null,
+                server, index: ++S.idx, battleId: msg.battleId, combatStartTime: msg.combatStartTime, startedAt: t, endedAt: null,
                 monsters: monsters.map((m) => ({ hrid: m.hrid, isBoss: !!m.isBoss, tier: m.difficultyTier, maxHP: nz(m.maxHitpoints, 0), killMs: null })),
-                players: players.map((p, i) => newPlayerRec(i, S.selfId != null && p.character && p.character.id === S.selfId)),
-                pU: {}, mU: {}, pending: [], ambiguous: [], casts: [], unattributed: { dealt: 0, taken: 0 }, hl: createHitLog(t),
+                players: players.map((p, i) => { const self = S.selfId != null && p.character && p.character.id === S.selfId; const pr = newPlayerRec(i, self); pr.talisman = talismanOf(p, self); return pr; }),
+                pU: {}, mU: {}, pending: [], ambiguous: [], casts: [], unattributed: { dealt: 0, taken: 0 }, hl: createHitLog(t), ...(trace ? { tr: { src: [], idx: new Map(), rows: [], dropped: 0, n: 0 } } : {}),
             };
             players.forEach((p, i) => { enc.pU[i] = unitFrom(p, gd); });
             monsters.forEach((m, i) => { enc.mU[i] = unitFrom(m, gd); });
@@ -666,7 +721,7 @@
             }
             if (w) { w.endedAt = S.lastT || t; delete w.open; }
             const nw = {
-                open: true, key, zone: S.zone, difficultyTier: (monsters[0] && monsters[0].difficultyTier) || 0, combatStartTime: msg.combatStartTime,
+                open: true, server, key, zone: S.zone, difficultyTier: (monsters[0] && monsters[0].difficultyTier) || 0, combatStartTime: msg.combatStartTime,
                 numberOfPlayers: players.length, startedAt: t, endedAt: t, battles: 0, kills: {}, fragments: [{ startedAt: t, endedAt: t, encounters: 0 }],
                 players: players.map((p, i) => ({ slot: i, self: S.selfId != null && p.character && p.character.id === S.selfId, stats: { combatDetails: p.combatDetails || null, abilities: p.combatAbilities || [], buffs: snap[i].buffs }, totals: {} })),
                 buffEvents: [], monsterStats: {}, tasksAtStart: S.quests.length ? S.quests[S.quests.length - 1].tasks : null,
@@ -743,10 +798,11 @@
                 S.win.endedAt = t;
                 const fr = S.win.fragments[S.win.fragments.length - 1];
                 fr.endedAt = t; fr.encounters++;
-                enc.players.forEach((pr, i) => { const wp = S.win.players[i]; if (wp) { const { slot, self, consumes: _c, ...rest } = pr; addInto(wp.totals, rest); } });
+                enc.players.forEach((pr, i) => { const wp = S.win.players[i]; if (wp) { const { slot, self, consumes: _c, talisman: _t, ...rest } = pr; addInto(wp.totals, rest); } });
             }
             if (enc.hl && enc.hl.n) enc.hits = enc.hl.finish();
-            delete enc.hl; delete enc.pU; delete enc.mU; delete enc.pending; delete enc.index;
+            if (enc.tr && enc.tr.rows.length) enc.trace = { fields: TRACE_FIELDS, src: enc.tr.src, rows: enc.tr.rows, ...(enc.tr.dropped ? { dropped: enc.tr.dropped } : {}) };
+            delete enc.tr; delete enc.hl; delete enc.pU; delete enc.mU; delete enc.pending; delete enc.index;
             S.encounters.push(enc);
             if (S.encounters.length > REC.MAX_ENCOUNTERS) S.encounters.shift();
             S.stats.closed++;
@@ -796,6 +852,7 @@
             if (!enc) { S.stats.skippedUpdates++; return; }
             if (msg.battleId !== enc.battleId) { S.stats.lateUpdates++; return; }
             const pe = [], me = [];
+            const msgN = enc.tr ? enc.tr.n++ : 0;
             for (const [k, e] of Object.entries(msg.pMap || {})) if (enc.pU[k]) { const x = step(enc.pU[k], e); x.side = 'p'; x.idx = +k; pe.push(x); }
             for (const [k, e] of Object.entries(msg.mMap || {})) if (enc.mU[k]) { const x = step(enc.mU[k], e); x.side = 'm'; x.idx = +k; me.push(x); }
             const pa = pe.filter((x) => x.dAtk > 0), ma = me.filter((x) => x.dAtk > 0);
@@ -813,6 +870,16 @@
                 const mon = enc.monsters[x.idx];
                 if (mon && mon.killMs == null && !x.u.dead && x.p.hp > 0 && (x.u.hp === 0 || x.e.isActive === false)) { x.u.dead = true; mon.killMs = t - enc.startedAt; }
             }
+            if (enc.tr) for (const x of pe.concat(me)) if (x.dAtk > 0 || x.dDmg > 0 || x.drop > 0 || x.rise > 0 || x.crit) traceRow(enc, msgN, t, x);
+        }
+
+        // One raw row per unit that changed in a battle_updated (TRACE_FIELDS names the columns). Nothing is decided here: no proc, no attribution.
+        function traceRow(enc, msgN, t, x) {
+            const tr = enc.tr;
+            if (tr.rows.length >= REC.MAX_TRACE) { tr.dropped++; return; }
+            let s = tr.idx.get(x.exec);
+            if (s === undefined) { s = tr.src.length; tr.src.push(x.exec); tr.idx.set(x.exec, s); }
+            tr.rows.push([msgN, t - enc.startedAt, x.side === 'm' ? 1 : 0, x.idx, x.dAtk, x.dDmg, x.drop, x.rise, x.crit ? 1 : 0, s, x.u.atk, x.u.dmg, x.u.crit]);
         }
 
         function statusStep(x, t) {
@@ -915,7 +982,7 @@
                 sel = wins.map(pickSelfWin);
                 encs = encs.map(pickSelfEnc);
             }
-            return { format: 'mwics-loot', version: 1, exportedAt: new Date(nowMs || Date.now()).toISOString(), selfOnly: !!selfOnly, attribution: 'counter (exact) unless a field says heuristic; ambiguous ticks are raw, flagged, and split afterwards', windows: sel, encounters: encs, tasks: S.quests, lootLog: [], notes: { ...S.stats, openEncounterNotExported: !!S.cur } };
+            return { format: 'mwics-loot', version: 1, server, exportedAt: new Date(nowMs || Date.now()).toISOString(), selfOnly: !!selfOnly, attribution: 'counter (exact) unless a field says heuristic; ambiguous ticks are raw, flagged, and split afterwards', windows: sel, encounters: encs, tasks: S.quests, lootLog: [], notes: { ...S.stats, openEncounterNotExported: !!S.cur } };
         }
 
         function persistable() { return { windows: S.windows, encounters: S.encounters, quests: S.quests, stats: S.stats }; }
@@ -936,6 +1003,10 @@
 
     function createSink(deps) {
         const S = deps.recorder.state;
+        // Which game server these rows come from: the body names it, and a test-server key carries the prefix 'test:' (the helper holds one copy per key,
+        // so a test row and a live row with the same start time and battle id are never taken for each other). A live key stays as it was.
+        const server = deps.server === 'test' ? 'test' : 'live';
+        const pre = server === 'live' ? '' : server + ':';
         const st = {
             sent: new Set(deps.sent || []), order: (deps.sent || []).slice(), queued: new Set(), queue: [], maxRecords: SINK.BATCH_RECORDS,
             retryMs: SINK.RETRY_MIN_MS, flushing: false, timerSet: false, idleSet: false, lastActivity: 0, sig: '', lastWin: new Map(),
@@ -961,10 +1032,10 @@
             const encs = S.encounters;
             for (let i = 0; i < encs.length; i++) {
                 if (!final && encs.length - 1 - i < SINK.DELAY) break;
-                add(encKey(encs[i]), 'encounter', selfOnly ? pickSelfEnc(encs[i]) : encs[i]);
+                add(pre + encKey(encs[i]), 'encounter', selfOnly ? pickSelfEnc(encs[i]) : encs[i]);
             }
             for (const w of S.windows) {
-                const key = winKeyOf(w);
+                const key = pre + winKeyOf(w);
                 if (st.sent.has(key) || st.queued.has(key)) continue;
                 if (w.open && !final) {
                     const last = st.lastWin.get(w.startedAt);
@@ -973,7 +1044,7 @@
                 st.lastWin.set(w.startedAt, deps.now());
                 add(key, 'window', selfOnly ? pickSelfWin(w) : plainWin(w));
             }
-            for (const q of S.quests) add('task:' + q.t, 'task', q);
+            for (const q of S.quests) add(pre + 'task:' + q.t, 'task', q);
         }
 
         function takeBatch() {
@@ -1016,7 +1087,7 @@
                     if (!st.queue.length) break;
                     const batch = takeBatch();
                     let res;
-                    try { res = await deps.post({ v: SINK.FORMAT_VERSION, records: batch }); } catch { res = { ok: false, status: 0 }; }
+                    try { res = await deps.post({ v: SINK.FORMAT_VERSION, server, records: batch }); } catch { res = { ok: false, status: 0 }; }
                     st.stats.lastStatus = res ? res.status : 0;
                     if (res && res.ok) {
                         try { const b = JSON.parse(res.text); st.stats.accepted += b.accepted | 0; st.stats.duplicate += b.duplicate | 0; st.stats.rejected += b.rejected | 0; } catch { /* counts only */ }
@@ -1165,7 +1236,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { serverOf, serverKey, talismanLines, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1174,15 +1245,18 @@
     const TOGGLES_KEY = 'mwicsExporterToggles';
     let latest = null; // { characterObj, receivedAt }
     const seen = new WeakSet();
-    const RECORDER_KEY = 'mwicsRecorderToggles', REC_WIN_KEY = 'mwicsRecorderWindows', REC_ENC_KEY = 'mwicsRecorderEncounters';
+    // The game server this tab is on. The test server keeps its recording, sent keys, party state and snapshots under keys with a '.test' suffix, so
+    // a live tab and a test tab share a script storage without mixing; the live keys are unchanged. The toggles, the helper address and the token are shared.
+    const SERVER = serverOf(typeof location !== 'undefined' ? location.hostname : '');
+    const RECORDER_KEY = 'mwicsRecorderToggles', REC_WIN_KEY = serverKey('mwicsRecorderWindows', SERVER), REC_ENC_KEY = serverKey('mwicsRecorderEncounters', SERVER);
     const TYPE_RE = /"type"\s*:\s*"([a-z_]+)"/;
     function loadRecToggles() {
         try { return { recorder: true, selfOnly: false, ...(JSON.parse(GM_getValue(RECORDER_KEY, '{}')) || {}) }; } catch { return { recorder: true, selfOnly: false }; }
     }
     let recToggles = loadRecToggles();
-    const recorder = createRecorder({ clientData: () => clientData() });
-    const VERSION = '0.9.4'; // keep equal to @version (a test checks it)
-    const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = 'mwicsSinkSent', DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
+    const recorder = createRecorder({ clientData: () => clientData(), server: SERVER });
+    const VERSION = '0.10.0'; // keep equal to @version (a test checks it)
+    const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = serverKey('mwicsSinkSent', SERVER), DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
     function helperToken() { return String(GM_getValue(HELPER_TOKEN_KEY, '')); }
@@ -1206,6 +1280,7 @@
     }
     const sink = createSink({
         recorder,
+        server: SERVER,
         enabled: () => !!recToggles.recorder && sendToHelperOn() && helperToken() !== '',
         selfOnly: () => !!recToggles.selfOnly,
         sent: loadSent(),
@@ -1287,7 +1362,7 @@
     function recordedSize() { try { return (GM_getValue(REC_ENC_KEY, '').length + GM_getValue(REC_WIN_KEY, '').length) / 1048576; } catch { return 0; } }
 
     // What the game showed about the party: the last battle start's members and the shared profiles seen (kept across reloads).
-    const GROUP_KEY = 'mwicsGroupState';
+    const GROUP_KEY = serverKey('mwicsGroupState', SERVER);
     let grp = { members: [], profiles: [] };
     try { const g = JSON.parse(GM_getValue(GROUP_KEY, 'null')); if (g && Array.isArray(g.members) && Array.isArray(g.profiles)) grp = g; } catch { /* start empty */ }
     // Several game tabs share this key: the profiles saved are the stored ones merged with this tab's (mergeProfiles); this tab's own list in memory is not changed.
@@ -1310,7 +1385,7 @@
     }
     // The latest group export for the simulator page (same build as the clipboard copy), rewritten when the party, a profile,
     // the character data or the toggles change.
-    const SNAP_KEY = 'mwicsGroupSnapshot', SNAP_INDEX_KEY = 'mwicsGroupSnapshotIndex', SNAP_CHAR_PREFIX = 'mwicsGroupSnapshot.';
+    const SNAP_KEY = serverKey('mwicsGroupSnapshot', SERVER), SNAP_INDEX_KEY = serverKey('mwicsGroupSnapshotIndex', SERVER), SNAP_CHAR_PREFIX = serverKey('mwicsGroupSnapshot', SERVER) + '.';
     function readSnapIndex() {
         try { const a = JSON.parse(GM_getValue(SNAP_INDEX_KEY, '[]')); return Array.isArray(a) ? a.filter((e) => e && e.id != null).sort((x, y) => (Number(y.t) || 0) - (Number(x.t) || 0)) : []; } catch { return []; }
     }
@@ -1538,7 +1613,7 @@
     function helperStatus() {
         const s = sink.state.stats;
         const on = sendToHelperOn() && recToggles.recorder;
-        toast('MWI Combat Tracker v' + VERSION + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + '.');
+        toast('MWI Combat Tracker v' + VERSION + (SERVER === 'test' ? ' (test server)' : '') + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + '.');
     }
 
     function openSettings() {
@@ -1550,7 +1625,7 @@
         const box = document.createElement('div');
         box.style.cssText = 'background:#1e1f24;color:#e6e6e6;border:1px solid #444;border-radius:8px;padding:16px 20px;min-width:320px;font:14px sans-serif;color-scheme:dark';
         const title = document.createElement('div');
-        title.textContent = 'MWI Combat Tracker v' + VERSION + ': what to export';
+        title.textContent = 'MWI Combat Tracker v' + VERSION + (SERVER === 'test' ? ' (test server)' : '') + ': what to export';
         title.style.cssText = 'font-weight:bold;margin-bottom:10px';
         box.appendChild(title);
         for (const k of KINDS) {

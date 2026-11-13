@@ -139,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.9.4/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.10.0/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -283,8 +283,8 @@ await test('simulator page: the import button is in the page language (en, pt, z
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.9.4/);
-    assert.ok(SRC.includes("const VERSION = '0.9.4'"));
+    assert.match(SRC, /@version\s+0.10.0/);
+    assert.ok(SRC.includes("const VERSION = '0.10.0'"));
     assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
     assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });
