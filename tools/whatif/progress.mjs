@@ -55,6 +55,9 @@ export function createParts(plan) {
             // 'picks' part: the row stays done and carries checking + its own run counts (the global counts minus what they were when the check began).
             const chk = confirming && kinds.includes(progress.checking) ? progress.checking : null;
             if (chk && !chkBase[chk]) chkBase[chk] = { planned: seen.planned, done: seen.done };
+            // The picks the search left out (progress.picksLeftOut, the core's result.notConfirmed): the pick check also runs inside a race, on the leaders' reading seeds, with
+            // no run of its own. A search whose picks were all left out that way never starts the part, but its check did run: the part ends 'done' with `leftOut`, not 'skipped'.
+            if (progress.picksLeftOut) picks.leftOut = progress.picksLeftOut;
             if (progress.picksPlanned !== undefined) { seen.planned = progress.picksPlanned; seen.done = progress.picksDone ?? 0; }
             // The 'picks' part counts the greedy phase's pick checks only: the progress counts are global and stay on every later message, so it takes them
             // from where the last foods or drinks check left them (`greedyBase`), and never from a message of a foods or drinks stage itself.
@@ -72,7 +75,7 @@ export function createParts(plan) {
             }
             if (chk) { for (const r of rows) r.state = 'done'; }
             else if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
-            else if (progress.stage === 'confirmation' || progress.stage === 'done') { if (picks.started) picks.state = 'done'; }
+            else if (progress.stage === 'confirmation' || progress.stage === 'done') { if (picks.started || picks.leftOut) picks.state = 'done'; }
             else if (key && picks.started) picks.state = 'waiting';
             if (progress.stage === 'done') for (const r of rows) r.state = 'done';
             else if (key) {
@@ -82,6 +85,7 @@ export function createParts(plan) {
                 // A race stage that has ended (progress.stageEnded names it) is done whatever message comes next: pick checks and the like.
                 const ended = progress.stageEnded ? parse(progress.stageEnded) : null;
                 row.state = ended && sameRow(row, ended) ? 'done' : 'running';
+                if (row.state === 'done' && progress.stageSkipped) row.skipped = true; // a stage the user ended with Skip: its round was cut, not finished (progress.stageSkipped, core.mjs)
                 row.runsPlanned = progress.runsPlanned ?? 0;
                 row.runsDone = progress.runsDone ?? 0;
                 row.candidatesLeft = progress.candidatesLeft ?? null;
@@ -106,7 +110,7 @@ export function createParts(plan) {
                 out.push(r ? { ...r } : waiting(kind, si, poolsOf()[si], stages[si].k));
             }
             if (picks.state === 'done') picks.runsDone = picks.runsPlanned;
-            out.push({ kind: 'picks', index: 0, state: picks.state, runsPlanned: picks.runsPlanned, runsDone: picks.runsDone, fill: picks.fill, etaSeconds: picks.state === 'running' ? (progress.etaSeconds ?? null) : picks.state === 'done' ? 0 : null });
+            out.push({ kind: 'picks', index: 0, state: picks.state, runsPlanned: picks.runsPlanned, runsDone: picks.runsDone, fill: picks.fill, etaSeconds: picks.state === 'running' ? (progress.etaSeconds ?? null) : picks.state === 'done' ? 0 : null, ...(picks.leftOut ? { leftOut: picks.leftOut } : {}) });
             const steps = rows.filter((r) => r.kind === 'step'), conf = rows.find((r) => r.kind === 'confirmation');
             if (!steps.length) out.push({ kind: 'steps', index: 0, state: 'waiting', maxSteps });
             for (const r of steps) out.push({ ...r });

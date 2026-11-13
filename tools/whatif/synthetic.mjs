@@ -102,7 +102,7 @@ export function flagsFromRequest(req, extra = {}) {
 // The whole search on a scenario, in this process, without a page: the real core on the real seams except the pool and measureNeed (above) and an in-memory store
 // and sink. `extra` flags win over the scenario's request; `onRound(record, stop)` can press the stage buttons (stop.done = 'accept' | 'skip') or stop.requested = true.
 // `records` primes the store with earlier runs (a run that reaches the pool is a store miss, counted in `runs`). Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, records, stop, seen }.
-export async function runSynthetic(scenario, extra = {}, { onRound, records: prior = [], poolWrap = (p) => p } = {}) {
+export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, records: prior = [], poolWrap = (p) => p } = {}) {
     const E = await import('./engine.mjs'); // registers the loader hooks: the core is imported after it
     const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
     const { main } = await import('./core.mjs');
@@ -120,6 +120,7 @@ export async function runSynthetic(scenario, extra = {}, { onRound, records: pri
         sink: {
             progress(p) {
                 lastProgress = JSON.parse(JSON.stringify(p));
+                onProgress?.(lastProgress);
                 if (p.stageSeparate) seen.separate.add(p.stageSeparate.rounds);
                 if (p.checkingWho) seen.checkingWho.add(`${p.checking} ${p.checkingWho.index} of ${p.checkingWho.of}`);
                 if (p.checking) seen.checking.add(p.checking);

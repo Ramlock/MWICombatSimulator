@@ -153,6 +153,8 @@ export async function main(settings, seams) {
     // cached run is done when it is counted): planned never drops and done never exceeds it. Shown as the part "Confirming the picks".
     const sure = { planned: 0, done: 0, counted: new Set() };
     let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
+    const STAGE_FIELDS = ['round', 'phase', 'stageContending', 'stagePaused', 'stageAcceptable', 'stageSeparate', 'stageDropped', 'stageRuns', 'stageSimHours', 'stageEnded', 'stageSkipped']; // the progress fields of a race stage
+    let notConfirmedList = null; // result.notConfirmed once the report exists (read by report())
     let stageCtx = null; // the race stage's own counters (race() sets it, clears it at the stage's end): added to every progress message of the stage
     function report(patch = {}) {
         Object.assign(progress, patch, stageCtx ? stageCtx() : {});
@@ -162,6 +164,7 @@ export async function main(settings, seams) {
         progress.etaSeconds = left <= 0 ? 0 : hours ? Math.round((wall / hours) * batch.hoursLeft / Math.min(jobs, left)) : null;
         progress.elapsedSeconds = Math.round((Date.now() - t0) / 1000);
         if (sure.planned) { progress.picksPlanned = sure.planned; progress.picksDone = sure.done; }
+        if (notConfirmedList?.length) progress.picksLeftOut = notConfirmedList.length; // the picks left out so far (result.notConfirmed): the pick check also runs inside a race, on the leaders' reading seeds, with no run of its own
         if (partsTracker) progress.parts = partsTracker.sync(progress);
         outSink.progress(progress);
     }
@@ -556,7 +559,8 @@ export async function main(settings, seams) {
     // the same rounds, each player ends when his own leader locks. Returns { locked, leaders }: locked is a Map player -> candidate
     // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
     let roundNo = 0, liveCands = null, lastRound = null, lastBase = [];
-    const endedByUser = {}; // stage -> the round after which the user ended it (result.endedByUser)
+    const endedByUser = {}; // stage -> the rounds the stage finished when the user ended it (result.endedByUser)
+    const endedBySkip = {}; // stage -> true when the end was a Skip (during round endedByUser + 1, its finished runs kept), absent for an Accept (result.endedBySkip)
     const haveSeeds = (ops, seeds, h) => { const key = keyOf(ops); return seeds.every((s) => cache.get(key + '#' + s)?.byHours[h]); };
     // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached).
     function readCount(base, c, h) {
@@ -704,9 +708,9 @@ export async function main(settings, seams) {
         // The stage's end (the one path): its last figures and its end go to the progress record at once (stageEnded names the stage), so the row stops
         // reading "running" and drops the buttons however long the pick checks take. A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
         let prevLive = []; // the leaders of the last finished round (what a Skip before the next round finishes returns)
-        const endStage = (leaders, accepted) => {
+        const endStage = (leaders, accepted, bySkip = false) => {
             onEnd?.(); // the report takes the end mark (result.endedByUser) at once, not after the pick checks that follow
-            Object.assign(progress, stageCtx(), { stageEnded: stage });
+            Object.assign(progress, stageCtx(), { stageEnded: stage }, bySkip ? { stageSkipped: true } : {});
             report();
             return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders, accepted };
         };
@@ -715,7 +719,8 @@ export async function main(settings, seams) {
         const skipEnd = (stageRound) => {
             stopSignal.done = false;
             endedByUser[stage] = stageRound - 1;
-            return endStage(prevLive, []);
+            endedBySkip[stage] = true;
+            return endStage(prevLive, [], true);
         };
         try {
         for (;;) {
@@ -839,7 +844,13 @@ export async function main(settings, seams) {
             }
             prevLive = live;
         }
-        } finally { stageCtx = null; }
+        } finally {
+            // The stage's own fields leave the shared progress object with the stage: the next, non-race stage (the confirmation) or message (a pick check) must not
+            // carry the round, phase and counters of the race before it (progress.mjs copies them onto any row whose message has a round). The ended stage's row
+            // already holds its last figures (endStage's report).
+            stageCtx = null;
+            for (const k of STAGE_FIELDS) delete progress[k];
+        }
     }
     // An object keyed by player name, rebuilt in the party's own order (the order of `players`; a key that is no player after them).
     const inParty = (obj) => Object.fromEntries(partyEntries(obj));
@@ -892,12 +903,14 @@ export async function main(settings, seams) {
     // ---- Search ----
     async function search() {
         const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
+        notConfirmedList = result.notConfirmed;
         result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, confirmHours: finH, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
         const kinds = ['foods', 'drinks'].filter((k) => levers.has(k)); // the ticked ones, foods first
         partsTracker = createParts({ stages, keep, candidates: null, maxSteps, kinds });
         result.best = { foods: {}, drinks: {} };
         result.endedByUser = endedByUser;
+        result.endedBySkip = endedBySkip;
         result.baselineOps = [];
         if (kinds.length) {
             // STAGE F, then STAGE D: the foods and the drinks are decided first, whole fillings of every open slot, each against the
@@ -1119,7 +1132,7 @@ export async function main(settings, seams) {
     function publish(result) {
         outSink.partial(snapshot(result));
     }
-    const endedMd = (n) => (n > 0 ? `ended by you after round ${n}` : 'ended by you before its first round finished'); // result.endedByUser: the rounds the stage finished
+    const endedMd = (n, skip) => (skip ? `ended by you during round ${n + 1}, its finished runs kept` : `ended by you after round ${n}`); // result.endedByUser: the rounds the stage finished; a Skip ends the round in flight
     const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
     const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
 
@@ -1164,13 +1177,13 @@ export async function main(settings, seams) {
         if (bestKinds.length) {
             L.push('## Best foods and drinks', '');
             for (const [kind, label] of bestKinds) {
-                L.push(`### ${label}${endedByUser[kind] !== undefined ? ` (${endedMd(endedByUser[kind])})` : ''}`, '');
+                L.push(`### ${label}${endedByUser[kind] !== undefined ? ` (${endedMd(endedByUser[kind], endedBySkip[kind])})` : ''}`, '');
                 for (const [p, e] of partyEntries(result.best[kind])) L.push(`- ${p}: ${e.acceptedAsIs ? '[accepted as is] ' : ''}${e.items.map((x) => x.item.split('/').pop() + (x.trigger ? ` (${x.trigger})` : '')).join(', ') || 'none'}${e.unchanged ? ' (no change)' : Number.isFinite(e.buyerNet) ? ` (party gain ${fmt(e.gainPerUser)} ± ${fmt(e.sePerUser)}, buyer's gain ${fmt(e.buyerNet)} ± ${fmt(e.buyerNetSe)} per day${Number.isFinite(e.ownSuppliesPerDay) ? `; ${fmt(e.gainPerUser)} loot share ${e.ownSuppliesPerDay <= 0 ? `+ ${fmt(-e.ownSuppliesPerDay)} food and drink saved` : `- ${fmt(e.ownSuppliesPerDay)} more food and drink bought`}` : ''})` : ''}`);
                 L.push('');
             }
             L.push('Everything below is measured on top of these foods and drinks.', '');
         }
-        for (const [stage, n] of Object.entries(endedByUser)) if (stage !== 'foods' && stage !== 'drinks') L.push(`The ${stage} stage was ${endedMd(n)}.`, '');
+        for (const [stage, n] of Object.entries(endedByUser)) if (stage !== 'foods' && stage !== 'drinks') L.push(`The ${stage} stage was ${endedMd(n, endedBySkip[stage])}.`, '');
         L.push('## Changes, in order', '','| # | Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
         result.steps.forEach((s, i) => L.push(`| ${i + 1} | ${s.desc}${s.acceptedAsIs ? ' (accepted as is)' : ''} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`));
         L.push('', "Party gain: the change in the group's shared loot per player per day, before anyone's food and drink. Buyer's gain: that player's share of it plus the change in what they spend on their own food and drink, so a free change can show no party gain and still pay the player by saving food and drink.");
