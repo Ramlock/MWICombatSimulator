@@ -4702,28 +4702,40 @@ function restoreImportedGroup() {
     }
 }
 
-// Writes an import's abilities list to the ability slots of the screen (the one place that does it; the Solo import and the tab load use it).
-// A list of 5 starts at the special slot 0; a shorter one fills slots 1-4 and leaves slot 0. An entry that is missing or null (a list shorter
-// than its slots, or a null inside it) clears its slot (empty ability, level 1). The old aura names become the mystic aura in slot 0, and
-// arcane_reflection becomes retribution in any slot.
+// Writes an import's abilities list to the ability slots (the one place that does it; the Solo import and the tab load use it).
+// The slot follows what the ability is, not the list length: a special ability (an aura, isSpecialAbility in abilityDetailMap; the old aura names
+// aqua/flame/sylvan count as the mystic aura) goes to the special slot 0, the others fill slots 1-4 in their order. A list of exactly 5 entries is
+// the sim's own shape (slot 0 first, as written, whatever it holds). A list with no special ability leaves slot 0 alone. An entry that is
+// missing or null (a list shorter than its slots, or a null inside it) clears its slot (empty ability, level 1). The old aura names become the
+// mystic aura in slot 0, and arcane_reflection becomes retribution in any slot.
 function applyAbilitySlots(abilities) {
-    const list = abilities ?? [];
-    const hasSpecial = Object.keys(list).length == 5;
-    for (let i = 0; i < (hasSpecial ? 5 : 4); i++) {
-        const abilitySlot = hasSpecial ? i : (i + 1);
+    const list = Object.values(abilities ?? []);
+    const oldAuras = ["/abilities/aqua_aura", "/abilities/flame_aura", "/abilities/sylvan_aura"];
+    const isSpecial = (entry) => entry != null && (oldAuras.includes(entry.abilityHrid) || abilityDetailMap[entry.abilityHrid]?.isSpecialAbility === true);
+    let special = null;
+    let normal = list;
+    let hasSpecial = false;
+    if (list.length == 5) {
+        hasSpecial = true;
+        special = list[0];
+        normal = list.slice(1);
+    } else {
+        const at = list.findIndex(isSpecial);
+        if (at >= 0) {
+            hasSpecial = true;
+            special = list[at];
+            normal = list.filter((_, i) => i != at);
+        }
+    }
+    const write = (abilitySlot, entry) => {
         const abilitySelect = document.getElementById("selectAbility_" + abilitySlot);
         const abilityLevelInput = document.getElementById("inputAbilityLevel_" + abilitySlot);
-        const entry = list[i];
         if (entry == null) {
             abilitySelect.value = "";
             abilityLevelInput.value = "1";
-            continue;
+            return;
         }
-        if (hasSpecial && i == 0 && (
-            entry.abilityHrid == "/abilities/aqua_aura" ||
-            entry.abilityHrid == "/abilities/flame_aura" ||
-            entry.abilityHrid == "/abilities/sylvan_aura"
-        )) {
+        if (abilitySlot == 0 && oldAuras.includes(entry.abilityHrid)) {
             entry.abilityHrid = "/abilities/mystic_aura";
         }
         if (entry.abilityHrid == "/abilities/arcane_reflection") {
@@ -4731,7 +4743,9 @@ function applyAbilitySlots(abilities) {
         }
         abilitySelect.value = entry.abilityHrid;
         abilityLevelInput.value = String(entry.level);
-    }
+    };
+    if (hasSpecial) write(0, special);
+    for (let i = 0; i < 4; i++) write(i + 1, normal[i]);
 }
 
 function doSoloImport() {
