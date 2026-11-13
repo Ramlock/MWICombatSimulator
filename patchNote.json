@@ -19,7 +19,12 @@
             "Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers",
             "What-if: every ± margin is now written in the same unit as the figure beside it (rounded up)",
             "Runner: the window no longer says the runner stopped when it is starting up, and starting it a second time just opens the page",
-            "What-if: the budget field now accepts spaces, commas and k, M, B, T (like 1.5M)"
+            "What-if: the budget field now accepts spaces, commas and k, M, B, T (like 1.5M)",
+            "What-if: importing the party from the game now also fills your own character's items and abilities (MWI Combat Tracker 0.9.3).",
+            "What-if: \"Each change alone\" starts collapsed; the prices line shows only when the market data is a day old or more.",
+            "What-if: clearer stage names in the progress list.",
+            "What-if: the detail lists are one line each under one \"See details\" link; a player whose foods or drinks do not change has no row; each finished stage is one line.",
+            "What-if: the Windows runner is now one file, WhatIfRunner.exe: save it and double-click, nothing to unzip."
         ]
     },
     "2026-11-12":
