@@ -196,6 +196,13 @@ try {
     check('a bad paste is not kept and the status says so', (await statusOf('Player 1')) === 'not a character export: not kept' && (await stored('Player 1')) === null);
     await paste('Player 1', JSON.stringify(exportOf('Player 1', 5)));
     check('a valid paste is kept in storage under the player\'s name, the box is emptied, the status names the export', (await stored('Player 1')) === JSON.stringify(exportOf('Player 1', 5)) && (await statusOf('Player 1')) === 'kept (Player 1)' && (await js(`document.querySelector('#whatIfBudgets textarea').value`)) === '');
+    // Owned items ticked by default: once an export is there, Items you own is on and ticked with no click; a user's untick stays across a window reopen.
+    const ownedBox = `(() => { const c = document.getElementById('whatIfLever_owned'); return [c.disabled, c.checked]; })()`;
+    check('with an export kept, Items you own is on and ticked by default', JSON.stringify(await js(ownedBox)) === '[false,true]');
+    await js(`document.getElementById('whatIfLever_owned').click(), true`);
+    await js(reopen);
+    check('an untick of Items you own stays when the window opens again', JSON.stringify(await js(ownedBox)) === '[false,false]');
+    await js(`document.getElementById('whatIfLever_owned').click(), true`);
     await paste('Player 1', JSON.stringify(exportOf('Player 1', 6)));
     check('a new paste replaces the kept one', (await stored('Player 1')) === JSON.stringify(exportOf('Player 1', 6)) && (await statusOf('Player 1')) === 'kept (Player 1)');
     await paste('Player 1', '{"name":"x"}');
