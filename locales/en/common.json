@@ -356,6 +356,7 @@
             "noSinglesYetOne": "{{n}} searched; it has not been checked on {{need}} fresh runs yet.",
             "singlesNotShownYet": "{{n}} more searched; none has been checked on {{need}} fresh runs yet, not shown",
             "singlesNotShownYetOne": "{{n}} more searched; it has not been checked on {{need}} fresh runs yet, not shown",
+            "none": "None.",
             "showMore": "Show {{n}} more not accepted",
             "showLess": "Hide the {{n}} not accepted",
             "apart": "Unknown cost, not ranked",

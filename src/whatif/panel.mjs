@@ -280,7 +280,7 @@ export function renderParts(status, t, pressed = null) {
             // The total is the stage's so far (it grows as the next player's check plans his own arm), so the row names whose check it is: "player N of M".
             const runs = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
             const checking = r.checking ? (r.checkWho ? fill(t, 'progress.checkingPicksOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs }) : fill(t, 'progress.checkingPicks', { runs })) : null;
-            text = noneConfirmed ? esc(t('progress.picksNoneConfirmed', { n: num(r.leftOut) })) : (rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + (checking ?? esc(t('progress.done')));
+            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : (rounded ? counters : plural(t, 'progress.runsOf', r.runsPlanned, { done: num(r.runsPlanned), total: num(r.runsPlanned) })) + ' · ' + (checking ?? esc(t('progress.done')));
             cls = checking ? 'running' : 'done';
         }
         else if (r.state === 'skipped') { text = esc(t(r.kind === 'confirmation' ? 'progress.skippedNoStep' : 'progress.skippedNoPick')); cls = 'skipped'; } // a part of a finished search that never started (progress.mjs)
@@ -358,7 +358,6 @@ export function renderRounds(round, t, names = null) {
         // column per slot puts it over the slot columns (a header row of its own), the slot names under it; the other columns span both rows.
         const titleTh = `<th class="whatif-pool-title"${bySlot ? ` colspan="${nSlots}"` : ''} data-pool="${esc(p.key)}"><b>${title}</b></th>`;
         const slotHead = bySlot ? Array.from({ length: nSlots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') : '';
-        const cols = (bySlot ? nSlots : 1) + 6;
         const rows = leaders.map((l) => {
             // The status in plain words; a row with no fresh run yet says so there. A range that reaches 0 greys the row (status zero).
             // One or two words that say what a user can do with the row; the counts and the internal state are the cell's tooltip (facts only).
@@ -370,7 +369,7 @@ export function renderRounds(round, t, names = null) {
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
-        return `<div class="whatif-sec"><table class="whatif-table"><thead>${thead}</thead><tbody>${rows || `<tr><td colspan="${cols}" class="whatif-dim">${esc(t('rounds.none'))}</td></tr>`}</tbody></table></div>`;
+        return `<div class="whatif-sec">${listTable(t, leaders.length, () => `<table class="whatif-table"><thead>${thead}</thead><tbody>${rows}</tbody></table>`, title, 'rounds.none')}</div>`;
     }).join('');
     return `<div class="whatif-rounds whatif-sec"><div class="small">${head}</div>${tables}</div>`;
 }
@@ -572,6 +571,12 @@ function closedList(key, id, items, note, t) {
         `<button type="button" class="btn btn-link btn-sm p-0 mb-1" data-whatif-more="${id}" data-show="${esc(t('result.' + key + 'Show', { n }))}" data-hide="${esc(t('result.' + key + 'Hide', { n }))}">${esc(t('result.' + key + 'Show', { n }))}</button>` +
         `<ul class="small whatif-more" id="${id}" hidden>${items.join('')}</ul>`;
 }
+// The one renderer of every list the window draws as a table: with no row it is ONE grey line ("None."), never a header row over nothing and never a label
+// of its own; `lead` (a pool's title, which carries its counts) may stand before the word. `table` is the whole table's html, built only when there are rows.
+function listTable(t, count, table, lead = '', none = 'result.none') {
+    if (count > 0) return table();
+    return `<div class="whatif-dim" data-none>${lead ? lead + ' · ' : ''}${esc(t(none))}</div>`;
+}
 const colHead = (t) => [
     gainTh(t, 'partyGain'), gainTh(t, 'buyerGain')].join('');
 // The two gain column heads (name and tooltip): the one definition every table with these columns uses (the rounds table too).
@@ -649,8 +654,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (!result.singles?.length) { if (!running) L.push(`<div class="text-secondary">${yet ? plural(t, 'result.noSinglesYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : esc(t('result.noSingles'))}</div>`); }
     else if (running && !anySingles) { /* only the foods and drinks fillings are in so far: they are not a table */ }
     else {
-        L.push('<table class="table table-sm whatif-table whatif-each"><thead><tr>' +
-            [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>');
+        const eachHead = '<thead><tr>' + [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>';
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
             gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
@@ -661,9 +665,12 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // sorted them with one comparator, the window only splits them by cost.
         const accepted = rows.filter(([s]) => s.accepted), isFree = ([s]) => !(s.cost > 0);
         const group = (key, list) => (list.length ? `<tr class="whatif-group" data-group="${key}"><td colspan="8" class="small text-secondary">${esc(t('rounds.pool.' + key))}</td></tr>` + list.map(([s, i]) => row(s, i)).join('') : '');
-        L.push('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>');
-        if (weak.length) L.push('<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>');
-        L.push('</table>');
+        // The accepted rows are the list; the grey rows stay behind the toggle, in the same table (so the columns line up when it opens), or, when nothing is
+        // accepted, in a table of their own (hidden whole, header included), so that no header stands over an empty list.
+        const weakBody = '<tbody class="whatif-more" id="whatIfMoreSingles" hidden>' + weak.map(([s, i]) => row(s, i)).join('') + '</tbody>';
+        const eachTable = (inner, attrs = '') => `<table class="table table-sm whatif-table whatif-each"${attrs}>${eachHead}${inner}</table>`;
+        L.push(listTable(t, accepted.length, () => eachTable('<tbody>' + group('free', accepted.filter(isFree)) + group('paid', accepted.filter((r) => !isFree(r))) + '</tbody>' + (weak.length ? weakBody : ''))));
+        if (!accepted.length && weak.length) L.push(`<table class="table table-sm whatif-table whatif-each" id="whatIfMoreSingles" hidden>${eachHead}<tbody class="whatif-more">${weak.map(([s, i]) => row(s, i)).join('')}</tbody></table>`);
         if (weak.length) L.push(`<button type="button" class="btn btn-link btn-sm p-0 mb-2" data-whatif-more="whatIfMoreSingles" data-show="${esc(t('result.showMore', { n: weak.length }))}" data-hide="${esc(t('result.showLess', { n: weak.length }))}">${esc(t('result.showMore', { n: weak.length }))}</button>`);
     }
     if (result.singlesNotShown > 0 && (anySingles || !running)) L.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);

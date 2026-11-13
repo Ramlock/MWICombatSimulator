@@ -264,7 +264,7 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
     check('round numbers count inside the stage (a stage\'s first round is round 1): the record, the progress and the first look use stageRound, never the run-wide roundNo', /const stageRound = roundNo - sinceStart;/.test(cs) && !/round: roundNo/.test(cs) && /firstLook\(cands, base, byPlayer, stage, stageRound\)/.test(cs) && /\{ stage, round: stageRound, phase: 'search'/.test(cs) && /\{ stage, round: stageRound, phase: 'reading'/.test(cs) && /const rec = \{ round: stageRound,/.test(cs));
     check('elimination: race() runs eliminate() on the not-refuted candidates each round after the estimates, drops what is out from the round (active, contention), reads the last standing, locks only a lone change that passes the pick check, settles when no change is left; the bar comes from the cached base runs (barsOf); no separated / anyHope left', /const standing = eliminate\(cands\.filter/.test(cs) && /contention\(active\.filter\(\(c\) => !c\.out\)/.test(cs) && /const lastStanding = /.test(cs) && /const resolved = /.test(cs) && /function barsOf\(base, count\)/.test(cs) && /const BAR_FRACTION = 0\.01;/.test(cs) && !/separated|anyHope/.test(cs.replace(/\/\/[^\n]*/g, '')));
     check('elimination payback cut: eliminate() gets the same payLimit the pick check uses (0 off the profit goal)', /bars: barsOf\(base, maxK \* baseMult\), payLimit, order: players/.test(cs) && /const payLimit = goal === 'profit' \? maxPayback : 0;/.test(cs));
-    check('the end of a stage publishes the report at once (onEnd), so the ended-by-you mark shows before the pick checks; both race calls pass it', /onEnd\?\.\(\);[^\n]*\n\s*Object\.assign\(progress, stageCtx\(\), \{ stageEnded: stage \}\)/.test(cs) && (cs.match(/onEnd: \(\) => publish\(result\)/g) || []).length === 2);
+    check('the end of a stage publishes the report at once (onEnd), so the ended-by-you mark shows before the pick checks; both race calls pass it', /onEnd\?\.\(\);[^\n]*\n\s*Object\.assign\(progress, stageCtx\(\), \{ stageEnded: stage \}, bySkip \? \{ stageSkipped: true \} : \{\}\)/.test(cs) && (cs.match(/onEnd: \(\) => publish\(result\)/g) || []).length === 2);
     check('done: a press before a stage\'s first round is dropped (race() clears the flag at its start)', /stopSignal\.done = false; \/\/ a press before/.test(cs));
 }
 // Item 24 in the core: a leader without a clear gain gives the final's unchanged form, flagged; one with a clear gain gives its items.
@@ -375,7 +375,32 @@ for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`
     }
     const cs = read('tools/whatif/core.mjs');
     const flat = cs.split(/[\r\n ]+/).join(' ');
-    check('core: the progress record takes the round record counts at each round, and the stage end only when it ends (not on a stop)', flat.includes('stageCont = { contending: cont.contending, paused: cont.paused, separate: nearestSeparation(standing, { goal, mult: pauseMult, rounds: stageRound }) }; report();') && flat.includes('Object.assign(progress, stageCtx(), { stageEnded: stage }); report(); return { locked:') && cs.split('stageEnded: stage').length === 2);
+    check('core: the progress record takes the round record counts at each round, and the stage end only when it ends (not on a stop)', flat.includes('stageCont = { contending: cont.contending, paused: cont.paused, separate: nearestSeparation(standing, { goal, mult: pauseMult, rounds: stageRound }) }; report();') && flat.includes('Object.assign(progress, stageCtx(), { stageEnded: stage }, bySkip ? { stageSkipped: true } : {}); report(); return { locked:') && cs.split('stageEnded: stage').length === 2 && /finally \{[^}]*for \(const k of STAGE_FIELDS\) delete progress\[k\]/.test(cs));
+}
+// A stage the user ended with Skip: its row is done and marked `skipped` (its round was cut: "round N · ended by you"), kept by the later messages; an Accept's row is not marked.
+{
+    const race = { round: 1, phase: 'search', stageContending: 2, stagePaused: 0, stageDropped: 0, stageRuns: 5, stageSimHours: 20, stageAcceptable: 0, stageSeparate: null };
+    const sk = createParts({ ...plan, kinds: ['foods'] });
+    sk.sync({ stage: 'foods', ...race });
+    const ended = sk.sync({ stage: 'foods', ...race, stageEnded: 'foods', stageSkipped: true }).find((p) => p.kind === 'foods');
+    const later = sk.sync({ stage: 'screen', runsPlanned: 1, runsDone: 0 }).find((p) => p.kind === 'foods');
+    check('skipped stage: the row is done and skipped, and stays so once the next stage starts', ended.state === 'done' && ended.skipped === true && later.state === 'done' && later.skipped === true, JSON.stringify([ended, later]));
+    const ac = createParts({ ...plan, kinds: ['foods'] });
+    ac.sync({ stage: 'foods', ...race });
+    check('accepted stage: the row is done and not marked skipped', ac.sync({ stage: 'foods', ...race, stageEnded: 'foods' }).find((p) => p.kind === 'foods').skipped === undefined);
+    check('a row of a stage with no stage fields (the confirmation) has no round', !('round' in createParts(plan).sync({ stage: 'confirmation', runsPlanned: 1, runsDone: 0 }).at(-1)));
+}
+// Picks left out inside the race (progress.picksLeftOut: the pick check on the leaders' reading seeds, no run of its own): the picks part ends done with the count, never skipped.
+{
+    const lo = createParts(plan);
+    lo.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 0, runsPlanned: 164 });
+    lo.sync({ stage: 'screen', picksLeftOut: 9, runsDone: 5, runsPlanned: 164 });
+    const fin = lo.sync({ stage: 'done', picksLeftOut: 9, runsDone: 164, runsPlanned: 164 });
+    const pk = fin.find((p) => p.kind === 'picks'), plain = createParts(plan);
+    plain.sync({ stage: 'screen', candidatesLeft: 40, runsDone: 0, runsPlanned: 164 });
+    const none = plain.sync({ stage: 'done', runsDone: 164, runsPlanned: 164 }).find((p) => p.kind === 'picks');
+    check('picks left out in the race: the part is done with leftOut at the end of the search', pk.state === 'done' && pk.leftOut === 9 && pk.runsPlanned === 0, JSON.stringify(pk));
+    check('no pick checked or left out: the part has no leftOut (the window reads it as not run)', none.leftOut === undefined && none.state !== 'done', JSON.stringify(none));
 }
 check('strings: placeholders match across languages', keys.every((k) => ['pt', 'zh'].every((l) => (locales[l].progress[k].match(/\{\{\w+\}\}/g) || []).sort().join() === (locales.en.progress[k].match(/\{\{\w+\}\}/g) || []).sort().join())));
 const ptHtml = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'step', index: 2, state: 'running', runsPlanned: 4, runsDone: 1, etaSeconds: 9 }] } }, tIn('pt'));
