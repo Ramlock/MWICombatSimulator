@@ -44,7 +44,7 @@ A fix round on the what-if rules should take minutes, not an hour of real simula
 
 `node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>] [--demo-runs <runs.jsonl>] [--demo-prices <marketplace.json>]`
 
-- Listens on `127.0.0.1` only. `--port 0` picks a free port; the address is printed on start.
+- Listens on `127.0.0.1` only. `--port 0` picks a free port; the address is printed on start. `--open` opens the page in the default browser (or `$BROWSER`) once it listens; a port held by a runner of the same version opens the page on it and exits 3, by one of another version exits 4, by anything else exits 1 (details in `runner-zip.md`).
 - `--results`: where each search keeps its folder; default `<home>/MWI-WhatIf/results`, never inside the repo.
 - `--dist`: the built simulator to serve at `/`; default the repo's `dist/`.
 - `--demo-runs` / `--demo-prices` (off by default; generic, for a demonstration on saved material): every search the runner starts gets `--cache-from <runs.jsonl>` (a saved run store, read-only, hits count as cached), and the price file named is used in place, instead of the request's snapshot (`--prices <file>`). The run keys hold the price path relative to the checkout, so a saved run hits only when that path reads the same from the checkout the runner runs in.

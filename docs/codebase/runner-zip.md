@@ -18,7 +18,7 @@ Needs `git`, `tar.exe` (Windows 10 and later), `npm`, and the network the first 
 
 `WhatIfRunner\`: `start-runner.cmd`, `node.exe`, `VERSION.txt`, `node_modules\heap-js`, `src\`, `tools\whatif`, `tools\calibration`, `dist\`. About 100 MB unpacked, about 34 MB zipped.
 
-`start-runner.cmd [port]` (default 8787) starts `tools\whatif\runner\server.mjs --port <port>` with the bundled `node.exe`, opens the default browser on `http://127.0.0.1:<port>/` after a few seconds, and keeps its window open (closing it stops the runner). The runner and its search workers run at the lowest priority on every core (`whatif-runner.md`); the launcher passes no core limit.
+`start-runner.cmd [port]` (default 8787) starts `tools\whatif\runner\server.mjs --port <port>` with the bundled `node.exe`, passes `--open` (the runner itself opens the default browser, or `$BROWSER`, on `http://127.0.0.1:<port>/` only once it listens; the Linux way without `--open` just prints the address), and keeps its window open (closing it stops the runner). A start on a port that is held: by the same version of the runner it says so and opens the page on it (exit 3); by a runner of another version it names both versions, says to close that one and opens nothing (exit 4); by anything else, or any other failure, it prints one line (`EADDRINUSE: port N is used by another program` or `The runner could not start: ...`), opens nothing (exit 1). The launcher turns exits 3 and 4 into its own closing messages and never says "The runner stopped" for them. Test: `tools/test/whatif-runner-start.mjs`. The runner and its search workers run at the lowest priority on every core (`whatif-runner.md`); the launcher passes no core limit.
 
 ## Why a zip with `node.exe` and not one executable
 
