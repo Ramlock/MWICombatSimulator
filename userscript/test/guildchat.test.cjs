@@ -1,7 +1,8 @@
 // Node test for userscript/mwics-guildchat.user.js on made-up chat fixtures (no real chat line, name or id).
 // Run: node userscript/test/guildchat.test.cjs
 // Checks: only the guild channel is ever recorded; cursor dedupe and gap lines on connect; refresh and live dedupe; deletion becomes an
-// update line; queue, retry and overflow gap; batch caps; strict arrival order; and a grep that the source is read-only toward the game.
+// update line; queue, retry and overflow gap; batch caps; strict arrival order; a slow send never holds back the next lines (they are
+// stamped when read and batched); nothing is sent while a connect reads the cursor; and a grep that the source is read-only toward the game.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -215,6 +216,56 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         h.rec.push(live(msg(3, T(3))));
         await h.rec.push(live(msg(4, T(4))));
         assert.deepEqual(msgs(h.sent).map((l) => l.id), ['2', '3', '4']);
+    });
+
+    await test('a slow send never holds back the next lines: they are stamped when read and all go in the next batch', async () => {
+        const posts = [];
+        let clock = Date.UTC(2030, 0, 1, 13, 0, 0);
+        const rec = createRecorder({
+            post: (lines) => new Promise((resolve) => posts.push({ lines: plain(lines), resolve })),
+            getCursor: async () => null,
+            now: () => clock,
+            setTimer: () => {},
+            log: () => {},
+        });
+        rec.push(init([]));
+        await settle();
+        assert.equal(posts.length, 1); // the session line, in flight and not answered (a throttled tab)
+        for (let i = 1; i <= 5; i++) { clock += 60000; rec.push(live(msg(i, T(i)))); }
+        await settle();
+        assert.equal(posts.length, 1, 'no second send while one is in flight');
+        const queued = plain(rec.state.queue).filter((l) => l.type === 'msg');
+        assert.deepEqual(queued.map((l) => l.id), ['1', '2', '3', '4', '5'], 'every line is queued when read');
+        assert.deepEqual(queued.map((l) => l.seen), [1, 2, 3, 4, 5].map((k) => new Date(Date.UTC(2030, 0, 1, 13, k, 0)).toISOString()), 'stamped when read');
+        posts[0].resolve({ ok: true, status: 200 });
+        await settle();
+        assert.equal(posts.length, 2);
+        assert.deepEqual(posts[1].lines.map((l) => l.id), ['1', '2', '3', '4', '5'], 'one batch, not one send per line');
+        posts[1].resolve({ ok: true, status: 200 });
+        await settle();
+        assert.equal(rec.state.queue.length, 0);
+    });
+
+    await test('while a connect reads the cursor nothing is sent, live lines are still queued, and the history goes in ahead of them', async () => {
+        const sent = [];
+        let answer;
+        const rec = createRecorder({
+            post: async (lines) => { sent.push(...plain(lines)); return { ok: true, status: 200 }; },
+            getCursor: () => new Promise((resolve) => { answer = resolve; }),
+            now: () => Date.UTC(2030, 0, 1, 13, 0, 0),
+            setTimer: () => {},
+            log: () => {},
+        });
+        rec.push(init([1, 2, 3].map((i) => msg(i, T(i)))));
+        rec.push(live(msg(4, T(4))));
+        rec.push(live(msg(3, T(3)))); // also in the history: queued once, as live
+        await settle();
+        assert.equal(sent.length, 0, 'held until the cursor is read');
+        assert.deepEqual(plain(rec.state.queue).filter((l) => l.type === 'msg').map((l) => l.id), ['4', '3']);
+        answer({ id: '1', t: T(1) });
+        await rec.idle();
+        assert.deepEqual(msgs(sent).map((l) => l.id + ':' + l.src), ['2:history', '4:live', '3:live']);
+        assert.equal(sent[0].type, 'session');
     });
 
     await test('planHistory is pure: same input, same plan, input untouched', () => {

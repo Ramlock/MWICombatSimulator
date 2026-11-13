@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWICS Guild Chat Export
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.1.0
+// @version      0.1.1
 // @description  Read-only live export of your own guild chat to a small local helper (127.0.0.1) that appends it to a file. Sends nothing to the game server, types nothing in the chat, never touches the login. Design: docs/codebase/guild-chat.md.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -107,6 +107,10 @@
 
     // The recorder owns the queue, the dedupe and the retry. It talks to the outside only through deps:
     //   post(lines) -> Promise<{ok, status}>, getCursor() -> Promise<{id, t}|null>, now() -> ms, setTimer(fn, ms), log(text) (counts only).
+    // A message is handled the moment it is read: it is stamped and queued at once, and never waits for a send to the helper. The one send
+    // in flight takes everything queued since the last one, so a slow helper round trip (a background tab the browser throttles) makes the
+    // batches bigger, never the backlog longer. While a connect reads the helper's cursor nothing is sent (a live line written first would
+    // move the cursor past the lines the history must fill); the history's lines then go in ahead of the live lines that came meanwhile.
     function createRecorder(deps) {
         const state = {
             ownId: null,
@@ -115,10 +119,13 @@
             dropped: null, // {from, to} of lines dropped because the helper was unreachable too long
             retryMs: RETRY_MIN_MS,
             flushing: false,
+            running: Promise.resolve(), // the send in progress
             timerSet: false,
             sessionOpen: false,
+            hold: 0, // connects still reading the cursor: nothing is sent while above 0
+            holdAt: 0, // where the history of the pending connect goes in the queue
+            syncTail: Promise.resolve(), // connects are planned one after the other
             stats: { received: 0, queued: 0, sent: 0, dropped: 0, failed: 0 },
-            tail: Promise.resolve(),
         };
         const stamp = () => iso(deps.now());
 
@@ -127,15 +134,20 @@
             if (state.known.size > MAX_KNOWN_IDS) state.known.delete(state.known.keys().next().value);
         }
 
-        function enqueue(line) {
-            state.queue.push(line);
-            state.stats.queued++;
-            if (state.queue.length > MAX_QUEUE) {
+        function trim() {
+            while (state.queue.length > MAX_QUEUE) {
                 const lost = state.queue.shift();
+                if (state.hold && state.holdAt > 0) state.holdAt--;
                 state.stats.dropped++;
                 const at = lost.t || lost.seen;
                 state.dropped = state.dropped ? { from: state.dropped.from, to: at } : { from: at, to: at };
             }
+        }
+
+        function enqueue(line) {
+            state.queue.push(line);
+            state.stats.queued++;
+            trim();
         }
 
         function nextBatch() {
@@ -156,28 +168,34 @@
             return { lines, taken, withGap: !!state.dropped };
         }
 
-        async function flush() {
-            if (state.flushing) return;
+        // Starts a send of what is queued, unless one is running (that one takes the new lines in its next batch) or a connect holds sending.
+        // Returns the running send, so a caller may wait for it; no message handler does.
+        function flush() {
+            if (state.hold) return Promise.resolve();
+            if (state.flushing) return state.running;
             state.flushing = true;
-            try {
-                while (state.queue.length || state.dropped) {
-                    const { lines, taken, withGap } = nextBatch();
-                    let res;
-                    try { res = await deps.post(lines); } catch { res = { ok: false, status: 0 }; }
-                    if (!res || !res.ok) {
-                        state.stats.failed++;
-                        deps.log('send failed status=' + (res ? res.status : 'none') + ' queued=' + state.queue.length);
-                        scheduleRetry();
-                        return;
+            state.running = (async () => {
+                try {
+                    while (!state.hold && (state.queue.length || state.dropped)) {
+                        const { lines, taken, withGap } = nextBatch();
+                        let res;
+                        try { res = await deps.post(lines); } catch { res = { ok: false, status: 0 }; }
+                        if (!res || !res.ok) {
+                            state.stats.failed++;
+                            deps.log('send failed status=' + (res ? res.status : 'none') + ' queued=' + state.queue.length);
+                            scheduleRetry();
+                            return;
+                        }
+                        state.queue.splice(0, taken);
+                        if (withGap) state.dropped = null;
+                        state.stats.sent += lines.length;
+                        state.retryMs = RETRY_MIN_MS;
                     }
-                    state.queue.splice(0, taken);
-                    if (withGap) state.dropped = null;
-                    state.stats.sent += lines.length;
-                    state.retryMs = RETRY_MIN_MS;
+                } finally {
+                    state.flushing = false;
                 }
-            } finally {
-                state.flushing = false;
-            }
+            })();
+            return state.running;
         }
 
         function scheduleRetry() {
@@ -201,37 +219,55 @@
             return flush();
         }
 
-        async function syncHistory(history, mode) {
-            let cursor = null;
-            if (mode === 'connect') {
-                try { cursor = await deps.getCursor(); } catch { cursor = null; }
-            }
+        // The lines a history array adds (gap, msg, update), each id remembered as it is planned.
+        function planLines(history, cursor, mode) {
             const plan = planHistory(history, cursor, state.known, mode);
             const seen = stamp();
-            if (plan.gap) enqueue({ v: FORMAT_VERSION, type: 'gap', from: plan.gap.from, to: plan.gap.to, seen });
+            const lines = [];
+            if (plan.gap) lines.push({ v: FORMAT_VERSION, type: 'gap', from: plan.gap.from, to: plan.gap.to, seen });
             for (const m of plan.fresh) {
-                enqueue(toMsgLine(m, state.ownId, 'history', seen));
+                lines.push(toMsgLine(m, state.ownId, 'history', seen));
                 remember(String(m.id), !!m.isDeleted);
             }
             for (const m of plan.updates) {
-                enqueue(toUpdateLine(m, seen));
+                lines.push(toUpdateLine(m, seen));
                 remember(String(m.id), true);
             }
             deps.log('history mode=' + mode + ' lines=' + (Array.isArray(history) ? history.length : 0) + ' fresh=' + plan.fresh.length + ' updates=' + plan.updates.length + ' gap=' + (plan.gap ? 'yes' : 'no') + ' cursor=' + (cursor ? 'yes' : 'no'));
-            await flush();
+            return lines;
         }
 
-        async function handle(obj) {
+        // A connect: sending holds until the cursor is read, the history's lines go in where the hold began, then sending resumes.
+        function syncConnect(history) {
+            if (state.hold++ === 0) state.holdAt = state.queue.length;
+            state.syncTail = state.syncTail.then(async () => {
+                let cursor = null;
+                try { cursor = await deps.getCursor(); } catch { cursor = null; }
+                try {
+                    const lines = planLines(history, cursor, 'connect');
+                    state.queue.splice(state.holdAt, 0, ...lines);
+                    state.holdAt += lines.length;
+                    state.stats.queued += lines.length;
+                    trim();
+                } catch (e) {
+                    deps.log('history error ' + (e && e.message));
+                }
+            }).finally(() => { if (--state.hold === 0) flush(); });
+            return state.syncTail;
+        }
+
+        // Synchronous: a message is stamped and queued when it is read; the send is started, never waited for.
+        function handle(obj) {
             if (!obj || typeof obj !== 'object') return;
             switch (obj.type) {
                 case 'init_character_data': {
                     state.ownId = obj.character && obj.character.id !== undefined ? obj.character.id : null;
                     startSession();
-                    await syncHistory(obj.guildChatHistory || [], 'connect');
-                    break;
+                    syncConnect(obj.guildChatHistory || []);
+                    return;
                 }
                 case 'guild_chat_history_updated':
-                    await syncHistory(obj.guildChatHistory || [], 'refresh');
+                    for (const l of planLines(obj.guildChatHistory || [], null, 'refresh')) enqueue(l);
                     break;
                 case 'chat_message_received': {
                     const m = obj.message;
@@ -241,31 +277,35 @@
                     if (state.known.has(id)) return;
                     enqueue(toMsgLine(m, state.ownId, 'live', stamp()));
                     remember(id, !!m.isDeleted);
-                    await flush();
                     break;
                 }
                 case 'chat_message_updated': {
                     const m = obj.message;
                     if (!m || m.chan !== GUILD_CHAN || m.id === undefined || m.id === null) return;
                     const id = String(m.id);
-                    if (m.isDeleted && state.known.get(id) !== true) {
-                        enqueue(toUpdateLine(m, stamp()));
-                        remember(id, true);
-                        await flush();
-                    }
+                    if (!(m.isDeleted && state.known.get(id) !== true)) return;
+                    enqueue(toUpdateLine(m, stamp()));
+                    remember(id, true);
                     break;
                 }
                 default:
+                    return;
             }
+            flush();
         }
 
-        // Messages are handled strictly in arrival order, so a live line never overtakes the connect-time history sync.
+        // Resolves once every pending connect is planned and the send it started has finished (or failed and scheduled its retry).
+        function idle() {
+            return state.syncTail.then(() => state.running);
+        }
+
+        // Handles the message at once; the returned promise is for callers that want to wait until it is sent (tests). The page does not wait.
         function push(obj) {
-            state.tail = state.tail.then(() => handle(obj)).catch((e) => deps.log('handler error ' + (e && e.message)));
-            return state.tail;
+            try { handle(obj); } catch (e) { deps.log('handler error ' + (e && e.message)); }
+            return idle();
         }
 
-        return { push, endSession, state, flush };
+        return { push, endSession, state, flush, idle };
     }
 
     // Cheap type check on the raw frame so only the watched kinds are ever parsed: '{"type":"xxx",...'.

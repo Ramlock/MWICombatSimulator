@@ -94,6 +94,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## Guild Chat Export (`mwics-guildchat.user.js`)
 
+### 0.1.1 (2026-11-13)
+
+- Fix: in a background tab the chat record fell hours behind and could stop. The script sent one line at a time and read the next line only after the helper had answered, so when the browser held the tab back each line waited for the next moment the tab was allowed to run. Now every line is taken the moment it arrives and everything waiting goes to the helper together in one send.
+
 ### 0.1.0 (2026-11-07)
 
 - First version, optional: saves your guild chat live to a file on your own computer through a small helper program that you run yourself.
