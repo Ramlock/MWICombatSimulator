@@ -1,7 +1,7 @@
-// The page entry of tools/test/whatif-page-pool.mjs (bundled by webpack into a scratch folder, never into dist/): puts the page pool and the page's
+// The page entry of tools/test/whatif-page-pool.mjs (in a folder of its own so the test runner does not take it for a test) (bundled by webpack into a scratch folder, never into dist/): puts the page pool and the page's
 // sha1 on window so the test can drive them from headless Chrome.
-import { createPagePool } from '../../src/whatif/pagePool.mjs';
-import { sha1 } from '../../src/whatif/sha1.mjs';
+import { createPagePool } from '../../../src/whatif/pagePool.mjs';
+import { sha1 } from '../../../src/whatif/sha1.mjs';
 
 // Every task at once through the pool seam (default size: navigator.hardwareConcurrency); resolves with the results in the tasks' order.
 window.runPool = async (init, tasks) => {

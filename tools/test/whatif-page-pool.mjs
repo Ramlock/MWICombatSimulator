@@ -77,7 +77,7 @@ nodePool.kill();
 const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'page-pool-'));
 const outDir = path.join(prof, 'bundle');
 const base = createRequire(import.meta.url)('../../webpack.config.js');
-const compiler = webpack({ ...base, entry: path.join(root, 'tools/test/whatif-page-pool-page.mjs'), output: { ...base.output, path: outDir, clean: true }, plugins: [], devtool: false });
+const compiler = webpack({ ...base, entry: path.join(root, 'tools/test/page-pool/entry.mjs'), output: { ...base.output, path: outDir, clean: true }, plugins: [], devtool: false });
 const stats = await new Promise((res, rej) => compiler.run((e, s) => { compiler.close(() => {}); if (e) rej(e); else if (s.hasErrors()) rej(new Error(s.toString({ all: false, errors: true }))); else res(s); }));
 const mainFile = stats.toJson({ all: false, assets: true, chunks: true }).assetsByChunkName.main.find((f) => f.endsWith('.js'));
 check('the repo webpack config bundles the page entry and its worker', fs.readdirSync(outDir).some((f) => /searchWorker/.test(f)));
