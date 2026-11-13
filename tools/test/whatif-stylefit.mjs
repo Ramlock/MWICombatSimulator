@@ -49,7 +49,7 @@ for (const style of ['stab', 'slash', 'smash']) { const w = weapon(style); check
 const core = readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
 const market = core.slice(core.indexOf('function candidatesFor'), core.indexOf('// ---- Phase 2 levers'));
 const owned = core.slice(core.indexOf('function ownedCands'), core.indexOf('function abilityCands'));
-check((core.match(/misfit\(/g) || []).length === 1 && /styleDrop\(fit, item, \{ id, player: p, slot, desc, from: \{ item: it\.itemHrid, level: it\.enhancementLevel \}, to: \{ item: item\.hrid, level: L \} \}\)\) continue;/.test(market) && /playerFit\(s, itemDetailMap\)/.test(market), 'optimizer: the market-swap loop drops by styleDrop');
+check((core.match(/misfit\(/g) || []).length === 1 && /styleDrop\(fit, item, \{ id, player: p, slot, desc, from: it \? \{ item: it\.itemHrid, level: it\.enhancementLevel \} : null, to: \{ item: item\.hrid, level: L \} \}\)\) continue;/.test(market) && /playerFit\(s, itemDetailMap\)/.test(market), 'optimizer: the market-swap loop drops by styleDrop');
 check(/styleDrop\(fit, item, \{ id: `\$\{p\}:\$\{slot\}=own:/.test(owned) && /playerFit\(s, itemDetailMap\)/.test(owned), 'optimizer: the owned-items loop drops by the same styleDrop');
 check(market.indexOf('styleDrop(') < market.indexOf('isDominatedSwap(') && market.indexOf('pricer.swap(') < market.indexOf('styleDrop('), 'optimizer: only swaps the market sells are listed as dropped, before the dominance check');
 check(/otherStyle\.push\(\{ \.\.\.rec, bound, wants: fit \}\)/.test(core) && /dominated, otherStyle, skippedNoExport: \[\]/.test(core), 'result.json: the otherStyle group (bound styles and elements, what the player wants)');

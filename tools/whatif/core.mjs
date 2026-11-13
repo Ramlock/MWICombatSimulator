@@ -314,28 +314,38 @@ export async function main(settings, seams) {
     const charmsOn = goal === 'exp' || arg('charms', false) === true;
     // Each candidate names the groups it changes (`<player>:<slot>`, `:food<i>`, `:drink<i>`, `:ability<i>`); after a
     // greedy step, candidates touching the accepted change's groups are rebuilt from the new setup.
+    // An empty slot offers the market items of the slot's own type at +0 (cost = the buy price, nothing sold), through the same swap
+    // loop below (pricer.swap with no old item). The weapon slots are left alone while any of them holds a weapon (a two-hand weapon
+    // empties the main and off hand; a main-hand weapon leaves the two-hand slot empty), and the two-hand slot is never filled here.
+    function emptySlotOpen(setups, p, slot) {
+        if (slot === 'two_hand') return false;
+        if (slot === 'main_hand' || slot === 'off_hand') return !slotItem(setups, p, 'two_hand');
+        return true;
+    }
     function candidatesFor(setups, p, slots) {
         const s = setups.find((x) => x.name === p), out = [], fit = playerFit(s, itemDetailMap);
         for (const slot of slots) {
             if (slot === 'charm' && !charmsOn) continue;
             const it = slotItem(setups, p, slot);
-            if (!it) continue;
-            const name = it.itemHrid.split('/').pop();
-            for (let d = 1; d <= maxUp; d++) {
+            if (!it && !(swapsOn && emptySlotOpen(setups, p, slot))) continue;
+            const name = it ? it.itemHrid.split('/').pop() : 'empty';
+            for (let d = 1; it && d <= maxUp; d++) {
                 const c = pricer.upgrade(it.itemHrid, it.enhancementLevel, it.enhancementLevel + d);
                 out.push({ id: `${p}:${slot}+${d}`, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: true, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
             }
             if (!swapsOn) continue;
-            const type = itemDetailMap[it.itemHrid]?.equipmentDetail?.type;
+            const type = it ? itemDetailMap[it.itemHrid]?.equipmentDetail?.type : '/equipment_types/' + slot;
+            const was = it ? `${name} +${it.enhancementLevel}` : 'empty';
+            const levels = it ? [...new Set(swapLevels.map((x) => (x === 'same' ? it.enhancementLevel : Number(x))))] : [0];
             for (const item of Object.values(itemDetailMap)) {
-                if (item.hrid === it.itemHrid || item.equipmentDetail?.type !== type || !meetsReq(s, item)) continue;
-                for (const L of [...new Set(swapLevels.map((x) => (x === 'same' ? it.enhancementLevel : Number(x))))]) {
-                    const c = pricer.swap(it.itemHrid, it.enhancementLevel, item.hrid, L);
+                if (item.hrid === it?.itemHrid || item.equipmentDetail?.type !== type || !meetsReq(s, item)) continue;
+                for (const L of levels) {
+                    const c = pricer.swap(it?.itemHrid ?? null, it?.enhancementLevel ?? 0, item.hrid, L);
                     if (!c.known) continue; // no seller at this level: not a market swap
                     if (c.cost <= 0 && !sellDown) continue; // frees gold: a sell-down, dropped (design 4.3 item 2)
-                    const id = `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`;
-                    if (styleDrop(fit, item, { id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } })) continue;
-                    if (isDominatedSwap(itemDetailMap[it.itemHrid], it.enhancementLevel, item, L)) {
+                    const id = `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, desc = `${p} ${slot} ${was} -> ${item.hrid.split('/').pop()} +${L}`;
+                    if (styleDrop(fit, item, { id, player: p, slot, desc, from: it ? { item: it.itemHrid, level: it.enhancementLevel } : null, to: { item: item.hrid, level: L } })) continue;
+                    if (it && isDominatedSwap(itemDetailMap[it.itemHrid], it.enhancementLevel, item, L)) {
                         if (!dominatedKeys.has(desc)) { dominatedKeys.add(desc); dominated.push({ id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } }); }
                         continue;
                     }

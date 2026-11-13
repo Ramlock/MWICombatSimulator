@@ -415,7 +415,8 @@ const NAME_TABLES = {
 };
 // The lookups `localizeDesc` takes, from the game bundle of the shown language (`current`) and of English (`english`,
 // the fallback i18next uses and the language the room names are written in). A bundle is { itemNames: { "/items/x": name }, ... }.
-export function namesFrom(current, english = current) {
+// words: the window's own words a desc may hold, by their English id ({ empty: <the shown language's word> }: an empty slot).
+export function namesFrom(current, english = current, words = {}) {
     const get = (table, slug) => {
         const hrid = NAME_TABLES[table] + slug;
         const name = current?.[table]?.[hrid] ?? english?.[table]?.[hrid];
@@ -423,7 +424,7 @@ export function namesFrom(current, english = current) {
     };
     const rooms = Object.entries(english?.houseRoomNames || {}).map(([hrid, en]) => [en, current?.houseRoomNames?.[hrid] || en])
         .sort((a, b) => b[0].length - a[0].length);
-    return { get, rooms };
+    return { get, rooms, words };
 }
 
 const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames'];
@@ -431,7 +432,7 @@ const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNa
 const SLUG = /(?<![A-Za-z0-9_])[a-z][a-z0-9_]*(?![A-Za-z0-9_])/g;
 const swap = (text, tables, names) => text.replace(SLUG, (id) => {
     for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
-    return id;
+    return typeof names.words?.[id] === 'string' ? names.words[id] : id;
 });
 // A desc with every game id replaced by its name; an id with no name stays. `players` are the names the result
 // holds: the player name leads the desc and is never touched. Trigger descs ("<owner> trigger: <terms>") read the
