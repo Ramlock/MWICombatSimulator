@@ -139,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.9.2/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.9.3/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -174,9 +174,12 @@ await test('a refused or unreachable helper keeps the data and retries; the togg
 await test('cross-tab link: the game tab leaves the party in storage; the simulator page button imports it, refuses stale or missing data', () => {
     const store = {};
     const game = boot(store);
-    game.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [] });
+    game.send({ type: 'init_character_data', character: { id: 1, name: 'Zed' }, characterSkills: [], characterItems: [{ itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/synthetic_one', enhancementLevel: 2, count: 3 }, { itemLocationHrid: '/item_locations/inventory', itemHrid: '/items/coin', count: 99 }], characterAbilities: [{ abilityHrid: '/abilities/synthetic_one', level: 2, experience: 5 }] });
     const snap = JSON.parse(store.mwicsGroupSnapshot);
     assert.deepEqual(Object.keys(snap.group), ['1']);
+    assert.deepEqual(snap.group['1'].inventory, [{ itemHrid: '/items/synthetic_one', enhancementLevel: 2, count: 3 }], 'the snapshot carries the own inventory (no Coin)');
+    assert.deepEqual(snap.group['1'].learnedAbilities, [{ abilityHrid: '/abilities/synthetic_one', level: 2, experience: 5 }]);
+    assert.ok(!('coin' in snap.group['1']));
     assert.equal(game.reqs.length, 0);
 
     const mkSim = (s) => {
@@ -234,6 +237,7 @@ await test('the snapshot carries selected and fight, kept live by party_updated,
     assert.deepEqual(copied.selected, [1]);
     assert.equal(copied.fight.zone, '/actions/combat/zone_a');
     assert.equal(copied['1'].selected, undefined, 'never inside a slot');
+    assert.ok(!('inventory' in copied['1']) && !('learnedAbilities' in copied['1']) && !('coin' in copied['1']), 'the clipboard copy never carries the own inventory, learned abilities or Coin');
     const els = { player1: { checked: false }, player2: { checked: true }, selectZone: { value: 'a', options: [{ value: '/actions/combat/zone_a' }] }, selectDifficulty: { value: '0', options: [{ value: '0' }, { value: '2' }] }, selectDungeon: { value: '', options: [] }, simDungeonToggle: { checked: false, dispatchEvent() {} } };
     const input = { value: '' }, clicks = [];
     const dom = { ...els, buttonImportExport: { closest: () => ({ insertAdjacentElement() {} }) }, inputSetGroupCombatAll: input, buttonImportSet: { click() { clicks.push('import'); } }, 'group-combat-tab': { click() {} } };
@@ -279,8 +283,8 @@ await test('simulator page: the import button is in the page language (en, pt, z
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.9.2/);
-    assert.ok(SRC.includes("const VERSION = '0.9.2'"));
+    assert.match(SRC, /@version\s+0.9.3/);
+    assert.ok(SRC.includes("const VERSION = '0.9.3'"));
     assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
     assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });

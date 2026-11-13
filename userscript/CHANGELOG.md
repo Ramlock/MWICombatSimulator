@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.9.3 (2026-11-13)
+
+- The party the script leaves for the simulator page ("Import party from game") now also carries your own character's inventory and learned abilities, written as "Copy character export" writes them (the same switches apply; Coin stays out, and no other member has either). The page keeps them only in its own browser storage, for the What-if searches that need them ("Items you own", "Abilities"); they never reach a simulator slot. The party text the "Copy group export" menu entry copies is unchanged. An import from an older script behaves as before.
+
 ### 0.9.2 (2026-11-13)
 
 - The "Import party from game (MWI Combat Tracker)" button the script adds to the simulator page now follows the page's language: in Portuguese it reads "Importar grupo do jogo (MWI Combat Tracker)", in Chinese "从游戏导入队伍 (MWI Combat Tracker)", in English and in any other language as before; it changes when the page's language buttons are pressed. Nothing else changes: the script's other texts (menus, settings, notices) stay English.
