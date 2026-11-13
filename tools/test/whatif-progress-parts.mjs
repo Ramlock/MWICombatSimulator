@@ -56,12 +56,15 @@ check('done: every row done', ps.every((p) => p.state === 'done') && ps.length =
 check('start: the steps row carries the plan max steps', ps0().find((p) => p.kind === 'steps').maxSteps === 20);
 {
     const t3 = createParts(plan);
-    for (let i = 1; i < 19; i++) t3.sync({ stage: `greedy step ${i}`, runsPlanned: 4, runsDone: 0 });
-    t3.sync({ stage: 'greedy step 19', runsPlanned: 4, runsDone: 0 });
-    const a = t3.sync({ stage: 'greedy step 19', runsPlanned: 4, runsDone: 1 }).find((p) => p.kind === 'moreSteps');
-    check('after step 19 the grey row says 1 more', a?.stepsLeft === 1 && a.state === 'waiting', JSON.stringify(a));
-    const b = t3.sync({ stage: 'greedy step 20', runsPlanned: 4, runsDone: 1 });
-    check('at step 20 the more-steps row is hidden', !b.some((p) => p.kind === 'moreSteps') && b.at(-1).kind === 'confirmation');
+    // The race of greedy step k is the row "Change k+1" (the screen is change 1): after it maxSteps - k - 1 changes can still be chosen.
+    const e = createParts(plan).sync({ stage: 'greedy step 1', runsPlanned: 4, runsDone: 1 }).find((p) => p.kind === 'moreSteps');
+    check('max 20, the row of greedy step 1 ("Change 2") is running: the grey row says up to 18 more, not 19', e?.stepsLeft === 18 && e.state === 'waiting', JSON.stringify(e));
+    for (let i = 1; i < 18; i++) t3.sync({ stage: `greedy step ${i}`, runsPlanned: 4, runsDone: 0 });
+    t3.sync({ stage: 'greedy step 18', runsPlanned: 4, runsDone: 0 });
+    const a = t3.sync({ stage: 'greedy step 18', runsPlanned: 4, runsDone: 1 }).find((p) => p.kind === 'moreSteps');
+    check('at the row "Change 19" the grey row says 1 more', a?.stepsLeft === 1 && a.state === 'waiting', JSON.stringify(a));
+    const b = t3.sync({ stage: 'greedy step 19', runsPlanned: 4, runsDone: 1 });
+    check('at the row "Change 20" (the last change that can be chosen) the more-steps row is hidden', !b.some((p) => p.kind === 'moreSteps') && b.at(-1).kind === 'confirmation');
     const c = createParts(plan); c.sync({ stage: 'greedy step 2', runsPlanned: 1, runsDone: 0 });
     const d = c.sync({ stage: 'confirmation', runsPlanned: 1, runsDone: 0 });
     check('once the confirmation starts the more-steps row is gone', !d.some((p) => p.kind === 'moreSteps') && d.at(-1).state === 'running');
@@ -136,7 +139,7 @@ check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, 
     p = at('confirmation', { picksPlanned: 64, picksDone: 60 });
     check('picks: done and full once the confirmation starts', p.state === 'done' && p.runsDone === 64, JSON.stringify(p));
     const h = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'picks', index: 0, state: 'running', runsPlanned: 32, runsDone: 10, etaSeconds: 60 }, { kind: 'picks', index: 0, state: 'waiting', runsPlanned: 32, runsDone: 32 }] } }, t).replace(/<[^>]+>/g, '');
-    check('picks: the panel labels the row and shows its runs', h.includes('Confirming the picks') && h.includes('10 / 32 runs') && h.includes('32 / 32 runs'), h);
+    check('picks: the panel labels the row and shows its runs', h.includes('Re-checking each chosen change') && h.includes('10 / 32 runs') && h.includes('32 / 32 runs'), h);
     check('picks: pt and zh labels exist', ['pt', 'zh'].every((l) => locales[l].progress.partPicks && locales[l].progress.partPicks !== locales.en.progress.partPicks));
 }
 
@@ -156,12 +159,12 @@ const rows = [...html.matchAll(/<div class="whatif-part whatif-part-(\w+)"/g)].m
 check('panel: one row per part with its state class', rows.join(' ') === 'done running waiting waiting waiting', rows.join(' '));
 const plain = html.replace(/<span class="whatif-part-mark">[^<]*<\/span>/g, (m) => m).replace(/<[^>]+>/g, '');
 check('panel: title is Running · part 2 of 5', plain.includes('Running · part 2 of 5'), plain);
-check('panel: done row text', plain.includes('Screen') && /80 \/ 80 runs · done/.test(plain), plain);
-check('panel: running row text and options left', plain.includes('Halving 1 · 10 options left') && /36 \/ 80 runs · 0:03:55 left/.test(plain), plain);
-check('panel: waiting row says up to N runs', plain.includes('Halving 2 · 3 options left') && plain.includes('up to 24 runs'), plain);
-check('panel: placeholder labels', plain.includes('Greedy steps: up to 20, stops when none helps') && plain.includes('Confirmation: only if a step is accepted'), plain);
+check('panel: done row text', plain.includes('Change 1') && /80 \/ 80 runs · done/.test(plain), plain);
+check('panel: running row text and options left', plain.includes('Narrowing down, round 1 · 10 options left') && /36 \/ 80 runs · 0:03:55 left/.test(plain), plain);
+check('panel: waiting row says up to N runs', plain.includes('Narrowing down, round 2 · 3 options left') && plain.includes('up to 24 runs'), plain);
+check('panel: placeholder labels', plain.includes('Choosing changes one at a time: up to 20, stops when none helps') && plain.includes('Final check: only if a change is chosen'), plain);
 const more = panel.renderProgress({ state: 'running', progress: { parts: [{ kind: 'step', index: 1, state: 'done', runsPlanned: 4 }, { kind: 'moreSteps', index: 1, state: 'waiting', stepsLeft: 19 }] } }, t).replace(/<[^>]+>/g, '');
-check('panel: more greedy steps row', more.includes('More greedy steps: up to 19 more'), more);
+check('panel: more changes row, and a step row is named by the change it looks for (index + 1)', more.includes('More changes: up to 19 more') && more.includes('Change 2'), more);
 const marks = [...html.matchAll(/<span class="whatif-part-mark">([^<]*)<\/span>/g)].map((m) => m[1]);
 check('panel: one icon cell per row, same family, no colour emoji', marks.length === 5 && marks.every((m) => /^[\u2713\u25B6\u25CB]\uFE0E?$/.test(m)), JSON.stringify(marks));
 check('panel: icon column has one fixed width and rows start with it', /\.whatif-part-mark \{[^}]*width: 1\.5em/.test(read('index.html')) && /\.whatif-part \{[^}]*grid-template-columns: 1\.5em /.test(read('index.html')));
@@ -233,13 +236,13 @@ check('empty parts array: the single line', !panel.renderProgress({ state: 'runn
     const rows = raceHtml.split('<div class="whatif-part ').slice(1);
     const race = rows.find((r) => r.includes('data-kind="foods"')), others = rows.filter((r) => !r.includes('data-kind="foods"'));
     const buttons = (html) => [...html.matchAll(/data-whatif-done="(\w+)"[^>]*>([^<]*)</g)].map((m) => `${m[1]}:${m[2]}`);
-    check('two buttons: with no pool that Accept would take, only "Skip <stage>" is shown, once, inside the running race stage\'s label after its counters, and not in a waiting or bar row', buttons(raceHtml).join('|') === 'skip:Skip Best foods' && /<span class="whatif-part-label">.*224.*ruled out.*data-whatif-done="skip"/.test(race) && !race.includes('whatif-part-text') && others.every((r) => !r.includes('data-whatif-done')), raceHtml);
+    check('two buttons: with no pool that Accept would take, only "Skip this stage" is shown, once, inside the running race stage\'s label after its counters, and not in a waiting or bar row', buttons(raceHtml).join('|') === 'skip:Skip this stage' && /<span class="whatif-part-label">.*224.*ruled out.*data-whatif-done="skip"/.test(race) && !race.includes('whatif-part-text') && others.every((r) => !r.includes('data-whatif-done')), raceHtml);
     const both = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 3, phase: 'search', contending: 5, paused: 2, dropped: 1, acceptable: 1, runs: 224, simHours: 11000 }, { kind: 'halving', index: 1, state: 'waiting', runsUpTo: 9 }] } }, t);
-    check('two buttons: with a pool Accept would take, "Accept current winner" comes first and "Skip Screen" second, on the stage line', buttons(both).join('|') === 'accept:Accept current winner|skip:Skip Screen' && /ruled out.*data-whatif-done="accept".*data-whatif-done="skip"/.test(both), both);
+    check('two buttons: with a pool Accept would take, "Accept current winner" comes first and "Skip this stage" second, on the stage line', buttons(both).join('|') === 'accept:Accept current winner|skip:Skip this stage' && /ruled out.*data-whatif-done="accept".*data-whatif-done="skip"/.test(both), both);
     check('two buttons: the tooltips say what each does (accept: positive leader, checked on fresh runs; skip: a locked pool keeps its pick)', both.includes('title="Ends this stage after the round it is in. Where nothing has locked yet, it takes the best leader') && both.includes('A pool that has already locked keeps its pick'));
     check('two buttons: a finished or stopped race stage has none', ['done', 'running'].every((s, i) => !panel.renderParts({ state: i ? 'stopped' : 'running', progress: { parts: [{ kind: 'foods', state: s, round: 3, contending: 5, paused: 2, dropped: 1, acceptable: 2, runs: 224, simHours: 11000 }] } }, t).includes('data-whatif-done')));
     check('two buttons: the API has the done route', panel.API.done('a b') === '/api/search/a%20b/done');
-    for (const l of ['en', 'pt', 'zh']) check(`two buttons: ${l} has the strings, the skip label takes the stage name, and the old ones are gone`, ['stageAccept', 'stageAcceptTip', 'stageSkip', 'stageSkipTip', 'stageFinishing'].every((k) => typeof locales[l].progress[k] === 'string' && locales[l].progress[k].length) && locales[l].progress.stageSkip.includes('{{stage}}') && !('stageDone' in locales[l].progress) && !('stageDoneTip' in locales[l].progress) && typeof locales[l].result.endedByUser === 'string' && locales[l].result.endedByUser.includes('{{n}}'));
+    for (const l of ['en', 'pt', 'zh']) check(`two buttons: ${l} has the strings, the skip label names no stage, and the old ones are gone`, ['stageAccept', 'stageAcceptTip', 'stageSkip', 'stageSkipTip', 'stageFinishing'].every((k) => typeof locales[l].progress[k] === 'string' && locales[l].progress[k].length) && !locales[l].progress.stageSkip.includes('{{stage}}') && !('stageDone' in locales[l].progress) && !('stageDoneTip' in locales[l].progress) && typeof locales[l].result.endedByUser === 'string' && locales[l].result.endedByUser.includes('{{n}}'));
     for (const l of ['pt', 'zh']) { const h = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 3, phase: 'search', contending: 5, paused: 2, dropped: 1, acceptable: 1, runs: 224, simHours: 11000 }] } }, tIn(l)); check(`two buttons: ${l} renders both without a missing key`, buttons(h).length === 2 && !h.includes('#progress.'), h); }
     // After a press: the pressed button stays drawn by every redraw (the state is in the markup), both buttons disabled; only Accept carries the note.
     const screenRow = { kind: 'screen', index: 0, state: 'running', round: 3, phase: 'search', contending: 5, paused: 2, dropped: 1, acceptable: 1, runs: 224, simHours: 11000 };

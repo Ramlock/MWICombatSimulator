@@ -114,7 +114,8 @@ export function createParts(plan) {
             const steps = rows.filter((r) => r.kind === 'step'), conf = rows.find((r) => r.kind === 'confirmation');
             if (!steps.length) out.push({ kind: 'steps', index: 0, state: 'waiting', maxSteps });
             for (const r of steps) out.push({ ...r });
-            const k = steps.length ? steps[steps.length - 1].index : 0, more = maxSteps - k;
+            // The row of greedy step k is named "Change k+1" (the screen is change 1), so after it maxSteps - (k+1) changes can still be chosen.
+            const k = steps.length ? steps[steps.length - 1].index : 0, more = maxSteps - k - 1;
             if (steps.length && more > 0 && !conf) out.push({ kind: 'moreSteps', index: k, state: 'waiting', stepsLeft: more });
             out.push(conf ? { ...conf } : { kind: 'confirmation', index: 0, state: 'waiting' });
             // A finished search (progress.stage 'done'): a part that never started will not run any more, so it is 'skipped' (the window says so, with no bar), and
