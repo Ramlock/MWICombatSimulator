@@ -1,14 +1,26 @@
 {
+    "2026-11-13":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "What-if: Foods and Drinks are now two separate options, so you can search one without the other",
+            "What-if: a figure from too few runs shows a dash instead of a number",
+            "What-if: Accept current winner takes the leader as it is; Skip ends the part at once and keeps its finished runs",
+            "What-if: a finished search shows which parts ran, which you ended and which changes were left out along the way",
+            "What-if: Each change alone shows one row per setting instead of several values of one setting",
+            "Importing a group is now remembered when you reload the page, names included"
+        ]
+    },
     "2026-11-12":
     {
         "fork": "Ramlock",
         "notes":
         [
-            "What-if search: the stage that is running now has two buttons, Accept current winner and Skip <stage name>. Both end the stage after the round it is in. Accept current winner takes the best change so far where nothing has locked yet, as long as its average net gain is above 0; Skip keeps what a pool has already locked and leaves the others as they are. Either way every pick is still checked on fresh runs",
-            "What-if search: each pool now ends by elimination. A change is out for good when it cannot beat another change even at its best, or when it falls under a bar of 1 % of that player's own profit per day. A paid change is also out when it cannot pay back within 365 days, shown as Pays back too slowly. When every other change is closer to the best one than that bar, they all count as tied and the best one stays",
-            "What-if search: a pool that has not separated yet shows how long it may take, for example about 4 more rounds to separate",
-            "What-if search: every pick is checked on fresh runs before it joins the chain, and the progress row says whose check it is and the full total from the start, for example checking the accepted picks on fresh runs · player 3 of 3 · 48 / 64 runs",
-            "What-if window: the picks the fresh runs did not confirm are listed under Not confirmed, with their count and a Show / Hide button, instead of among the chosen changes"
+            "What-if: Accept current winner and Skip buttons on the running stage",
+            "What-if: weak changes drop out as the search goes, including paid changes that pay back too slowly",
+            "What-if: a pool that has not separated yet shows about how many more rounds it needs",
+            "What-if: every pick the search makes is re-checked on fresh runs; a pick you accept is taken as is"
         ]
     },
     "2026-11-10":
@@ -16,11 +28,11 @@
         "fork": "Ramlock",
         "notes":
         [
-            "A chart above the all-zones results: each map is a dot, with XP per hour on one axis and profit per day on the other. Pick Total or one skill's XP, and the party average or one player. The dots joined by the line are the maps no other map beats on both; hover a dot for the map, tier, both figures and deaths per hour, and click it to jump to that map's rows in the table",
-            "Every price lookup (drops, consumables and a chest's contents) now takes the same fallback: the side you chose, else the other side, else the vendor price. With today's market no number changes",
-            "What-if window: Chosen changes and Each change alone show the party's gain and the buyer's own gain, each with its error, then cost, payback days, how it is bought and Apply. The window uses the width of the screen and has no horizontal bar at 1920, 1600 and 1366 wide",
-            "What-if search: foods are searched as whole fillings, one food per type sized to the party's HP and MP need, with one food row per player. A change is accepted when both the party's gain and the buyer's own net are above 0 beyond their errors",
-            "What-if search: foods and drinks are decided first and everything else is searched on top of them. The window shows Best foods and Best drinks above the chosen changes, each change's gain is measured against the base on the same runs, and Apply puts those foods and drinks in first"
+            "A chart above the all-zones results: each map is a dot, XP per hour against profit per day, click a dot to jump to its rows",
+            "Drop, consumable and chest prices now fall back to the other side, then the vendor price, when your chosen side has none",
+            "What-if window: each change shows the party's gain and the buyer's own gain, with cost and payback days",
+            "What-if window: fits the screen width, no horizontal scrollbar",
+            "What-if: foods and drinks are searched first and shown as Best foods and Best drinks; Apply puts them in first"
         ]
     },
     "2026-11-09":
@@ -28,10 +40,10 @@
         "fork": "Ramlock",
         "notes":
         [
-            "A What-if window for the coming local What-if runner, which runs on your own PC and serves the simulator: set a budget per player and what to search, follow the search with a Stop button, and apply a suggested change to your setup in one click. The website itself shows no What-if button",
-            "New in each player's results, under Ran out of mana: Held by trigger shows, for each skill, how much of the time each of its trigger conditions held it back while it was ready, and how much of the time a previous skill out of mana kept it from being reached (a skill short of mana stops the skills after it). Results do not change",
-            "Each player's results no longer show the Yes/No line for running out of mana; Mana Run Out Ratio always shows, 0% when the player never ran out",
-            "Importing a group now also ticks the players the pasted data names and sets the zone and tier it names, when the data carries them; if the page does not offer that zone or tier it is left as it is, and a group pasted without them imports as before"
+            "What-if window for the local What-if runner: set a budget and what to search, Stop the search, apply a suggested change in one click",
+            "Results: Held by trigger under Ran out of mana shows what held each skill back",
+            "Results: Mana Run Out Ratio always shows, replacing the Yes/No line",
+            "Importing a group also ticks its players and sets the zone and tier it names"
         ]
     },
     "2026-11-08":
@@ -39,11 +51,11 @@
         "fork": "Ramlock",
         "notes":
         [
-            "Numbers in the results show at 4 significant figures, with k, M, B and T from 10,000 up (123.5k, 1.235M); hover a number for its exact value",
-            "New ISO numbers toggle at the top right: percentages as 1.79 % and thousands as 1 234; it is off by default and remembered",
-            "The page opens in Dark Mode by default, and turning it off is remembered; the Dark Mode toggle sits at the top right, next to the language buttons",
-            "The simulator is now available in Portuguese, using the game's own Portuguese names and terms across the page",
-            "Simulations run about five times faster; results are unchanged"
+            "Numbers in the results show shortened, with k, M, B and T from 10,000 up",
+            "New ISO numbers toggle at the top right",
+            "The page opens in Dark Mode by default",
+            "The simulator is now available in Portuguese",
+            "Simulations run about five times faster"
         ]
     },
     "2026-11-07":
@@ -51,7 +63,7 @@
         "fork": "Ramlock",
         "notes":
         [
-            "The Combat Stats panel now also counts the slotted drinks and the player's own equipped auras, with no setting to turn on; the stats it shows match the stats the same player has in combat"
+            "Combat Stats panel now counts slotted drinks and your own equipped auras"
         ]
     },
     "2026-11-04":
@@ -59,8 +71,8 @@
         "fork": "Ramlock",
         "notes":
         [
-            "Guild buffs are now read from both export formats",
-            "The Combat Stats panel shows the stats the simulation uses (house rooms, achievements, guild, community and other buffs), with effective skill levels and Rare Find",
+            "Guild buffs are read from both export formats",
+            "Combat Stats panel shows the stats the simulation uses, including house rooms, achievements and guild and community buffs",
             "Community XP and combat drop buffs are on by default at level 20, and can be edited"
         ]
     },

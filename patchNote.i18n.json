@@ -672,26 +672,49 @@
             ]
         }
     },
+    "2026-11-13": {
+        "from": "en",
+        "zh": {
+            "title": "2026年11月13日",
+            "notes": [
+                "假设分析：食物和饮品现在是两个独立选项，可以只搜索其中一个",
+                "假设分析：运行次数太少的数值显示为短横线，而不是数字",
+                "假设分析：“采纳当前领先者”原样采用领先者；“跳过”立即结束该部分并保留已完成的运行",
+                "假设分析：搜索结束后会显示哪些部分已运行、哪些由你结束，以及途中排除了哪些改动",
+                "假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值",
+                "导入分组现在会在刷新页面后保留，包括名称"
+            ]
+        },
+        "pt": {
+            "title": "13/11/2026",
+            "notes": [
+                "E se: Comidas e Bebidas agora são duas opções separadas, para buscar uma sem a outra",
+                "E se: um valor de poucas execuções mostra um traço em vez de um número",
+                "E se: Aceitar o vencedor atual pega o líder como está; Pular encerra a parte na hora e mantém as execuções concluídas",
+                "E se: uma busca concluída mostra quais partes rodaram, quais você encerrou e quais alterações ficaram de fora pelo caminho",
+                "E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração",
+                "Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos"
+            ]
+        }
+    },
     "2026-11-12": {
         "from": "en",
         "zh": {
             "title": "2026年11月12日",
             "notes": [
-                "假设分析搜索：正在运行的阶段现有两个按钮，“采纳当前领先者”和“跳过<阶段名>”，都会在当前轮结束后结束该阶段。“采纳当前领先者”在尚未锁定的地方采用目前最好的改动，前提是其平均净收益大于0；“跳过”保留已锁定的选择，其余保持不变。无论哪种，每个选择仍会用新的运行核对",
-                "假设分析搜索：每一组互相竞争的改动现在通过淘汰来结束。当一项改动即使在最好情况下也无法胜过另一项，或低于该玩家每日利润的1 %这条线时，它被永久淘汰。付费改动如果无法在365天内回本也会被淘汰，显示为“回本太慢”。当其余改动与最好的一项之间的差距都小于该线时，它们视为并列，保留最好的一项",
-                "假设分析搜索：尚未分出高下的一组会显示可能还需多久，例如“约还需 4 轮才能分出高下”",
-                "假设分析搜索：每个选择加入前都会用新的运行核对，进度行会说明是谁的核对，并从一开始就显示总数，例如“正在用新的运行核对已接受的选择 · 第 3 位，共 3 位 · 48 / 64 次运行”",
-                "假设分析窗口：新的运行未能确认的选择列在“未能确认”下，带有数量和显示/隐藏按钮，不再混在选定的改动中"
+                "假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮",
+                "假设分析：较弱的改动会在搜索过程中被淘汰，包括回本太慢的付费改动",
+                "假设分析：尚未分出高下的一组会显示大约还需要几轮",
+                "假设分析：搜索做出的每个选择都会用新的运行重新核对；你采纳的选择按原样采用"
             ]
         },
         "pt": {
             "title": "12/11/2026",
             "notes": [
-                "Busca E se: a etapa que está rodando agora tem dois botões, Aceitar o vencedor atual e Pular <nome da etapa>. Os dois encerram a etapa ao fim da rodada em que ela está. Aceitar o vencedor atual pega a melhor alteração até agora onde nada foi travado ainda, desde que seu ganho líquido médio seja maior que 0; Pular mantém o que um grupo já travou e deixa os outros como estão. Em ambos os casos, toda escolha ainda é conferida em execuções novas",
-                "Busca E se: cada grupo de alterações agora termina por eliminação. Uma alteração sai de vez quando não consegue superar outra nem no melhor caso, ou quando fica abaixo de uma barra de 1 % do lucro por dia do próprio jogador. Uma alteração paga também sai quando não consegue se pagar em 365 dias, mostrado como Retorno lento demais. Quando todas as outras alterações estão mais perto da melhor do que essa barra, elas contam como empatadas e a melhor fica",
-                "Busca E se: um grupo que ainda não se separou mostra quanto tempo pode levar, por exemplo cerca de mais 4 rodadas para separar",
-                "Busca E se: toda escolha é conferida em execuções novas antes de entrar na cadeia, e a linha de progresso diz de quem é a conferência e o total completo desde o início, por exemplo conferindo as escolhas aceitas em execuções novas · jogador 3 de 3 · 48 / 64 execuções",
-                "Janela E se: as escolhas que as execuções novas não confirmaram ficam listadas em Não confirmadas, com a contagem e um botão Mostrar / Ocultar, em vez de ficarem entre as alterações escolhidas"
+                "E se: botões Aceitar o vencedor atual e Pular na etapa em andamento",
+                "E se: alterações fracas saem conforme a busca avança, incluindo alterações pagas com retorno lento demais",
+                "E se: um grupo que ainda não se separou mostra cerca de quantas rodadas a mais precisa",
+                "E se: toda escolha da busca é conferida de novo em execuções novas; uma escolha que você aceita é tomada como está"
             ]
         }
     },
@@ -700,21 +723,21 @@
         "zh": {
             "title": "2026年11月10日",
             "notes": [
-                "全区域结果上方新增图表：每张地图是一个点，一个坐标轴为每小时经验，另一个为每日利润。可选择总经验或某一技能的经验，以及队伍平均或某位玩家。连线上的点是没有其他地图在两项上都胜过的地图；悬停可查看地图、难度、两项数值和每小时死亡次数，点击可跳转到表格中该地图的行",
-                "所有价格查询（掉落、消耗品和宝箱内容物）现在采用相同的回退顺序：所选一侧，否则另一侧，否则商店价格。按当前市场，数值不变",
-                "假设分析窗口：“选定的改动”和“单项改动”显示队伍收益和购买者自己的收益及各自的误差，随后是成本、回本天数、购买方式和应用。窗口使用整个屏幕宽度，在1920、1600和1366宽度下均没有水平滚动条",
-                "假设分析搜索：食物按完整搭配搜索，每种类型一种食物，按队伍的生命值和法力值需求确定，每位玩家一行食物。当队伍收益和购买者自己的净收益都在误差范围之上大于0时，才接受该改动",
-                "假设分析搜索：先确定食物和饮品，其余内容在此基础上搜索。窗口在选定的改动上方显示最佳食物和最佳饮品；每项改动的收益是在相同的模拟运行上与基准比较得出的；应用时会先放入这些食物和饮品"
+                "全区域结果上方新增图表：每张地图是一个点，每小时经验对每日利润，点击圆点可跳到对应行",
+                "掉落、消耗品和宝箱的价格在所选一侧没有价格时，现在先用另一侧，再用商店价格",
+                "假设分析窗口：每项改动显示队伍收益和购买者自己的收益，以及成本和回本天数",
+                "假设分析窗口：适应屏幕宽度，没有横向滚动条",
+                "假设分析：先搜索食物和饮品，显示为“最佳食物”和“最佳饮品”；“应用”会先放入它们"
             ]
         },
         "pt": {
             "title": "10/11/2026",
             "notes": [
-                "Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, com EXP por hora em um eixo e lucro por dia no outro. Escolha o total ou a EXP de uma habilidade, e a média do grupo ou um jogador. Os pontos ligados pela linha são os mapas que nenhum outro mapa supera nos dois; passe o mouse sobre um ponto para ver o mapa, o nível, os dois valores e as mortes por hora, e clique nele para ir às linhas desse mapa na tabela",
-                "Toda busca de preço (drops, consumíveis e o conteúdo de um baú) agora usa o mesmo plano B: o lado escolhido, senão o outro lado, senão o preço de vendedor. Com o mercado de hoje, nenhum número muda",
-                "Janela E se: Alterações escolhidas e Cada alteração isolada mostram o ganho do grupo e o ganho do próprio comprador, cada um com seu erro, depois custo, dias para se pagar, como é comprado e Aplicar. A janela usa a largura da tela e não tem barra horizontal em 1920, 1600 e 1366 de largura",
-                "Busca E se: as comidas são buscadas como combinações completas, uma comida por tipo, dimensionada pela necessidade de HP e MP do grupo, com uma linha de comida por jogador. Uma alteração é aceita quando o ganho do grupo e o líquido do próprio comprador estão acima de 0 além dos seus erros",
-                "Busca E se: comidas e bebidas são decididas primeiro e todo o resto é buscado em cima delas. A janela mostra Melhores comidas e Melhores bebidas acima das alterações escolhidas, o ganho de cada alteração é medido contra a base nas mesmas execuções, e Aplicar coloca essas comidas e bebidas primeiro"
+                "Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, EXP por hora contra lucro por dia, clique em um ponto para ir às suas linhas",
+                "Preços de drops, consumíveis e baús agora usam o outro lado e depois o preço de vendedor quando o lado escolhido não tem preço",
+                "Janela E se: cada alteração mostra o ganho do grupo e o ganho do próprio comprador, com custo e dias de retorno",
+                "Janela E se: ocupa a largura da tela, sem barra de rolagem horizontal",
+                "E se: comidas e bebidas são buscadas primeiro e mostradas como Melhores comidas e Melhores bebidas; Aplicar coloca elas primeiro"
             ]
         }
     },
@@ -723,19 +746,19 @@
         "zh": {
             "title": "2026年11月9日",
             "notes": [
-                "为即将推出的本地假设分析运行器新增“假设分析”窗口：运行器在你自己的电脑上运行并提供模拟器页面；可为每位玩家设置预算和搜索范围，查看搜索进度并可停止，一键将建议的改动应用到配置。网站本身不显示“假设分析”按钮",
-                "每位玩家的结果中新增内容（位于“法力值耗尽”下方）：“触发条件等待”显示每个技能在已就绪时被其各个触发条件阻止的时间占比，以及因前面的技能法力值耗尽而未轮到它的时间占比（法力值不足的技能会阻止其后的技能）。结果不变",
-                "每位玩家的结果不再显示法力值耗尽的“是/否”行；“法力值耗尽比例”始终显示，从未耗尽时为0%",
-                "导入分组时，如果粘贴的数据带有以下信息，现在还会勾选其中指定的玩家，并设置其中指定的区域和难度；如果页面没有该区域或难度，则保持原样；不带这些信息的分组导入方式不变"
+                "本地假设分析运行器的假设分析窗口：设置预算和搜索内容，可停止搜索，一键应用建议的改动",
+                "结果：“法力值耗尽”下方的“触发条件等待”显示每个技能被什么拖住",
+                "结果：“法力值耗尽比例”始终显示，取代是/否一行",
+                "导入分组时也会勾选其中的玩家，并设置其指定的区域和难度"
             ]
         },
         "pt": {
             "title": "09/11/2026",
             "notes": [
-                "Uma janela E se para o futuro executor local do E se, que roda no seu próprio PC e serve o simulador: defina um orçamento por jogador e o que buscar, acompanhe a busca com um botão Parar, e aplique uma alteração sugerida ao seu setup com um clique. O site em si não mostra o botão E se",
-                "Novo nos resultados de cada jogador, abaixo de Ficou sem mana: Retido por gatilho mostra, para cada técnica, quanto do tempo cada condição dos seus gatilhos de combate a segurou quando ela estava pronta, e quanto do tempo uma técnica anterior sem mana impediu que ela fosse alcançada (uma técnica sem mana impede as técnicas depois dela). Os resultados não mudam",
-                "Os resultados de cada jogador não mostram mais a linha Sim/Não de ficar sem mana; Proporção sem mana sempre aparece, 0% quando o jogador nunca ficou sem mana",
-                "Importar um grupo agora também marca os jogadores indicados nos dados colados e define a zona e o nível indicados, quando os dados os trazem; se a página não oferece essa zona ou nível, eles ficam como estão, e um grupo colado sem eles é importado como antes"
+                "Janela E se para o executor local do E se: defina um orçamento e o que buscar, pare a busca e aplique uma alteração sugerida com um clique",
+                "Resultados: Retido por gatilho, abaixo de Ficou sem mana, mostra o que segurou cada técnica",
+                "Resultados: Proporção sem mana sempre aparece, no lugar da linha Sim/Não",
+                "Importar um grupo também marca seus jogadores e define a zona e o nível que ele indica"
             ]
         }
     },
@@ -744,21 +767,21 @@
         "zh": {
             "title": "2026年11月8日",
             "notes": [
-                "结果中的数字以 4 位有效数字显示，10,000 及以上使用 k、M、B、T（123.5k、1.235M）；鼠标悬停可查看精确数值",
-                "右上角新增 ISO 数字格式开关：百分比显示为 1.79 %，千位分隔显示为 1 234；默认关闭，并会被记住",
-                "页面默认以黑暗模式打开，关闭后会被记住；黑暗模式开关位于右上角，语言按钮旁边",
-                "模拟器现已支持葡萄牙语，整个页面使用游戏官方的葡萄牙语名称和术语",
-                "模拟速度提升约五倍，结果不变"
+                "结果中的数字缩写显示，10,000 起使用 k、M、B 和 T",
+                "右上角新增 ISO 数字开关",
+                "页面默认以黑暗模式打开",
+                "模拟器现已支持葡萄牙语",
+                "模拟速度提升约五倍"
             ]
         },
         "pt": {
             "title": "08/11/2026",
             "notes": [
-                "Os números nos resultados aparecem com 4 algarismos significativos, com k, M, B e T a partir de 10,000 (123.5k, 1.235M); passe o mouse sobre um número para ver o valor exato",
-                "Nova chave Números ISO no canto superior direito: porcentagens como 1.79 % e milhares como 1 234; vem desligada e é lembrada",
-                "A página abre no modo escuro por padrão, e desligá-lo fica lembrado; a chave do modo escuro fica no canto superior direito, ao lado dos botões de idioma",
-                "O simulador agora está disponível em português, com os nomes e termos oficiais do jogo em toda a página",
-                "As simulações rodam cerca de cinco vezes mais rápido; os resultados não mudam"
+                "Os números dos resultados aparecem abreviados, com k, M, B e T a partir de 10.000",
+                "Nova chave Números ISO no canto superior direito",
+                "A página abre no modo escuro por padrão",
+                "O simulador agora está disponível em português",
+                "As simulações rodam cerca de cinco vezes mais rápido"
             ]
         }
     },
@@ -767,13 +790,13 @@
         "zh": {
             "title": "2026年11月7日",
             "notes": [
-                "战斗属性面板现在还会计入已装备的饮品和玩家自己装备的光环，无需任何设置；它显示的属性与同一玩家在战斗中的属性一致"
+                "战斗属性面板现在会计入已装备的饮品和你自己装备的光环"
             ]
         },
         "pt": {
             "title": "07/11/2026",
             "notes": [
-                "O painel de Atributos de Combate agora também conta as bebidas equipadas e as auras equipadas do próprio jogador, sem nenhuma opção para ligar; os atributos mostrados batem com os que o mesmo jogador tem em combate"
+                "O painel de Atributos de Combate agora conta as bebidas equipadas e as suas próprias auras equipadas"
             ]
         }
     },
@@ -782,16 +805,16 @@
         "zh": {
             "title": "2026年11月4日",
             "notes": [
-                "现在可从两种导出格式读取公会增益",
-                "战斗属性面板显示模拟所用的属性（房屋、成就、公会、社区及其他增益），包括有效技能等级和稀有发现",
-                "社区经验和战斗掉落增益默认开启（20级），并可编辑"
+                "公会增益可从两种导出格式读取",
+                "战斗属性面板显示模拟所用的属性，包括房屋、成就以及公会和社区增益",
+                "社区经验和战斗掉落增益默认开启，等级为20，可编辑"
             ]
         },
         "pt": {
             "title": "04/11/2026",
             "notes": [
-                "Os buffs de guilda agora são lidos dos dois formatos de exportação",
-                "O painel de Atributos de Combate mostra os atributos que a simulação usa (cômodos da casa, conquistas, guilda, comunidade e outros buffs), com os níveis efetivos de habilidade e Loot Raro",
+                "Os buffs de guilda são lidos dos dois formatos de exportação",
+                "O painel de Atributos de Combate mostra os atributos que a simulação usa, incluindo cômodos da casa, conquistas e buffs de guilda e da comunidade",
                 "Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"
             ]
         }
