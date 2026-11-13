@@ -11,7 +11,8 @@
             "What-if: Each change alone shows one row per setting instead of several values of one setting",
             "Importing a group is now remembered when you reload the page, names included",
             "Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails",
-            "After importing a setup, the import window now closes by itself"
+            "After importing a setup, the import window now closes by itself",
+            "What-if: the What-if button on the public page explains how to get the runner"
         ]
     },
     "2026-11-12":

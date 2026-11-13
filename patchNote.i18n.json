@@ -684,7 +684,8 @@
                 "假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值",
                 "导入分组现在会在刷新页面后保留，包括名称",
                 "导入技能少于四个、或特殊技能栏为空的配置，不再失败",
-                "导入配置后，导入窗口现在会自动关闭"
+                "导入配置后，导入窗口现在会自动关闭",
+                "假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器"
             ]
         },
         "pt": {
@@ -697,7 +698,8 @@
                 "E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração",
                 "Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos",
                 "Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais",
-                "Depois de importar uma configuração, a janela de importação agora fecha sozinha"
+                "Depois de importar uma configuração, a janela de importação agora fecha sozinha",
+                "E se: o botão E se na página pública explica como obter o executor"
             ]
         }
     },
