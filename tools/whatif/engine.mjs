@@ -18,6 +18,7 @@ const { default: CombatSimulator } = await import(src('combatsimulator/combatSim
 const { default: CombatStartEvent } = await import(src('combatsimulator/events/combatStartEvent.js'));
 const { default: Player } = await import(src('combatsimulator/player.js'));
 const { default: Zone } = await import(src('combatsimulator/zone.js'));
+const { applyTalismans } = await import(src('simSetup.js'));
 const { default: itemDetailMap } = await import(src('combatsimulator/data/itemDetailMap.json'));
 const { default: combatMonsterDetailMap } = await import(src('combatsimulator/data/combatMonsterDetailMap.json'));
 const { default: openableLootDropMap } = await import(src('combatsimulator/data/openableLootDropMap.json'));
@@ -205,6 +206,7 @@ export function metrics(snap, names, prices) {
 // The DTOs the UI builds from the setups, with the level-gap debuff (tools/calibration/run.mjs:62-68).
 export function buildDtos(setups, { legacyImport = false } = {}) {
     const dtos = setups.map((s, i) => buildDto(s, i + 1, { legacyImport }));
+    dtos.forEach((d, i) => { if (setups[i].talismans) d.talismans = structuredClone(setups[i].talismans); }); // the optional talismans field (src/combatsimulator/talismans.js)
     let maxCL = 1;
     for (const d of dtos) { d.combatLevel = calcCombatLevel(d.staminaLevel, d.intelligenceLevel, d.defenseLevel, d.attackLevel, d.meleeLevel, d.rangedLevel, d.magicLevel); maxCL = Math.max(maxCL, d.combatLevel); }
     for (const d of dtos) d.debuffOnLevelGap = maxCL / d.combatLevel > 1.2 ? -Math.min(0.9, 3 * (maxCL / d.combatLevel - 1.2)) : 0;
@@ -253,6 +255,7 @@ export async function runParty(opts) {
         const pl = Player.createFromDTO(structuredClone(d));
         pl.zoneBuffs = zone.buffs || [];
         pl.extraBuffs = extraBuffs;
+        applyTalismans(pl, d.talismans); // the same step as src/simSetup.js createSimPlayer; absent = no change
         return pl;
     });
     const sim = new CombatSimulator(players, zone, null, {});

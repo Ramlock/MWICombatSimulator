@@ -169,5 +169,25 @@ check(viaSetup === viaOld && viaSetup.length > 1000, 'run: a 10 minute simulatio
 const viaTal = await run((z) => createSimPlayer(withTal([{ modifier: 'armor', grade: 6 }, { modifier: 'critical_rate', grade: 6 }]), z, null, buildExtraBuffs(EXTRA)));
 check(viaTal !== viaOld, 'run: with talismans the same simulation differs');
 
+// ---- The what-if engine takes the same field (setup.talismans, tools/whatif/engine.mjs) ----
+const E = await import(pathToFileURL(path.join(root, 'tools/whatif/engine.mjs')).href);
+const I = (n) => '/items/' + n;
+const gen = (extra = {}) => ({
+    name: 'P', guildCombatBuffLevels: {}, achievements: {}, houseRooms: {}, triggerMap: {},
+    player: { staminaLevel: 60, intelligenceLevel: 60, attackLevel: 60, meleeLevel: 60, defenseLevel: 60, rangedLevel: 60, magicLevel: 60, equipment: [
+        { itemLocationHrid: '/item_locations/main_hand', itemHrid: I('blooming_trident'), enhancementLevel: 0 },
+        { itemLocationHrid: '/item_locations/pouch', itemHrid: I('giant_pouch'), enhancementLevel: 0 }] },
+    abilities: [null, null, null, null, null], food: { '/action_types/combat': [] }, drinks: { '/action_types/combat': [null, null, null] }, ...extra,
+});
+const TAL = { power: 0, lines: [{ modifier: 'armor', grade: 6 }, { modifier: 'critical_rate', grade: 6 }, { modifier: 'damage_taken', grade: 6 }] };
+check(E.buildDtos([gen()])[0].talismans === undefined && same(E.buildDtos([gen({ talismans: TAL })])[0].talismans, TAL), 'engine: buildDtos carries setup.talismans onto the DTO, absent stays absent');
+const runOf = async (setup) => JSON.stringify((await E.runParty({ setups: [setup], seed: 7, checkpoints: [1], tier: 0, zone: '/actions/combat/fly' })).checkpoints[0]);
+const eBase = await runOf(gen()), eEmpty = await runOf(gen({ talismans: { lines: [] } })), eTal = await runOf(gen({ talismans: TAL }));
+check(eBase === eEmpty && eBase.length > 200, 'engine: no talismans and an empty talismans give the same what-if run');
+check(eBase !== eTal, 'engine: talismans on the setup change the what-if run');
+let seen = null;
+await E.runParty({ setups: [gen({ talismans: TAL })], seed: 7, checkpoints: [0.01], tier: 0, zone: '/actions/combat/fly', onPlayers: (pls) => { seen = pls[0].talismanStats; } });
+check(same(seen, { armor: 8, criticalRate: 0.024, damageTaken: -0.02 }), 'engine: the player carries the summed talisman stats', JSON.stringify(seen));
+
 console.log(fails === 0 ? 'PASS: talismans.' : `FAIL: ${fails} problems.`);
 process.exit(fails === 0 ? 0 : 1);
