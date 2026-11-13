@@ -18,6 +18,7 @@ ZH = {
         "导入技能少于四个、或特殊技能栏为空的配置，不再失败",
         "导入配置后，导入窗口现在会自动关闭",
         "假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器",
+        "导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位",
     ],
     "2026-11-12": [
         "假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮",
@@ -206,6 +207,7 @@ PT = [
         "Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais",
         "Depois de importar uma configuração, a janela de importação agora fecha sozinha",
         "E se: o botão E se na página pública explica como obter o executor",
+        "Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos",
     ],
     [
         "E se: botões Aceitar o vencedor atual e Pular na etapa em andamento",
