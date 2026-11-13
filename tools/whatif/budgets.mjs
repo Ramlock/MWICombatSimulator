@@ -22,18 +22,21 @@ export function parseCoin(text) {
 }
 
 // Every open player's budget: --budgets per name; --budget (or the exporter's coin) for anyone --budgets leaves out.
-// A player with neither is an error, never a silent zero.
+// A player with neither is an error, never a silent zero. A budget of 0 (the window's empty field arrives as 0) means NO LIMIT
+// and becomes Infinity here, the one place that decides it, as 0 is no limit for --max-payback.
 export function resolveBudgets(players, list, fallback) {
     const out = {};
     for (const p of players) {
         const v = p in list ? list[p] : fallback;
         if (!(v >= 0)) throw new Error(`no budget for ${p}: give --budgets ${p}=<coin> or --budget <coin>`);
-        out[p] = v;
+        out[p] = v === 0 ? Infinity : v;
     }
     for (const p of Object.keys(list)) if (!players.includes(p)) throw new Error(`--budgets names ${p}, who is not in --players`);
     return out;
 }
 
+// How a budget reads in a report: Infinity (no limit) or the coin.
+export const NO_LIMIT_TEXT = 'no limit';
 export const zeroSpend = (budgets) => Object.fromEntries(Object.keys(budgets).map((p) => [p, 0]));
 
 // A candidate is affordable when its cost fits what its own player has left. A change that frees gold or costs

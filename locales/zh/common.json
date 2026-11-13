@@ -162,7 +162,8 @@
             "profit": "队伍每日利润（税后）",
             "exp": "队伍每小时经验"
         },
-        "budgets": "每位玩家：预算（金币）和导出",
+        "budgets": "每位玩家：预算（金币，留空或 0 = 不限）和导出",
+        "budgetPlaceholder": "不限",
         "maxPayback": "回本期限（天，0 = 不限）",
         "players": "玩家",
         "zone": "区域",

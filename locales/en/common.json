@@ -163,7 +163,8 @@
             "profit": "Party profit per day, after tax",
             "exp": "Party EXP per hour"
         },
-        "budgets": "Per player: budget (coin) and export",
+        "budgets": "Per player: budget (coin, empty or 0 = no limit) and export",
+        "budgetPlaceholder": "no limit",
         "maxPayback": "Payback limit (days, 0 = no limit)",
         "players": "Players",
         "zone": "Zone",

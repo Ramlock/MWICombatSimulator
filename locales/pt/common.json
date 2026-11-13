@@ -163,7 +163,8 @@
             "profit": "Lucro do grupo por dia, após a taxa",
             "exp": "EXP do grupo por hora"
         },
-        "budgets": "Por jogador: orçamento (moedas) e exportação",
+        "budgets": "Por jogador: orçamento (moedas, vazio ou 0 = sem limite) e exportação",
+        "budgetPlaceholder": "sem limite",
         "maxPayback": "Limite de retorno (dias, 0 = sem limite)",
         "players": "Jogadores",
         "zone": "Zona",

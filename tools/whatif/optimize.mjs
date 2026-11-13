@@ -23,10 +23,10 @@
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
 //   --budget <coin> | --export <exporter JSON>   budget: typed, else `coin` of the exporter JSON (3.1); every
 //                                player's budget unless --budgets names that player
-//   --max-payback <days>         default 365, 0 = no limit (profit goal): a change whose buyer's payback (cost over the buyer's gain per day) is over this
+//   --max-payback <days>         default 0 = no limit (profit goal): a change whose buyer's payback (cost over the buyer's gain per day) is over this
 //                                is not chosen: not eligible at its step (result.overPayback), and a pick whose fresh reading is over it fails the
 //                                pick check (result.notConfirmed). A free change always passes.
-//   --budgets A=1.5M,B=200K      a budget per player (budgets.mjs): each change is paid from its own player's coin,
+//   --budgets A=1.5M,B=200K      a budget per player (budgets.mjs): each change is paid from its own player's coin; a budget of 0 is no limit,
 //                                each step records every player's running spend (result.json steps[].runningSpend)
 //   --low-priority               run this process and every run process at the lowest priority (Windows: idle class)
 //   --stages 4x50,4x150,8x300    seeds x sim hours per stage: screen, halvings; the last is the finalist stage
