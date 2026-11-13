@@ -40,6 +40,8 @@ check('4 abilities: slots 1-4, slot 0 untouched', !r.error && same(r.slots, [KEE
 r = run([ab('/abilities/flame_blast', 49), ab('/abilities/fireball', 29), ab('/abilities/firestorm', 1)]);
 check('3 abilities: no error, slots 1-3 written, slot 4 cleared, slot 0 untouched', !r.error && same(r.slots, [KEEP, ['/abilities/flame_blast', '49'], ['/abilities/fireball', '29'], ['/abilities/firestorm', '1'], EMPTY]), JSON.stringify(r));
 // Fewer.
+r = run([ab('/abilities/a', 7), ab('/abilities/b', 8)]);
+check('2 abilities: slots 1-2 written, slots 3-4 cleared', !r.error && same(r.slots, [KEEP, ['/abilities/a', '7'], ['/abilities/b', '8'], EMPTY, EMPTY]), JSON.stringify(r));
 r = run([ab('/abilities/a', 7)]);
 check('1 ability: slot 1 written, slots 2-4 cleared', !r.error && same(r.slots, [KEEP, ['/abilities/a', '7'], EMPTY, EMPTY, EMPTY]), JSON.stringify(r));
 r = run([]);
