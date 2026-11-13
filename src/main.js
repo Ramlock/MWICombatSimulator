@@ -4691,6 +4691,38 @@ function restoreImportedGroup() {
     }
 }
 
+// Writes an import's abilities list to the ability slots of the screen (the one place that does it; the Solo import and the tab load use it).
+// A list of 5 starts at the special slot 0; a shorter one fills slots 1-4 and leaves slot 0. An entry that is missing or null (a list shorter
+// than its slots, or a null inside it) clears its slot (empty ability, level 1). The old aura names become the mystic aura in slot 0, and
+// arcane_reflection becomes retribution in any slot.
+function applyAbilitySlots(abilities) {
+    const list = abilities ?? [];
+    const hasSpecial = Object.keys(list).length == 5;
+    for (let i = 0; i < (hasSpecial ? 5 : 4); i++) {
+        const abilitySlot = hasSpecial ? i : (i + 1);
+        const abilitySelect = document.getElementById("selectAbility_" + abilitySlot);
+        const abilityLevelInput = document.getElementById("inputAbilityLevel_" + abilitySlot);
+        const entry = list[i];
+        if (entry == null) {
+            abilitySelect.value = "";
+            abilityLevelInput.value = "1";
+            continue;
+        }
+        if (hasSpecial && i == 0 && (
+            entry.abilityHrid == "/abilities/aqua_aura" ||
+            entry.abilityHrid == "/abilities/flame_aura" ||
+            entry.abilityHrid == "/abilities/sylvan_aura"
+        )) {
+            entry.abilityHrid = "/abilities/mystic_aura";
+        }
+        if (entry.abilityHrid == "/abilities/arcane_reflection") {
+            entry.abilityHrid = "/abilities/retribution";
+        }
+        abilitySelect.value = entry.abilityHrid;
+        abilityLevelInput.value = String(entry.level);
+    }
+}
+
 function doSoloImport() {
     let importSet = document.getElementById("inputSetSolo").value;
     importSet = JSON.parse(importSet);
@@ -4762,38 +4794,7 @@ function doSoloImport() {
     }
 
     if (importSet.abilities) {
-    let hasSpecial = false;
-    if (importSet.abilities && Object.keys(importSet.abilities).length == 5) {
-        hasSpecial = true;
-    }
-
-    for (let i = 0; i < (hasSpecial ? 5 : 4); i++) {
-        let abilitySlot = hasSpecial ? i : (i + 1);
-        let abilitySelect = document.getElementById("selectAbility_" + abilitySlot);
-        let abilityLevelInput = document.getElementById("inputAbilityLevel_" + abilitySlot);
-
-        if (hasSpecial && i == 0 && (
-            importSet.abilities[i].abilityHrid == "/abilities/aqua_aura" ||
-            importSet.abilities[i].abilityHrid == "/abilities/flame_aura" ||
-            importSet.abilities[i].abilityHrid == "/abilities/sylvan_aura"
-        )
-        ) {
-            importSet.abilities[i].abilityHrid = "/abilities/mystic_aura";
-        }
-
-        if (importSet.abilities[i].abilityHrid == "/abilities/arcane_reflection") {
-            importSet.abilities[i].abilityHrid = "/abilities/retribution";
-        }
-
-        if (importSet.abilities[i] != null) {
-            abilitySelect.value = importSet.abilities[i].abilityHrid;
-            abilityLevelInput.value = String(importSet.abilities[i].level);
-        } else {
-            abilitySelect.value = "";
-            abilityLevelInput.value = "1";
-        }
-    }
-
+        applyAbilitySlots(importSet.abilities);
     }
 
     if (importSet.triggerMap) {
@@ -4970,37 +4971,7 @@ function updateNextPlayer(currentPlayerNumber) {
         }
     }
 
-    let hasSpecial = false;
-    if (importSet.abilities && Object.keys(importSet.abilities).length == 5) {
-        hasSpecial = true;
-    }
-
-    for (let i = 0; i < (hasSpecial ? 5 : 4); i++) {
-        let abilitySlot = hasSpecial ? i : (i + 1);
-        let abilitySelect = document.getElementById("selectAbility_" + abilitySlot);
-        let abilityLevelInput = document.getElementById("inputAbilityLevel_" + abilitySlot);
-
-        if (hasSpecial && i == 0 && (
-            importSet.abilities[i].abilityHrid == "/abilities/aqua_aura" ||
-            importSet.abilities[i].abilityHrid == "/abilities/flame_aura" ||
-            importSet.abilities[i].abilityHrid == "/abilities/sylvan_aura"
-        )
-        ) {
-            importSet.abilities[i].abilityHrid = "/abilities/mystic_aura";
-        }
-
-        if (importSet.abilities[i].abilityHrid == "/abilities/arcane_reflection") {
-            importSet.abilities[i].abilityHrid = "/abilities/retribution";
-        }
-
-        if (importSet.abilities[i] != null) {
-            abilitySelect.value = importSet.abilities[i].abilityHrid;
-            abilityLevelInput.value = String(importSet.abilities[i].level);
-        } else {
-            abilitySelect.value = "";
-            abilityLevelInput.value = "1";
-        }
-    }
+    applyAbilitySlots(importSet.abilities);
 
     if (importSet.triggerMap) {
         triggerMap = importSet.triggerMap;
