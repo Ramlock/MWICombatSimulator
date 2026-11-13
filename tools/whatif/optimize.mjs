@@ -4,11 +4,12 @@
 //
 // Usage: node tools/whatif/optimize.mjs --out <dir> [options]
 //   --players Ramlock            whose equipment is open (comma list); each change is costed to its player
-//   --levers equip               comma list of equip (phase 1: +N and market swaps), consumables (the foods and the drinks
-//                                are decided FIRST, each as whole fillings of every open slot: Stage F picks each player's
-//                                best food filling, Stage D his best drink filling (drinkfill.mjs, pruned by his rules); the
-//                                two become the baseline every other change is measured on; result.best says what they are;
-//                                without it there is no Stage F or D and the current foods and drinks are the baseline),
+//   --levers equip               comma list of equip (phase 1: +N and market swaps), foods and drinks (decided FIRST,
+//                                each as whole fillings of every open slot: foods = Stage F picks each player's best food
+//                                filling, drinks = Stage D his best drink filling (drinkfill.mjs, pruned by his rules); the
+//                                ticked ones, foods then drinks, become the baseline every other change is measured on;
+//                                result.best says what they are; an unticked one has no stage and the setup's own foods or
+//                                drinks stay as they are; `consumables`, the old single name, reads as foods and drinks),
 //                                (pairs is accepted and ignored, for old command lines: drinks are fillings),
 //                                triggers (each numeric term over its grid, structure changes; design 3.5),
 //                                owned (items in the exporter's

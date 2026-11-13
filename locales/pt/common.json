@@ -166,9 +166,13 @@
                 "name": "Equipamento",
                 "desc": "aprimorar cada item usado, ou comprar outro item para o slot"
             },
-            "consumables": {
-                "name": "Comidas e bebidas",
-                "desc": "achar primeiro as melhores comidas e as melhores bebidas (todos os espaços de cada), e medir todo o resto em cima delas"
+            "foods": {
+                "name": "Comidas",
+                "desc": "achar primeiro as melhores comidas (todos os espaços de comida), e medir todo o resto em cima delas; sem marcar, as comidas ficam como estão na configuração"
+            },
+            "drinks": {
+                "name": "Bebidas",
+                "desc": "achar as melhores bebidas (todos os espaços de bebida), depois das comidas quando estas estão marcadas, e medir todo o resto em cima delas; sem marcar, as bebidas ficam como estão na configuração"
             },
             "owned": {
                 "name": "Itens que você tem",

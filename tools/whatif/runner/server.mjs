@@ -48,7 +48,10 @@ const RESERVED = new Set(['synthetic', 'setups', 'options', 'budgets', 'export',
 const SAFE_NAME = /^[^\\/:*?"<>|\r\n]+$/;
 
 const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
-export const searchId = (body) => createHash('sha1').update(JSON.stringify(canonical(body))).digest('hex').slice(0, 12);
+// A search's folder (its runs and result) is named by this id. The foods and drinks levers used to be one lever, `consumables`: a request that
+// ticks both hashes in that old form, so a rerun with both ticked finds the old search's folder, runs and result. Foods alone or drinks alone is its own search.
+const oldLevers = (levers) => { const i = levers.indexOf('foods'); return i < 0 || !levers.includes('drinks') ? levers : levers.flatMap((l, j) => (j === i ? ['consumables'] : l === 'drinks' ? [] : [l])); };
+export const searchId = (body) => createHash('sha1').update(JSON.stringify(canonical(Array.isArray(body?.levers) ? { ...body, levers: oldLevers(body.levers) } : body))).digest('hex').slice(0, 12);
 
 // A price snapshot by file name, from tools/calibration only (default: the optimizer's own default).
 export function pricesPath(name) {

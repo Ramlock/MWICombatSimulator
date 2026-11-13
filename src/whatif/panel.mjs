@@ -15,7 +15,8 @@ import { paybackDays } from './payback.mjs';
 // window stops offering it). `def` = checked by default: every box starts ticked (a lever that needs an export stays ticked, its player is skipped and listed).
 export const LEVERS = [
     { id: 'equip', def: true },
-    { id: 'consumables', def: true },
+    { id: 'foods', def: true },
+    { id: 'drinks', def: true },
     { id: 'owned', def: true },
     { id: 'abilities', def: true },
     { id: 'order', def: true },

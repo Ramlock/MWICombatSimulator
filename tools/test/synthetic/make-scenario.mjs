@@ -92,7 +92,7 @@ const scenario = {
     players: NAMES.map(setup),
     market: { marketData: market(), timestamp: 1_800_000_000 },
     budgets: Object.fromEntries(NAMES.map((n) => [n, 1_000_000_000])),
-    request: { goal: 'profit', levers: ['equip', 'consumables'], slots: 'head,body,legs', swaps: false, 'max-up': 3, 'max-payback': 365, 'max-steps': 4 },
+    request: { goal: 'profit', levers: ['equip', 'foods', 'drinks'], slots: 'head,body,legs', swaps: false, 'max-up': 3, 'max-payback': 365, 'max-steps': 4 },
     model: {
         lootPerDay: 3_000_000, lootSd50: 15_000, supplies: { Alice: 150_000, Bob: 200_000, Cara: 1_200_000 }, suppliesSd50: 3_000,
         need: { Alice: { hp: 8000, mp: 4000 }, Bob: { hp: 8000, mp: 4000 }, Cara: { hp: 8000, mp: 4000 } }, noiseSalt: 'e', deathsPerHour: 0.1, encountersPerHour: 120, expPerHour: 1_000_000, msPerRun: 300,

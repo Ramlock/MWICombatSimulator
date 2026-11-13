@@ -8,7 +8,7 @@
 // their seeds; a cached run is not counted, so the real count can be lower). When greedy step k starts it takes the
 // 'steps' row's place; a grey 'moreSteps' row ({ stepsLeft: maxSteps - k }, hidden at 0 and once the confirmation has
 // started) follows the steps and stays above the grey confirmation. Rows are added as steps start, so the count grows.
-// With plan.fillings (the consumables lever on) two parts come first: 'foods' and 'drinks' (Stage F and Stage D, each its
+// With plan.kinds (the ticked ones of the foods and drinks levers, in that order) a part comes first for each: 'foods' (Stage F) and 'drinks' (Stage D), each its
 // own three halvings run as one part; the runner reports stage 'foods' / 'drinks' and the part shows the current batch).
 // A part: { kind: 'foods'|'drinks'|'screen'|'halving'|'steps'|'step'|'moreSteps'|'confirmation', index, state: 'waiting'|'running'|
 // 'done', runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
@@ -17,7 +17,7 @@
 // round's and may rise and fall, so the window shows them as numbers). A part with a round has no bar: a race stage has no known total. }. A stop leaves the running part running: the rows stay as they were.
 
 export function createParts(plan) {
-    const { stages, keep = [], maxSteps, fillings = false } = plan;
+    const { stages, keep = [], maxSteps, kinds = [] } = plan;
     // Pool entering each stage: the screen gets every candidate, each halving at most the survivors of the one before. A cut keeps
     // "keep" free AND "keep" paid candidates, so up to twice "keep" enter the next stage. Unknown until setCandidates (the rest of the
     // search is built on the foods and drinks Stages F and D choose).
@@ -34,11 +34,11 @@ export function createParts(plan) {
     // as distinct runs (progress.picksPlanned / picksDone, never dropping): running while a pick is being checked, grey between two
     // checks, done once the confirmation starts or the search ends. Not a row of `rows`: it comes back to running at every step.
     const picks = { started: false, state: 'waiting', runsPlanned: 0, runsDone: 0, fill: 0 };
-    const seen = { planned: 0, done: 0 }, chkBase = {}; // the pick-check run counts as last reported / when the check of a foods or drinks stage began
+    const seen = { planned: 0, done: 0 }, chkBase = {}, greedyBase = { planned: 0, done: 0 }; // the pick-check run counts as last reported / when the check of a foods or drinks stage began
     const rows = []; // started parts, in order: { kind, index, runsPlanned, runsDone, candidatesLeft, etaSeconds, state }
     const parse = (stage) => {
         if (stage === 'screen') return { kind: 'screen', index: 0 };
-        if (fillings && (stage === 'foods' || stage === 'drinks')) return { kind: stage, index: 0 };
+        if (kinds.includes(stage)) return { kind: stage, index: 0 };
         let m = /^halving (\d+)$/.exec(stage);
         if (m) return { kind: 'halving', index: Number(m[1]) };
         m = /^greedy step (\d+)$/.exec(stage);
@@ -53,13 +53,17 @@ export function createParts(plan) {
             const key = parse(progress.stage), confirming = progress.stage === 'confirming picks';
             // The pick check of a foods or drinks stage (progress.checking names the stage) is shown on that stage's own row, not as the greedy phase's
             // 'picks' part: the row stays done and carries checking + its own run counts (the global counts minus what they were when the check began).
-            const chk = confirming && fillings && (progress.checking === 'foods' || progress.checking === 'drinks') ? progress.checking : null;
+            const chk = confirming && kinds.includes(progress.checking) ? progress.checking : null;
             if (chk && !chkBase[chk]) chkBase[chk] = { planned: seen.planned, done: seen.done };
             if (progress.picksPlanned !== undefined) { seen.planned = progress.picksPlanned; seen.done = progress.picksDone ?? 0; }
-            if (progress.picksPlanned !== undefined && !chk) {
+            // The 'picks' part counts the greedy phase's pick checks only: the progress counts are global and stay on every later message, so it takes them
+            // from where the last foods or drinks check left them (`greedyBase`), and never from a message of a foods or drinks stage itself.
+            if (chk) { greedyBase.planned = seen.planned; greedyBase.done = seen.done; }
+            const gPlanned = Math.max(0, seen.planned - greedyBase.planned), gDone = Math.max(0, seen.done - greedyBase.done);
+            if (progress.picksPlanned !== undefined && !chk && !(key && kinds.includes(key.kind)) && gPlanned > 0) {
                 picks.started = true;
-                picks.runsPlanned = Math.max(picks.runsPlanned, progress.picksPlanned);
-                picks.runsDone = Math.min(picks.runsPlanned, Math.max(picks.runsDone, progress.picksDone ?? 0));
+                picks.runsPlanned = Math.max(picks.runsPlanned, gPlanned);
+                picks.runsDone = Math.min(picks.runsPlanned, Math.max(picks.runsDone, gDone));
                 picks.fill = Math.max(picks.fill, picks.runsPlanned > 0 ? picks.runsDone / picks.runsPlanned : 0); // never goes back, as a part's
             }
             for (const r of rows) {
@@ -92,7 +96,7 @@ export function createParts(plan) {
             // 'stopped', 'probe' and 'start' change no row.
             for (const r of rows) if (r.state === 'done') { r.runsDone = r.runsPlanned; r.etaSeconds = 0; }
             const out = [];
-            if (fillings) for (const kind of ['foods', 'drinks']) {
+            for (const kind of kinds) {
                 const r = rows.find((x) => x.kind === kind);
                 out.push(r ? { ...r } : { kind, index: 0, state: 'waiting', runsPlanned: 0, runsDone: 0, candidatesLeft: null, etaSeconds: null });
             }

@@ -83,10 +83,11 @@ export async function main(settings, seams) {
     const sureOffset = confirmOffset + 10000;
     const setupsDir = settings.setupsDir, pricesFile = settings.pricesFile;
     const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-    const LEVERS = ['equip', 'consumables', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
+    const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
     // `pairs` is no longer a lever (the foods and drinks race tries whole combinations): an old command line or request that names it still runs, the name is ignored.
-    const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS.filter((l) => l !== 'abilitylevels' && l !== 'books') : [x.trim()])).filter((x) => x !== 'pairs'));
+    // `consumables`, the one lever the foods and the drinks were before they were split, is read as both (an old command line, request or saved search).
+    const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS.filter((l) => l !== 'abilitylevels' && l !== 'books') : x.trim() === 'consumables' ? ['foods', 'drinks'] : [x.trim()])).filter((x) => x !== 'pairs'));
     for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
     // --export: the old single character export (an object with its `name`), or a map { "<player name>": <that player's export> }.
     // Levers that need a player's export never block a search: that player is skipped by the lever (result.skippedNoExport).
@@ -861,16 +862,17 @@ export async function main(settings, seams) {
         const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
         result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, confirmHours: finH, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
-        const fillings = levers.has('consumables');
-        partsTracker = createParts({ stages, keep, candidates: null, maxSteps, fillings });
+        const kinds = ['foods', 'drinks'].filter((k) => levers.has(k)); // the ticked ones, foods first
+        partsTracker = createParts({ stages, keep, candidates: null, maxSteps, kinds });
         result.best = { foods: {}, drinks: {} };
         result.endedByUser = endedByUser;
         result.baselineOps = [];
-        if (fillings) {
-            report({ stage: 'need' }); needStore = await needBase();
+        if (kinds.length) {
             // STAGE F, then STAGE D: the foods and the drinks are decided first, whole fillings of every open slot, each against the
-            // baseline so far; all players' choices together are the baseline the rest of the search is measured on.
-            for (const kind of ['foods', 'drinks']) {
+            // baseline so far; all players' choices together are the baseline the rest of the search is measured on. Only the ticked kinds
+            // run; an unticked one stays as the setup has it.
+            for (const kind of kinds) {
+                if (kind === 'foods') { report({ stage: 'need' }); needStore = await needBase(); } // the foods are built from the party's measured need
                 const setupsNow = applyOps(setups0, baseOps);
                 const fc = players.flatMap((p) => (kind === 'foods' ? foodStageCands(setupsNow, p) : drinkStageCands(setupsNow, p)));
                 const flag = kind === 'foods' ? 'food' : 'drink';

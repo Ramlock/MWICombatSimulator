@@ -166,9 +166,13 @@
                 "name": "Equipment",
                 "desc": "enhance each worn item, or buy another item for its slot"
             },
-            "consumables": {
-                "name": "Food and drinks",
-                "desc": "find the best foods and the best drinks first (every slot of each), then measure everything else on top of them"
+            "foods": {
+                "name": "Foods",
+                "desc": "find the best foods first (every food slot), then measure everything else on top of them; unticked, the foods stay as they are in the setup"
+            },
+            "drinks": {
+                "name": "Drinks",
+                "desc": "find the best drinks (every drink slot), after the foods when those are ticked, then measure everything else on top of them; unticked, the drinks stay as they are in the setup"
             },
             "owned": {
                 "name": "Items you own",

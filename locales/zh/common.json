@@ -165,9 +165,13 @@
                 "name": "装备",
                 "desc": "强化每件已穿戴装备，或为该部位购买其他装备"
             },
-            "consumables": {
-                "name": "食物和饮料",
-                "desc": "find the best foods and the best drinks first (every slot of each), then measure everything else on top of them"
+            "foods": {
+                "name": "食物",
+                "desc": "先找出最好的食物（每个食物栏位），再在其基础上测量其他所有项目；不勾选时，食物保持设置中的样子"
+            },
+            "drinks": {
+                "name": "饮料",
+                "desc": "找出最好的饮料（每个饮料栏位），若已勾选食物则在食物之后，再在其基础上测量其他所有项目；不勾选时，饮料保持设置中的样子"
             },
             "owned": {
                 "name": "已拥有的物品",

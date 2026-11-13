@@ -68,7 +68,7 @@ const res = run.result, steps = res.steps, step = (i) => steps[i];
 const opsOf = (s) => (s.ops ?? s.est?.ops ?? []);
 const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"${player}","slot":"${slot}","delta":${delta}`);
 console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length} rounds, ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
-check('search: finished by itself, not stopped; no real engine run was asked for (the trigger lever is off)', run.outcome.stopped === false && res.options.levers.join() === 'equip,consumables');
+check('search: finished by itself, not stopped; no real engine run was asked for (the trigger lever is off)', run.outcome.stopped === false && res.options.levers.join() === 'equip,foods,drinks');
 check('search: a clear winner is the first step (Alice body +2)', hasOp(step(0), 'Alice', 'body', 2), JSON.stringify(step(0).desc ?? step(0).id));
 check('search: every step pays back inside 365 days and was confirmed on fresh seeds', steps.length >= 2 && steps.every((s) => s.fresh && s.fresh.accepted && (s.payback === undefined || s.payback === null || s.payback <= PAY + 1)), JSON.stringify(steps.map((s) => s.payback)));
 check('search: the losers (Alice legs) are never taken', !steps.some((s) => hasOp(s, 'Alice', 'legs', 1) || hasOp(s, 'Alice', 'legs', 2) || hasOp(s, 'Alice', 'legs', 3)));

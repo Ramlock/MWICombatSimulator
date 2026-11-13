@@ -641,7 +641,8 @@
   "goal": "profit",
   "levers": [
    "equip",
-   "consumables"
+   "foods",
+   "drinks"
   ],
   "slots": "head,body,legs",
   "swaps": false,
