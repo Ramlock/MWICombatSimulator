@@ -24,6 +24,7 @@ ZH = {
         "战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐",
         "假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）",
         "运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面",
+        "假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）",
     ],
     "2026-11-12": [
         "假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮",
@@ -218,6 +219,7 @@ PT = [
         "Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números",
         "E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)",
         "Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página",
+        "E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)",
     ],
     [
         "E se: botões Aceitar o vencedor atual e Pular na etapa em andamento",
