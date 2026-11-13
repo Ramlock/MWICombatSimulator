@@ -237,16 +237,19 @@ const fill = (t, key, params) => t(key, params);
 const plural = (t, key, n, params) => t(Number(n) === 1 ? key + 'One' : key, params);
 // A part's key (the buttons' data-whatif-part, and the pressed button main.js keeps): the same part keeps the same key across polls.
 export const partKey = (r) => r.kind + ':' + (r.index ?? 0);
+// The name of a greedy-step race by the change it looks for: the screen is the race for change 1 (progress.partScreen), the race of
+// "greedy step n" (the search's stage name, tools/whatif/core.mjs) runs after change n and looks for change n + 1. The one place the +1 is made.
+const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 });
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
 // lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Accept ends the stage after the round it is in,
 // with its pick as it is; Skip ends it at once. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn, both buttons disabled
 // (the second press would change the first), and Accept's note says the round is being finished (Skip ends at once: no note). The state is in the
 // markup, so the redraw of the next poll gives the same button.
-function stageButtons(t, label, acceptable, key, pressed) {
+function stageButtons(t, acceptable, key, pressed) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
     const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done ? ' disabled' : ''}>${esc(text)}</button>`;
     const note = done === 'accept' ? ` <span class="whatif-dim small" data-whatif-note="accept">${esc(t('progress.stageFinishing'))}</span>` : '';
-    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip', { stage: label }), 'progress.stageSkipTip') + note;
+    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip') + note;
 }
 export function renderParts(status, t, pressed = null) {
     const p = status.progress || {}, parts = p.parts;
@@ -262,7 +265,7 @@ export function renderParts(status, t, pressed = null) {
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
             : r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps })
             : r.kind === 'picks' ? t('progress.partPicks')
-            : r.kind === 'step' ? t('progress.partStep', { n: r.index })
+            : r.kind === 'step' ? stepLabel(t, r.index)
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
             : r.state === 'waiting' ? t('progress.partConfirmationWaiting') : t('progress.partConfirmation');
         // A part of a race stage (it carries `round`) has no total known in advance, so it has no filling bar (a bar only ever moves forward):
@@ -304,7 +307,7 @@ export function renderParts(status, t, pressed = null) {
         // A race stage's row in any state (running, done, halted) has no bar and wraps like the running one: its status text is long, and a
         // done row's grid columns cut it and pushed its figures past the window edge.
         const bar = rounded || cls === 'skipped' || noneConfirmed ? '<span class="whatif-no-bar"></span>' : `<div class="progress whatif-progress" style="height: 8px;"><div class="progress-bar" style="width: ${pct}%"></div></div>`;
-        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + stageButtons(t, label, r.acceptable, partKey(r), pressed) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
+        return `<div class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><span class="whatif-part-mark">${mark}</span><span class="whatif-part-label"><b>${esc(label)}</b>${left}${race ? ' · ' + counters + ' ' + stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</span>${bar}${race ? '' : `<span class="whatif-part-text">${text}</span>`}</div>`;
     }).join('');
     const title = running >= 0 ? esc(t('state.running')) + ' · ' + esc(t('progress.partOf', { k: running + 1, n: parts.length })) : esc(t('state.' + status.state));
     const small = [];
@@ -631,7 +634,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
     if (!running || result.steps?.length) L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     for (const [stage, n] of endedStages) {
-        const m = /^greedy step (\d+)$/.exec(stage), name = m ? t('progress.partStep', { n: m[1] }) : stage === 'screen' ? t('progress.partScreen') : stage;
+        const m = /^greedy step (\d+)$/.exec(stage), name = m ? stepLabel(t, Number(m[1])) : stage === 'screen' ? t('progress.partScreen') : stage;
         L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
     }
     if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
