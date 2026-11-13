@@ -1,5 +1,6 @@
 // Damage-bonus attribution for one recorded window: both answers per bonus unit (leave-one-out, even split), with validation.
-// Usage: node tools/attribution/run.mjs --export <group export.json> --combat <combat.jsonl> --out <dir>
+// Usage: node tools/attribution/run.mjs --export <group export.json> (--combat <combat.jsonl> | --saved <saved recording.json>) --out <dir>
+//          --saved reads the file the Combat Tracker's "Save combat recording (file)" writes, as the same rows the helper writes (saved-file.mjs).
 //          [--window <window key prefix, default: the last party window>] [--chance off|conditional] [--levels base|unit] [--encounters N]
 //          --levels base (default): skill levels are part of the base (never off); unit: one unit per skill, off = level 1.
 // Reads private files given on the command line and writes results only to --out; commits nothing.
@@ -7,13 +8,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadEngine } from './engine-node.mjs';
 import * as core from './attribution-core.mjs';
+import { savedFileToRows } from './saved-file.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((a, v, i, arr) => (v.startsWith('--') ? [...a, [v.slice(2), arr[i + 1]]] : a), []));
 const engine = await loadEngine();
 const t0 = Date.now();
 
 const exp = JSON.parse(fs.readFileSync(args.export, 'utf8'));
-const recs = fs.readFileSync(args.combat, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).rec);
+if (!!args.combat === !!args.saved) { console.error('Give exactly one of --combat <combat.jsonl> or --saved <saved recording.json>.'); process.exit(1); }
+let rows;
+try { rows = args.saved ? savedFileToRows(JSON.parse(fs.readFileSync(args.saved, 'utf8'))) : fs.readFileSync(args.combat, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch (e) { console.error(e.message); process.exit(1); }
+const recs = rows.map((r) => r.rec);
 const windows = recs.filter((r) => r.type === 'window');
 let win;
 if (args.window) win = windows.filter((w) => w.key.startsWith(args.window)).pop();
