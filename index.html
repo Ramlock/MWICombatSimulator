@@ -96,6 +96,36 @@
         body.dark-mode .whatif-part-done .progress-bar { background-color: #2e9e5e; }
         .whatif-part-running .progress-bar { background-color: #3d8bfd; }
         .whatif-part-waiting .progress-bar, .whatif-part-halted .progress-bar { background-color: #6c757d; }
+        /* Restyle (mock): section headings, meaning colours, callouts, the state chip and the stage list. Dark only. */
+        #whatIfModal .whatif-h { font-weight: 600; font-size: .95rem; color: #e9ecef; border-bottom: 1px solid #495057; padding-bottom: .15rem; margin-top: .75rem; margin-bottom: .25rem; }
+        #whatIfModal .whatif-col > .whatif-sec > .whatif-h:first-child, #whatIfModal .col-md-7 > .whatif-h:first-child, #whatIfResult > .whatif-h:first-child { margin-top: 0; }
+        .whatif-intro { font-size: .95rem; }
+        .whatif-gain { color: #4cc38a; }
+        .whatif-loss { color: #ff6b6b; }
+        .whatif-pm { color: #8b949e; }
+        .whatif-callout { border-left: 3px solid #f0c060; background: rgba(240, 192, 96, .08); color: #f0c060; padding: .3rem .6rem; border-radius: .25rem; margin-bottom: .5rem; }
+        .whatif-callout-danger { border-left-color: #ff6b6b; background: rgba(255, 107, 107, .08); color: #ff8787; }
+        .whatif-context b { color: #dee2e6; font-weight: 500; }
+        #whatIfModal .whatif-confirm { width: auto; min-width: 36rem; }
+        body.dark-mode #whatIfModal .whatif-table > thead th { color: #adb5bd; font-weight: 600; border-bottom: 1px solid #6c757d; }
+        body.dark-mode #whatIfModal .whatif-confirm tr[data-confirm-row="party"] td { font-weight: 600; }
+        .whatif-details-line .whatif-fold { text-decoration: none; border: 1px solid #6c757d; border-radius: .25rem; padding: .1rem .6rem !important; color: #dee2e6; }
+        .whatif-state { font-size: .8rem; font-weight: 600; padding: .3em .7em; }
+        .whatif-state:empty { display: none; }
+        .whatif-state[data-state="idle"] { background: #495057; }
+        .whatif-state[data-state="starting"], .whatif-state[data-state="searching"] { background: #0d6efd; }
+        .whatif-state[data-state="stopping"] { background: #ffc107; color: #212529; }
+        .whatif-state[data-state="stopped"] { background: #fd7e14; color: #212529; }
+        .whatif-state[data-state="done"] { background: #198754; }
+        .whatif-state[data-state="error"] { background: #dc3545; }
+        .whatif-state[data-state="starting"]::before, .whatif-state[data-state="searching"]::before, .whatif-state[data-state="stopping"]::before { content: ""; display: inline-block; width: .6em; height: .6em; margin-right: .45em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: whatif-spin .8s linear infinite; vertical-align: -.05em; }
+        @keyframes whatif-spin { to { transform: rotate(360deg); } }
+        .whatif-part { padding: .2rem .4rem; border-left: 3px solid transparent; border-radius: .2rem; }
+        .whatif-part-done .whatif-part-mark { color: #4cc38a; }
+        .whatif-part-running { background: rgba(61, 139, 253, .14); border-left-color: #3d8bfd; }
+        .whatif-part-running .whatif-part-mark { color: #6ea8fe; }
+        .whatif-part-halted .whatif-part-mark { color: #fd7e14; }
+        .whatif-part-done .whatif-part-label { color: #ced4da; }
         body.dark-mode .whatif-table { color: #f0f0f0; --bs-table-color: #f0f0f0; --bs-table-bg: transparent; border-color: #666; }
 
         body.dark-mode #expensesTable,
@@ -1808,6 +1838,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" data-i18n="common:whatIf.title">What-if</h5>
+                    <span id="whatIfState" class="badge ms-3 whatif-state" role="status" aria-live="polite"></span>
                     <span id="whatIfVersion" class="small ms-3 me-auto whatif-dim"></span>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
@@ -1833,6 +1864,7 @@
                             <p data-i18n="common:whatIf.get.linuxReport">Tell us what happened at each step: the exact error, your distribution and your Node version.</p>
                         </div>
                     </div>
+                    <div class="whatif-intro text-secondary" data-i18n="common:whatIf.intro">A search tries changes to each player's setup and weighs each one's gain against what it costs on the market.</div>
                     <div class="row">
                         <div class="col-md-5 whatif-col">
                             <div class="row g-1">
@@ -1845,7 +1877,7 @@
                                 </div>
                             </div>
                             <div class="whatif-sec">
-                                <div class="fw-bold" data-i18n="common:whatIf.players">Players</div>
+                                <div class="whatif-h" data-i18n="common:whatIf.players">Players</div>
                                 <div id="whatIfPlayers"></div>
                             </div>
                             <div class="whatif-sec">
@@ -1860,22 +1892,22 @@
                                 <div class="small whatif-dim" data-i18n="common:whatIf.choicesNote">Copied from the page when this window opens; changes here affect only this search.</div>
                             </div>
                             <div class="whatif-sec">
-                                <div class="fw-bold" data-i18n="common:whatIf.budgets">Budget per player (coin)</div>
+                                <div class="whatif-h" data-i18n="common:whatIf.budgets">Per player: budget (coin; empty or 0 = no limit) and export</div>
                                 <div id="whatIfBudgets" class="whatif-sec"></div>
                             </div>
                         </div>
                         <div class="col-md-7">
-                            <div class="fw-bold" data-i18n="common:whatIf.levers">What to search</div>
+                            <div class="whatif-h" data-i18n="common:whatIf.levers">What to search</div>
                             <div id="whatIfLevers"></div>
                             <div class="whatif-sec mt-2">
                                 <div class="row g-1">
-                                    <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days, 0 = no limit)</label>
-                                    <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="365" class="form-control form-control-sm"></div>
+                                    <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days; empty or 0 = no limit)</label>
+                                    <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="0" class="form-control form-control-sm"></div>
                                 </div>
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center mt-2" id="whatIfStartRow">
                                 <button type="button" class="btn btn-primary btn-sm" id="buttonWhatIfStart" data-i18n="common:whatIf.start">Start search</button>
-                                <button type="button" class="btn btn-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
                                 <span class="ms-3" data-i18n="common:whatIf.earlier">Earlier searches</span>
                                 <select id="selectWhatIfResult" class="form-select form-select-sm" style="width: auto;"></select>
                                 <button type="button" class="btn btn-secondary btn-sm" id="buttonWhatIfLoad" data-i18n="common:whatIf.load">Show</button>

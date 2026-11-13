@@ -4217,7 +4217,8 @@ function whatIfRenderSetup() {
         input.autocomplete = 'off';
         input.className = 'form-control form-control-sm';
         input.dataset.player = slot.name;
-        input.value = typed[slot.name] ?? '0';
+        input.value = typed[slot.name] ?? '';
+        input.placeholder = whatIfT('noLimit');
         input.addEventListener('input', () => whatIfMarkBudget(input));
         // The player's character export (optional): a paste field whose valid content is kept in the browser's storage
         // under the player's name; the status beside it is rebuilt from the storage and the field.
@@ -4330,13 +4331,27 @@ function whatIfDrawProgress() {
     alignNumbers();
 }
 
+// The one state indicator in the window's title bar: idle, starting, searching, stopping, stopped (by you), done or error.
+function whatIfSetState(key) {
+    const chip = document.getElementById('whatIfState');
+    chip.dataset.state = key;
+    chip.textContent = whatIfT('stateChip.' + key);
+}
+
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
     whatIfDrawProgress();
+    // A Stop pressed shows at once ("Stopping...", disabled) and stays so until the runner reports the search is no longer running.
+    if (status.state !== 'running') whatIf.stopping = false;
+    const stopping = !!whatIf.stopping;
     const stop = document.getElementById('buttonWhatIfStop');
-    stop.disabled = !(status.state === 'running' || status.state === 'stopped');
-    stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
+    stop.disabled = stopping || !(status.state === 'running' || status.state === 'stopped');
+    stop.textContent = whatIfT(stopping ? 'stopping' : status.state === 'stopped' ? 'resume' : 'stop');
+    const start = document.getElementById('buttonWhatIfStart');
+    start.disabled = status.state === 'running';
+    start.textContent = whatIfT('start');
+    whatIfSetState(stopping ? 'stopping' : { running: 'searching', stopped: 'stopped', done: 'done', error: 'error' }[status.state] || 'idle');
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
@@ -4396,22 +4411,30 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
+    const start = document.getElementById('buttonWhatIfStart');
+    start.disabled = true; start.textContent = whatIfT('starting'); whatIfSetState('starting');
+    const failed = (text) => { whatIfMessage(text); start.disabled = false; start.textContent = whatIfT('start'); whatIfSetState('idle'); };
     const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
-    if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
+    if (request.error) { failed(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
         const { ok, body: answer } = await whatIfRequest(WHATIF_API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (ok) whatIfWatch(answer.id);
         else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
-        else whatIfMessage(answer.error || whatIfT('runnerError'));
-    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+        else failed(answer.error || whatIfT('runnerError'));
+    } catch (err) { failed(whatIfT('runnerGone')); }
 }
 
 async function whatIfStopOrResume() {
     if (!whatIf.searchId) return;
     const resuming = whatIf.state === 'stopped';
+    // The press shows at once, before the runner answers.
+    const stop = document.getElementById('buttonWhatIfStop');
+    stop.disabled = true;
+    if (resuming) whatIfSetState('starting');
+    else { whatIf.stopping = true; stop.textContent = whatIfT('stopping'); whatIfSetState('stopping'); }
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
@@ -4475,6 +4498,7 @@ async function initWhatIf() {
     // Strings are read when the window opens: i18next may not be ready when this runs.
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
+        if (!whatIf.timer && !document.getElementById('whatIfState').dataset.state) whatIfSetState('idle');
         whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
     document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });

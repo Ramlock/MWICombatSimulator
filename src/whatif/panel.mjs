@@ -76,8 +76,9 @@ function pmParts(v, half) {
 function pm(v, half) {
     const p = pmParts(v, half);
     if (!p) return '—';
-    const body = p.err === null ? p.main : p.main + ' ± ' + p.err;
-    return p.zero ? `<span class="whatif-dim">${body}</span>` : body;
+    if (p.zero) return `<span class="whatif-dim">${p.err === null ? p.main : p.main + ' ± ' + p.err}</span>`;
+    // A gain green, a loss red (its minus sign says it too), the error dim: as in gainCell.
+    return `<span class="${v < 0 ? 'whatif-loss' : 'whatif-gain'}">${p.main}</span>${p.err === null ? '' : '<span class="whatif-pm"> ± ' + p.err + '</span>'}`;
 }
 // One table cell for the party gain or the buyer's gain, in the rounds tables and the Best tables (the one helper for both columns). `seeds`: the
 // runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than FIGURE_MIN_SEEDS: a dim "—" and a hover text.
@@ -89,8 +90,9 @@ function pmCell(v, half, t, seeds = null) {
 const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + marginHtml(fit(v, se), se));
 // One cell for a gain and its error, "<value> ± <error>": "no change" (the real value as title) when it reads as no change.
 function gainCell(v, se, t, floor) {
-    if (isNoChange(v, se, floor)) return `<td class="num" title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</td>`;
-    return `<td class="num">${num(fit(v, se))}${Number.isFinite(se) ? ' ± ' + marginHtml(fit(v, se), se) : ''}</td>`;
+    if (isNoChange(v, se, floor)) return `<td class="num whatif-dim" title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</td>`;
+    // A gain is green and a loss red (its minus sign says it too); the error after it is dim.
+    return `<td class="num ${v < 0 ? 'whatif-loss' : 'whatif-gain'}">${num(fit(v, se))}${Number.isFinite(se) ? '<span class="whatif-pm"> ± ' + marginHtml(fit(v, se), se) + '</span>' : ''}</td>`;
 }
 // A chosen change or filling shows its fresh reading (the optimizer's pick check: the same change measured again on fresh seeds
 // against what was chosen before it) in place of the search's own: [value, error] of a pair of fields from `fresh` when it has both,
@@ -635,20 +637,20 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player));
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
-    L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
     const zone = zoneLine(result, t, names);
-    if (zone) L.push(`<div class="mb-2">${zone}</div>`);
-    if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn">${esc(t('result.baseLoses'))}</div>`);
+    L.push(`<div class="mb-2 small text-secondary whatif-context">${esc(t('result.goal'))}: <b>${esc(goal)}</b>${zone ? ' · ' + zone : ''}</div>`);
+    if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn whatif-callout">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
-    if (prices) L.push(`<div class="mb-2 small whatif-warn" data-prices-stale>${prices}</div>`);
+    if (prices) L.push(`<div class="mb-2 small whatif-warn whatif-callout" data-prices-stale>${prices}</div>`);
     const goalExp = result.goal === 'exp';
     // The size floor of the "no change" rule, worked out once here and passed down to every figure with an error.
     const floor = Number.isFinite(result.basePerUser) ? result.basePerUser / 10000 : null;
+    const bestAt = L.length;
     const bestHtml = bestBlock(result, t, names, running, floor);
     if (bestHtml) L.push(bestHtml);
     // The screen and the greedy steps the user ended with "done with this stage": one line each, under the steps heading.
     const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
-    if (!running || result.steps?.length) L.push(`<div class="fw-bold mt-2">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
+    if (!running || result.steps?.length) L.push(`<div class="whatif-h">${esc(t('result.steps'))}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     for (const [stage, n] of endedStages) {
         const m = /^greedy step (\d+)$/.exec(stage), name = m ? stepLabel(t, Number(m[1])) : stage === 'screen' ? t('progress.partScreen') : stage;
         L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
@@ -666,6 +668,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         L.push('</tbody></table>');
         if (!goalExp) L.push(`<div class="small whatif-dim mb-2">${esc(t('result.gainLegend'))}</div>`);
     }
+    const confAt = L.length;
     const c = result.confirmation;
     if (c) {
         // With the per-player lines the party payback is dropped (each line has its own buyer's payback); an older result keeps it.
@@ -686,6 +689,13 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         }
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
+    // The answer first: the confirmed gains under their heading, then one line per limit that left changes out (their lists stay under See details),
+    // above the best fillings and the chosen steps.
+    const answer = L.splice(confAt);
+    if (answer.length) answer.unshift(`<div class="whatif-h">${esc(t('result.answer'))}</div>`);
+    const leftOut = [['overPayback', 'leftOutPayback', { days: num(result.options?.maxPaybackDays) }], ['overBudget', 'leftOutBudget', {}]].filter(([k]) => result[k]?.length)
+        .map(([k, key, p]) => `<div class="whatif-callout" data-left-out="${k}">${plural(t, 'result.' + key, result[k].length, { n: num(result[k].length), ...p })}</div>`);
+    L.splice(bestAt, 0, ...answer, ...leftOut);
     const hiddenRow = (s) => s.hiddenFood || s.hiddenAlt; // hiddenFood: a food row the search left out (one per player); hiddenAlt: another value of a setting a kept row already changes (one row per setting)
     const anySingles = (result.singles || []).some((s) => !hiddenRow(s));
     // Everything below is detail: it sits closed behind one "See details" toggle (each list still closed on its own under it).

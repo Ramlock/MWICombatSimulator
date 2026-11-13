@@ -251,7 +251,7 @@ try {
     await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = 'abc'; return true; })()`);
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('a budget that is not a number is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('Player 1')`) && received === null);
-    check('the window has a payback limit field next to the budgets, 365 days by default', await js(`(() => { const i = document.getElementById('inputWhatIfMaxPayback'); return i.value === '365' && document.querySelector('label[for="inputWhatIfMaxPayback"]').textContent === 'Payback limit (days, 0 = no limit)' && !!i.closest('.modal-body') && (document.getElementById('whatIfBudgets').compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0; })()`));
+    check('the window has a payback limit field next to the budgets, 0 (no limit) by default', await js(`(() => { const i = document.getElementById('inputWhatIfMaxPayback'); return i.value === '0' && document.querySelector('label[for="inputWhatIfMaxPayback"]').textContent === 'Payback limit (days; empty or 0 = no limit)' && !!i.closest('.modal-body') && (document.getElementById('whatIfBudgets').compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0; })()`));
     await js(`(() => { document.getElementById('inputWhatIfMaxPayback').value = '-5'; return true; })()`);
     await js(`(document.querySelector('#whatIfBudgets input').value = '1000000', document.getElementById('buttonWhatIfStart').click(), true)`);
     check('a payback limit that is not a number of days is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('payback limit')`) && received === null);
