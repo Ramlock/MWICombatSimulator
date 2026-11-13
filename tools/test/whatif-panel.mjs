@@ -126,8 +126,12 @@ const result = {
     check('result: priced over-budget changes listed in their own group with player and cost, "≤" on an upper bound', html.includes(locales.en.result.overBudget) && html.includes('Beta, Big staff +10: <span data-num="7000000000"') && /Alpha, Fireball 30 → 40 &lt;books&gt;: ≤ <span data-num="300000000"/.test(html));
     check('result: the over-budget group is apart from the unknown-cost list and not in the ranked tables', html.indexOf(locales.en.result.overBudget) < html.indexOf(locales.en.result.apart) && !html.includes('data-whatif-apply="over'));
     const at = (1700000000 + 3 * 86400 + 5 * 3600) * 1000;
-    check('result: the snapshot time and its age', panel.renderResult(result, t, at).includes('Prices: market snapshot of 2023-11-14 22:13 UTC (3 days old'));
-    check('result: the committed file says so', panel.renderResult({ ...result, options: { pricesTimestamp: 1700000000, pricesSource: 'committed' } }, t, at).includes("simulator's own saved snapshot of 2023-11-14 22:13 UTC (3 days old)"));
+    check('result: a snapshot 3 days old shows its time and age, in the warning colour', /<div class="mb-2 small whatif-warn"[^>]*>Prices: market snapshot of 2023-11-14 22:13 UTC \(3 days old/.test(panel.renderResult(result, t, at)));
+    const snapAt = (s) => (1700000000 + s) * 1000;
+    check('prices row: a snapshot 1 hour old shows no row', !panel.renderResult(result, t, snapAt(3600)).includes('Prices:') && panel.pricesLine(result, t, snapAt(3600)) === '' && !panel.renderResult(result, t, snapAt(0)).includes('Prices:'));
+    check('prices row: 23 h 59 min 59 s is still no row, exactly 24 hours shows it in amber (the same warning class the page colours)', !panel.renderResult(result, t, snapAt(86399)).includes('Prices:') && /<div class="mb-2 small whatif-warn"[^>]*>Prices: market snapshot of 2023-11-14 22:13 UTC \(1 day old when shown\)\./.test(panel.renderResult(result, t, snapAt(86400))));
+    const committed = { ...result, options: { pricesTimestamp: 1700000000, pricesSource: 'committed' } };
+    check('prices row: the simulator\'s own saved snapshot is always shown, in amber, even 1 hour old', /<div class="mb-2 small whatif-warn"[^>]*>Prices: the simulator's own saved snapshot of 2023-11-14 22:13 UTC \(1 hour old\), not the market of now\./.test(panel.renderResult(committed, t, snapAt(3600))) && panel.renderResult(committed, t, at).includes("simulator's own saved snapshot of 2023-11-14 22:13 UTC (3 days old)"));
     check('result: ages in hours and minutes', panel.age(7200, t) === '2 hours' && panel.age(59, t) === '0 minutes' && panel.age(-5, t) === '0 minutes');
     check('result: no price time, no price line', !panel.renderResult({ ...result, options: {} }, t).includes('Prices:'));
     check('result: no over-budget rows, no group', !panel.renderResult({ ...result, overBudget: [] }, t).includes(locales.en.result.overBudget));

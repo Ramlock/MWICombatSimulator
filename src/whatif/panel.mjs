@@ -621,7 +621,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (zone) L.push(`<div class="mb-2">${zone}</div>`);
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
-    if (prices) L.push(`<div class="mb-2 small">${prices}</div>`);
+    if (prices) L.push(`<div class="mb-2 small whatif-warn" data-prices-stale>${prices}</div>`);
     const goalExp = result.goal === 'exp';
     // The size floor of the "no change" rule, worked out once here and passed down to every figure with an error.
     const floor = Number.isFinite(result.basePerUser) ? result.basePerUser / 10000 : null;
@@ -767,12 +767,16 @@ export function zoneLine(result, t, names) {
 
 // The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`
 // (a clock reading of that field, as duration() is); "committed file" when the request carried no snapshot.
+// Only a stale-prices warning (the caller draws it in the warning colour): a market snapshot under STALE_PRICES_SECONDS old
+// when shown has no line; one of that age or older has it; the simulator's own saved snapshot always has it.
+export const STALE_PRICES_SECONDS = 24 * 3600;
 export function pricesLine(result, t, now = Date.now()) {
     const ts = result?.options?.pricesTimestamp;
     if (!Number.isFinite(ts)) return '';
+    const elapsed = (now / 1000) - ts, committed = result.options.pricesSource === 'committed';
+    if (!committed && elapsed < STALE_PRICES_SECONDS) return '';
     const when = new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-    const key = result.options.pricesSource === 'committed' ? 'result.pricesCommitted' : 'result.pricesSnapshot';
-    return esc(t(key, { when, elapsed: age((now / 1000) - ts, t) }));
+    return esc(t(committed ? 'result.pricesCommitted' : 'result.pricesSnapshot', { when, elapsed: age(elapsed, t) }));
 }
 // Seconds as the largest whole unit (days, hours or minutes).
 export function age(s, t) {
