@@ -384,6 +384,8 @@
             "overBudgetNote": "（{{n}} 项，不参与排名：每项成本都超过其玩家的预算）",
             "overBudgetShow": "显示这 {{n}} 项超出预算",
             "overBudgetHide": "隐藏这 {{n}} 项超出预算",
+            "eachShow": "显示 {{n}} 项变更",
+            "eachHide": "隐藏 {{n}} 项变更",
             "overPayback": "回本太慢",
             "overPaybackNote": "（{{n}} 项，未选用：每项回本都超过 {{days}} 天）",
             "overPaybackShow": "显示这 {{n}} 项回本太慢的改动",

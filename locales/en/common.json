@@ -385,6 +385,8 @@
             "overBudgetNote": "({{n}}, not ranked: each is priced above its player's budget)",
             "overBudgetShow": "Show the {{n}} priced over budget",
             "overBudgetHide": "Hide the {{n}} priced over budget",
+            "eachShow": "Show the {{n}} changes",
+            "eachHide": "Hide the {{n}} changes",
             "overPayback": "Pays back too slowly",
             "overPaybackNote": "({{n}}, not chosen: each pays back in more than {{days}} days)",
             "overPaybackShow": "Show the {{n}} that pay back too slowly",
