@@ -17,6 +17,7 @@ import { applyOps } from '../../src/whatif/applyOps.mjs';
 import { makePricer, TAX_LABEL } from './prices.mjs';
 import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
+import { hideSettingAlternatives } from './alternatives.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
 import { tMult, dfOf, contention, eliminate, nearestSeparation, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
@@ -1123,7 +1124,10 @@ export async function main(settings, seams) {
             const split = net !== undefined && plain.sharedGainPerUser !== undefined ? { sharedGainPerUser: r.figure, sharedSePerUser: r.sePerUser, ownSuppliesPerDay: r.figure - r.net, paybackOwn: paybackOwnOf(cost, r.figure, r.figure - r.net) } : {};
             picked.push({ est: { score, net, gain: r.gain }, row: { ...plain, ...split, gain: r.gain, se: r.se, gainPerUser: r.figure, sePerUser: r.sePerUser, payback: r.payback ?? null, accepted: r.accepted && !c.est.judged, readingSeeds: k, ...(net !== undefined ? { buyerNet: r.net, buyerNetSe: r.netSe } : {}) } });
         }
-        return { rows: [...picked.sort((a, b) => rankEst(a.est, b.est)).map((x) => x.row), ...rest], notShown };
+        // One row per setting (alternatives.mjs): the other rows of a setting get hiddenAlt and stay in the result; the order is the same one comparator.
+        const estOf = new Map(picked.map((x) => [x.row, x.est])), mine = picked.sort((a, b) => rankEst(a.est, b.est)).map((x) => x.row);
+        hideSettingAlternatives(mine, (r) => estOf.get(r));
+        return { rows: [...mine, ...rest], notShown };
     }
     // The report as it stands (his go 2026-11-11: the whole report unfolds live): one function builds it, the live snapshots and the final
     // result both come from it (the final result is the last snapshot plus the parts only the end has: the confirmation, the skills
@@ -1198,7 +1202,7 @@ export async function main(settings, seams) {
         }
         L.push('', '## Ranked single changes (vs the original base, at the last stage each reached)', '', '| Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Cost path |', '|---|---|---|---|---|---|');
         const rowMd = (s) => `| ${s.desc} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${pathMd(s)} |`;
-        for (const s of result.singles) if (!s.hiddenFood) L.push(rowMd(s));
+        for (const s of result.singles) if (!s.hiddenFood && !s.hiddenAlt) L.push(rowMd(s));
         L.push(...skillLines);
         if (result.overBudget.length) { L.push('', '## Priced, over budget, not ranked', ''); for (const a of result.overBudget) L.push(`- ${a.player}, ${a.desc}: ${a.costBound === 'upper' ? '≤ ' : ''}${fmt(a.cost)}`); }
         if (result.apart.length) { L.push('', '## Unknown cost, not ranked', ''); for (const a of result.apart) L.push(`- ${a.desc}: ${a.note}`); }

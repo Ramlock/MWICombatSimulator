@@ -694,6 +694,24 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('one food row: a result without the field shows every row as before', older.includes('hidden-row') && older.includes('hidden-weak'));
     check('one food row: the apply keys keep their indexes (a hidden row is skipped, not renumbered)', panel.opsFor({ ...result, singles }, 'single:' + (result.singles.length)).length === 1 && html.includes('data-whatif-apply="single:' + result.singles.length + '"'));
 }
+// One row per setting (hiddenAlt): two values of one trigger are two rows in the file and one in Each change alone; the hidden row is in no count.
+{
+    const trigRow = (extra) => ({ lastStage: '8x300', sharedSePerUser: 100, ownSuppliesPerDay: 0, costPath: 'loadout tweak', cost: 0, payback: null, paybackOwn: null, sePerUser: 50, sharedGainPerUser: 100, player: 'Alpha', ops: [{ op: 'trigger', player: 'Alpha', hrid: '/abilities/fly_trap', triggers: [] }], ...extra });
+    const kept = trigRow({ id: 'tg1', desc: 'Alpha fly_trap trigger: kept-4550', gain: 640, se: 300, gainPerUser: 320, accepted: true });
+    const alt = trigRow({ id: 'tg2', desc: 'Alpha fly_trap trigger: alt-6400', gain: 556, se: 100, gainPerUser: 278, accepted: true, hiddenAlt: true });
+    const altWeak = trigRow({ id: 'tg3', desc: 'Alpha fly_trap trigger: alt-weak', gain: 10, se: 100, gainPerUser: 5, accepted: false, hiddenAlt: true });
+    const singles = [...result.singles, kept, alt, altWeak];
+    const html = panel.renderResult({ ...result, singles }, t);
+    check('one row per setting: the kept row is in Each change alone, the alternatives (accepted or not) are in neither it nor the grey body', html.includes('kept-4550') && !html.includes('alt-6400') && !html.includes('alt-weak'));
+    const applyKeys = (h) => (h.match(/data-whatif-apply="single:\d+"/g) || []).length;
+    check('one row per setting: no Apply button for a hidden row, and the apply keys keep their indexes', applyKeys(html) === applyKeys(panel.renderResult({ ...result, singles: [...result.singles, kept] }, t)) && panel.opsFor({ ...result, singles }, 'single:' + (result.singles.length + 1)).length === 1 && html.includes('data-whatif-apply="single:' + result.singles.length + '"'));
+    const grey = (h) => (h.match(/data-whatif-more="whatIfMoreSingles"[^>]*data-show="([^"]*)"/) || [])[1];
+    check('one row per setting: a hidden row is in no count (the grey toggle counts the same as without the hidden rows)', grey(html) === grey(panel.renderResult({ ...result, singles: [...result.singles, kept] }, t)));
+    const only = panel.renderResult({ ...result, singles: [kept, alt, altWeak] }, t);
+    check('one row per setting: with only the kept row and its alternatives, one row is drawn and no grey toggle', only.includes('kept-4550') && !only.includes('alt-6400') && !only.includes('alt-weak') && !only.includes('data-whatif-more="whatIfMoreSingles"'));
+    const older = panel.renderResult({ ...result, singles: [kept, alt].map((s) => { const { hiddenAlt: h, ...rest } = s; return rest; }) }, t);
+    check('one row per setting: a result without the field shows every row as before', older.includes('kept-4550') && older.includes('alt-6400'));
+}
 // ---- A gain within one error of zero reads "no change" (title: the real value); one error or more shows the number ----
 {
     const row = (id, gpu, spu, net, netSe) => ({ id, player: 'Alpha', desc: 'Ring ' + id, lastStage: '8x300', gain: gpu * 2, se: spu * 2, gainPerUser: gpu, sePerUser: spu, buyerNet: net, buyerNetSe: netSe, cost: 0, payback: null, costPath: 'market', accepted: true, ops: [] });

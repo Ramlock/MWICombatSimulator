@@ -88,6 +88,13 @@ console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length}
     check('order: a pool still in build order (sortedBy null) has no range width and no "was" (no figure under 4 seeds, so none from a build-order row); a sorted pool keeps its width where it had a range', pools.filter((p) => p.sortedBy === null).every((p) => p.rangeWidth === null && p.rangeWidthPrev === undefined) && pools.some((p) => p.sortedBy !== null && Number.isFinite(p.rangeWidth)));
     check('order: the search shows both cases (some pool still in build order, some already sorted)', pools.some((p) => p.sortedBy === null) && pools.some((p) => p.sortedBy !== null && p.leaders.some((l) => !hasFigure(l))) || pools.some((p) => p.sortedBy === null) && pools.some((p) => p.sortedBy !== null));
 }
+// One row per setting (tools/whatif/alternatives.mjs): in Each change alone every free setting has exactly one row that is not hidden, a paid row is never hidden, and the file keeps the hidden rows.
+{
+    const { settingKey } = await imp('tools/whatif/alternatives.mjs');
+    const rows = res.singles.filter((s) => !s.hiddenFood), free = rows.filter((s) => !(s.cost > 0)), byKey = new Map();
+    for (const s of free) byKey.set(settingKey(s.ops), [...(byKey.get(settingKey(s.ops)) ?? []), s]);
+    check('one row per setting: each free setting has exactly one shown row, no paid row is hidden, and a hidden row is still in the file', rows.length > 0 && [...byKey.values()].every((g) => g.filter((s) => !s.hiddenAlt).length === 1) && rows.filter((s) => s.cost > 0).every((s) => !s.hiddenAlt) && rows.every((s) => s.hiddenAlt === undefined || s.hiddenAlt === true), JSON.stringify([...byKey].map(([k, g]) => [k, g.length, g.filter((s) => s.hiddenAlt).length])));
+}
 // The round limit (--max-rounds): a stage that ends on it with candidates still in the running is in result.endedByCap (the window's "Chosen changes" line says why nothing was picked);
 // a stage that settled by itself is not; a leader refused by the pick check inside the race is marked inRace in result.notConfirmed (the window words the two causes apart).
 {

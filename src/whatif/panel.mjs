@@ -660,7 +660,8 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         }
         else if (!goalExp) L.push(`<div class="mb-1 small whatif-dim">${esc(t('result.oldSplit'))}</div>`);
     }
-    const anySingles = (result.singles || []).some((s) => !s.hiddenFood);
+    const hiddenRow = (s) => s.hiddenFood || s.hiddenAlt; // hiddenFood: a food row the search left out (one per player); hiddenAlt: another value of a setting a kept row already changes (one row per setting)
+    const anySingles = (result.singles || []).some((s) => !hiddenRow(s));
     if (!running || anySingles) L.push(`<div class="fw-bold mt-3">${esc(t('result.singles'))} <span class="text-secondary fw-normal small">${esc(t('result.singlesNote'))}</span></div>`);
     // With a round table (the race has run and the first figures exist) a change is counted as not measured only for want of the reading minimum:
     // the line says how many were searched and that none is checked on that many fresh runs yet, not that none was measured.
@@ -674,7 +675,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
             gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
             (isTimeOnly(s) ? '<td></td>' : `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td>`) + '</tr>';
-        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !s.hiddenFood); // hiddenFood: a food row the search left out (one food row per player)
+        const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !hiddenRow(s));
         const weak = rows.filter(([s]) => !s.accepted);
         // The accepted rows are two lists, free changes first (ranked by the buyer's gain), then those that cost something (by payback): the core
         // sorted them with one comparator, the window only splits them by cost.

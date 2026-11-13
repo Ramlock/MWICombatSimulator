@@ -5,7 +5,7 @@
 // food of the same type are dropped, and only the cheapest few of each type are kept, so the search tries a handful
 // of fillings instead of every combination. Pure functions: no page, no optimizer globals, no side effects.
 import { consumableType } from './consumables.mjs';
-import { rankEst } from './buyer.mjs';
+import { hideAlternatives } from './alternatives.mjs';
 
 export const MARGIN = 0.25; // a filling must regenerate need x (1 + MARGIN) per hour, both resources
 export const KEEP_PER_TYPE = 3; // the cheapest foods kept per type (the player's current foods stay in addition)
@@ -164,12 +164,5 @@ export function foodFillCands(p, { items, market, baseline, triggerMap, need, ke
 // food fillings. One row per player stays, the others get hiddenFood: true (they stay in the file). With an accepted food row of
 // the player, the best accepted one in rankEst order (the greedy's order) stays. With none, the player's food row that is first
 // in rankEst order over all that player's food rows (rejected ones included) stays. Mutates the rows.
-export function hideFoodRows(rows, isFood) {
-    const est = (r) => ({ score: r.score, net: r.buyerNet, gain: r.gain });
-    const players = [...new Set(rows.filter(isFood).map((r) => r.player))];
-    for (const p of players) {
-        const mine = rows.filter((r) => isFood(r) && r.player === p), accepted = mine.filter((r) => r.accepted);
-        const best = (accepted.length ? accepted : mine).sort((a, b) => rankEst(est(a), est(b)))[0];
-        for (const r of mine) if (r !== best) r.hiddenFood = true;
-    }
-}
+// The grouping is alternatives.mjs hideAlternatives (one function for every kind of row): the foods are its case keyed by player.
+export const hideFoodRows = (rows, isFood) => hideAlternatives(rows, { keyOf: (r) => (isFood(r) ? r.player : null), flag: 'hiddenFood' });
