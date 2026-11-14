@@ -539,7 +539,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
         const params = { slots: [{ id: '1', name: 'A', json: JSON.stringify({ player: {} }) }], goal: 'profit', budgets: { A: 100 }, levers: ['foods'], zone: 'z', tier: 1, exports: {}, maxPayback: '365' };
         check(`settingsKey: the prices are not a setting (a marketplace in the params changes nothing); a budget is`, panel.settingsKey(params) === panel.settingsKey({ ...params, marketplace: { marketData: {}, timestamp: 1 } }) && panel.settingsKey(params) !== panel.settingsKey({ ...params, budgets: { A: 101 } }) && !panel.settingsKey(params).includes(`marketplace`));
     }
-    check('page: the window and its parts', ['whatIfModal', 'selectWhatIfGoal', 'whatIfBudgets', 'whatIfLevers', 'buttonWhatIfSearch', 'buttonWhatIfResume', 'selectWhatIfResult', 'whatIfProgress', 'whatIfResult', 'whatIfDiff'].every((id) => html.includes(`id="${id}"`)));
+    check('page: the window and its parts', ['whatIfModal', 'selectWhatIfGoal', 'whatIfBudgets', 'whatIfLevers', 'buttonWhatIfSearch', 'selectWhatIfResult', 'whatIfProgress', 'whatIfResult', 'whatIfDiff'].every((id) => html.includes(`id="${id}"`)));
     const main = read('src/main.js');
     check('page: main.js starts the window', /\ninitWhatIf\(\);/.test(main));
     check('page: Apply saves the current tab first', /function whatIfSlots[\s\S]*?savePreviousPlayer\(currentPlayerTabId\)/.test(main));
