@@ -24,6 +24,7 @@ import { tMult, dfOf, contention, eliminate, nearestSeparation, bounds, poolKey,
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
+import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { playerFit, misfit } from './stylefit.mjs';
@@ -85,7 +86,8 @@ export async function main(settings, seams) {
     const sureOffset = confirmOffset + 10000;
     const setupsDir = settings.setupsDir, pricesFile = settings.pricesFile;
     const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-    const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
+    const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS, 'shrines'];
+    const shrineOpts = { cap: parseShrineCap(arg('shrine-cap', null)), steps: parseShrineSteps(arg('shrine-steps', null)) }; // the shrine building's level (null = the game's maximum) and the jumps
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
     // `pairs` is no longer a lever (the foods and drinks race tries whole combinations): an old command line or request that names it still runs, the name is ignored.
     // `consumables`, the one lever the foods and the drinks were before they were split, is read as both (an old command line, request or saved search).
@@ -484,6 +486,7 @@ export async function main(settings, seams) {
             ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p) }),
             ...(levers.has('triggers') ? triggerCands(setups.find((x) => x.name === p), p, probeStore, { ...trigOpts, user: userTrig[p] }) : []),
             ...(levers.has('skills') ? skillCands(setups, p, skillOpts) : []),
+            ...(levers.has('shrines') ? shrineCands(setups.find((x) => x.name === p), p, { pricer, ...shrineOpts }) : []),
         ];
     }
 
@@ -916,7 +919,7 @@ export async function main(settings, seams) {
 
     // ---- Search ----
     async function search() {
-        const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
+        const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback, ...(levers.has('shrines') ? { shrineCap: shrineOpts.cap } : {}) }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
         notConfirmedList = result.notConfirmed;
         result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, confirmHours: finH, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
@@ -976,12 +979,12 @@ export async function main(settings, seams) {
         if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
         result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
         // Priced but over its own player's budget: listed in their own group, never ranked (so a result with no steps says why).
-        result.overBudget = cands.filter((c) => c.cost.known && !affordable(c, budgets, null)).map((c) => ({ id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '' }));
+        result.overBudget = cands.filter((c) => c.cost.known && !affordable(c, budgets, null)).map((c) => ({ id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', ...(c.cost.split ? { shrineSplit: c.cost.split } : {}) }));
         cands = cands.filter((c) => c.cost.known && affordable(c, budgets, null)); // each within its own player's budget
         // Monotone levers first (3.2 item 1), then the rest; screen then halving.
         cands.sort((a, b) => (b.monotone - a.monotone));
         result.candidates = cands.length;
-        result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
+        result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "", ...(c.cost.split ? { shrineSplit: c.cost.split } : {}) }));
         publish(result); // snapshot 3: the candidates are priced (over-budget list, unknown costs, skipped swaps, the count)
         console.log(`${nOf(cands.length, 'candidate')} within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${nOf(dominated.length, 'swap')} skipped (no better on any stat), ${nOf(otherStyle.length, 'swap')} skipped (only another style's bonuses)`);
 
@@ -1117,7 +1120,7 @@ export async function main(settings, seams) {
     function row(c) {
         const est = c.est, n = setups0.length;
         const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, sharedSeSamePerUser: est.shared.seSame / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
-        return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+        return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', ...(c.cost.split ? { shrineSplit: c.cost.split } : {}), gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
     }
     // "Each change alone": only a change with a reading from reading seeds (at least --reading-min of them, on the baseline the race ran from) is a
     // row, and its figures are the reading's (figure, error, buyer's gain, error, payback, accepted by the search's own rule); the others are counted

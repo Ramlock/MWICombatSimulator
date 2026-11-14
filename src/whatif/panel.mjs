@@ -23,6 +23,7 @@ export const LEVERS = [
     { id: 'order', def: true },
     { id: 'triggers', def: true },
     { id: 'houses', def: true },
+    { id: 'shrines', def: true }, // guild shrines, capped by the shrine building level field (shrineCap)
 ];
 
 export const API = {
@@ -105,7 +106,7 @@ export function pageSetups(slots) {
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback }) {
+export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
@@ -116,6 +117,8 @@ export function searchBody({ slots, goal, budgets, levers, zone, tier, marketpla
     if (exports && Object.keys(exports).length) body.export = exports;
     // The payback limit in days (0 = no limit): the runner passes it to the search as --max-payback.
     if (maxPayback !== undefined && maxPayback !== null && maxPayback !== '') body.maxPayback = Number(maxPayback);
+    // The shrine building level (the guild's, one for every buff), only with Shrines ticked; empty = the game's maximum (sent as nothing): --shrine-cap.
+    if (shrineCap !== undefined && shrineCap !== null && shrineCap !== '' && (levers || []).includes('shrines')) body.shrineCap = Number(shrineCap);
     return body;
 }
 
@@ -411,6 +414,7 @@ const NAME_TABLES = {
     combatTriggerConditionNames: '/combat_trigger_conditions/',
     actionNames: '/actions/', // the zone: "combat/fly"
     houseRoomNames: '/house_rooms/', // the "where the page differs" warning holds room hrids
+    guildShrineNames: '/guild_shrines/', // a shrine change: "force 2 -> 3"
     combatTriggerComparatorNames: '/combat_trigger_comparators/', // and trigger terms as JSON
 };
 // The lookups `localizeDesc` takes, from the game bundle of the shown language (`current`) and of English (`english`,
@@ -427,7 +431,7 @@ export function namesFrom(current, english = current, words = {}) {
     return { get, rooms, words };
 }
 
-const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames'];
+const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames', 'guildShrineNames'];
 const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames'];
 const SLUG = /(?<![A-Za-z0-9_])[a-z][a-z0-9_]*(?![A-Za-z0-9_])/g;
 const swap = (text, tables, names) => text.replace(SLUG, (id) => {
@@ -475,8 +479,12 @@ function gainCells(row, goalExp, t, floor, withFresh = false) {
     const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
     return gainCell(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainCell(net, netSe, t, floor) : '<td class="num">—</td>');
 }
-// How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
-const pathCell = (s) => {
+// A shrine change's split (the row's shrineSplit, tools/whatif/levers/shrines.mjs): the Guild Tokens its levels require, and its Guild Credits
+// either bought as market items (Coin) or paid with spare tokens (how many). Html: the figures are numberHtml, as in the other figure texts (i18next does not escape).
+export const shrineSplitText = (sp, t) => t('shrine.split', { tokens: num(sp.tokens), coin: num(sp.creditsCoin), alt: Number.isFinite(sp.creditsTokens) ? num(sp.creditsTokens) : '—' });
+// How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it); a shrine change, its split.
+const pathCell = (s, t) => {
+    if (s.shrineSplit && t) return `<td class="wrap">${shrineSplitText(s.shrineSplit, t)}</td>`;
     const note = String(s.note || '').replace('; upper bound (XP inside the level unknown)', '');
     // A skill level (cost path "time ..."): the word "time", the runner's full text on hover.
     if (/^time\b/.test(String(s.costPath || ''))) return `<td title="${esc(s.costPath)}">time</td>`;
@@ -635,6 +643,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (running) L.push(`<div class="mb-2 small whatif-running">${esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running'))}</div>`);
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player));
+    const splitNote = (row) => (row.shrineSplit ? ` <span class="whatif-dim">(${shrineSplitText(row.shrineSplit, t)})</span>` : ''); // a shrine change in a closed list
     const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
     L.push(`<div class="mb-2">${esc(t('result.goal'))}: <b>${esc(goal)}</b></div>`);
     const zone = zoneLine(result, t, names);
@@ -661,7 +670,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
-                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s) +
+                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
@@ -702,7 +711,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         const eachHead = '<thead><tr>' + [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>';
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-            gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
+            gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s, t) +
             (isTimeOnly(s) ? '<td></td>' : `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td>`) + '</tr>';
         const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !hiddenRow(s));
         const weak = rows.filter(([s]) => !s.accepted);
@@ -726,12 +735,12 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (result.singlesNotShown > 0 && (anySingles || !running)) D.push(`<div class="small text-secondary mb-2" data-singles="not-shown">${yet ? plural(t, 'result.singlesNotShownYet', result.singlesNotShown, { n: num(result.singlesNotShown), need: num(readMin) }) : t('result.singlesNotShown', { n: num(result.singlesNotShown) })}</div>`);
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
-        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}</li>`), {}, t));
+        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}${splitNote(a)}</li>`), {}, t));
     }
     if (result.overPayback?.length) {
         // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
         const days = (a) => (Number.isFinite(a.paybackDays) ? t('result.overPaybackDays', { days: num(a.paybackDays) }) : esc(t('result.overPaybackNever')));
-        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}, ${days(a)}</li>`), { days: formatNumber(result.options?.maxPaybackDays) }, t));
+        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<li>${esc(a.player)}, ${shown(a)}: ${costCell(a)}, ${days(a)}${splitNote(a)}</li>`), { days: formatNumber(result.options?.maxPaybackDays) }, t));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.

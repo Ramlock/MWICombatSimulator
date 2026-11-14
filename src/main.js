@@ -4387,6 +4387,9 @@ async function whatIfStart() {
     if (badBudget) { whatIfMessage(whatIfT('badBudget', { player: badBudget.dataset.player })); return; }
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
     if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) { whatIfMessage(whatIfT('badMaxPayback')); return; }
+    // The shrine building level: empty = the game's maximum, else a whole number of 0 or more (the search's --shrine-cap).
+    const shrineCap = document.getElementById('inputWhatIfShrineCap').value.trim();
+    if (shrineCap !== '' && !(Number.isInteger(Number(shrineCap)) && Number(shrineCap) >= 0)) { whatIfMessage(whatIfT('badShrineCap')); return; }
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
     if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
     const exports = {};
@@ -4396,7 +4399,7 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
+    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');

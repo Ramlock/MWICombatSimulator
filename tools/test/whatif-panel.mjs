@@ -333,7 +333,7 @@ const result = {
     const some = panel.exportLeverView({ hasExport: true, wasDisabled: true, wasChecked: false }, (k) => t(k));
     const kept = panel.exportLeverView({ hasExport: true, wasDisabled: false, wasChecked: false }, (k) => t(k));
     check('export levers: no export -> disabled, unticked, tooltip says why; an export -> enabled and ticked; the user\'s untick is kept afterwards', none.disabled && !none.checked && none.title.length > 10 && !some.disabled && some.checked && some.title === '' && !kept.checked);
-    check('levers: eight in the window (foods and drinks apart), all ticked by default, no pairs and no skills box', panel.LEVERS.length === 8 && panel.LEVERS.every((l) => l.def === true) && !panel.LEVERS.some((l) => l.id === 'pairs' || l.id === 'skills'), panel.LEVERS.map((l) => l.id).join());
+    check('levers: nine in the window (foods and drinks apart, shrines last), all ticked by default, no pairs and no skills box', panel.LEVERS.length === 9 && panel.LEVERS[8].id === 'shrines' && panel.LEVERS.every((l) => l.def === true) && !panel.LEVERS.some((l) => l.id === 'pairs' || l.id === 'skills'), panel.LEVERS.map((l) => l.id).join());
 }
 
 // Step 3 (items 18 to 25): change columns, one order, zero range, ±, precision, plain words, hours, closed list, first look.

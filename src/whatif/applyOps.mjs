@@ -14,6 +14,8 @@
 //   { "op": "level", "player": "<player>", "skill": "magic", "delta": 1 }        a combat skill level (player.<skill>Level)
 //   { "op": "house", "player": "<player>", "room": "/house_rooms/dojo", "delta": 1 }
 //   { "op": "trigger", "player": "<player>", "hrid": "/abilities/x", "triggers": [ ... ] }
+//   { "op": "shrine", "player": "<player>", "buff": "/guild_buffs/force_combat", "delta": 1 }   a combat guild shrine buff level
+import { guildLevels } from '../guildLevels.mjs';
 
 function slotOf(setup, slot) {
     const it = setup.player.equipment.find((e) => e.itemLocationHrid === '/item_locations/' + slot);
@@ -54,6 +56,8 @@ export function applyOps(setups, ops = []) {
             case 'unequip': s.player.equipment = s.player.equipment.filter((e) => e.itemLocationHrid !== '/item_locations/' + o.slot); break;
             case 'level': { const k = o.skill + 'Level'; if (!(k in s.player)) throw new Error(`${s.name} has no ${k}`); s.player[k] = Number(s.player[k]) + o.delta; break; }
             case 'house': s.houseRooms[o.room] = (s.houseRooms[o.room] || 0) + o.delta; break;
+            // The level now is read as the import reads it (guildLevels: guildBuffs wins over guildCombatBuffLevels); the new level goes into guildBuffs.
+            case 'shrine': s.guildBuffs = { ...(s.guildBuffs || {}), [o.buff]: (guildLevels(s)[o.buff] || 0) + o.delta }; break;
             case 'trigger': s.triggerMap = { ...(s.triggerMap || {}), [o.hrid]: o.triggers }; break;
             default: throw new Error('Unknown op ' + o.op);
         }

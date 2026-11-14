@@ -165,6 +165,7 @@
         },
         "budgets": "Per player: budget (coin) and export",
         "maxPayback": "Payback limit (days, 0 = no limit)",
+        "shrineCap": "Shrine building level (empty = the game's maximum)",
         "players": "Players",
         "zone": "Zone",
         "tier": "Tier",
@@ -216,6 +217,10 @@
             "books": {
                 "name": "New abilities",
                 "desc": "learn an ability you do not have into an open slot (needs the exporter's learned abilities)"
+            },
+            "shrines": {
+                "name": "Guild shrines",
+                "desc": "raise each combat shrine (+1, +2, +3, or up to the shrine building level; also the five together), costed in Guild Credits bought as market items plus the level's Guild Tokens"
             }
         },
         "start": "Start search",
@@ -226,6 +231,10 @@
         "noPlayers": "Tick at least one player to simulate.",
         "badBudget": "The budget for {{player}} is not a number of coin.",
         "badMaxPayback": "The payback limit is not a number of days (0 for none).",
+        "badShrineCap": "The shrine building level is not a whole number (leave it empty for the game's maximum).",
+        "shrine": {
+            "split": "{{tokens}} Guild Tokens required; Guild Credits: {{coin}} Coin as market items, or {{alt}} spare Guild Tokens"
+        },
         "noLevers": "Tick at least one thing to search.",
         "sameNames": "Two players have the same name; rename one tab first.",
         "alreadyRunning": "A search is already running; showing it.",

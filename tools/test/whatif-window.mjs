@@ -183,7 +183,7 @@ try {
     check('opening again copies the page again, dropping the window\'s edits', await js(`document.getElementById('whatIfPlayer_1').checked && document.getElementById('whatIfMessage').textContent === '' && !!document.querySelector('#whatIfBudgets input[data-player="Player 1"]')`));
     // The window's own zone and tier for the request (a zone and tier other than the page's).
     const windowZone = await js(`(() => { const s = document.getElementById('selectWhatIfZone'); s.value = s.options[4].value; s.dispatchEvent(new Event('change', { bubbles: true })); const t = document.getElementById('selectWhatIfTier'); t.value = '1'; return s.value; })()`);
-    check('the window lists eight levers (foods and drinks apart), all ticked but the two that need an export (disabled, unticked, with a reason); no pairs or skills box', await js(`document.querySelectorAll('#whatIfLevers input').length === 8 && !document.getElementById('whatIfLever_pairs') && !document.getElementById('whatIfLever_skills') && [...document.querySelectorAll('#whatIfLevers input')].filter((i) => !i.checked).map((i) => i.value).sort().join() === 'abilities,owned' && ['owned', 'abilities'].every((id) => document.getElementById('whatIfLever_' + id).disabled && document.getElementById('whatIfLever_' + id).title !== '')`));
+    check('the window lists nine levers (foods and drinks apart, shrines last), all ticked but the two that need an export (disabled, unticked, with a reason); no pairs or skills box', await js(`document.querySelectorAll('#whatIfLevers input').length === 9 && document.getElementById('whatIfLever_shrines') && document.getElementById('inputWhatIfShrineCap')?.value === '' && !document.getElementById('whatIfLever_pairs') && !document.getElementById('whatIfLever_skills') && [...document.querySelectorAll('#whatIfLevers input')].filter((i) => !i.checked).map((i) => i.value).sort().join() === 'abilities,owned' && ['owned', 'abilities'].every((id) => document.getElementById('whatIfLever_' + id).disabled && document.getElementById('whatIfLever_' + id).title !== '')`));
     check('the runner version is shown', await js(`document.getElementById('whatIfVersion').textContent.includes('test-runner')`));
     // The character export per player: a paste box and a status line under each ticked player.
     const exportOf = (name, coin = 5) => ({ name, coin, inventory: [{ itemHrid: '/items/cheese_sword', enhancementLevel: 1, count: 1 }], learnedAbilities: [] });
@@ -203,6 +203,8 @@ try {
     await js(reopen);
     check('an untick of Items you own stays when the window opens again', JSON.stringify(await js(ownedBox)) === '[false,false]');
     await js(`document.getElementById('whatIfLever_owned').click(), true`);
+    // The reopen copied the page's zone and tier back: pick the window's own again for the request checks below.
+    await js(`(() => { const s = document.getElementById('selectWhatIfZone'); s.value = ${JSON.stringify(windowZone)}; s.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('selectWhatIfTier').value = '1'; return true; })()`);
     await paste('Player 1', JSON.stringify(exportOf('Player 1', 6)));
     check('a new paste replaces the kept one', (await stored('Player 1')) === JSON.stringify(exportOf('Player 1', 6)) && (await statusOf('Player 1')) === 'kept (Player 1)');
     await paste('Player 1', '{"name":"x"}');
@@ -284,7 +286,7 @@ try {
     await js(`document.getElementById('buttonWhatIfStart').click(), true`);
     check('progress is shown while it runs', await until(`document.getElementById('whatIfProgress').textContent.includes('candidates left')`));
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
-        received.budgets['Player 1'] === 1500000 && received.maxPayback === 365 && received.levers.join() === 'equip,foods,drinks,owned,abilities,order,triggers,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
+        received.budgets['Player 1'] === 1500000 && received.maxPayback === 365 && received.levers.join() === 'equip,foods,drinks,owned,abilities,order,triggers,houses,shrines' && !('shrineCap' in received) && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
     check('the request follows the window\'s zone, tier and players, not the page\'s', received.options.zone === windowZone && windowZone !== pageChoices.zone && received.options.tier === 1 && received.players.join() === 'Player 1', JSON.stringify(received.options.zone) + ' ' + JSON.stringify(received.players));
     check('the request carries the export map for the ticked players that have one, nobody else', !!received.export && Object.keys(received.export).join() === 'Player 1' && received.export['Player 1'].coin === 6, JSON.stringify(received.export)?.slice(0, 200));
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
