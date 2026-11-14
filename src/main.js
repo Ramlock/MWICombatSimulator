@@ -4148,25 +4148,22 @@ function whatIfKeptExport(name) {
     try { const text = localStorage.getItem(whatIfExportKey(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
-// Keeps one player's character export under the player's name (browser storage), then redraws the status and the two boxes.
-// The one function a paste and a party import both end in. `data`: the export object, or its text (a paste); a valid one replaces
-// the kept one (and empties `box`, the paste field, when given); a bad one is not kept (a pasted one stays in the box, and the
-// status says so).
-function whatIfKeepExport(name, data, box = null) {
-    const parsed = whatIfParseExport(typeof data === 'string' ? data : JSON.stringify(data));
+// Keeps one player's character export under the player's name (browser storage), then redraws the marks and the ticks that need it.
+// A party import ends here (whatIfKeepImportedExports). `data`: the export object; a valid one replaces the kept one, a bad one is not kept.
+function whatIfKeepExport(name, data) {
+    const parsed = whatIfParseExport(JSON.stringify(data));
     if (parsed.ok) {
-        try { localStorage.setItem(whatIfExportKey(name), JSON.stringify(parsed.data)); if (box) box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+        try { localStorage.setItem(whatIfExportKey(name), JSON.stringify(parsed.data)); } catch (e) { /* storage full or blocked: the mark below says none */ }
     }
     whatIfShowExportStatus();
     whatIfApplyExportLevers();
 }
 
+// Each player's mark under the budget: where the owned items and abilities come from (that player's kept export).
 function whatIfShowExportStatus() {
-    const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
-    for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
-        const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
-        status.textContent = whatIfExportStatus({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
-        status.title = status.textContent;
+    for (const mark of document.querySelectorAll('#whatIfBudgets [data-export-status]')) {
+        mark.textContent = whatIfExportStatus(whatIfKeptExport(mark.dataset.exportStatus), whatIfT);
+        mark.title = mark.textContent;
     }
 }
 
@@ -4202,12 +4199,11 @@ function whatIfMarkBudget(input) {
 function whatIfRenderSetup() {
     const budgets = document.getElementById('whatIfBudgets');
     const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
-    const pasted = Object.fromEntries([...budgets.querySelectorAll('textarea')].map((i) => [i.dataset.player, i.value]));
     budgets.replaceChildren();
     for (const slot of whatIfSlots(true)) {
-        // One row per player: name | budget | one-line paste field | status (one line, the whole text as its title).
+        // One cell per player, side by side: name, budget, the mark saying where owned items and abilities come from.
         const player = document.createElement('div');
-        player.className = 'whatif-prow';
+        player.className = 'whatif-pcell';
         const label = document.createElement('span');
         label.className = 'whatif-pname';
         label.textContent = slot.name;
@@ -4222,20 +4218,10 @@ function whatIfRenderSetup() {
         input.value = typed[slot.name] ?? '';
         input.placeholder = whatIfT('budgetPlaceholder');
         input.addEventListener('input', () => whatIfMarkBudget(input));
-        // The player's character export (optional): a paste field whose valid content is kept in the browser's storage
-        // under the player's name; the status beside it is rebuilt from the storage and the field.
-        const paste = document.createElement('textarea');
-        paste.className = 'form-control form-control-sm whatif-export';
-        paste.rows = 1;
-        paste.wrap = 'off';
-        paste.dataset.player = slot.name;
-        paste.placeholder = whatIfT('exportLabel');
-        paste.value = pasted[slot.name] ?? '';
-        paste.addEventListener('input', () => whatIfKeepExport(paste.dataset.player, paste.value, paste));
-        const status = document.createElement('div');
-        status.className = 'small whatif-dim whatif-pstatus';
+        const status = document.createElement('span');
+        status.className = 'whatif-chip whatif-pstatus';
         status.dataset.exportStatus = slot.name;
-        player.append(label, input, paste, status);
+        player.append(label, input, status);
         budgets.append(player);
     }
     whatIfShowExportStatus();
@@ -4303,10 +4289,10 @@ function whatIfShowResult(result, running = false) {
     whatIf.resultRunning = running;
     box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
     for (const id of open) {
-        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more~="${id}"]`);
+        const body = document.getElementById(id);
         if (body) body.hidden = false;
-        if (toggle) toggle.textContent = toggle.dataset.hide;
     }
+    whatIfSyncToggles(box);
     // The search rounds sit under the result but open and close with its "See details" toggle (data-whatif-more lists both ids); with no toggle
     // (no result yet) they show.
     const details = document.getElementById('whatIfDetails');
@@ -4423,6 +4409,15 @@ function whatIfWatch(id) {
     whatIf.timer = setInterval(poll, 1000);
 }
 
+// Every Show / Hide toggle in `box` says what a click on it would do now, from its first body (a left-out chip opens a list whose own
+// toggle names it too; the chips carry no Show / Hide text of their own).
+function whatIfSyncToggles(box) {
+    for (const toggle of box.querySelectorAll('[data-whatif-more][data-show]')) {
+        const first = document.getElementById(toggle.dataset.whatifMore.split(' ')[0]);
+        if (first) toggle.textContent = first.hidden ? toggle.dataset.show : toggle.dataset.hide;
+    }
+}
+
 async function whatIfStart() {
     whatIfMessage('');
     const slots = whatIfSlots(true);
@@ -4537,7 +4532,6 @@ async function initWhatIf() {
         if (!whatIf.timer && !document.getElementById('whatIfState').dataset.state) whatIfSetState('idle');
         whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); });
     document.getElementById('buttonWhatIfEditSetup').addEventListener('click', () => { whatIf.setupOpen = !whatIf.setupOpen; whatIfShowSetup(); });
-    document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
@@ -4562,7 +4556,7 @@ async function initWhatIf() {
             const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
             const hide = !bodies[0].hidden;
             for (const body of bodies) body.hidden = hide;
-            if (more.dataset.show) more.textContent = hide ? more.dataset.show : more.dataset.hide;
+            whatIfSyncToggles(event.currentTarget);
         }
     });
     i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
@@ -4747,23 +4741,20 @@ function groupFromPlayerBoxes() {
     return importMap;
 }
 
+// Returns the character exports the import carried (slot id -> export), from the all-players field or the per-player fields alike.
 function doGroupImport() {
     const value = document.getElementById("inputSetGroupCombatAll")?.value || "";
-    if (!value.trim()) {
-        importGroupSlots(groupFromPlayerBoxes());
-    } else {
-        // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
-        const { slots: importMap, selected, fight, exports } = splitGroupImport(JSON.parse(value));
-        importGroupSlots(importMap);
-        const applied = applyGroupSelection(document, { selected, fight });
-        if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
-        return exports;
-    }
-    return {};
+    // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots in the all-players field; they are not players
+    // (the per-player fields carry neither, so nothing is applied for them).
+    const { slots: importMap, selected, fight, exports } = splitGroupImport(value.trim() ? JSON.parse(value) : groupFromPlayerBoxes());
+    importGroupSlots(importMap);
+    const applied = applyGroupSelection(document, { selected, fight });
+    if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
+    return exports;
 }
 
-// The own character's export an import carried (slot id -> export, from doGroupImport) goes to the What-if window's kept exports,
-// through the same function a paste ends in, under the name the window shows that player by (so after applySlotNames).
+// The character exports an import carried (slot id -> export, from doGroupImport: the all-players field or a per-player field) go to the What-if window's kept exports,
+// through whatIfKeepExport, under the name the window shows that player by (so after applySlotNames).
 function whatIfKeepImportedExports(exports) {
     const names = whatIfPlayerNames();
     for (const id of Object.keys(exports || {})) {

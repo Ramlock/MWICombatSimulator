@@ -162,7 +162,7 @@
             "profit": "队伍每日利润（税后）",
             "exp": "队伍每小时经验"
         },
-        "budgets": "每位玩家：预算（金币，留空或 0 = 不限）和导出",
+        "budgets": "每位玩家的预算（金币，留空或 0 = 不限）",
         "budgetPlaceholder": "不限",
         "maxPayback": "回本期限（天，0 = 不限）",
         "intro": "尝试修改配置，并把每项收益与市场成本相比较。",
@@ -178,12 +178,9 @@
         "zone": "区域",
         "tier": "难度",
         "choicesNote": "打开此窗口时从页面复制（页面上未勾选的玩家在此也未勾选）；在此的更改只影响本次搜索。",
-        "exportLabel": "粘贴导出",
-        "exportKept": "已保存（{{who}}）",
-        "exportNone": "无导出：被 {{levers}} 跳过",
-        "exportNoneBare": "无导出",
-        "exportLeverOff": "需要角色导出：请为已勾选的玩家粘贴一份。",
-        "exportBad": "不是角色导出：未保存",
+        "exportLeverOff": "需要角色导出，它来自 Tracker 导入。",
+        "exportFromTracker": "物品和技能：Tracker 导入",
+        "exportFromNone": "物品和技能：无",
         "levers": "搜索范围",
         "lever": {
             "equip": {

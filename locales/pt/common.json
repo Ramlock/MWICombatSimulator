@@ -163,7 +163,7 @@
             "profit": "Lucro do grupo por dia, após a taxa",
             "exp": "EXP do grupo por hora"
         },
-        "budgets": "Por jogador: orçamento (moedas, vazio ou 0 = sem limite) e exportação",
+        "budgets": "Orçamento por jogador (moedas, vazio ou 0 = sem limite)",
         "budgetPlaceholder": "sem limite",
         "maxPayback": "Limite de retorno (dias, 0 = sem limite)",
         "intro": "Testa mudanças no setup; compara cada ganho com o custo no mercado.",
@@ -179,12 +179,9 @@
         "zone": "Zona",
         "tier": "Nível",
         "choicesNote": "Copiado da página ao abrir esta janela (um jogador desmarcado na página fica desmarcado aqui); mudanças aqui afetam só esta busca.",
-        "exportLabel": "Colar exportação",
-        "exportKept": "guardada ({{who}})",
-        "exportNone": "sem exportação: ignorado por {{levers}}",
-        "exportNoneBare": "sem exportação",
-        "exportLeverOff": "Precisa da exportação do personagem: cole uma para um jogador marcado.",
-        "exportBad": "não é uma exportação de personagem: não guardada",
+        "exportLeverOff": "Precisa da exportação do personagem, que vem de uma importação do Tracker.",
+        "exportFromTracker": "itens e habilidades: importação do Tracker",
+        "exportFromNone": "itens e habilidades: nenhum",
         "levers": "O que buscar",
         "lever": {
             "equip": {

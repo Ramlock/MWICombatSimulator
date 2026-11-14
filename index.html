@@ -43,6 +43,7 @@
         .whatif-rounds .whatif-table th.c-status { width: 16em; }
         .whatif-table.whatif-best-table td.chg { min-width: 7em; }
         .whatif-table td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 11em; }
+        .whatif-table td.wrap .whatif-chip { white-space: normal; }
         .whatif-table td.chg { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
         .whatif-each td.chg { width: 50em; }
         .whatif-table th { white-space: normal; vertical-align: bottom; }
@@ -72,13 +73,12 @@
         .whatif-col { display: flex; flex-direction: column; gap: var(--whatif-gap); }
         .whatif-sec { display: flex; flex-direction: column; gap: .25rem; }
         #whatIfLevers .form-check:last-child { margin-bottom: 0; }
-        #whatIfBudgets.whatif-sec { gap: .125rem; }
+        /* Budget per player: one cell per player in a single row (five fit), name over field over the export mark. */
+        #whatIfBudgets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .25rem .75rem; }
+        .whatif-pcell { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+        .whatif-pcell .whatif-pname { font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .whatif-pcell .whatif-chip { white-space: normal; align-self: flex-start; font-size: .75rem; }
         body.dark-mode #whatIfBudgets input.form-control.is-invalid { border-color: #dc3545; }
-        .whatif-prow { display: grid; grid-template-columns: 5.5rem 7rem minmax(0, 1fr) minmax(0, 1fr); gap: .5rem; align-items: center; height: 31px; }
-        .whatif-prow > * { min-width: 0; }
-        .whatif-prow .whatif-pname { font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .whatif-prow textarea.whatif-export { resize: none; overflow: hidden; white-space: nowrap; height: 31px; min-height: 0; }
-        .whatif-prow .whatif-pstatus { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         body.dark-mode .whatif-warn { color: #f0c060; }
         body.dark-mode .whatif-progress { background-color: #1e2125; border: 1px solid #6c757d; }
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
@@ -98,7 +98,7 @@
         .whatif-part-waiting .progress-bar, .whatif-part-halted .progress-bar { background-color: #6c757d; }
         /* Restyle (mock): section headings, meaning colours, callouts, the state chip and the stage list. Dark only. */
         #whatIfModal .whatif-h { font-weight: 600; font-size: .95rem; color: #e9ecef; border-bottom: 1px solid #495057; padding-bottom: .15rem; margin-top: .75rem; margin-bottom: .25rem; }
-        #whatIfModal .whatif-col > .whatif-sec > .whatif-h:first-child, #whatIfModal .col-md-7 > .whatif-h:first-child, #whatIfResult > .whatif-h:first-child { margin-top: 0; }
+        #whatIfModal .whatif-col > .whatif-sec > .whatif-h:first-child, #whatIfResult > .whatif-h:first-child { margin-top: 0; }
         .whatif-intro { font-size: .95rem; }
         .whatif-gain { color: #4cc38a; }
         .whatif-loss { color: #ff6b6b; }
@@ -142,7 +142,7 @@
         .whatif-fig { font-size: .85rem; margin-left: 1.25rem; white-space: nowrap; }
         .whatif-fig-k { color: #9aa4ae; } .whatif-fig-v { font-variant-numeric: tabular-nums; font-weight: 600; color: #f8f9fa; }
         .whatif-parts-head { display: flex; align-items: baseline; flex-wrap: wrap; row-gap: .25rem; margin-bottom: .35rem; }
-        .whatif-from { color: #9aa4ae; } .whatif-arrow { color: #6c757d; margin: 0 .45em; } .whatif-to { font-weight: 600; }
+        .whatif-from { color: #9aa4ae; } .whatif-arrow { color: #6c757d; margin: 0 .25em; } .whatif-to { font-weight: 600; }
         .whatif-summary { display: flex; align-items: center; gap: .75rem; padding: .45rem .6rem; background: #2b3035; border: 1px solid #495057; border-radius: .4rem; }
         .whatif-summary .whatif-chips { flex: 1; }
         .whatif-toolbar { padding-bottom: .5rem; border-bottom: 1px solid #495057; }
@@ -1922,29 +1922,25 @@
                                 <div class="whatif-h"><span data-i18n="common:whatIf.players">Players</span><span class="whatif-help" tabindex="0" data-whatif-tip="choicesNote">?</span></div>
                                 <div id="whatIfPlayers"></div>
                             </div>
-                            <div class="whatif-sec">
-                                <div class="row g-1">
-                                    <label for="selectWhatIfZone" class="col-3 col-form-label col-form-label-sm" data-i18n="common:whatIf.zone">Zone</label>
-                                    <div class="col-9"><select id="selectWhatIfZone" class="form-select form-select-sm"></select></div>
-                                </div>
-                                <div class="row g-1">
-                                    <label for="selectWhatIfTier" class="col-3 col-form-label col-form-label-sm" data-i18n="common:whatIf.tier">Tier</label>
-                                    <div class="col-9"><select id="selectWhatIfTier" class="form-select form-select-sm"></select></div>
-                                </div>
-                                </div>
-                            <div class="whatif-sec">
-                                <div class="whatif-h" data-i18n="common:whatIf.budgets">Per player: budget (coin; empty or 0 = no limit) and export</div>
-                                <div id="whatIfBudgets" class="whatif-sec"></div>
+                            <div class="row gx-2">
+                                <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfZone" class="input-group-text" data-i18n="common:whatIf.zone">Zone</label><select id="selectWhatIfZone" class="form-select form-select-sm"></select></div></div>
+                                <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfTier" class="input-group-text" data-i18n="common:whatIf.tier">Tier</label><select id="selectWhatIfTier" class="form-select form-select-sm"></select></div></div>
                             </div>
                         </div>
-                        <div class="col-md-7">
-                            <div class="whatif-h" data-i18n="common:whatIf.levers">What to search</div>
-                            <div id="whatIfLevers"></div>
-                            <div class="whatif-sec mt-2">
+                        <div class="col-md-7 whatif-col">
+                            <div class="whatif-sec">
+                                <div class="whatif-h" data-i18n="common:whatIf.levers">What to search</div>
+                                <div id="whatIfLevers"></div>
+                            </div>
+                            <div class="whatif-sec">
                                 <div class="row g-1">
                                     <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days, 0 = no limit)</label>
                                     <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="0" class="form-control form-control-sm"></div>
                                 </div>
+                            </div>
+                            <div class="whatif-sec">
+                                <div class="whatif-h" data-i18n="common:whatIf.budgets">Budget per player (coin, empty or 0 = no limit)</div>
+                                <div id="whatIfBudgets"></div>
                             </div>
                         </div>
                     </div>

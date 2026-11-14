@@ -39,20 +39,22 @@ check('request: no exports, no export field', !('export' in panel.searchBody({ s
 check('request: the export map rides along as sent', JSON.stringify(panel.searchBody({ slots, goal: 'profit', budgets: {}, levers: [], exports: { Alpha: exA } }).export) === JSON.stringify({ Alpha: exA }));
 check('paste: an object with an inventory or learned abilities is a character export', panel.parseExport(JSON.stringify(exA)).ok && panel.parseExport('{"learnedAbilities":[]}').ok && panel.parseExport('{"inventory":[]}').ok);
 check('paste: anything else is not', ['', 'hello', '[]', '{}', '{"name":"x"}', '{"inventory":3}', 'null', '5'].every((x) => !panel.parseExport(x).ok));
-check('status: kept shows the export\'s own name', panel.exportStatus({ kept: exA, text: '' }, ['owned'], t) === 'kept (Alpha)');
-check('status: none names the ticked levers that need it, in the window\'s names', panel.exportStatus({ kept: null, text: '' }, ['equip', 'owned', 'books', 'abilitylevels'], t) === 'no export: skipped by Items you own');
-check('status: none with no such lever ticked has nothing extra', panel.exportStatus({ kept: null, text: '' }, ['equip', 'abilitylevels'], t) === 'no export');
-check('status: a bad paste says so, even over a kept export', panel.exportStatus({ kept: exA, text: 'nope' }, [], t) === 'not a character export: not kept');
+check('status: a kept export reads that items and abilities come from the Tracker import', panel.exportStatus(exA, t) === 'items and abilities: Tracker import');
+// Fact gone with the paste field (the mark names no levers): left failing, made not to throw on the new signature.
+check('status: none names the ticked levers that need it, in the window\'s names', (() => { try { return panel.exportStatus({ kept: null, text: '' }, ['equip', 'owned', 'books', 'abilitylevels'], t) === 'no export: skipped by Items you own'; } catch (e) { return false; } })());
+check('status: no kept export reads none, with nothing extra', panel.exportStatus(null, t) === 'items and abilities: none');
+// Fact gone with the paste field (nothing is pasted in the window any more): left failing, made not to throw on the new signature.
+check('status: a bad paste says so, even over a kept export', (() => { try { return panel.exportStatus({ kept: exA, text: 'nope' }, [], t) === 'not a character export: not kept'; } catch (e) { return false; } })());
 check('status: one key per player name', panel.exportKey('Alpha') !== panel.exportKey('Beta') && panel.exportKey('Alpha').includes('Alpha'));
 const skipped = [{ lever: 'owned', players: ['Beta'] }, { lever: 'books', players: ['Beta', 'Gamma'] }];
 const base = { goal: 'profit', budgets: {}, steps: [], singles: [], skippedNoExport: skipped };
 const dom = (l, r = base) => panel.renderResult(r, tFor(l), Date.now(), {});
 const en = dom('en');
-check('result line: players counted once, lever names as the window shows them, closed behind Show / Hide', en.includes('<span class="fw-bold">2 players skipped by Items you own, New abilities</span>') && /<ul class="small whatif-more" id="whatIfSkippedNoExport" hidden>/.test(en) && en.includes('data-whatif-more="whatIfSkippedNoExport" data-show="Show" data-hide="Hide">Show</button>'), en.slice(en.indexOf('skipped by') - 60, en.indexOf('skipped by') + 300));
-check('result line: the open list is one row per lever with its players', en.includes('<li>Items you own: Beta</li>') && en.includes('<li>New abilities: Beta, Gamma</li>'));
+check('result line: players counted once, lever names as the window shows them, closed behind Show / Hide', en.includes('<span class="fw-bold">Players skipped</span>') && en.includes('data-tip="2 players skipped by Items you own, New abilities"') && /<table[^>]*id="whatIfSkippedNoExport" hidden>/.test(en) && en.includes('data-whatif-more="whatIfSkippedNoExport" data-show="Show" data-hide="Hide">Show</button>'), en.slice(en.indexOf('skipped by') - 60, en.indexOf('skipped by') + 300));
+check('result line: the open list is one row per lever with its players', en.includes('<tr><td><span class="whatif-chip">Items you own</span></td><td><span class="whatif-chip">Beta</span></td></tr>') && en.includes('<tr><td><span class="whatif-chip">New abilities</span></td><td><span class="whatif-chip">Beta</span> <span class="whatif-chip">Gamma</span></td></tr>'));
 check('result line: nothing when absent or empty', !dom('en', { ...base, skippedNoExport: undefined }).includes('whatIfSkippedNoExport') && !dom('en', { ...base, skippedNoExport: [] }).includes('whatIfSkippedNoExport'));
 check('result line: in pt the line and the lever names follow the language', dom('pt').includes(locales.pt.result.skippedNoExport.replace('{{n}}', '2').replace('{{levers}}', locales.pt.lever.owned.name + ', ' + locales.pt.lever.books.name)));
-check('strings exist in en, pt and zh', ['exportLabel', 'exportKept', 'exportNone', 'exportNoneBare', 'exportBad', 'result.skippedNoExport'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof lookup(locales[l], k) === 'string' && lookup(locales[l], k) !== '')) && ['pt', 'zh'].every((l) => locales[l].exportKept !== locales.en.exportKept));
+check('strings exist in en, pt and zh', ['exportFromTracker', 'exportFromNone', 'exportLeverOff', 'result.skippedNoExport'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof lookup(locales[l], k) === 'string' && lookup(locales[l], k) !== '')) && ['pt', 'zh'].every((l) => locales[l].exportFromTracker !== locales.en.exportFromTracker && locales[l].exportFromNone !== locales.en.exportFromNone));
 
 // ---- (2) The runner ----
 const mk = (n) => { const d = path.join(tmp, n); fs.mkdirSync(d, { recursive: true }); return d; };

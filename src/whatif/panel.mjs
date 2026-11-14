@@ -140,13 +140,9 @@ export function parseExport(text) {
     } catch (e) { /* not JSON */ }
     return { ok: false };
 }
-// The status line under a player's paste box. kept: the stored export or null; text: what the box holds now (a bad
-// paste stays in it); levers: the ticked lever ids.
-export function exportStatus({ kept, text }, levers, t) {
-    if (text && text.trim() && !parseExport(text).ok) return t('exportBad');
-    if (kept) return t('exportKept', { who: kept.name ?? '' });
-    const names = EXPORT_LEVERS.filter((l) => levers.includes(l)).map((l) => t('lever.' + l + '.name'));
-    return names.length ? t('exportNone', { levers: names.join(', ') }) : t('exportNoneBare');
+// The mark under a player's budget: where that player's owned items and abilities come from. kept: the stored export or null.
+export function exportStatus(kept, t) {
+    return t(kept ? 'exportFromTracker' : 'exportFromNone');
 }
 
 // The request with the market snapshot fetched now (delivery design section 3). Returns { body }, or { error } when
@@ -304,9 +300,10 @@ export function renderParts(status, t, pressed = null) {
         const strip = (html) => String(html).replace(/<[^>]+>/g, '');
         const st = `<span class="whatif-chip whatif-st-${cls}"${text ? ` title="${esc(strip(text))}"` : ''}>${esc(t('progress.st.' + stKey))}</span>`;
         const pct = (r.state === 'running' || r.state === 'halted') && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
-        // Runs: a race stage's count; another part's "done / planned", with a thin bar while it runs (a waiting part has none).
-        const runs = rounded ? cell(r.runs) : r.runsPlanned > 0 && (cls === 'done' || cls === 'running' || cls === 'halted')
-            ? `<td class="num">${num(r.state === 'done' ? r.runsPlanned : r.runsDone)} / ${num(r.runsPlanned)}${cls !== 'done' ? `<div class="progress whatif-progress mt-1" style="height: 4px;"><div class="progress-bar" style="width: ${pct}%"></div></div>` : ''}</td>` : '<td></td>';
+        // Runs: a race stage's count; another part's "done / planned", with a thin bar while it runs (a waiting part has none; a waiting
+        // re-check whose runs are planned shows them).
+        const runs = rounded ? cell(r.runs) : r.runsPlanned > 0 && (cls === 'done' || cls === 'running' || cls === 'halted' || r.kind === 'picks')
+            ? `<td class="num">${num(r.state === 'done' ? r.runsPlanned : r.runsDone)} / ${num(r.runsPlanned)}${cls === 'running' || cls === 'halted' ? `<div class="progress whatif-progress mt-1" style="height: 4px;"><div class="progress-bar" style="width: ${pct}%"></div></div>` : ''}</td>` : '<td></td>';
         const round = rounded && (Number(r.round) > 1 || race) ? `<td class="num">${num(r.round)}</td>` : '<td></td>';
         const left = !rounded && (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? r.candidatesLeft : null;
         return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</td></tr>`;
@@ -456,7 +453,7 @@ export function localizeDesc(desc, names, players = [], dropPlayer = null) {
 const supplyNote = (c, p, t, se, floor) => {
     const loot = c?.sharedGainPerUser, own = c?.ownSuppliesByPlayer?.[p];
     if (!Number.isFinite(loot) || !Number.isFinite(own)) return '';
-    return help(esc(String(t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: isNoChange(loot, se, floor) ? noChange(loot, se, t) : num(loot), amount: num(Math.abs(own)) })).replace(/<[^>]+>/g, '')));
+    return help(esc(String(t(own <= 0 ? 'result.playerSplitSaved' : 'result.playerSplitMore', { loot: isNoChange(loot, se, floor) ? t('result.noChange') + ' (' + realValue(loot, se) + ')' : num(loot), amount: num(Math.abs(own)) })).replace(/<[^>]+>/g, '')));
 };
 // A cost cell: "≤" when the cost is only an upper bound.
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
@@ -478,7 +475,7 @@ const pathCell = (s) => {
     const note = String(s.note || '').replace('; upper bound (XP inside the level unknown)', '');
     // A skill level (cost path "time ..."): the word "time", the runner's full text on hover.
     if (/^time\b/.test(String(s.costPath || ''))) return `<td title="${esc(s.costPath)}">time</td>`;
-    return `<td>${chip(esc(s.costPath), '', note ? esc(note) : '')}</td>`;
+    return `<td class="wrap">${chip(esc(s.costPath), '', note ? esc(note) : '')}</td>`;
 };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
 const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath || ''));
@@ -749,9 +746,10 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         const item = (a) => {
             const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem';
             // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
-            const at = a.kind === 'food' ? t('result.notConfirmedAtFood') : a.kind === 'drink' ? t('result.notConfirmedAtDrink') : t('result.notConfirmedAtStep', { step: num(a.step) });
+            // HTML: the step's figure is num() markup, so the two plain strings are escaped here and the whole goes into the chip as it is.
+            const at = a.kind === 'food' ? esc(t('result.notConfirmedAtFood')) : a.kind === 'drink' ? esc(t('result.notConfirmedAtDrink')) : t('result.notConfirmedAtStep', { step: num(a.step) });
             const buyer = Number.isFinite(f.buyerNet) && !goalExp ? figure(f.buyerNet, f.buyerNetSe, t, floor) : '—';
-            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(esc(at), '', esc(t('result.' + key + 'Tip'))))}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
+            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(at, '', esc(t('result.' + key + 'Tip'))))}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
         };
         const ncHead = [H.player, H.change, [t('progress.col.stage')], [t('col.partyGain'), true], [t('col.buyerGain'), true]];
         const inRace = result.notConfirmed.filter((a) => a.inRace), confirmed = result.notConfirmed.filter((a) => !a.inRace);
