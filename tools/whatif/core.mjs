@@ -20,7 +20,7 @@ import { foodFillCands } from './foodfill.mjs';
 import { hideSettingAlternatives } from './alternatives.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
-import { tMult, dfOf, contention, eliminate, nearestSeparation, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
+import { tMult, dfOf, contention, eliminate, releaseTied, nearestSeparation, bounds, poolKey, poolSorter, acceptTakes } from './rounds.mjs';
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
@@ -830,6 +830,8 @@ export async function main(settings, seams) {
                 const p = peek.get(c);
                 if (p.verdict === 'fail') { c.refuted = true; onRefute?.(c, p); }
             }
+            // A change set aside as tied with a leader refuted just now comes back (rounds.mjs releaseTied): its pool is not settled this round.
+            const released = releaseTied(cands);
             const live = leaders.filter((c) => !c.refuted);
             const builtAt = new Map(cands.map((c, i) => [c, i]));
             // The figure shows from the first reading seed and its range from the second (low / high are null with one seed): `few` while the
@@ -877,7 +879,7 @@ export async function main(settings, seams) {
             stageCont.acceptable = takes.size;
             // Nothing but the current setup can still stand in the pool(s): the pool(s) end as "no change" (a refuted last candidate leaves none).
             const resolved = (pools) => pools.every((q) => q.changes.every((c) => c.refuted));
-            const settled = byPlayer ? players.every((p) => lockedBy.has(p) || resolved(standing.filter((q) => q.player === p))) : lockedBy.size > 0 || resolved(standing);
+            const settled = byPlayer ? players.every((p) => lockedBy.has(p) || (resolved(standing.filter((q) => q.player === p)) && !released.some((c) => c.player === p))) : lockedBy.size > 0 || (resolved(standing) && !released.length);
             // The window's two buttons (stop.done is 'accept' or 'skip') pressed once the round's runs were all in (a press during them ends the stage at
             // once, userEnd above): the race ends here, after the round just published, with the leaders as --max-rounds returns them. 'skip' leaves a pool that has no lock unchanged; 'accept' first locks the best positive leader of every pool
             // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).

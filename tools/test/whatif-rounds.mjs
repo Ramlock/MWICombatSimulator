@@ -155,6 +155,42 @@ const goal = 'profit';
     const takes = R.acceptTakes(set, (c) => c.est.net, { byPlayer: false, players: ['A'], locked: new Map(), cmp: (a, b) => b.est.net - a.est.net });
     check(takes.get('*')?.id === 'l', 'tie: Accept current winner skips the tied change and takes the one still in');
 }
+// The tie rule in both directions (the owner, 2026-11-14): A and B are tied only when A's upper end minus B's lower end AND B's upper end minus A's lower
+// end are both below the bar; a tied change keeps its A (tiedTo) and comes back when that A goes out for any reason or is refuted (releaseTied).
+{
+    const E = (cands, bars = new Map([['A', 10]]), extra = {}) => R.eliminate(cands, { goal, mult: 3, bars, ...extra });
+    const ids = (p) => p.changes.map((c) => c.id).join();
+    const est = (q, se) => ({ net: q, netSe: se, gain: q, se, accepted: q > 2 * se });
+    // a leads per coin (30 +- 8 for 10: 3.0 per coin, 0.6..5.4) over b (200 +- 1 for 100: 2.0 per coin, 1.97..2.03); neither is beaten per coin. In raw
+    // units b gains far more: b's upper end minus a's lower end, 203 - 6, is far over the bar, so they are not tied (a's 54 - 197 alone was the old test).
+    const a = cand('a', 30, 8, 10), b = cand('b', 200, 1, 100);
+    let set = [a, b], r = E(set);
+    check(!a.out && !b.out && ids(r[0]) === 'a,b', 'tie both ways: a change far above A in raw gain, A leading per coin, is not tied', JSON.stringify(set.map((c) => c.out)));
+    // a then falls under the bar (2 +- 2: upper end 8 < 10): b stands alone and is the pool's last candidate.
+    a.est = est(2, 2); r = E(set);
+    check(a.out === 'bar' && !b.out && ids(r[0]) === 'b' && r[0].noChange === false, 'tie both ways: when A falls under the bar, the far stronger change stands and is the pick', JSON.stringify(set.map((c) => c.out)));
+    // Close in both directions (l 100 +- 1, t 98 +- 1: 103 - 95 = 8 and 101 - 97 = 4, both under 10): tied, as before, with its A kept.
+    const pair = (cost = 0) => { const l = cand('l', 100, 1, cost), t = cand('t', 98, 1, cost); return [l, t]; };
+    let [l, t] = pair(); set = [t, l]; r = E(set);
+    check(t.out === 'tied' && t.tiedTo === l && ids(r[0]) === 'l', 'tie both ways: two changes close in both directions are tied, the tied one keeps its A', JSON.stringify(set.map((c) => c.out)));
+    // A goes out by the bar: the tied change comes back in the same round and stands.
+    l.est = est(5, 1); r = E(set);
+    check(l.out === 'bar' && !t.out && !t.tiedTo && ids(r[0]) === 't', 'tie returns: the tied change comes back when its A goes out by the bar', JSON.stringify(set.map((c) => c.out)));
+    // A goes out as beaten (by the tied change itself: 90 +- 1, upper end 91, under t's lower end 95).
+    [l, t] = pair(); set = [t, l]; E(set); l.est = est(90, 1); r = E(set);
+    check(l.out === 'beaten' && !t.out && ids(r[0]) === 't', 'tie returns: the tied change comes back when its A is beaten', JSON.stringify(set.map((c) => c.out)));
+    // A goes out by the payback limit (cost 1000, limit 15 days: A at 50 +- 1 pays back in 1000 / 53 > 15 days at best, t in 1000 / 101).
+    [l, t] = pair(1000); set = [t, l]; E(set, undefined, { payLimit: 15 });
+    const tiedFirst = t.out === 'tied';
+    l.est = est(50, 1); r = E(set, undefined, { payLimit: 15 });
+    check(tiedFirst && l.out === 'payback' && !t.out && ids(r[0]) === 't', 'tie returns: the tied change comes back when its A goes out by the payback limit', JSON.stringify(set.map((c) => c.out)));
+    // A refuted by the pick check (left out of every pool): the race's releaseTied brings the tied change back, and so does the next elimination.
+    [l, t] = pair(); set = [t, l]; E(set); l.refuted = true;
+    const back = typeof R.releaseTied === 'function' ? R.releaseTied(set) : [];
+    check(back.length === 1 && back[0] === t && !t.out, 'tie returns: releaseTied brings the tied change back when its A is refuted');
+    [l, t] = pair(); set = [t, l]; E(set); l.refuted = true; r = E(set);
+    check(!t.out && ids(r[0]) === 't', 'tie returns: the elimination after a refuted A has the tied change standing', JSON.stringify(set.map((c) => c.out)));
+}
 // The projection: the rounds needed for the sum of the top two margins to fall under the gap between the means, margins shrinking as 1/sqrt(rounds).
 {
     const m = (mean, margin) => ({ mean, margin });

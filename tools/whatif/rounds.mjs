@@ -144,7 +144,8 @@ export function acceptTakes(live, gainOf, { byPlayer, players, locked, cmp }) {
 //    rankedOf(); a player without a bar above 0 has no such cut). The current setup is exempt: a change must still beat it.
 //  - (profit goal, a paid candidate) its cost over the upper end of the buyer's gain goes over the payback limit (`payLimit`, days; 0 = none):
 //    even its best case cannot pay back in time. A free candidate is never cut this way.
-// `out` is kept on the candidate ('beaten' | 'bar' | 'payback'), who never returns inside the race (the caller clears it when a new race starts); the
+// `out` is kept on the candidate ('beaten' | 'bar' | 'payback' | 'tied'), who never returns inside the race (the caller clears it when a new race starts) but for
+// a 'tied' one, who returns when its A goes out (releaseTied); the
 // current setup is worked out again every round. A refuted candidate (it failed the pick check) and a time-only lever (never picked) take no
 // part. Returns one entry per pool, in the pool order: { key, player, changes: the changes still standing, noChange: the current setup is
 // standing, size }. A pool with one change and no current setup has its last candidate standing; one with the current setup alone ends as
@@ -155,12 +156,15 @@ const spanOf = (c, goal, mult) => (c === CURRENT ? { lo: 0, hi: 0 } : bounds(c, 
 const rawHi = (c, goal, mult) => { const r = rankedOf(c.est, goal); if (!r) return Infinity; const hi = r.q + mult * r.se; return c.monotone ? Math.max(hi, 0) : hi; };
 // The lower end in the same unit (a monotone lever floored at 0 as in bounds()); -Infinity with no usable estimate.
 const rawLo = (c, goal, mult) => { const r = rankedOf(c.est, goal); if (!r) return -Infinity; const lo = r.q - mult * r.se; return c.monotone ? Math.max(lo, 0) : lo; };
-// The tie rule (the owner, 2026-11-12: "your proposal seems fair", "Build it with no time limit"). In a pool with two or more changes still standing, the higher
-// one A (the pool's own order, bounds().v) and each other standing change B are tied when A's upper end minus B's lower end, the best-case gap between
-// them, is below the bar of A's player (the 1% bar of the cut above). The pool ends when every other standing change is tied with A: they go out as
-// 'tied', A is its pick (the pick check follows as for any pick). The gap and the bar are in the unit of rankedOf() (the buyer's net, not per coin), like
-// the bar cut; the error margins are inside the ends, so a wide range is no tie. A change of another player than A's never ties (a pool that mixes
-// players, as the screen stage's, keeps going on it); no bar above 0 (or an end with no estimate) means no tie. The current setup takes no part.
+// The tie rule (the owner, 2026-11-12: "your proposal seems fair", "Build it with no time limit"; changed with his approval on 2026-11-14). In a pool with two
+// or more changes still standing, the higher one A (the pool's own order, bounds().v) and each other standing change B are tied when the best-case gap is below
+// the bar of A's player (the 1% bar of the cut above) in both directions: A's upper end minus B's lower end, and B's upper end minus A's lower end. A change far
+// above A in raw gain (A leads per coin, B gains much more) is no tie. The pool ends when every other standing change is tied with A: they go out as 'tied', each
+// keeping the A it was tied with (`tiedTo`), and A is its pick (the pick check follows as for any pick). A tied change comes back into the race when its A goes
+// out for any reason (the bar, the payback limit, beaten, tied with another) or is refuted by the pick check: releaseTied() below, the one place that does it.
+// The gaps and the bar are in the unit of rankedOf() (the buyer's net, not per coin), like the bar cut; the error margins are inside the ends, so a wide range is
+// no tie. A change of another player than A's never ties (a pool that mixes players, as the screen stage's, keeps going on it); no bar above 0 (or an end with no
+// estimate) means no tie. The current setup takes no part.
 function tieOf(list, { goal, mult, bars }) {
     const live = list.filter((c) => !c.out);
     if (live.length < 2) return;
@@ -168,7 +172,15 @@ function tieOf(list, { goal, mult, bars }) {
     const bar = bars.get(A.player), hi = rawHi(A, goal, mult);
     if (!(bar > 0) || !Number.isFinite(hi)) return;
     const others = live.filter((c) => c !== A);
-    if (others.every((b) => b.player === A.player && hi - rawLo(b, goal, mult) < bar)) for (const b of others) b.out = 'tied';
+    const lo = rawLo(A, goal, mult);
+    if (others.every((b) => b.player === A.player && hi - rawLo(b, goal, mult) < bar && rawHi(b, goal, mult) - lo < bar)) for (const b of others) { b.out = 'tied'; b.tiedTo = A; }
+}
+// The changes set aside as 'tied' whose A has gone out (any `out`) or been refuted come back: their `out` is cleared. Used by eliminate() after every cut
+// and by the race after the pick check refutes a leader. Returns the changes that came back.
+export function releaseTied(cands) {
+    const back = [];
+    for (const c of cands) if (c.out === 'tied' && c.tiedTo && (c.tiedTo.out || c.tiedTo.refuted)) { c.out = undefined; c.tiedTo = undefined; back.push(c); }
+    return back;
 }
 // The rounds still needed to separate the top two standing changes (A, B: { mean, margin } in the unit above, `margin` the half width at `mult` errors) after
 // `rounds` rounds of the race: both margins shrink as 1/sqrt(rounds), so the sum of the margins S falls under the gap D between the means after
@@ -214,10 +226,16 @@ export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(
     }
     const pools = [];
     for (const [key, list] of [...groups].sort(poolSorter(order))) {
-        for (const c of list) if (!c.out) c.out = cutOf(c, { goal, mult, bars, payLimit }) ?? undefined;
-        const standing = [CURRENT, ...list.filter((c) => c.out !== 'bar' && c.out !== 'payback')], span = new Map(standing.map((c) => [c, spanOf(c, goal, mult)]));
-        const beatenBy = (c) => standing.some((e) => e !== c && span.get(e).lo > spanOf(c, goal, mult).hi);
-        for (const c of list) if (!c.out && beatenBy(c)) c.out = 'beaten';
+        // A tied change whose A went out (or was refuted) comes back before the cuts, and again after them while any A falls, so it is judged this round.
+        let standing, beatenBy;
+        releaseTied(list);
+        do {
+            for (const c of list) if (!c.out) c.out = cutOf(c, { goal, mult, bars, payLimit }) ?? undefined;
+            standing = [CURRENT, ...list.filter((c) => c.out !== 'bar' && c.out !== 'payback')];
+            const span = new Map(standing.map((c) => [c, spanOf(c, goal, mult)])), st = standing;
+            beatenBy = (c) => st.some((e) => e !== c && span.get(e).lo > spanOf(c, goal, mult).hi);
+            for (const c of list) if (!c.out && beatenBy(c)) c.out = 'beaten';
+        } while (releaseTied(list).length);
         tieOf(list, { goal, mult, bars });
         pools.push({ key, player: byPlayer ? list[0].player : null, changes: list.filter((c) => !c.out), noChange: !beatenBy(CURRENT), size: list.length });
     }
