@@ -107,7 +107,8 @@ const server = http.createServer((req, res) => {
     }
     const m = url.pathname.match(/^\/api\/search\/([^/]+)(\/stop)?$/);
     if (m && search && m[1] === search.id) {
-        if (m[2] && req.method === 'POST') { search.state = search.state === 'running' ? 'stopped' : 'running'; return send(res, 200, { state: search.state, progress: progress() }); }
+        // As the real runner: Stop answers at once ({ stopping }) and the search reads stopped a moment later (the optimizer's exit, stopDelay ms); Resume answers { resumed }.
+        if (m[2] && req.method === 'POST') { if (search.state === 'running') { setTimeout(() => { search.state = 'stopped'; }, stopDelay); return send(res, 200, { id: search.id, stopping: true }); } search.state = 'running'; return send(res, 200, { id: search.id, resumed: true }); }
         if (search.state === 'running' && ++polls >= 3 && !holdRunning) search.state = 'done';
         const since = Number(url.searchParams.get('since')) || 0;
         sinces.push(since);
@@ -122,6 +123,7 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(file).pipe(res);
 });
 let holdRunning = true;
+const stopDelay = 300; // the fake optimizer's exit after a stop
 let raceProgress = false; // true: the progress message of a race stage in a late round (round 12, 10 ruled out), the long label and counters of the real run
 let raceDone = false; // true: the finished Screen race row of the real run (round 1 finished, 473 in the running, the pick checks still going)
 const progress0 = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, acceptable: 1, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }] } : {}) });
@@ -365,8 +367,13 @@ try {
     check('the pick note shows under Best foods when the pick is not the table\'s first row, exact English, and the slots read greyed current / plain new / greyed empty', await js(`(() => { const n = document.querySelector('#whatIfResult [data-best-note="foods"]'), t = document.querySelector('#whatIfResult table[data-best="foods"]'), td = [...t.querySelectorAll('tbody tr td.chg')]; return n.textContent === "This one is the search's pick on its search runs; the table above is ordered by the fresh runs." && !!td[0].querySelector('.whatif-dim') && !td[1].querySelector('.whatif-dim') && td[2].textContent === 'empty' && !!td[2].querySelector('.whatif-dim') && n.previousElementSibling === t; })()`));
     live = liveWith(pickEntry({}), 7);
     check('the pick note goes when the pick is the first row', await until(`!document.querySelector('#whatIfResult [data-best-note]') && !!document.querySelector('#whatIfResult table[data-best="foods"]')`));
-    await js(`document.getElementById('buttonWhatIfStop').click(), true`);
-    check('Stop stops it and offers Resume', await until(`document.getElementById('buttonWhatIfStop').textContent === 'Resume'`) && search.state === 'stopped');
+    const sincesAtStop = sinces.length, lastSince = sinces.at(-1);
+    const stopSeen = await js(`new Promise((res) => { const b = document.getElementById('buttonWhatIfStop'), t0 = performance.now(); b.click(); const pending = { text: b.textContent, disabled: b.disabled }; const iv = setInterval(() => { if (b.textContent === 'Resume') { clearInterval(iv); res({ ms: performance.now() - t0, pending, enabled: !b.disabled }); } }, 5); })`);
+    const stopMs = stopSeen.ms;
+    check('Stop pending: right after the click, before the runner has stopped, the button reads "Stopping…" and is disabled', stopSeen.pending.text === 'Stopping…' && stopSeen.pending.disabled === true, JSON.stringify(stopSeen.pending));
+    check('Stop stops it and offers Resume, enabled again', search.state === 'stopped' && stopSeen.enabled);
+    check(`Stop: Resume shows within 900 ms of the click when the runner stops 300 ms after it (the window polls at once and every 250 ms after a press; was 1 s): ${Math.round(stopMs)} ms`, stopMs < 900);
+    check('Stop keeps the report version the window has: no status request after it asks from 0', lastSince > 0 && sinces.slice(sincesAtStop).every((x) => x === lastSince), JSON.stringify(sinces.slice(sincesAtStop - 1)));
     check('after Stop no element of the progress area reads Running; it reads Stopped once, the rows keep their figures', await js(`(() => { const p = document.getElementById('whatIfProgress'); const texts = [p, ...p.querySelectorAll('*')].map((e) => e.textContent); return !texts.some((x) => /Running|round \\d+ running/.test(x)) && /^Stopped/.test(p.textContent.trim()) && !p.querySelector('[data-whatif-done], .whatif-part-running'); })()`), await js(`document.getElementById('whatIfProgress').textContent`));
     check('live: a stopped search keeps its report on screen, marked Stopped', await until(`document.getElementById('whatIfResult').textContent.includes('Stopped: this is where the search got to.')`) && !(await resultText()).includes('Running: the report fills in') && (await resultText()).includes('Magic 1 → 2'));
     live = null;

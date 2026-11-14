@@ -259,6 +259,14 @@ check(mr.json.resumed && mh2 !== mh && mh2.args[mh2.args.indexOf('--prices') + 1
 mh2.stop(); await sleep(50);
 const list = await call(base, 'GET', '/api/results');
 check(list.json.length === 1 && list.json[0].id === s1.json.id && list.json[0].goal === 'profit' && !!Date.parse(list.json[0].finished), 'results: finished searches with id, finished, goal, players');
+{ // the list reads a result.json again only when it changed (size or time): a second list answers the same; a rewritten one shows its new content
+    const f = path.join(resultsDir, s1.json.id, 'result.json'), keep = readFileSync(f, 'utf8');
+    const again = await call(base, 'GET', '/api/results');
+    writeFileSync(f, JSON.stringify({ ...JSON.parse(keep), goal: 'exp', players: ['Changed'] }));
+    const changed = await call(base, 'GET', '/api/results');
+    writeFileSync(f, keep);
+    check(JSON.stringify(again.json) === JSON.stringify(list.json) && changed.json[0].goal === 'exp' && changed.json[0].players[0] === 'Changed', 'results: the list is the same on a second call and follows a result.json that changed');
+}
 check((await call(base, 'GET', '/api/results/' + s1.json.id)).json.goal === 'profit' && (await call(base, 'GET', '/api/results/000000000000')).status === 404 && (await call(base, 'GET', '/api/results/..%2F..')).status === 404, 'results/<id>: one result; unknown or malformed ids are 404');
 check((await call(base, 'GET', '/api/search/zzz')).status === 404, 'search/<id>: a malformed id is 404');
 const idx = await call(base, 'GET', '/');

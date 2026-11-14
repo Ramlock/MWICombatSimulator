@@ -886,6 +886,13 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('live: the pt and zh strings exist for every new key and keep the placeholders', ['running', 'stoppedMark', 'soFar', 'notConfirmedAtStep', 'notConfirmedAtFood', 'notConfirmedAtDrink', 'notConfirmedItem'].every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).every((ph) => locales[l].result[k].includes(ph)))));
     check('live: the status URL carries the version the window has, none at 0', panel.API.status('a b', 0) === '/api/search/a%20b' && panel.API.status('x', 7) === '/api/search/x?since=7');
 }
+{ // The poll wait: 1 s normally; 250 ms until fastUntil (after a press), and while a pressed stage button's part is still running.
+    const { pollDelay, POLL_MS, FAST_POLL_MS } = panel;
+    const st = (state) => ({ state: 'running', progress: { parts: [{ kind: 'drinks', index: 0, state }, { kind: 'steps', index: 0, state: 'waiting' }] } });
+    const pressed = { key: 'drinks:0', mode: 'skip' };
+    check('poll wait: 1 s with nothing pressed, 250 ms before fastUntil', POLL_MS === 1000 && FAST_POLL_MS === 250 && pollDelay(st('running'), null, 100, 0) === POLL_MS && pollDelay(st('running'), null, 100, 200) === FAST_POLL_MS && pollDelay(null, null, 100, 200) === FAST_POLL_MS);
+    check('poll wait: fast while the pressed part runs, normal once it is done, or for a part not in the progress', pollDelay(st('running'), pressed, 100, 0) === FAST_POLL_MS && pollDelay(st('done'), pressed, 100, 0) === POLL_MS && pollDelay(st('running'), { key: 'foods:0', mode: 'skip' }, 100, 0) === POLL_MS && pollDelay({ state: 'running', progress: {} }, pressed, 100, 0) === POLL_MS);
+}
 // The payback limit (his picks 2026-11-11): the list of changes left out for paying back too slowly, closed by default after the
 // over-budget list, in the one list renderer; and the field in the request.
 {

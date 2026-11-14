@@ -35,7 +35,7 @@ import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL } from "./whatif/runnerDownload.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
@@ -4073,7 +4073,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, timer: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null };
+const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4317,7 +4317,7 @@ function whatIfShowDiff() {
 
 // Redraws the progress box without replacing a stage button whose markup did not change: a button replaced under the pointer loses its hover until the
 // mouse moves (the flicker), so an unchanged button (same part, same mode, same markup) keeps its node. `whatIf.pressed` ({ key, mode }) is in the markup,
-// so a pressed button is drawn disabled (with Accept's note) by every redraw, not only by the click.
+// so a pressed button is drawn disabled by every redraw, not only by the click.
 function whatIfDrawProgress() {
     const box = document.getElementById('whatIfProgress');
     if (!whatIf.status) return;
@@ -4334,9 +4334,8 @@ function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
     whatIfDrawProgress();
-    const stop = document.getElementById('buttonWhatIfStop');
-    stop.disabled = !(status.state === 'running' || status.state === 'stopped');
-    stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
+    if (status.state !== 'running') whatIf.stopping = false;
+    whatIfDrawStop();
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
@@ -4350,26 +4349,58 @@ function whatIfShowStatus(status) {
     if (status.state === 'done') whatIfLoadList();
 }
 
-function whatIfStopWatching() {
-    if (whatIf.timer) clearInterval(whatIf.timer);
-    whatIf.timer = null;
+// The Stop / Resume button: Stop on a running search, Resume on a stopped one; from a press of Stop until the search reads stopped (or fails),
+// "Stopping…" and disabled (whatIf.stopping), so the press shows at once and cannot be repeated.
+function whatIfDrawStop() {
+    const stop = document.getElementById('buttonWhatIfStop'), state = whatIf.state;
+    stop.disabled = whatIf.stopping || !(state === 'running' || state === 'stopped');
+    stop.textContent = whatIfT(whatIf.stopping ? 'stopping' : state === 'stopped' ? 'resume' : 'stop');
 }
 
+function whatIfStopWatching() {
+    if (whatIf.watch) clearTimeout(whatIf.watch.timer);
+    whatIf.watch = null;
+}
+
+// Watches a search: polls its status now, then again after whatIfPollDelay (panel.mjs: 1 s, or 250 ms while a press is still to show), one
+// request at a time (the next is set once the last answer is in). A new search id starts afresh (its report and rounds are asked for again);
+// the same id keeps what the window has (Resume).
 function whatIfWatch(id) {
+    whatIfStopWatching();
+    if (id !== whatIf.searchId) {
+        whatIf.partialVersion = 0; // the report so far is asked for again (the runner sends it only when newer than this)
+        whatIf.round = null;
+        whatIf.stopping = false;
+    }
     whatIf.searchId = id;
     whatIf.pressed = null; whatIf.status = null;
-    whatIf.partialVersion = 0; // the report so far is asked for again (the runner sends it only when newer than this)
-    whatIf.round = null;
-    whatIfStopWatching();
-    const poll = async () => {
-        try {
-            const { ok, body } = await whatIfRequest(WHATIF_API.status(id, whatIf.partialVersion));
-            if (ok) whatIfShowStatus(body);
-            else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
-        } catch (err) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); }
-    };
-    poll();
-    whatIf.timer = setInterval(poll, 1000);
+    whatIf.watch = { timer: null, busy: false, again: false, fastUntil: 0 };
+    whatIfPoll(whatIf.watch);
+}
+
+// A control was pressed (Stop, Resume, a stage button): the watch polls at once and fast until the press shows (whatIfPollDelay).
+function whatIfPollSoon() {
+    const w = whatIf.watch;
+    if (!w) return;
+    w.fastUntil = Date.now() + WHATIF_FAST_FOR_MS;
+    if (w.busy) { w.again = true; return; }
+    clearTimeout(w.timer);
+    whatIfPoll(w);
+}
+
+async function whatIfPoll(w) {
+    w.timer = null; w.busy = true;
+    try {
+        const { ok, body } = await whatIfRequest(WHATIF_API.status(whatIf.searchId, whatIf.partialVersion));
+        if (w !== whatIf.watch) return;
+        if (ok) whatIfShowStatus(body); // a state other than running ends the watch
+        else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
+    } catch (err) { if (w === whatIf.watch) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); } }
+    finally { w.busy = false; }
+    if (w !== whatIf.watch) return;
+    const delay = w.again ? 0 : whatIfPollDelay(whatIf.status, whatIf.pressed, Date.now(), w.fastUntil);
+    w.again = false;
+    w.timer = setTimeout(() => whatIfPoll(w), delay);
 }
 
 async function whatIfStart() {
@@ -4410,15 +4441,20 @@ async function whatIfStart() {
 }
 
 async function whatIfStopOrResume() {
-    if (!whatIf.searchId) return;
+    if (!whatIf.searchId || whatIf.stopping) return;
     const resuming = whatIf.state === 'stopped';
+    if (!resuming) { whatIf.stopping = true; whatIfDrawStop(); } // "Stopping…" until the search reads stopped (whatIfShowStatus)
+    const failed = (message) => { whatIf.stopping = false; whatIfDrawStop(); whatIfMessage(message); };
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
-        if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
-        if (resuming) whatIfWatch(whatIf.searchId);
-        else if (body.state) whatIfShowStatus(body);
-        else whatIfWatch(whatIf.searchId);
-    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+        if (!ok) { failed(body.error || whatIfT('runnerError')); return; }
+        if (body.state) { whatIfShowStatus(body); if (body.state === 'running') whatIfWatch(whatIf.searchId); return; }
+        // The runner answers at once ({ stopping } or { resumed }); the change itself shows at the poll that sees it.
+        // A resume is a new optimizer process: its report is asked for again from version 0 (the runner may have been restarted since the stop).
+        if (resuming) whatIf.partialVersion = 0;
+        if (resuming || !whatIf.watch) whatIfWatch(whatIf.searchId);
+        whatIfPollSoon();
+    } catch (err) { failed(whatIfT('runnerGone')); }
 }
 
 async function whatIfLoadList() {
@@ -4481,15 +4517,15 @@ async function initWhatIf() {
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
-    // "Accept current winner" / "Skip <stage>" (the buttons on the race stage that runs now): the runner ends that stage in that mode (Accept after its round in flight, its pick taken as it is; Skip at once).
+    // "Accept current winner" / "Skip <stage>" (the buttons on the race stage that runs now): the runner ends that stage at once, its runs in flight ended (Accept with its pick taken as it is; Skip with nothing taken).
     document.getElementById('whatIfProgress').addEventListener('click', async (event) => {
         const button = event.target.closest('[data-whatif-done]');
         if (!button || !whatIf.searchId) return;
         if (button.disabled) return;
         const pressed = { key: button.dataset.whatifPart, mode: button.dataset.whatifDone };
-        whatIf.pressed = pressed; whatIfDrawProgress(); // the press shows at once (disabled, and Accept's note), and stays in every redraw until the stage ends
+        whatIf.pressed = pressed; whatIfDrawProgress(); // the press shows at once (both disabled), and stays in every redraw until the stage ends
         const failed = (message) => { if (whatIf.pressed === pressed) whatIf.pressed = null; whatIfMessage(message); whatIfDrawProgress(); };
-        try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); }
+        try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); else whatIfPollSoon(); }
         catch (err) { failed(whatIfT('runnerGone')); }
     });
     document.getElementById('whatIfResult').addEventListener('click', (event) => {

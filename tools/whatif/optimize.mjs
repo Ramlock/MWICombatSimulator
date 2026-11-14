@@ -94,8 +94,9 @@ const stop = { requested: false, done: false };
 const scenario = arg('synthetic', null) ? loadScenario(arg('synthetic')) : null;
 // The counting wrapper (node-shell.mjs) counts the runs that reach the pool: the store's misses, i.e. the real simulations; the search's other runs were replayed.
 const pool = createCountingPool(scenario ? createSyntheticPool(scenario, { confirmOffset: Number(arg('confirm-seed-offset', 10000)) }) : createNodePool());
-// 'stop' ends the search; { done: 'accept' | 'skip' } (the window's two stage buttons) only asks the race stage running now to end (Accept after its round in flight, its pick taken as it is; Skip at once, the runs already going finishing).
-process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m?.done === 'accept' || m?.done === 'skip') stop.done = m.done; });
+// 'stop' ends the search; { done: 'accept' | 'skip' } (the window's two stage buttons) only asks the race stage running now to end, at once:
+// stop.press (the core's, core.mjs main) ends that stage's runs in flight (pool.drop), and the stage ends with what is stored.
+process.on('message', (m) => { if (m === 'stop') { stop.requested = true; pool.kill(); } else if (m?.done === 'accept' || m?.done === 'skip') stop.press?.(m.done); });
 const settings = {
     flags, argsText: argv.join(' '), jobs: Number(arg('jobs', os.availableParallelism())), setupsDir, pricesFile,
     // The key holds the prices file relative to the checkout, so runs cached in one worktree match in another.

@@ -136,7 +136,7 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     let counter = null;
     const cold = run2; counter = coldCounter;
     check('replay counter: on an empty store every run is a real simulation, and the counter equals the runs that reached the pool', counter.count() === cold.runs && cold.runs > 0 && Object.values(counter.byTag()).reduce((a, b) => a + b, 0) === cold.runs, `${counter.count()} vs ${cold.runs}`);
-    const warm = await runSynthetic(scenario, { 'max-steps': 0 }, { records: cold.records, onRound: (rec, stop) => { if (rec.stage === 'foods' && rec.round === 3) stop.done = 'skip'; }, poolWrap: (p) => (counter = createCountingPool(p, () => {}, 50)) }); // a short search (the foods stage ended by Skip after round 3) on the primed store
+    const warm = await runSynthetic(scenario, { 'max-steps': 0 }, { records: cold.records, onRound: (rec, stop) => { if (rec.stage === 'foods' && rec.round === 3) stop.press('skip'); }, poolWrap: (p) => (counter = createCountingPool(p, () => {}, 50)) }); // a short search (the foods stage ended by Skip after round 3) on the primed store
     check('replay counter: a search on a store holding the first search runs counts exactly the runs that reached the pool (the core first look reads every cached seed, so it takes its own path and is not a 0-run replay)', counter.count() === warm.runs && warm.records.length >= cold.records.length, `${counter.count()} ${warm.runs}`);
     const lines = []; const c3 = createCountingPool({ run: async () => ({}), kill() {} }, (l) => lines.push(l), 2);
     for (let i = 0; i < 5; i++) await c3.run({ tag: 'x' });
@@ -151,7 +151,7 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
 
 // ---- The two buttons ----
 {
-    const press = (stage, round, mode) => { let pressed = false; return (rec, stop) => { if (rec.stage === stage && rec.round === round) { stop.done = mode; pressed = true; } else if (pressed && rec.stage === 'screen') stop.requested = true; }; }; // after the button, the search is stopped when the Screen starts (the Screen of a no-step search has no lock to end it by)
+    const press = (stage, round, mode) => { let pressed = false; return (rec, stop) => { if (rec.stage === stage && rec.round === round) { stop.press(mode); pressed = true; } else if (pressed && rec.stage === 'screen') stop.requested = true; }; }; // after the button, the search is stopped when the Screen starts (the Screen of a no-step search has no lock to end it by)
     const skip = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 3, 'skip') });
     check('button: Skip on the foods stage ends it after that round with nothing taken (endedByUser 3, a Skip: "ended by you during round 4, its finished runs kept"; the report text is checked on the searches that finish, below)', skip.result.endedByUser.foods === 3 && skip.result.endedBySkip.foods === true && Object.values(skip.result.best.foods).every((e) => e.unchanged) && skip.rounds.filter((r) => r.stage === 'foods').length === 3);
     const accept = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('drinks', 8, 'accept') });
@@ -166,17 +166,49 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     const early = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 1, 'accept') });
     check('button: Accept pressed while no leader has a shown figure (2 reading seeds) ends the stage and takes nothing', early.result.endedByUser.foods === 1 && Object.values(early.result.best.foods).every((e) => e.unchanged && !e.acceptedAsIs));
 
-    // Skip ends the stage at once: the lanes take no new run, the runs in flight finish and are stored, nothing is killed, and the search goes on.
+    // Skip ends the stage at once: the lanes take no new run, a run that finished is stored, and the search goes on (it is not a stop request).
     const short = { 'max-steps': 0, 'max-rounds': 3 }, finished = (r) => !r.result.incomplete && r.result.stoppedBy === undefined && r.rounds.some((x) => x.stage === 'drinks') && r.records.length === r.runs;
     let st1 = null, done1 = false;
-    const skip1 = await runSynthetic(scenario, short, { onRound: (rec, stop) => { st1 = stop; if (rec.provisional && rec.stage === 'foods' && rec.firstLook?.have > 0 && !done1) { done1 = true; stop.done = 'skip'; } } });
+    const skip1 = await runSynthetic(scenario, short, { onRound: (rec, stop) => { st1 = stop; if (rec.provisional && rec.stage === 'foods' && rec.firstLook?.have > 0 && !done1) { done1 = true; stop.press('skip'); } } });
     check('button: Skip pressed before the first round finishes ends the foods stage at once with nothing taken (endedByUser 0, a Skip: "ended by you during round 1, its finished runs kept"), no foods round record', done1 && skip1.result.endedByUser.foods === 0 && !skip1.rounds.some((r) => r.stage === 'foods') && Object.values(skip1.result.best.foods).every((e) => e.unchanged), JSON.stringify(skip1.result.endedByUser));
     check('button: after that Skip the search goes on (the drinks stage runs, result.incomplete and stoppedBy unset) and every run that finished is in the store', finished(skip1), `${skip1.result.incomplete} ${skip1.result.stoppedBy} ${skip1.records.length} ${skip1.runs}`);
     check('button: that Skip is not a stop request (nothing was killed: the pool was never asked to kill)', skip1.stop.requested === false && skip1.result.endedBySkip.foods === true && /ended by you during round 1, its finished runs kept/.test(skip1.markdown) && !/before its first round/.test(skip1.markdown));
     let st2 = null, foodsRounds = 0, nRuns = 0;
-    const skip2 = await runSynthetic(scenario, short, { onRound: (rec, stop) => { st2 = stop; if (!rec.provisional && rec.stage === 'foods') foodsRounds++; }, poolWrap: (p) => ({ run: async (t) => { const r = await p.run(t); if (st2 && foodsRounds === 1 && ++nRuns === 3) st2.done = 'skip'; return r; }, kill: p.kill }) });
+    const skip2 = await runSynthetic(scenario, short, { onRound: (rec, stop) => { st2 = stop; if (!rec.provisional && rec.stage === 'foods') foodsRounds++; }, poolWrap: (p) => ({ run: async (t) => { const r = await p.run(t); if (st2 && foodsRounds === 1 && ++nRuns === 3) st2.press('skip'); return r; }, drop: p.drop, kill: p.kill }) });
     check('button: Skip pressed in round 2 ends the foods stage at once: round 1 stays, round 2 never publishes, ended after round 1', nRuns >= 3 && skip2.result.endedByUser.foods === 1 && /ended by you during round 2, its finished runs kept/.test(skip2.markdown) && skip2.rounds.filter((r) => r.stage === 'foods').length === 1, `${nRuns} ${JSON.stringify(skip2.result.endedByUser)} ${skip2.rounds.filter((r) => r.stage === 'foods').length}`);
     check('button: after the round 2 Skip the search goes on, incomplete is unset and every run that finished is in the store', finished(skip2), `${skip2.result.incomplete} ${skip2.result.stoppedBy} ${skip2.records.length} ${skip2.runs}`);
+
+    // Both buttons end the stage without waiting for its runs in flight: once round `after` of `stage` is published, every later run hangs (it would
+    // never finish by itself) and the button is pressed while they are in flight. The stage must end through the pool's drop() (the hung runs resolve
+    // null), the search must go on, and no hung run may reach the store.
+    const hangAfter = (stage, after, mode) => {
+        let st = null, armed = false, pressed = false, hung = 0, dropped = 0;
+        const out = { get hung() { return hung; }, get dropped() { return dropped; } };
+        const hangs = [];
+        out.opts = {
+            onRound: (rec, stop) => { st = stop; if (!rec.provisional && rec.stage === stage && rec.round === after) armed = true; },
+            poolWrap: (p) => ({
+                run: (t) => {
+                    if (!armed) return p.run(t);
+                    hung++;
+                    const r = new Promise((res) => hangs.push(res));
+                    if (!pressed) { pressed = true; setTimeout(() => st.press(mode), 0); }
+                    return r;
+                },
+                drop: () => { dropped++; armed = false; for (const res of hangs.splice(0)) res(null); p.drop(); },
+                kill: p.kill,
+            }),
+        };
+        return out;
+    };
+    const hs = hangAfter('foods', 1, 'skip');
+    const skip3 = await runSynthetic(scenario, short, hs.opts);
+    check('button: Skip ends the stage without waiting for the runs in flight (they are dropped, not finished): ended after round 1, a Skip, the search goes on', hs.hung > 0 && hs.dropped === 1 && skip3.result.endedByUser.foods === 1 && skip3.result.endedBySkip.foods === true && skip3.rounds.filter((r) => r.stage === 'foods').length === 1 && skip3.rounds.some((x) => x.stage === 'drinks') && !skip3.result.incomplete, `${hs.hung} ${hs.dropped} ${JSON.stringify(skip3.result.endedByUser)}`);
+    check('button: a run that Skip dropped is not stored (the store holds every run but the dropped ones)', skip3.records.length === skip3.runs - hs.hung, `${skip3.records.length} ${skip3.runs} ${hs.hung}`);
+    const ha = hangAfter('drinks', 8, 'accept');
+    const accept2 = await runSynthetic(scenario, { 'max-steps': 0 }, ha.opts);
+    check('button: Accept ends the stage without waiting for the runs in flight: ended after round 8, not a Skip, and it takes what round 8 offered (the same picks as an Accept at the end of round 8), marked accepted as is', ha.hung > 0 && ha.dropped === 1 && accept2.result.endedByUser.drinks === 8 && !accept2.result.endedBySkip.drinks && accept2.rounds.filter((r) => r.stage === 'drinks').length === 8 && JSON.stringify(accept2.result.best.drinks) === JSON.stringify(accept.result.best.drinks) && Object.values(accept2.result.best.drinks).some((e) => e.acceptedAsIs), `${ha.hung} ${ha.dropped} ${JSON.stringify(accept2.result.endedByUser)}`);
+    check('button: a run that Accept dropped is not stored', accept2.records.length === accept2.runs - ha.hung, `${accept2.records.length} ${accept2.runs} ${ha.hung}`);
 }
 
 // ---- A search whose every pick is left out inside the race: the pick check ran, so the picks part is done ("None confirmed"), not "Not run" ----
