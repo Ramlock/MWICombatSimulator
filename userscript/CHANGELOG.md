@@ -4,6 +4,11 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.11.0 (2026-11-14)
+
+- Your equipped talismans reach the simulator: "Copy character export" and your own slot of the party for the simulator page ("Import party from game") carry your talisman lines and talisman power, with the equipped gear (the same switch). The simulator shows them with that player's equipment and counts them, in its own runs and in What-if searches. Other party members' talismans cannot be seen, so their slots carry none. A character with no talismans carries nothing new.
+- The recorder's healing figures: Bloom's figure no longer counts Life Drain's drain. HP gained in the update of your own Life Drain cast is now under Life Drain, and Bloom's figure holds only updates of casts whose ability does not heal by itself. The game does not say which source each heal came from, so a heal ability's figure (Quick Aid, Life Drain) still includes a Bloom heal that landed in the same update; the export says so in its `healedBySource` note.
+
 ### 0.10.1 (2026-11-13)
 
 - Several game tabs open at once no longer overwrite each other's recording: a save adds to what the other tabs saved (fights, windows, task lists, counters and the list of what was already sent), and a fight another tab already sent is not sent again.

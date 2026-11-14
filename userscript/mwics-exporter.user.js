@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.10.1
+// @version      0.11.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -104,7 +104,9 @@
     }
 
     // Pure: builds the export from the game's init_character_data payload. A kind switched off is left out (unknown, never empty).
-    function buildExport(characterObj, clientObj, toggles) {
+    // tal (optional): the recorder's live talisman state ({ list, power, seen }, kept from talismans_updated and character_stats_updated
+    // after init_character_data); used when it has seen the game's list, else the payload's own characterTalismans and talisman power.
+    function buildExport(characterObj, clientObj, toggles, tal) {
         const on = { ...defaultToggles(), ...(toggles || {}) };
         const out = {};
 
@@ -123,6 +125,13 @@
                     out.player.equipment.push({ itemLocationHrid: item.itemLocationHrid, itemHrid: item.itemHrid, enhancementLevel: item.enhancementLevel || 0 });
                 }
             }
+        }
+
+        // The equipped talismans, with the gear: the simulator's field { power, lines: [{ modifier, grade }] } (src/combatsimulator/talismans.js),
+        // read through talismanLines (slotted talismans only). No talisman data, or no equipped line: no field (absent, never empty or zero).
+        if (on.gear) {
+            const t = talismansForSim(characterObj, clientObj, tal);
+            if (t) out.talismans = t;
         }
 
         if (on.consumables) {
@@ -245,7 +254,7 @@
             const prof = isSelf ? null : find(r);
             let out, guild; const have = [];
             if (isSelf) {
-                out = buildExport(co, client, on);
+                out = buildExport(co, client, on, ctx.tal);
                 if (on.skillLevels) have.push('skillLevels');
                 if (on.gear) have.push('gear');
                 if (on.equippedAbilities) have.push('equippedAbilities');
@@ -536,8 +545,24 @@
             }),
         }));
     }
+    // The simulator's talisman field from the game's talisman list: every line of every slotted talisman, in slot order, as { modifier: the
+    // modifier id (the hrid's last part), grade }, and the talisman power (a fraction, 0.2 = +20 %) when the game gave one. null when there is
+    // no list or no line. tal: as buildExport's.
+    function talismansForSim(characterObj, clientObj, tal) {
+        const live = tal && tal.seen;
+        const list = live ? tal.list : characterObj && characterObj.characterTalismans;
+        if (!Array.isArray(list)) return null;
+        const lines = [];
+        for (const t of talismanLines(list, clientObj)) for (const l of t.lines) if (l.hrid && Number.isInteger(l.grade)) lines.push({ modifier: String(l.hrid).split('/').pop(), grade: l.grade });
+        if (!lines.length) return null;
+        const cs = characterObj && characterObj.combatUnit && characterObj.combatUnit.combatDetails && characterObj.combatUnit.combatDetails.combatStats;
+        const power = live && typeof tal.power === 'number' ? tal.power : cs && typeof cs.talismanPower === 'number' ? cs.talismanPower : null;
+        return power === null ? { lines } : { power, lines };
+    }
     const DOT_FALLBACK = { '/abilities/firestorm': { ratio: 1, ms: 6000 }, '/abilities/maim': { ratio: 1, ms: 9000 } };
     const HEAL_FALLBACK = ['/abilities/quick_aid'];
+    // Abilities that heal their own caster by draining the target (an effect with hpDrainRatio > 0), used when the game's data cannot be read.
+    const DRAIN_FALLBACK = ['/abilities/life_drain'];
     // The columns of a trace row: update number within the encounter, ms since the encounter start, side (0 player, 1 monster), unit index, the
     // unit's attack-attempt, damage-splat and HP-drop/rise changes in that update, crit-splat changed (0/1), index into the trace's `src` (the ability
     // or 'auto' being executed before the update), then the unit's attack, damage-splat and crit-splat counters after the update.
@@ -558,16 +583,18 @@
     function gameData(c) {
         const dot = { ...DOT_FALLBACK };
         const heal = new Set(HEAL_FALLBACK);
+        const drain = new Set(DRAIN_FALLBACK);
         const buffAb = new Set();
         for (const [h, a] of Object.entries((c && c.abilityDetailMap) || {})) {
             for (const e of a.abilityEffects || []) {
                 if (e.damageOverTimeRatio > 0) dot[h] = { ratio: e.damageOverTimeRatio, ms: e.damageOverTimeDuration / 1e6 };
                 if (String(e.effectType || '').endsWith('/heal')) heal.add(h);
+                if (e.hpDrainRatio > 0) drain.add(h);
                 if (e.buffs && e.buffs.length) buffAb.add(h);
             }
             if (a.buffs && a.buffs.length) buffAb.add(h);
         }
-        return { dot, heal, buffAb, items: (c && c.itemDetailMap) || {} };
+        return { dot, heal, drain, buffAb, items: (c && c.itemDetailMap) || {} };
     }
 
     function newPlayerRec(slot, self) {
@@ -650,7 +677,7 @@
             if (typeof cs.talismanSlots === 'number') S.tal.slots = cs.talismanSlots;
         }
         function setTalismans(msg) {
-            if (Array.isArray(msg.characterTalismans)) S.tal.list = msg.characterTalismans.filter((x) => x && x.id != null);
+            if (Array.isArray(msg.characterTalismans)) { S.tal.list = msg.characterTalismans.filter((x) => x && x.id != null); S.tal.seen = true; }
             setTalismanStats(msg.combatUnit && msg.combatUnit.combatDetails && msg.combatUnit.combatDetails.combatStats);
             const belt = (msg.characterItems || []).find((i) => i && /\/belt$/.test(String(i.itemLocationHrid || '')));
             S.tal.belt = belt ? belt.itemHrid || null : null;
@@ -960,11 +987,15 @@
             const regen = Math.floor(x.p.maxHp * x.u.regenRate);
             if (regen > 0 && (r === regen || (full && r < regen))) { pr.healed.total += r; pr.healed.regen += r; return; }
             for (const s of S.series) if (s.slot === x.idx && s.left > 0 && fits(r, full, s)) { s.left--; s.rec.credited += r; addHeal(pr, 'food:' + s.item, r); return; }
-            const healers = pa.filter((a) => gd.heal.has(a.exec));
+            // An ability that heals by itself: a heal ability cast in this update (Quick Aid), or the healed player's own cast of a drain ability
+            // (Life Drain heals its caster). The HP gained goes under that ability's key; Bloom's heal on the same cast lands there too (the game
+            // gives no source per heal, so it is not split).
+            const healers = pa.filter((a) => gd.heal.has(a.exec) || (a === x && gd.drain.has(a.exec)));
             if (healers.length === 1) { addHeal(pr, healers[0].exec, r); return; }
             if (healers.length > 1) { healAmbiguous(enc, t, x, pa, 'multi-healer'); pr.healed.unresolved += r; pr.healed.total += r; return; }
             if (pa.some((a) => a.dAtk >= 2 && a.u.canHeal)) { healAmbiguous(enc, t, x, pa, 'hidden-action'); pr.healed.unresolved += r; pr.healed.total += r; return; }
-            if (pa.some((a) => a.u.bloom > 0)) { addHeal(pr, 'bloom', r, true); return; }
+            // Bloom: only in updates of casts whose ability does not heal by itself (a drain cast by another player is left out too).
+            if (pa.some((a) => a.u.bloom > 0 && !gd.heal.has(a.exec) && !gd.drain.has(a.exec))) { addHeal(pr, 'bloom', r, true); return; }
             enc.pending.push({ slot: x.idx, r, t, full, idx: S.idx, done: false });
         }
 
@@ -982,7 +1013,7 @@
                 sel = wins.map(pickSelfWin);
                 encs = encs.map(pickSelfEnc);
             }
-            return { format: 'mwics-loot', version: 1, server, exportedAt: new Date(nowMs || Date.now()).toISOString(), selfOnly: !!selfOnly, attribution: 'counter (exact) unless a field says heuristic; ambiguous ticks are raw, flagged, and split afterwards', windows: sel, encounters: encs, tasks: S.quests, lootLog: [], notes: { ...S.stats, openEncounterNotExported: !!S.cur } };
+            return { format: 'mwics-loot', version: 1, server, exportedAt: new Date(nowMs || Date.now()).toISOString(), selfOnly: !!selfOnly, attribution: 'counter (exact) unless a field says heuristic; ambiguous ticks are raw, flagged, and split afterwards', healedBySource: HEALED_NOTE, windows: sel, encounters: encs, tasks: S.quests, lootLog: [], notes: { ...S.stats, openEncounterNotExported: !!S.cur } };
         }
 
         function persistable() { return { windows: S.windows, encounters: S.encounters, quests: S.quests, stats: S.stats }; }
@@ -997,6 +1028,8 @@
     // It never touches the network itself: deps.post(body) -> Promise<{ok, status, text}> does, in the browser part. It only reads the recorder.
     // Queue and retry as the guild chat script; keys already handed over are remembered (deps.sent, deps.saveSent) so a reload does not resend.
     // An encounter is held back until SINK.DELAY later ones have closed: heal series credit a consume record up to 4 encounters late.
+    // The note an export carries for healed.bySource (the game gives no source per heal, so one update's gain is never split).
+    const HEALED_NOTE = "bloom: HP gained in updates of casts whose ability does not heal by itself. An ability that heals by itself (Quick Aid, Life Drain) holds all HP gained in its cast's update, the Bloom heal on that cast included.";
     const SINK = { DELAY: 4, BATCH_RECORDS: 64, BATCH_BYTES: 900 * 1024, MAX_QUEUE: 2000, MAX_SENT: 5000, RETRY_MIN_MS: 2000, RETRY_MAX_MS: 60000, WINDOW_MS: 600000, IDLE_MS: 90000, FORMAT_VERSION: 1 };
     const encKey = (e) => 'enc:' + e.startedAt + ':' + e.battleId;
     const winKeyOf = (w) => 'win:' + w.startedAt + '#' + w.battles + '.' + w.buffEvents.length + (w.open ? '' : '.c');
@@ -1236,7 +1269,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { serverOf, serverKey, talismanLines, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1255,7 +1288,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData(), server: SERVER });
-    const VERSION = '0.10.1'; // keep equal to @version (a test checks it)
+    const VERSION = '0.11.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = serverKey('mwicsSinkSent', SERVER), DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1399,7 +1432,7 @@
     }
     function buildGroup(ownExport) {
         if (!latest) return null;
-        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles, ownExport: !!ownExport });
+        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles, ownExport: !!ownExport, tal: recToggles.recorder ? recorder.state.tal : null });
     }
     function liveFight(now) { return currentFight({ actions: liveActions, partyInfo: livePartyInfo, clientObj: clientData(), now }); }
     function publishSnapshot() {
@@ -1475,7 +1508,7 @@
 
     function copyExport() {
         if (!latest) { toast('MWI Combat Tracker: no character data yet. Reload the game page with the exporter on, then try again.'); return; }
-        const json = JSON.stringify(buildExport(latest.characterObj, clientData(), loadToggles()));
+        const json = JSON.stringify(buildExport(latest.characterObj, clientData(), loadToggles(), recToggles.recorder ? recorder.state.tal : null));
         GM_setClipboard(json, 'text');
         toast('MWI Combat Tracker: copied (character data from ' + latest.receivedAt.toLocaleTimeString() + ').');
     }
