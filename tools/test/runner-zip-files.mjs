@@ -1,6 +1,7 @@
 // Test: every file the runner loads is in the runner zip. Reads the `git archive` path list from tools/runner-zip/build-zip.ps1 itself,
 // then follows every relative import (static, `export ... from`, `import('...')`, `new URL('...', import.meta.url)`) from the runner's
-// entry points (server.mjs, the optimizer it forks, the run worker batch.mjs) and fails on any file that resolves outside that list
+// entry points (server.mjs, the optimizer it forks, the run worker batch.mjs), and every `src('<path>')` call (the engine's own helper
+// for a file under src/, tools/whatif/engine.mjs), and fails on any file that resolves outside that list
 // or does not exist. A file added to src/ and imported by the runner but not named in build-zip.ps1 broke every search of a release once.
 // Usage: node tools/test/runner-zip-files.mjs [--root <repo root, default this checkout>]. Exit code 0 on pass, 1 on fail.
 import fs from 'node:fs';
@@ -25,6 +26,10 @@ const specs = (src) => {
     for (const re of res) for (const m of src.matchAll(re)) out.push(m[1]);
     return out.filter((s) => s.startsWith('./') || s.startsWith('../'));
 };
+// tools/whatif/engine.mjs loads src/ files through its helper `src('<path under src/>')`.
+const srcHelper = (text) => [...text.matchAll(/\bsrc\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => path.join(root, 'src', m[1]));
+// A spec without an extension (src/ files import webpack-style, './combatsimulator/player') resolves as the loader hooks do: .js added.
+const resolveFile = (t) => (fs.existsSync(t) && fs.statSync(t).isFile()) ? t : (fs.existsSync(t + '.js') ? t + '.js' : t);
 let fails = 0;
 const seen = new Set();
 const queue = entries.map((e) => path.join(root, e));
@@ -34,8 +39,9 @@ while (queue.length) {
     seen.add(f);
     if (!/\.(m?js|cjs)$/.test(f)) continue;
     const src = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    for (const s of specs(src)) {
-        const t = path.resolve(path.dirname(f), s.split('?')[0]);
+    const targets = [...specs(src).map((s) => [s, path.resolve(path.dirname(f), s.split('?')[0])]), ...srcHelper(src).map((t) => [`src('${rel(t).slice(4)}')`, t])];
+    for (const [s, t0] of targets) {
+        const t = resolveFile(t0);
         const r = rel(t);
         if (!fs.existsSync(t)) { fails++; console.log('FAIL', rel(f), 'imports a missing file', s); continue; }
         if (!inZip(r)) { fails++; console.log('FAIL', rel(f), 'loads', r, 'which build-zip.ps1 does not archive'); continue; }

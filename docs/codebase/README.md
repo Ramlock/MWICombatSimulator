@@ -8,6 +8,7 @@ Documents upstream `testing` at commit `95db2f6` of `https://github.com/shykai/M
 - `inputs.md`: every UI input, where it is read, how it reaches the engine.
 - `engine.md`: event queue, main loop, events, unit stat formulas, damage resolution, abilities, triggers, consumables, enrage, zones, labyrinth.
 - `buffs-and-modifiers.md`: every modifier source, its data file, reader and affected stats; the full house-room trace.
+- `talismans.md`: the talisman module: the `talismans` field, the modifier table, the one setup step (`applyTalismans`) and its two call sites.
 - `whatif-window.md`: the What-if window the local what-if runner serves: its files, the runner's interface, what it reads from a result, Apply; its "get the runner" state on a page with no runner.
 - `runner-zip.md`: the runner downloads: `WhatIfRunner.exe` for Windows (one file, a Node single executable application) and the zip for Linux (build scripts, pinned Node, the exe's entry and unpack folder, the release steps).
 - `results-and-profit.md`: what `SimResult` counts; drop, revenue, expense and profit arithmetic and its assumptions.

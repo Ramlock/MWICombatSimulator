@@ -66,7 +66,7 @@ export const TALISMAN_MODIFIERS = {
 };
 
 // How talisman power scales a grade value. ONE line, the only place the formula lives.
-const scaleByPower = (value, power) => value * (1 + power); // unverified: formula not known (power 0 = the raw grade value)
+const scaleByPower = (value, power) => value * (1 + power); // checked against the game's own combat stats at two talisman powers (power 0 = the raw grade value)
 
 // A player's talismans -> the engine effects of every line, in line order.
 // talismans: { power, lines: [{ modifier, grade }] }   power: the belt's Talisman Power as a fraction (0.2 = +20 %), default 0;

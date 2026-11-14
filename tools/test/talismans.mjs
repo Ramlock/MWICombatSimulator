@@ -57,7 +57,7 @@ check(same(eff[0], { modifier: 'armor', stat: 'armor', value: 4 }), 'effects: Ar
 check(same(eff.slice(1, 4).map((e) => e.stat), ['waterAmplify', 'natureAmplify', 'fireAmplify']) && eff.slice(1, 4).every((e) => e.value === 0.01), 'effects: Elemental Amplify G1 is +0.01 on all three elements');
 check(eff[4].stat === 'autoAttackDamage' && eff[4].value === 0.018, 'effects: Auto Attack Damage G2 is +0.018');
 check(same(T.talismanEffects({ lines: mock.lines }), eff) && same(T.talismanEffects({ power: 0, lines: mock.lines }), eff), 'effects: power defaults to 0, the raw grade value');
-check(T.talismanEffects({ power: 0.4, lines: [{ modifier: 'armor', grade: 3 }] })[0].value > 4, 'effects: a power above 0 raises the value (the formula itself is unverified)');
+check(Math.abs(T.talismanEffects({ power: 0.4, lines: [{ modifier: 'armor', grade: 3 }] })[0].value - 5.6) < 1e-9, 'effects: talisman power scales the grade value by (1 + power)');
 check(throws(() => T.talismanEffects({ lines: [{ modifier: 'nope', grade: 1 }] })), 'effects: an unknown modifier throws');
 for (const bad of [0, 7, 1.5, '3', null, undefined]) check(throws(() => T.talismanEffects({ lines: [{ modifier: 'armor', grade: bad }] })), `effects: grade ${JSON.stringify(bad)} throws`);
 check(same(T.talismanEffects({ lines: [{ modifier: 'fortify', grade: 4 }, { modifier: 'smite', grade: 1 }] }), []), 'effects: unique modifiers give no effect');
