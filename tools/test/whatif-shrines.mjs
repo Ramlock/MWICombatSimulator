@@ -103,14 +103,14 @@ check('shrines: a buff that cannot move is left out of the all-five row', cands(
 const after = applyOps([generic('Alpha', [], { guildCombatBuffLevels: { force: 3 } })], [{ op: 'shrine', player: 'Alpha', buff: FORCE, delta: 2 }]);
 check('shrines: the shrine op raises the level the import reads', guildLevels(after[0])[FORCE] === 5 && after[0].guildBuffs[FORCE] === 5);
 check('shrines: --shrine-steps and --shrine-cap parse, a bad value throws', JSON.stringify(S.parseSteps('1,cap')) === '[1,"cap"]' && S.parseCap('') === null && S.parseCap('3') === 3 && (() => { try { S.parseCap('-1'); return false; } catch { return true; } })());
-// The optimizer: every shrine row over budget at budget 0, with its split, under the shrine building level the request names.
+// The optimizer: every shrine row over budget at budget 0, with its split, under the guild's shrine level the request names.
 check('runner: shrineCap is passed as --shrine-cap', R.buildArgs({ setups: party, levers: ['shrines'], shrineCap: 2 }, tmp).join(' ').includes('--shrine-cap 2'));
 const sh = run('shrines', { levers: ['shrines'], shrineCap: 2 });
 check('optimizer, shrines lever: no throw', !sh.error, sh.error);
 if (sh.res) {
     const row = sh.res.overBudget.find((c) => c.id === 'Alpha:shrine:force+1');
     check('shrines: a shrine row over budget lands in overBudget with its split', row && near(row.cost, forceOne) && row.shrineSplit?.tokens === 400 && row.shrineSplit?.creditsTokens === 600 && row.costPath === 'guild shrine', JSON.stringify(row));
-    check('shrines: nothing past the shrine building level (2), and the result records it', ![...sh.res.overBudget, ...sh.res.candidateList].some((c) => / -> [3-9]/.test(c.desc) || / -> \d\d/.test(c.desc)) && sh.res.options.shrineCap === 2);
+    check('shrines: nothing past the guild shrine level (2), and the result records it', ![...sh.res.overBudget, ...sh.res.candidateList].some((c) => / -> [3-9]/.test(c.desc) || / -> \d\d/.test(c.desc)) && sh.res.options.shrineCap === 2);
 }
 // The window: the split in each language, the shrine name in the change, the request.
 const loc = (l) => JSON.parse(fs.readFileSync(path.join(root, 'locales', l, 'common.json'), 'utf8')).whatIf;
@@ -123,7 +123,7 @@ const html = panel.renderResult({ goal: 'profit', budgets: { Alpha: 0 }, setups:
 check('window: an over-budget shrine row shows its split', plain(html).includes('400 Guild Tokens required'));
 check('window: a shrine change names the shrine in the shown language', panel.localizeDesc('Alpha force 0 -> 1', panel.namesFrom({ guildShrineNames: { '/guild_shrines/force': '力量神龛' } }), ['Alpha']) === 'Alpha 力量神龛 0 -> 1');
 const body = (cap, levers) => panel.searchBody({ slots: [], goal: 'profit', budgets: {}, levers, shrineCap: cap });
-check('window: the shrine building level is sent only when typed and Shrines is ticked', body('2', ['shrines']).shrineCap === 2 && !('shrineCap' in body('', ['shrines'])) && !('shrineCap' in body('2', ['equip'])));
+check('window: the guild shrine level is sent only when typed and Shrines is ticked', body('2', ['shrines']).shrineCap === 2 && !('shrineCap' in body('', ['shrines'])) && !('shrineCap' in body('2', ['equip'])));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `${failed} failed` : 'all passed');

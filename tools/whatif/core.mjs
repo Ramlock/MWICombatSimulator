@@ -87,7 +87,7 @@ export async function main(settings, seams) {
     const setupsDir = settings.setupsDir, pricesFile = settings.pricesFile;
     const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
     const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS, 'shrines'];
-    const shrineOpts = { cap: parseShrineCap(arg('shrine-cap', null)), steps: parseShrineSteps(arg('shrine-steps', null)) }; // the shrine building's level (null = the game's maximum) and the jumps
+    const shrineOpts = { cap: parseShrineCap(arg('shrine-cap', null)), steps: parseShrineSteps(arg('shrine-steps', null)) }; // the guild's shrine level (null = the game's maximum) and the jumps
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
     // `pairs` is no longer a lever (the foods and drinks race tries whole combinations): an old command line or request that names it still runs, the name is ignored.
     // `consumables`, the one lever the foods and the drinks were before they were split, is read as both (an old command line, request or saved search).

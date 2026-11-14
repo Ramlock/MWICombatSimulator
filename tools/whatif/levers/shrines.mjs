@@ -2,7 +2,7 @@
 // optimizer's shape ({ id, kind, groups, player, monotone, desc, ops, cost: { cost, known, path, note, split } }), like houses.mjs.
 //
 // - Levels: guildBuffDetailMap.json, the combat buffs (isCombat). The level now is the setup's, read as the import reads it
-//   (guildLevels, src/guildLevels.mjs). The shrine building's level caps every buff: `cap` (--shrine-cap, empty = the game's
+//   (guildLevels, src/guildLevels.mjs). The guild's shrine level caps every buff: `cap` (--shrine-cap, empty = the game's
 //   maximum), never above the buff's own top level.
 // - Jumps: `steps` (--shrine-steps, a list, default 1,2,3,cap): each entry is a number of levels or `cap` (straight to the cap); a jump
 //   past the cap is not offered, and two entries reaching the same level give one candidate. The rows of one buff are alternatives
@@ -84,11 +84,11 @@ export function parseSteps(v, def = DEFAULT_STEPS) {
     if (!list.length || list.some((x) => x !== 'cap' && !(Number.isInteger(x) && x >= 1))) throw new Error('--shrine-steps: whole numbers of 1 or more, or cap (e.g. 1,2,cap)');
     return list;
 }
-// The building level: empty (null) = the game's maximum; else a whole number of 0 or more.
+// The guild's shrine level: empty (null) = the game's maximum; else a whole number of 0 or more.
 export function parseCap(v) {
     if (v === null || v === undefined || v === true || v === '') return null;
     const n = Number(v);
-    if (!(Number.isInteger(n) && n >= 0)) throw new Error('--shrine-cap: the shrine building level, a whole number of 0 or more (empty = the game\'s maximum)');
+    if (!(Number.isInteger(n) && n >= 0)) throw new Error('--shrine-cap: the guild shrine level, a whole number of 0 or more (empty = the game\'s maximum)');
     return n;
 }
 

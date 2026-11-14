@@ -19,7 +19,7 @@
 //                                --house-rooms, --house-up, --ability-steps, --book-levels; a cost that is only an
 //                                upper bound carries costBound: 'upper' in its row and prints as "≤"),
 //                                shrines (each combat guild shrine buff raised by --shrine-steps, default 1,2,3,cap, up to
-//                                --shrine-cap, the shrine building's level, empty = the game's maximum; per player also all
+//                                --shrine-cap, the guild's shrine level, empty = the game's maximum; per player also all
 //                                five +1 and all five up to the cap; cost in Coin from the price snapshot, the split in
 //                                shrineSplit; tools/whatif/levers/shrines.mjs); all
 //   --skill-up 2  --skill-left P1:stamina=300.5K,magic=1.2M;P2:...   experience left to the next level (levers/skills.mjs)

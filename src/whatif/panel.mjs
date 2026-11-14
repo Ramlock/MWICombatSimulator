@@ -23,7 +23,7 @@ export const LEVERS = [
     { id: 'order', def: true },
     { id: 'triggers', def: true },
     { id: 'houses', def: true },
-    { id: 'shrines', def: true }, // guild shrines, capped by the shrine building level field (shrineCap)
+    { id: 'shrines', def: true }, // guild shrines, capped by the guild's shrine level field (shrineCap)
 ];
 
 export const API = {
@@ -117,7 +117,7 @@ export function searchBody({ slots, goal, budgets, levers, zone, tier, marketpla
     if (exports && Object.keys(exports).length) body.export = exports;
     // The payback limit in days (0 = no limit): the runner passes it to the search as --max-payback.
     if (maxPayback !== undefined && maxPayback !== null && maxPayback !== '') body.maxPayback = Number(maxPayback);
-    // The shrine building level (the guild's, one for every buff), only with Shrines ticked; empty = the game's maximum (sent as nothing): --shrine-cap.
+    // The guild's shrine level (one for every buff), only with Shrines ticked; empty = the game's maximum (sent as nothing): --shrine-cap.
     if (shrineCap !== undefined && shrineCap !== null && shrineCap !== '' && (levers || []).includes('shrines')) body.shrineCap = Number(shrineCap);
     return body;
 }

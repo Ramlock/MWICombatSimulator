@@ -231,7 +231,7 @@
         "noPlayers": "Marque pelo menos um jogador para simular.",
         "badBudget": "O orçamento de {{player}} não é um número de moedas.",
         "badMaxPayback": "O limite de retorno não é um número de dias (0 para nenhum).",
-        "badShrineCap": "O nível do santuário não é um número inteiro (deixe vazio para o máximo do jogo).",
+        "badShrineCap": "O nível do santuário da guilda não é um número inteiro (deixe vazio para o máximo do jogo).",
         "shrine": {
             "split": "{{tokens}} Fichas de Guilda exigidas; Créditos de Guilda: {{coin}} Moedas em itens do mercado, ou {{alt}} Fichas de Guilda de sobra"
         },
