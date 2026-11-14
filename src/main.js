@@ -4148,25 +4148,22 @@ function whatIfKeptExport(name) {
     try { const text = localStorage.getItem(whatIfExportKey(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
-// Keeps one player's character export under the player's name (browser storage), then redraws the status and the two boxes.
-// The one function a paste and a party import both end in. `data`: the export object, or its text (a paste); a valid one replaces
-// the kept one (and empties `box`, the paste field, when given); a bad one is not kept (a pasted one stays in the box, and the
-// status says so).
-function whatIfKeepExport(name, data, box = null) {
-    const parsed = whatIfParseExport(typeof data === 'string' ? data : JSON.stringify(data));
+// Keeps one player's character export under the player's name (browser storage), then redraws the marks and the ticks that need it.
+// A party import ends here (whatIfKeepImportedExports). `data`: the export object; a valid one replaces the kept one, a bad one is not kept.
+function whatIfKeepExport(name, data) {
+    const parsed = whatIfParseExport(JSON.stringify(data));
     if (parsed.ok) {
-        try { localStorage.setItem(whatIfExportKey(name), JSON.stringify(parsed.data)); if (box) box.value = ''; } catch (e) { /* storage full or blocked: the status below says not kept */ }
+        try { localStorage.setItem(whatIfExportKey(name), JSON.stringify(parsed.data)); } catch (e) { /* storage full or blocked: the mark below says none */ }
     }
     whatIfShowExportStatus();
     whatIfApplyExportLevers();
 }
 
+// Each player's mark under the budget: where the owned items and abilities come from (that player's kept export).
 function whatIfShowExportStatus() {
-    const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
-    for (const box of document.querySelectorAll('#whatIfBudgets textarea')) {
-        const status = document.querySelector(`#whatIfBudgets [data-export-status="${CSS.escape(box.dataset.player)}"]`);
-        status.textContent = whatIfExportStatus({ kept: whatIfKeptExport(box.dataset.player), text: box.value }, levers, whatIfT);
-        status.title = status.textContent;
+    for (const mark of document.querySelectorAll('#whatIfBudgets [data-export-status]')) {
+        mark.textContent = whatIfExportStatus(whatIfKeptExport(mark.dataset.exportStatus), whatIfT);
+        mark.title = mark.textContent;
     }
 }
 
@@ -4188,8 +4185,10 @@ function whatIfMessage(text) {
     document.getElementById('whatIfMessage').textContent = text || '';
 }
 
-// A budget is a number of coin: parseNumber's reading, rounded to a whole coin; null when empty or not readable (the field is then marked invalid).
+// A budget is a number of coin: parseNumber's reading, rounded to a whole coin; an empty field is 0 (the search reads 0 as no limit);
+// null when not readable (the field is then marked invalid).
 function whatIfBudgetValue(input) {
+    if (input.value.trim() === '') return 0;
     const value = parseNumber(input.value);
     return value === null || Number.isNaN(value) ? null : Math.round(value);
 }
@@ -4200,12 +4199,11 @@ function whatIfMarkBudget(input) {
 function whatIfRenderSetup() {
     const budgets = document.getElementById('whatIfBudgets');
     const typed = Object.fromEntries([...budgets.querySelectorAll('input')].map((i) => [i.dataset.player, i.value]));
-    const pasted = Object.fromEntries([...budgets.querySelectorAll('textarea')].map((i) => [i.dataset.player, i.value]));
     budgets.replaceChildren();
     for (const slot of whatIfSlots(true)) {
-        // One row per player: name | budget | one-line paste field | status (one line, the whole text as its title).
+        // One cell per player, side by side: name, budget, the mark saying where owned items and abilities come from.
         const player = document.createElement('div');
-        player.className = 'whatif-prow';
+        player.className = 'whatif-pcell';
         const label = document.createElement('span');
         label.className = 'whatif-pname';
         label.textContent = slot.name;
@@ -4217,22 +4215,13 @@ function whatIfRenderSetup() {
         input.autocomplete = 'off';
         input.className = 'form-control form-control-sm';
         input.dataset.player = slot.name;
-        input.value = typed[slot.name] ?? '0';
+        input.value = typed[slot.name] ?? '';
+        input.placeholder = whatIfT('budgetPlaceholder');
         input.addEventListener('input', () => whatIfMarkBudget(input));
-        // The player's character export (optional): a paste field whose valid content is kept in the browser's storage
-        // under the player's name; the status beside it is rebuilt from the storage and the field.
-        const paste = document.createElement('textarea');
-        paste.className = 'form-control form-control-sm whatif-export';
-        paste.rows = 1;
-        paste.wrap = 'off';
-        paste.dataset.player = slot.name;
-        paste.placeholder = whatIfT('exportLabel');
-        paste.value = pasted[slot.name] ?? '';
-        paste.addEventListener('input', () => whatIfKeepExport(paste.dataset.player, paste.value, paste));
-        const status = document.createElement('div');
-        status.className = 'small whatif-dim whatif-pstatus';
+        const status = document.createElement('span');
+        status.className = 'whatif-chip whatif-pstatus';
         status.dataset.exportStatus = slot.name;
-        player.append(label, input, paste, status);
+        player.append(label, input, status);
         budgets.append(player);
     }
     whatIfShowExportStatus();
@@ -4253,10 +4242,17 @@ function whatIfRenderSetup() {
         const label = document.createElement('label');
         label.className = 'form-check-label';
         label.htmlFor = input.id;
+        // A short bold label; its sentence is the help mark's (hover and keyboard focus); a tick that is off for want of an export shows "needs export" (CSS, from data-off).
         const name = document.createElement('b');
         name.textContent = whatIfT('lever.' + lever.id + '.name');
-        label.append(name, ': ' + whatIfT('lever.' + lever.id + '.desc'));
-        row.append(input, label);
+        label.append(name);
+        const helpMark = document.createElement('span');
+        helpMark.className = 'whatif-help';
+        helpMark.tabIndex = 0;
+        helpMark.dataset.tip = whatIfT('lever.' + lever.id + '.desc');
+        helpMark.textContent = '?';
+        row.dataset.off = whatIfT('needsExport');
+        row.append(input, label, helpMark);
         levers.append(row);
     }
     whatIfApplyExportLevers(prevDisabled);
@@ -4293,16 +4289,43 @@ function whatIfShowResult(result, running = false) {
     whatIf.resultRunning = running;
     box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
     for (const id of open) {
-        const body = document.getElementById(id), toggle = box.querySelector(`[data-whatif-more~="${id}"]`);
+        const body = document.getElementById(id);
         if (body) body.hidden = false;
-        if (toggle) toggle.textContent = toggle.dataset.hide;
     }
+    whatIfSyncToggles(box);
     // The search rounds sit under the result but open and close with its "See details" toggle (data-whatif-more lists both ids); with no toggle
     // (no result yet) they show.
     const details = document.getElementById('whatIfDetails');
     document.getElementById('whatIfRounds').hidden = !!box.querySelector('[data-whatif-more~="whatIfRounds"]') && (!details || details.hidden);
     alignNumbers();
     whatIfShowDiff();
+    whatIfShowSetup();
+}
+
+// The setup and the result are separate areas: once a search runs or a result shows, the setup folds into one bar of chips (goal, zone and tier,
+// each player's budget, the payback limit, the ticked kinds of change), whose button opens it again.
+function whatIfShowSetup() {
+    const shown = !!(whatIf.result || whatIf.status);
+    document.getElementById('whatIfSetup').hidden = shown && !whatIf.setupOpen;
+    const bar = document.getElementById('whatIfSummary');
+    bar.hidden = !shown;
+    document.getElementById('buttonWhatIfEditSetup').textContent = whatIfT(whatIf.setupOpen ? 'hideSetup' : 'editSetup');
+    if (!shown) return;
+    const chip = (k, v) => { const c = document.createElement('span'), key = document.createElement('span'); c.className = 'whatif-chip'; key.className = 'whatif-chip-k'; key.textContent = k; c.append(key, ' ' + v); return c; };
+    const sel = (id) => document.getElementById(id).selectedOptions[0]?.textContent ?? '';
+    const pay = Number(document.getElementById('inputWhatIfMaxPayback').value);
+    document.getElementById('whatIfSummaryChips').replaceChildren(
+        // Goal and zone names come from the locale, not from the selects' text: on a language change this runs before the page relabels the selects.
+        chip(whatIfT('goalLabel'), whatIfT('goal.' + document.getElementById('selectWhatIfGoal').value)),
+        chip(whatIfT('zone'), i18next.t('actionNames.' + document.getElementById('selectWhatIfZone').value) + ' · ' + sel('selectWhatIfTier')),
+        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? formatNumber(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
+        chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('budgetPlaceholder')),
+        chip(whatIfT('levers'), [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => whatIfT('lever.' + i.value + '.name')).join(', ')));
+}
+
+// The help marks the page's own markup carries (data-whatif-tip = a locale key): their sentence, in the current language.
+function whatIfTips() {
+    for (const e of document.querySelectorAll('#whatIfModal [data-whatif-tip]')) e.dataset.tip = whatIfT(e.dataset.whatifTip);
 }
 
 // Where the page's setup differs from the one the search ran on.
@@ -4330,13 +4353,27 @@ function whatIfDrawProgress() {
     alignNumbers();
 }
 
+// The one state indicator in the window's title bar: idle, starting, searching, stopping, stopped (by you), done or error.
+function whatIfSetState(key) {
+    const chip = document.getElementById('whatIfState');
+    chip.dataset.state = key;
+    chip.textContent = whatIfT('stateChip.' + key);
+}
+
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
     whatIfDrawProgress();
+    // A Stop pressed shows at once ("Stopping...", disabled) and stays so until the runner reports the search is no longer running.
+    if (status.state !== 'running') whatIf.stopping = false;
+    const stopping = !!whatIf.stopping;
     const stop = document.getElementById('buttonWhatIfStop');
-    stop.disabled = !(status.state === 'running' || status.state === 'stopped');
-    stop.textContent = whatIfT(status.state === 'stopped' ? 'resume' : 'stop');
+    stop.disabled = stopping || !(status.state === 'running' || status.state === 'stopped');
+    stop.textContent = whatIfT(stopping ? 'stopping' : status.state === 'stopped' ? 'resume' : 'stop');
+    const start = document.getElementById('buttonWhatIfStart');
+    start.disabled = status.state === 'running';
+    start.textContent = whatIfT('start');
+    whatIfSetState(stopping ? 'stopping' : { running: 'searching', stopped: 'stopped', done: 'done', error: 'error' }[status.state] || 'idle');
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
@@ -4348,6 +4385,7 @@ function whatIfShowStatus(status) {
     else if (status.state === 'running' && whatIf.resultRunning === 'stopped') whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done') whatIfLoadList();
+    whatIfShowSetup();
 }
 
 function whatIfStopWatching() {
@@ -4370,6 +4408,15 @@ function whatIfWatch(id) {
     };
     poll();
     whatIf.timer = setInterval(poll, 1000);
+}
+
+// Every Show / Hide toggle in `box` says what a click on it would do now, from its first body (a left-out chip opens a list whose own
+// toggle names it too; the chips carry no Show / Hide text of their own).
+function whatIfSyncToggles(box) {
+    for (const toggle of box.querySelectorAll('[data-whatif-more][data-show]')) {
+        const first = document.getElementById(toggle.dataset.whatifMore.split(' ')[0]);
+        if (first) toggle.textContent = first.hidden ? toggle.dataset.show : toggle.dataset.hide;
+    }
 }
 
 async function whatIfStart() {
@@ -4396,22 +4443,30 @@ async function whatIfStart() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
+    const start = document.getElementById('buttonWhatIfStart');
+    start.disabled = true; start.textContent = whatIfT('starting'); whatIfSetState('starting');
+    const failed = (text) => { whatIfMessage(text); start.disabled = false; start.textContent = whatIfT('start'); whatIfSetState('idle'); };
     const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
-    if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
+    if (request.error) { failed(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
         const { ok, body: answer } = await whatIfRequest(WHATIF_API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (ok) whatIfWatch(answer.id);
         else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
-        else whatIfMessage(answer.error || whatIfT('runnerError'));
-    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+        else failed(answer.error || whatIfT('runnerError'));
+    } catch (err) { failed(whatIfT('runnerGone')); }
 }
 
 async function whatIfStopOrResume() {
     if (!whatIf.searchId) return;
     const resuming = whatIf.state === 'stopped';
+    // The press shows at once, before the runner answers.
+    const stop = document.getElementById('buttonWhatIfStop');
+    stop.disabled = true;
+    if (resuming) whatIfSetState('starting');
+    else { whatIf.stopping = true; stop.textContent = whatIfT('stopping'); whatIfSetState('stopping'); }
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { whatIfMessage(body.error || whatIfT('runnerError')); return; }
@@ -4476,8 +4531,9 @@ async function initWhatIf() {
     // Strings are read when the window opens: i18next may not be ready when this runs.
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
-        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
-    document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
+        if (!whatIf.timer && !document.getElementById('whatIfState').dataset.state) whatIfSetState('idle');
+        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); });
+    document.getElementById('buttonWhatIfEditSetup').addEventListener('click', () => { whatIf.setupOpen = !whatIf.setupOpen; whatIfShowSetup(); });
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
     document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
@@ -4502,10 +4558,10 @@ async function initWhatIf() {
             const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
             const hide = !bodies[0].hidden;
             for (const body of bodies) body.hidden = hide;
-            more.textContent = hide ? more.dataset.show : more.dataset.hide;
+            whatIfSyncToggles(event.currentTarget);
         }
     });
-    i18next.on('languageChanged', () => { whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
+    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
 }
 // #endregion
 
@@ -4687,23 +4743,20 @@ function groupFromPlayerBoxes() {
     return importMap;
 }
 
+// Returns the character exports the import carried (slot id -> export), from the all-players field or the per-player fields alike.
 function doGroupImport() {
     const value = document.getElementById("inputSetGroupCombatAll")?.value || "";
-    if (!value.trim()) {
-        importGroupSlots(groupFromPlayerBoxes());
-    } else {
-        // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots; they are not players.
-        const { slots: importMap, selected, fight, exports } = splitGroupImport(JSON.parse(value));
-        importGroupSlots(importMap);
-        const applied = applyGroupSelection(document, { selected, fight });
-        if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
-        return exports;
-    }
-    return {};
+    // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots in the all-players field; they are not players
+    // (the per-player fields carry neither, so nothing is applied for them).
+    const { slots: importMap, selected, fight, exports } = splitGroupImport(value.trim() ? JSON.parse(value) : groupFromPlayerBoxes());
+    importGroupSlots(importMap);
+    const applied = applyGroupSelection(document, { selected, fight });
+    if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
+    return exports;
 }
 
-// The own character's export an import carried (slot id -> export, from doGroupImport) goes to the What-if window's kept exports,
-// through the same function a paste ends in, under the name the window shows that player by (so after applySlotNames).
+// The character exports an import carried (slot id -> export, from doGroupImport: the all-players field or a per-player field) go to the What-if window's kept exports,
+// through whatIfKeepExport, under the name the window shows that player by (so after applySlotNames).
 function whatIfKeepImportedExports(exports) {
     const names = whatIfPlayerNames();
     for (const id of Object.keys(exports || {})) {

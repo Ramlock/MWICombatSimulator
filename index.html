@@ -43,6 +43,7 @@
         .whatif-rounds .whatif-table th.c-status { width: 16em; }
         .whatif-table.whatif-best-table td.chg { min-width: 7em; }
         .whatif-table td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 11em; }
+        .whatif-table td.wrap .whatif-chip { white-space: normal; }
         .whatif-table td.chg { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
         .whatif-each td.chg { width: 50em; }
         .whatif-table th { white-space: normal; vertical-align: bottom; }
@@ -72,30 +73,93 @@
         .whatif-col { display: flex; flex-direction: column; gap: var(--whatif-gap); }
         .whatif-sec { display: flex; flex-direction: column; gap: .25rem; }
         #whatIfLevers .form-check:last-child { margin-bottom: 0; }
-        #whatIfBudgets.whatif-sec { gap: .125rem; }
+        /* Budget per player: one cell per player in a single row (five fit), name over field over the export mark. */
+        #whatIfBudgets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .25rem .75rem; }
+        .whatif-pcell { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+        .whatif-pcell .whatif-pname { font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .whatif-pcell .whatif-chip { white-space: normal; align-self: flex-start; font-size: .75rem; }
         body.dark-mode #whatIfBudgets input.form-control.is-invalid { border-color: #dc3545; }
-        .whatif-prow { display: grid; grid-template-columns: 5.5rem 7rem minmax(0, 1fr) minmax(0, 1fr); gap: .5rem; align-items: center; height: 31px; }
-        .whatif-prow > * { min-width: 0; }
-        .whatif-prow .whatif-pname { font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .whatif-prow textarea.whatif-export { resize: none; overflow: hidden; white-space: nowrap; height: 31px; min-height: 0; }
-        .whatif-prow .whatif-pstatus { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         body.dark-mode .whatif-warn { color: #f0c060; }
         body.dark-mode .whatif-progress { background-color: #1e2125; border: 1px solid #6c757d; }
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
-        .whatif-part { display: grid; grid-template-columns: 1.5em minmax(10em, 24em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
-        .whatif-part-waiting, .whatif-part-skipped { opacity: 0.6; }
         .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
-        .whatif-no-bar { display: block; height: 8px; }
-        .whatif-part-race { grid-template-columns: 1.5em 1fr; }
-        .whatif-part-race .whatif-no-bar { display: none; }
         .whatif-part-race .whatif-part-label { white-space: normal; overflow: visible; text-overflow: clip; }
-        .whatif-part-race .whatif-part-text { white-space: normal; text-align: left; grid-column: 2; }
         .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .whatif-part-text { text-align: right; white-space: nowrap; }
         .whatif-part-done .progress-bar { background-color: #198754; }
         body.dark-mode .whatif-part-done .progress-bar { background-color: #2e9e5e; }
         .whatif-part-running .progress-bar { background-color: #3d8bfd; }
         .whatif-part-waiting .progress-bar, .whatif-part-halted .progress-bar { background-color: #6c757d; }
+        /* Restyle (mock): section headings, meaning colours, callouts, the state chip and the stage list. Dark only. */
+        #whatIfModal .whatif-h { font-weight: 600; font-size: .95rem; color: #e9ecef; border-bottom: 1px solid #495057; padding-bottom: .15rem; margin-top: .75rem; margin-bottom: .25rem; }
+        #whatIfModal .whatif-col > .whatif-sec > .whatif-h:first-child, #whatIfResult > .whatif-h:first-child { margin-top: 0; }
+        .whatif-intro { font-size: .95rem; }
+        .whatif-gain { color: #4cc38a; }
+        .whatif-loss { color: #ff6b6b; }
+        .whatif-pm { color: #8b949e; }
+        .whatif-callout { border-left: 3px solid #f0c060; background: rgba(240, 192, 96, .08); color: #f0c060; padding: .3rem .6rem; border-radius: .25rem; margin-bottom: .5rem; }
+        .whatif-callout-danger { border-left-color: #ff6b6b; background: rgba(255, 107, 107, .08); color: #ff8787; }
+        .whatif-context b { color: #dee2e6; font-weight: 500; }
+        #whatIfModal .whatif-confirm { width: auto; min-width: 36rem; }
+        body.dark-mode #whatIfModal .whatif-table > thead th { color: #adb5bd; font-weight: 600; border-bottom: 1px solid #6c757d; }
+        body.dark-mode #whatIfModal .whatif-confirm tr[data-confirm-row="party"] td { font-weight: 600; }
+        .whatif-details-line .whatif-fold { text-decoration: none; border: 1px solid #6c757d; border-radius: .25rem; padding: .1rem .6rem !important; color: #dee2e6; }
+        .whatif-state { font-size: .8rem; font-weight: 600; padding: .3em .7em; }
+        .whatif-state:empty { display: none; }
+        .whatif-state[data-state="idle"] { background: #495057; }
+        .whatif-state[data-state="starting"], .whatif-state[data-state="searching"] { background: #0d6efd; }
+        .whatif-state[data-state="stopping"] { background: #ffc107; color: #212529; }
+        .whatif-state[data-state="stopped"] { background: #fd7e14; color: #212529; }
+        .whatif-state[data-state="done"] { background: #198754; }
+        .whatif-state[data-state="error"] { background: #dc3545; }
+        .whatif-state[data-state="starting"]::before, .whatif-state[data-state="searching"]::before, .whatif-state[data-state="stopping"]::before { content: ""; display: inline-block; width: .6em; height: .6em; margin-right: .45em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: whatif-spin .8s linear infinite; vertical-align: -.05em; }
+        @keyframes whatif-spin { to { transform: rotate(360deg); } }
+        .whatif-part-done .whatif-part-mark { color: #4cc38a; }
+        /* Layout pass (mock): chips, help marks, labelled figures, the stage table, the setup summary bar. */
+        #whatIfModal .whatif-title { font-weight: 600; font-size: 1.05rem; color: #f8f9fa; }
+        #whatIfModal .whatif-h { font-size: 1.05rem; }
+        .whatif-chips { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+        .whatif-h.whatif-chips { gap: .5rem; }
+        .whatif-chip { display: inline-flex; align-items: center; gap: .3em; padding: .05rem .55rem; border-radius: 1rem; background: #343a40; border: 1px solid #495057; color: #dee2e6; font-size: .8rem; font-weight: 500; line-height: 1.45; white-space: nowrap; }
+        .whatif-chip-k { color: #9aa4ae; font-weight: 400; }
+        button.whatif-chip { cursor: pointer; } button.whatif-chip:hover { border-color: #adb5bd; }
+        .whatif-chip-warn { background: rgba(240, 192, 96, .12); border-color: #b07800; color: #f0c060; }
+        .whatif-chip-n { background: #495057; margin-left: .4rem; font-variant-numeric: tabular-nums; }
+        .whatif-st-done { background: rgba(46, 158, 94, .18); border-color: #2e9e5e; color: #7bd3a4; }
+        .whatif-st-running { background: rgba(61, 139, 253, .2); border-color: #3d8bfd; color: #9ec5fe; }
+        .whatif-st-halted { background: rgba(253, 126, 20, .18); border-color: #fd7e14; color: #ffb070; }
+        .whatif-st-waiting, .whatif-st-skipped { color: #8b949e; }
+        .whatif-help { display: inline-flex; align-items: center; justify-content: center; width: 1.15em; height: 1.15em; border-radius: 50%; border: 1px solid #6c757d; color: #adb5bd; font-size: .72rem; font-weight: 600; cursor: help; position: relative; margin-left: .35em; vertical-align: .1em; }
+        .whatif-help:hover, .whatif-help:focus { border-color: #9ec5fe; color: #9ec5fe; outline: none; }
+        .whatif-help:hover::after, .whatif-help:focus::after { content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); width: max-content; max-width: 26rem; white-space: normal; background: #1e2125; color: #e9ecef; border: 1px solid #6c757d; border-radius: .3rem; padding: .4rem .6rem; font-weight: 400; font-size: .85rem; line-height: 1.35; z-index: 30; text-align: left; box-shadow: 0 4px 14px rgba(0, 0, 0, .6); }
+        th.num .whatif-help:hover::after, th.num .whatif-help:focus::after { left: auto; right: 0; }
+        .whatif-fig { font-size: .85rem; margin-left: 1.25rem; white-space: nowrap; }
+        .whatif-fig-k { color: #9aa4ae; } .whatif-fig-v { font-variant-numeric: tabular-nums; font-weight: 600; color: #f8f9fa; }
+        .whatif-parts-head { display: flex; align-items: baseline; flex-wrap: wrap; row-gap: .25rem; margin-bottom: .35rem; }
+        .whatif-from { color: #9aa4ae; } .whatif-arrow { color: #6c757d; margin: 0 .25em; } .whatif-to { font-weight: 600; }
+        .whatif-summary { display: flex; align-items: center; gap: .75rem; padding: .45rem .6rem; background: #2b3035; border: 1px solid #495057; border-radius: .4rem; }
+        .whatif-summary .whatif-chips { flex: 1; }
+        /* display: flex here, not Bootstrap's d-flex: its !important would beat the "get the runner" rule above and show the toolbar with no runner. */
+        .whatif-toolbar { display: flex; padding-bottom: .5rem; border-bottom: 1px solid #495057; }
+        #whatIfLevers { display: grid; grid-template-columns: repeat(4, max-content); gap: .3rem 1.75rem; }
+        #whatIfLevers .form-check { display: flex; align-items: center; }
+        #whatIfLevers .form-check-input { margin-right: .4rem; }
+        #whatIfLevers .form-check:has(input:disabled)::after { content: attr(data-off); margin-left: .4rem; font-size: .72rem; padding: 0 .5rem; border-radius: 1rem; background: #343a40; border: 1px solid #495057; color: #adb5bd; white-space: nowrap; }
+        .whatif-parts-table { width: auto; min-width: 64rem; margin-bottom: 0; }
+        .whatif-parts-table tr.whatif-part { display: table-row; }
+        .whatif-parts-table td.whatif-part-mark { width: 1.75em; text-align: center; }
+        .whatif-parts-table tr.whatif-part-running > td { background: rgba(61, 139, 253, .13) !important; }
+        .whatif-parts-table tr.whatif-part-running > td:first-child { box-shadow: inset 3px 0 0 #3d8bfd; }
+        .whatif-parts-table tr.whatif-part-waiting, .whatif-parts-table tr.whatif-part-skipped { opacity: .5; }
+        .whatif-parts-table td.whatif-part-btns { white-space: nowrap; }
+        .whatif-pending::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-right: .4em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: whatif-spin .8s linear infinite; vertical-align: -.05em; }
+        .whatif-stage-done.whatif-pending:disabled { opacity: 1; color: #f0c060; border-color: #b07800; }
+        body.dark-mode #whatIfModal .whatif-table > thead th { background: #2b3035; }
+        body.dark-mode #whatIfModal .whatif-table > tbody > tr:nth-child(even) > td { background-color: rgba(255, 255, 255, .03); }
+        #whatIfModal .whatif-table td.num, .whatif-fig-v { font-variant-numeric: tabular-nums; }
+        #whatIfModal .whatif-best .whatif-best-table, #whatIfModal .whatif-rounds .whatif-table { margin-bottom: .75rem; }
+        .whatif-parts-table tr.whatif-part-running .whatif-part-mark { color: #6ea8fe; }
+        .whatif-part-halted .whatif-part-mark { color: #fd7e14; }
+        .whatif-part-done .whatif-part-label { color: #ced4da; }
         body.dark-mode .whatif-table { color: #f0f0f0; --bs-table-color: #f0f0f0; --bs-table-bg: transparent; border-color: #666; }
 
         body.dark-mode #expensesTable,
@@ -1808,6 +1872,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" data-i18n="common:whatIf.title">What-if</h5>
+                    <span id="whatIfState" class="badge ms-3 whatif-state" role="status" aria-live="polite"></span>
                     <span id="whatIfVersion" class="small ms-3 me-auto whatif-dim"></span>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
@@ -1833,7 +1898,9 @@
                             <p data-i18n="common:whatIf.get.linuxReport">Tell us what happened at each step: the exact error, your distribution and your Node version.</p>
                         </div>
                     </div>
-                    <div class="row">
+                    <div class="whatif-intro text-secondary" data-i18n="common:whatIf.intro">Tries setup changes; weighs each gain against its market cost.</div>
+                    <div id="whatIfSummary" class="whatif-summary" hidden><div id="whatIfSummaryChips" class="whatif-chips"></div><button type="button" class="btn btn-outline-secondary btn-sm" id="buttonWhatIfEditSetup" data-i18n="common:whatIf.editSetup">Edit setup</button></div>
+                    <div class="row" id="whatIfSetup">
                         <div class="col-md-5 whatif-col">
                             <div class="row g-1">
                                 <label for="selectWhatIfGoal" class="col-3 col-form-label col-form-label-sm" data-i18n="common:whatIf.goalLabel">Goal</label>
@@ -1845,43 +1912,38 @@
                                 </div>
                             </div>
                             <div class="whatif-sec">
-                                <div class="fw-bold" data-i18n="common:whatIf.players">Players</div>
+                                <div class="whatif-h"><span data-i18n="common:whatIf.players">Players</span><span class="whatif-help" tabindex="0" data-whatif-tip="choicesNote">?</span></div>
                                 <div id="whatIfPlayers"></div>
                             </div>
-                            <div class="whatif-sec">
-                                <div class="row g-1">
-                                    <label for="selectWhatIfZone" class="col-3 col-form-label col-form-label-sm" data-i18n="common:whatIf.zone">Zone</label>
-                                    <div class="col-9"><select id="selectWhatIfZone" class="form-select form-select-sm"></select></div>
-                                </div>
-                                <div class="row g-1">
-                                    <label for="selectWhatIfTier" class="col-3 col-form-label col-form-label-sm" data-i18n="common:whatIf.tier">Tier</label>
-                                    <div class="col-9"><select id="selectWhatIfTier" class="form-select form-select-sm"></select></div>
-                                </div>
-                                <div class="small whatif-dim" data-i18n="common:whatIf.choicesNote">Copied from the page when this window opens; changes here affect only this search.</div>
-                            </div>
-                            <div class="whatif-sec">
-                                <div class="fw-bold" data-i18n="common:whatIf.budgets">Budget per player (coin)</div>
-                                <div id="whatIfBudgets" class="whatif-sec"></div>
+                            <div class="row gx-2">
+                                <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfZone" class="input-group-text" data-i18n="common:whatIf.zone">Zone</label><select id="selectWhatIfZone" class="form-select form-select-sm"></select></div></div>
+                                <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfTier" class="input-group-text" data-i18n="common:whatIf.tier">Tier</label><select id="selectWhatIfTier" class="form-select form-select-sm"></select></div></div>
                             </div>
                         </div>
-                        <div class="col-md-7">
-                            <div class="fw-bold" data-i18n="common:whatIf.levers">What to search</div>
-                            <div id="whatIfLevers"></div>
-                            <div class="whatif-sec mt-2">
+                        <div class="col-md-7 whatif-col">
+                            <div class="whatif-sec">
+                                <div class="whatif-h" data-i18n="common:whatIf.levers">What to search</div>
+                                <div id="whatIfLevers"></div>
+                            </div>
+                            <div class="whatif-sec">
                                 <div class="row g-1">
                                     <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days, 0 = no limit)</label>
-                                    <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="365" class="form-control form-control-sm"></div>
+                                    <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="0" class="form-control form-control-sm"></div>
                                 </div>
                             </div>
-                            <div class="d-flex flex-wrap gap-2 align-items-center mt-2" id="whatIfStartRow">
+                            <div class="whatif-sec">
+                                <div class="whatif-h" data-i18n="common:whatIf.budgets">Budget per player (coin, empty or 0 = no limit)</div>
+                                <div id="whatIfBudgets"></div>
+                            </div>
+                        </div>
+                    </div>
+                            <div class="flex-wrap gap-2 align-items-center whatif-toolbar" id="whatIfStartRow">
                                 <button type="button" class="btn btn-primary btn-sm" id="buttonWhatIfStart" data-i18n="common:whatIf.start">Start search</button>
-                                <button type="button" class="btn btn-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
                                 <span class="ms-3" data-i18n="common:whatIf.earlier">Earlier searches</span>
                                 <select id="selectWhatIfResult" class="form-select form-select-sm" style="width: auto;"></select>
                                 <button type="button" class="btn btn-secondary btn-sm" id="buttonWhatIfLoad" data-i18n="common:whatIf.load">Show</button>
                             </div>
-                        </div>
-                    </div>
                     <div id="whatIfProgress"></div>
                     <div id="whatIfMessage" class="whatif-warn"></div>
                     <div id="whatIfDiff"></div>

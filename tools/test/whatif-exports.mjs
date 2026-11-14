@@ -39,20 +39,18 @@ check('request: no exports, no export field', !('export' in panel.searchBody({ s
 check('request: the export map rides along as sent', JSON.stringify(panel.searchBody({ slots, goal: 'profit', budgets: {}, levers: [], exports: { Alpha: exA } }).export) === JSON.stringify({ Alpha: exA }));
 check('paste: an object with an inventory or learned abilities is a character export', panel.parseExport(JSON.stringify(exA)).ok && panel.parseExport('{"learnedAbilities":[]}').ok && panel.parseExport('{"inventory":[]}').ok);
 check('paste: anything else is not', ['', 'hello', '[]', '{}', '{"name":"x"}', '{"inventory":3}', 'null', '5'].every((x) => !panel.parseExport(x).ok));
-check('status: kept shows the export\'s own name', panel.exportStatus({ kept: exA, text: '' }, ['owned'], t) === 'kept (Alpha)');
-check('status: none names the ticked levers that need it, in the window\'s names', panel.exportStatus({ kept: null, text: '' }, ['equip', 'owned', 'books', 'abilitylevels'], t) === 'no export: skipped by Items you own');
-check('status: none with no such lever ticked has nothing extra', panel.exportStatus({ kept: null, text: '' }, ['equip', 'abilitylevels'], t) === 'no export');
-check('status: a bad paste says so, even over a kept export', panel.exportStatus({ kept: exA, text: 'nope' }, [], t) === 'not a character export: not kept');
+check('status: a kept export reads that items and abilities come from the Tracker import', panel.exportStatus(exA, t) === 'items and abilities: Tracker import');
+check('status: no kept export reads none, with nothing extra', panel.exportStatus(null, t) === 'items and abilities: none');
 check('status: one key per player name', panel.exportKey('Alpha') !== panel.exportKey('Beta') && panel.exportKey('Alpha').includes('Alpha'));
 const skipped = [{ lever: 'owned', players: ['Beta'] }, { lever: 'books', players: ['Beta', 'Gamma'] }];
 const base = { goal: 'profit', budgets: {}, steps: [], singles: [], skippedNoExport: skipped };
 const dom = (l, r = base) => panel.renderResult(r, tFor(l), Date.now(), {});
 const en = dom('en');
-check('result line: players counted once, lever names as the window shows them, closed behind Show / Hide', en.includes('<span class="fw-bold">2 players skipped by Items you own, New abilities</span>') && /<ul class="small whatif-more" id="whatIfSkippedNoExport" hidden>/.test(en) && en.includes('data-whatif-more="whatIfSkippedNoExport" data-show="Show" data-hide="Hide">Show</button>'), en.slice(en.indexOf('skipped by') - 60, en.indexOf('skipped by') + 300));
-check('result line: the open list is one row per lever with its players', en.includes('<li>Items you own: Beta</li>') && en.includes('<li>New abilities: Beta, Gamma</li>'));
+check('result line: players counted once, lever names as the window shows them, closed behind Show / Hide', en.includes('<span class="fw-bold">Players skipped</span>') && en.includes('data-tip="2 players skipped by Items you own, New abilities"') && /<table[^>]*id="whatIfSkippedNoExport" hidden>/.test(en) && en.includes('data-whatif-more="whatIfSkippedNoExport" data-show="Show" data-hide="Hide">Show</button>'), en.slice(en.indexOf('skipped by') - 60, en.indexOf('skipped by') + 300));
+check('result line: the open list is one row per lever with its players', en.includes('<tr><td><span class="whatif-chip">Items you own</span></td><td><span class="whatif-chip">Beta</span></td></tr>') && en.includes('<tr><td><span class="whatif-chip">New abilities</span></td><td><span class="whatif-chip">Beta</span> <span class="whatif-chip">Gamma</span></td></tr>'));
 check('result line: nothing when absent or empty', !dom('en', { ...base, skippedNoExport: undefined }).includes('whatIfSkippedNoExport') && !dom('en', { ...base, skippedNoExport: [] }).includes('whatIfSkippedNoExport'));
 check('result line: in pt the line and the lever names follow the language', dom('pt').includes(locales.pt.result.skippedNoExport.replace('{{n}}', '2').replace('{{levers}}', locales.pt.lever.owned.name + ', ' + locales.pt.lever.books.name)));
-check('strings exist in en, pt and zh', ['exportLabel', 'exportKept', 'exportNone', 'exportNoneBare', 'exportBad', 'result.skippedNoExport'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof lookup(locales[l], k) === 'string' && lookup(locales[l], k) !== '')) && ['pt', 'zh'].every((l) => locales[l].exportKept !== locales.en.exportKept));
+check('strings exist in en, pt and zh', ['exportFromTracker', 'exportFromNone', 'exportLeverOff', 'result.skippedNoExport'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof lookup(locales[l], k) === 'string' && lookup(locales[l], k) !== '')) && ['pt', 'zh'].every((l) => locales[l].exportFromTracker !== locales.en.exportFromTracker && locales[l].exportFromNone !== locales.en.exportFromNone));
 
 // ---- (2) The runner ----
 const mk = (n) => { const d = path.join(tmp, n); fs.mkdirSync(d, { recursive: true }); return d; };
@@ -69,7 +67,7 @@ check('runner: an export that is not an object is refused', ['x', 5, [1]].every(
 if (process.argv.includes('--skip-optimizer')) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} console.log(failed ? `${failed} failed (optimizer parts skipped)` : 'all passed (optimizer parts skipped)'); process.exit(failed ? 1 : 0); }
 const run = (name, body) => {
     const d = mk(name);
-    const a = R.buildArgs({ setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, prices: 'marketplace-2026-11-03.json' }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 },
+    const a = R.buildArgs({ setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, prices: 'marketplace-2026-11-03.json' }, goal: 'profit', budgets: { Alpha: 1, Beta: 1 },
         levers: ['owned', 'abilities', 'books', 'abilitylevels'], unitHours: 1, confirmHours: 1, maxRounds: 3, lockRule: 'reading', readingStep: 8, swaps: false, z: 0, jobs: 2, ...body }, d).filter((x) => x !== '--low-priority');
     let out = '';
     try { out = execFileSync(process.execPath, [path.join(root, 'tools/whatif/optimize.mjs'), ...a], { encoding: 'utf8', timeout: 600000, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return { error: String(e.stderr || e.message).slice(0, 400) }; }
@@ -83,7 +81,7 @@ if (mapRun.res) {
     check('map: Beta is skipped by owned, abilities and books; Alpha by none', group(r, 'owned') === 'Beta' && group(r, 'abilities') === 'Beta' && group(r, 'books') === 'Beta' && r.skippedNoExport.every((g) => !g.players.includes('Alpha')), JSON.stringify(r.skippedNoExport));
     check('map: ability levels never skip (their upper-bound rows stay)', !r.skippedNoExport.some((g) => g.lever === 'abilitylevels'));
     check('map: the levers ran for Alpha (an owned candidate) and none for Beta', r.candidateList.some((c) => c.id.startsWith('Alpha:') && c.id.includes('=own:')) && !r.candidateList.some((c) => c.id.startsWith('Beta:') && c.id.includes('=own:')), JSON.stringify(r.candidateList.map((c) => c.id)));
-    check('map: the budgets come from --budgets', JSON.stringify(r.budgets) === JSON.stringify({ Alpha: 0, Beta: 0 }) && /per player/.test(r.budgetSource), r.budgetSource);
+    check('map: the budgets come from --budgets', JSON.stringify(r.budgets) === JSON.stringify({ Alpha: 1, Beta: 1 }) && /per player/.test(r.budgetSource), r.budgetSource);
 }
 const noneRun = run('opt-none', {});
 check('optimizer, no export at all: no throw', !noneRun.error, noneRun.error);
