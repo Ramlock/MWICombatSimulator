@@ -140,6 +140,15 @@
     "copyToClipboard": "Copiar para a área de transferência",
     "none": "Nenhum",
     "whatIf": {
+        "trig": {
+            "trigger": "gatilho",
+            "always": "sempre",
+            "and": "E",
+            "then": "depois",
+            "gameDefault": "padrão do jogo ({{x}})",
+            "drop": "remover {{x}}",
+            "add": "adicionar {{x}}"
+        },
         "button": "E se",
         "title": "E se",
         "get": {

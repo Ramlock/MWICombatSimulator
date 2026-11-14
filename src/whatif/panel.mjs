@@ -3,6 +3,7 @@
 // progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
+import { EN as TRIG_EN, readChange, readList, changeWords, listWords } from './trigger-words.mjs';
 import { applyOps } from './applyOps.mjs';
 import { numberHtml, formatNumber, unitOf } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
@@ -461,7 +462,13 @@ export function namesFrom(current, english = current, words = {}) {
 }
 
 const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames', 'guildShrineNames'];
-const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames'];
+const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames', 'combatTriggerComparatorNames'];
+// A trigger change in the page's language: the runner's text read back (trigger-words.mjs readChange) and worded with the window's strings
+// (names.words.trig) and the game's names; null when the text is not one (an older or a hand-written text, then shown with its ids swapped).
+const TRIG_TABLE = { dep: 'combatTriggerDependencyNames', cond: 'combatTriggerConditionNames', cmp: 'combatTriggerComparatorNames' };
+const trigNames = (names) => (kind, slug) => names.get(TRIG_TABLE[kind], slug);
+const trigWords = (names) => ({ ...TRIG_EN, ...(names.words?.trig || {}) });
+const changeShown = (text, names) => { const c = readChange(text); return c && changeWords(c, trigWords(names), trigNames(names)); };
 const SLUG = /(?<![A-Za-z0-9_])[a-z][a-z0-9_]*(?![A-Za-z0-9_])/g;
 const swap = (text, tables, names) => text.replace(SLUG, (id) => {
     for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
@@ -481,7 +488,13 @@ export function localizeDesc(desc, names, players = [], dropPlayer = null) {
     const room = names.rooms.find(([en]) => rest.startsWith(en + ' '));
     if (room) return head + room[1] + rest.slice(room[0].length);
     const at = rest.indexOf(' trigger: ');
-    if (at >= 0) return head + swap(rest.slice(0, at), ITEMS_ETC, names) + ' trigger: ' + swap(rest.slice(at + ' trigger: '.length), TRIGGER_TERMS, names);
+    // Two trigger changes of one owner in a row ("<change>; then <player> <owner> trigger: <change>"): each part is worded alone.
+    const then = rest.indexOf(`; ${TRIG_EN.then} `);
+    if (at >= 0 && then > at) return localizeDesc(text.slice(0, skip + then), names, players, dropPlayer) + `; ${trigWords(names).then} ` + localizeDesc(rest.slice(then + TRIG_EN.then.length + 3), names, players, dropPlayer);
+    if (at >= 0) {
+        const change = rest.slice(at + ' trigger: '.length);
+        return head + swap(rest.slice(0, at), ITEMS_ETC, names) + ' ' + trigWords(names).trigger + ': ' + (changeShown(change, names) ?? swap(change, TRIGGER_TERMS, names));
+    }
     return head + swap(rest, ITEMS_ETC, names);
 }
 
@@ -563,7 +576,8 @@ const slugOf = (hrid) => String(hrid).split('/').pop();
 // An item's shown name (the page's own, else its id) and, for a food with a trigger, the readable text of the trigger in parentheses.
 const itemLabel = (x, names) => {
     const name = names?.get('itemNames', slugOf(x.item)) ?? slugOf(x.item);
-    return esc(name) + (x.trigger ? ' (' + esc(names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
+    const list = names && x.trigger ? readList(String(x.trigger)) : null;
+    return esc(name) + (x.trigger ? ' (' + esc(list ? listWords(list, trigWords(names), trigNames(names)) : names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
 };
 // A slot the change leaves alone shows what the player has there now, greyed (an item flagged `same`); a slot empty now and staying empty says
 // "empty" greyed. The one place these two are written, for the rounds, Best foods and Best drinks tables.

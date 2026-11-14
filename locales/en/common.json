@@ -140,6 +140,15 @@
     "copyToClipboard": "Copy to clipboard",
     "none": "None",
     "whatIf": {
+        "trig": {
+            "trigger": "trigger",
+            "always": "always",
+            "and": "AND",
+            "then": "then",
+            "gameDefault": "game default ({{x}})",
+            "drop": "drop {{x}}",
+            "add": "add {{x}}"
+        },
         "button": "What-if",
         "title": "What-if",
         "get": {

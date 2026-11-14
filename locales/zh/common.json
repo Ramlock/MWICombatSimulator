@@ -139,6 +139,15 @@
     "copyToClipboard": "复制到剪贴板",
     "none": "无",
     "whatIf": {
+        "trig": {
+            "trigger": "触发条件",
+            "always": "始终",
+            "and": "且",
+            "then": "然后",
+            "gameDefault": "游戏默认（{{x}}）",
+            "drop": "删除 {{x}}",
+            "add": "添加 {{x}}"
+        },
         "button": "假设分析",
         "title": "假设分析",
         "get": {

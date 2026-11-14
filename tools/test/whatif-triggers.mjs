@@ -144,5 +144,10 @@ check(T.effectiveTriggers({ triggerMap: {} }, '/items/star_fruit_gummy')[0].cond
     check(T.joinTriggerDesc(a, other) === a + '; then ' + other, 'texts that do not chain keep both, joined with "then"');
 }
 
+{   // Every runner text of a trigger change is the one wording (src/whatif/trigger-words.mjs) and reads back as a change, so the window can word it.
+    const W = await import(pathToFileURL(path.join(root, 'src/whatif/trigger-words.mjs')).href);
+    const all = [...c, ...addmp, ...only];
+    check(all.length > 5 && all.every((x) => { const ch = W.readChange(x.desc.slice(x.desc.indexOf(' trigger: ') + 10)); return ch && W.changeWords(ch) === x.desc.slice(x.desc.indexOf(' trigger: ') + 10); }), 'every trigger candidate text reads back as a change and words back to the same text');
+}
 console.log(fails ? `${fails} failed` : 'all passed');
 process.exit(fails ? 1 : 0);

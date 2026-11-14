@@ -593,8 +593,8 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 // Game names in the descriptions (generic fixtures; the real game bundles of js/i18n.js, run as locale-coverage.mjs does).
 {
     const context = { document: { addEventListener() {} } };
-    vm.runInNewContext(read('js/i18n.js') + '\n;globalThis.__bundles = { en: Wa.en.translation, pt: Pa };', context);
-    const { en, pt } = context.__bundles;
+    vm.runInNewContext(read('js/i18n.js') + '\n;globalThis.__bundles = { en: Wa.en.translation, pt: Pa, zh: Wa.zh.translation };', context);
+    const { en, pt, zh } = context.__bundles;
     const N = { en: panel.namesFrom(en, en), pt: panel.namesFrom(pt, en) };
     const players = ['Alpha', 'Beta'];
     const L = (lng, desc, p = players) => panel.localizeDesc(desc, N[lng], p);
@@ -619,7 +619,26 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('names: a trigger desc reads its owner as an item or ability and its terms as dependency and condition (a condition id can also be an ability id)',
         L('en', trig) === `Alpha Poke trigger: ${en.combatTriggerDependencyNames['/combat_trigger_dependencies/self']} ${en.combatTriggerConditionNames['/combat_trigger_conditions/puncture']} >= 1 AND ${en.combatTriggerDependencyNames['/combat_trigger_dependencies/targeted_enemy']} ${en.combatTriggerConditionNames['/combat_trigger_conditions/current_hp']} <= 50` &&
         en.combatTriggerConditionNames['/combat_trigger_conditions/puncture'] !== en.abilityNames['/abilities/puncture'], L('en', trig));
-    check('names: the runner\'s own trigger words stay (drop, game default, always)', L('en', 'Alpha poke trigger: drop self puncture >= 1').includes('trigger: drop ') && L('en', 'Alpha poke trigger: game default (always)') === 'Alpha Poke trigger: game default (always)');
+    check('names: with no window strings a trigger change keeps the runner\'s English words (drop, game default, always)', L('en', 'Alpha poke trigger: drop self puncture >= 1').includes('trigger: drop ') && L('en', 'Alpha poke trigger: game default (always)') === 'Alpha Poke trigger: game default (always)');
+    {   // A trigger change reads whole in the page's language: our words from the locale files (whatIf.trig), the game's from js/i18n.js.
+        const words = (lng) => { const w = JSON.parse(read(`locales/${lng}/common.json`)).whatIf.trig; return Object.fromEntries(Object.entries(w).map(([k, v]) => [k, v.replace('{{x}}', '{x}')])); };
+        const W = { pt: panel.namesFrom(pt, en, { trig: words('pt') }), zh: panel.namesFrom(zh, en, { trig: words('zh') }), en: panel.namesFrom(en, en, { trig: words('en') }) };
+        const T = (lng, d) => panel.localizeDesc(d, W[lng], players, 'Alpha');
+        const g = (b, table, id) => b[table][id];
+        const self = (b) => g(b, 'combatTriggerDependencyNames', '/combat_trigger_dependencies/self'), hp = (b) => g(b, 'combatTriggerConditionNames', '/combat_trigger_conditions/current_hp');
+        const poke = (b) => g(b, 'abilityNames', '/abilities/poke'), active = (b) => g(b, 'combatTriggerComparatorNames', '/combat_trigger_comparators/is_active');
+        const cases = {
+            'Alpha poke trigger: game default (always)': { pt: `${poke(pt)} gatilho: padrão do jogo (sempre)`, zh: `${poke(zh)} 触发条件: 游戏默认（始终）` },
+            'Alpha poke trigger: drop self current_hp <= 60': { pt: `${poke(pt)} gatilho: remover ${self(pt)} ${hp(pt)} <= 60`, zh: `${poke(zh)} 触发条件: 删除 ${self(zh)} ${hp(zh)} <= 60` },
+            'Alpha poke trigger: add self current_hp >= 5': { pt: `${poke(pt)} gatilho: adicionar ${self(pt)} ${hp(pt)} >= 5`, zh: `${poke(zh)} 触发条件: 添加 ${self(zh)} ${hp(zh)} >= 5` },
+            'Alpha poke trigger: self current_hp <= 60 -> >= 40': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 -> >= 40`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 -> >= 40` },
+            'Alpha poke trigger: self current_hp <= 60 AND self puncture is_active': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 E ${self(pt)} ${g(pt, 'combatTriggerConditionNames', '/combat_trigger_conditions/puncture')} ${active(pt)}`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 且 ${self(zh)} ${g(zh, 'combatTriggerConditionNames', '/combat_trigger_conditions/puncture')} ${active(zh)}` },
+            'Alpha poke trigger: self current_hp <= 60 -> 40; then Alpha poke trigger: drop self current_hp <= 40': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 -> 40; depois ${poke(pt)} gatilho: remover ${self(pt)} ${hp(pt)} <= 40`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 -> 40; 然后 ${poke(zh)} 触发条件: 删除 ${self(zh)} ${hp(zh)} <= 40` },
+        };
+        for (const [d, want] of Object.entries(cases)) for (const lng of ['pt', 'zh']) check(`trigger change in ${lng}: "${d.slice(19)}" reads whole in ${lng}`, T(lng, d) === want[lng], T(lng, d));
+        check('trigger change in en: the window\'s English words give the runner\'s own sentence, game words named', T('en', 'Alpha poke trigger: game default (always)') === `${poke(en)} trigger: game default (always)`, T('en', 'Alpha poke trigger: game default (always)'));
+        check('trigger change: a text that is not a change (an older or hand-written one) shows as it is, ids named', T('zh', 'Alpha poke trigger: something else') === `${poke(zh)} 触发条件: something else`, T('zh', 'Alpha poke trigger: something else'));
+    }
     check('names: an id with no name stays as it is', L('en', 'Alpha feet not_a_real_item_x +1 -> +2') === `Alpha ${en.equipmentTypeNames['/equipment_types/feet']} not_a_real_item_x +1 -> +2`);
     check('names: the player name is never touched, even when it is an id', L('en', 'poke poke 5 -> 6', ['poke']) === 'poke Poke 5 -> 6');
     check('names: without a name source the desc stays as it came', panel.localizeDesc(boots, null, players) === boots && panel.localizeDesc(undefined, N.en) === '');
