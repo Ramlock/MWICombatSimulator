@@ -4583,7 +4583,18 @@ function whatIfShowGetRunner() {
     document.getElementById('linkWhatIfRunner').href = RUNNER_DOWNLOAD_URL;
     document.getElementById('linkWhatIfRunnerLinux').href = RUNNER_ZIP_URL;
     document.getElementById('whatIfModal').classList.add('whatif-norunner');
-    document.getElementById('buttonWhatIf').style.display = '';
+    whatIfShowButton();
+}
+
+// The window's strings are i18next's common namespace, fetched after the page starts (js/i18n.js): the What-if button shows
+// only once they are loaded, so an early open never shows raw keys (TODO row 105).
+function whatIfShowButton() {
+    const ready = () => i18next.isInitialized && i18next.hasLoadedNamespace('common');
+    const show = () => { document.getElementById('buttonWhatIf').style.display = ''; };
+    if (ready()) return show();
+    const on = () => { if (!ready()) return; i18next.off('initialized', on); i18next.off('loaded', on); show(); };
+    i18next.on('initialized', on);
+    i18next.on('loaded', on);
 }
 
 async function initWhatIf() {
@@ -4592,8 +4603,8 @@ async function initWhatIf() {
         if (!ok || !body || body.runner === undefined) { whatIfShowGetRunner(); return; }
         whatIf.version = body;
     } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
-    document.getElementById('buttonWhatIf').style.display = '';
-    // Strings are read when the window opens: i18next may not be ready when this runs.
+    whatIfShowButton();
+    // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
         whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); whatIfDrawSearchButton(); });

@@ -20,14 +20,17 @@ const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL 
 const locales = Object.fromEntries(['en', 'pt', 'zh'].map((l) => [l, JSON.parse(fs.readFileSync(path.join(root, 'locales', l, 'common.json'), 'utf8')).whatIf]));
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.map': 'application/json' };
-let runnerUp = false;
-const server = http.createServer((req, res) => {
+let runnerUp = false, versionAsked = 0;
+let holdLocales = null; // a promise: while set, the page's locales/*/common.json wait for it (row 105)
+const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname.startsWith('/api/')) {
+        if (url.pathname === '/api/version') versionAsked++;
         if (!runnerUp) { res.writeHead(404); return res.end(); }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(url.pathname === '/api/version' ? JSON.stringify({ runner: '0.0.0', engine: 'test' }) : '[]');
     }
+    if (holdLocales && url.pathname.startsWith('/locales/')) await holdLocales;
     const file = path.join(dist, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
     if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
@@ -102,6 +105,23 @@ try {
     check('runner: the page loads', await load());
     check('runner: the button is shown', await until(`document.getElementById('buttonWhatIf').style.display === ''`));
     check('runner: the window shows the search, no download pane', await open() && await until(`document.getElementById('whatIfVersion').textContent.includes('0.0.0')`) && (await visible('buttonWhatIfSearch')) && !(await visible('whatIfGetRunner')) && !(await js(`document.getElementById('whatIfModal').classList.contains('whatif-norunner')`)));
+    await closeModal();
+
+    // ---- The button waits for the window's strings (TODO row 105) ----
+    // The locales are held until the runner has answered: the button must stay hidden while they are, and an open after it shows reads no raw key.
+    let release;
+    holdLocales = new Promise((r) => { release = r; });
+    const asked = versionAsked;
+    await page.send('Network.enable');
+    await page.send('Network.setCacheDisabled', { cacheDisabled: true }); // the held fetch must reach the server
+    await page.send('Page.navigate', { url: base });
+    check('strings held: the runner is asked for its version', await (async () => { const t0 = Date.now(); while (versionAsked === asked && Date.now() - t0 < 30000) await sleep(100); return versionAsked > asked; })());
+    await sleep(1500);
+    check('strings held: the What-if button stays hidden while the strings are not loaded', await js(`document.getElementById('buttonWhatIf').style.display !== ''`), await js(`document.getElementById('buttonWhatIf').style.display`));
+    release();
+    holdLocales = null;
+    check('strings loaded: the button shows', await until(`document.getElementById('buttonWhatIf').style.display === ''`, 30000));
+    check('strings loaded: an open at once shows no raw key', await open() && await until(`document.getElementById('whatIfVersion').textContent.includes('0.0.0')`) && !(await js(`document.getElementById('whatIfModal').innerText.includes('whatIf.')`)), await js(`document.getElementById('whatIfVersion').textContent`));
     await closeModal();
 } finally {
     await chrome.close();
