@@ -4188,8 +4188,10 @@ function whatIfMessage(text) {
     document.getElementById('whatIfMessage').textContent = text || '';
 }
 
-// A budget is a number of coin: parseNumber's reading, rounded to a whole coin; null when empty or not readable (the field is then marked invalid).
+// A budget is a number of coin: parseNumber's reading, rounded to a whole coin; an empty field is 0 (the search reads 0 as no limit);
+// null when not readable (the field is then marked invalid).
 function whatIfBudgetValue(input) {
+    if (input.value.trim() === '') return 0;
     const value = parseNumber(input.value);
     return value === null || Number.isNaN(value) ? null : Math.round(value);
 }
@@ -4218,7 +4220,7 @@ function whatIfRenderSetup() {
         input.className = 'form-control form-control-sm';
         input.dataset.player = slot.name;
         input.value = typed[slot.name] ?? '';
-        input.placeholder = whatIfT('noLimit');
+        input.placeholder = whatIfT('budgetPlaceholder');
         input.addEventListener('input', () => whatIfMarkBudget(input));
         // The player's character export (optional): a paste field whose valid content is kept in the browser's storage
         // under the player's name; the status beside it is rebuilt from the storage and the field.
@@ -4329,8 +4331,8 @@ function whatIfShowSetup() {
     document.getElementById('whatIfSummaryChips').replaceChildren(
         chip(whatIfT('goalLabel'), sel('selectWhatIfGoal')),
         chip(whatIfT('zone'), sel('selectWhatIfZone') + ' · ' + sel('selectWhatIfTier')),
-        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? formatNumber(whatIfBudgetValue(i)) : whatIfT('noLimit'))),
-        chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('noLimit')),
+        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? formatNumber(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
+        chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('budgetPlaceholder')),
         chip(whatIfT('levers'), [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => whatIfT('lever.' + i.value + '.name')).join(', ')));
 }
 

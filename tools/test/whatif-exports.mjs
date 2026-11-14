@@ -69,7 +69,7 @@ check('runner: an export that is not an object is refused', ['x', 5, [1]].every(
 if (process.argv.includes('--skip-optimizer')) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} console.log(failed ? `${failed} failed (optimizer parts skipped)` : 'all passed (optimizer parts skipped)'); process.exit(failed ? 1 : 0); }
 const run = (name, body) => {
     const d = mk(name);
-    const a = R.buildArgs({ setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, prices: 'marketplace-2026-11-03.json' }, goal: 'profit', budgets: { Alpha: 0, Beta: 0 },
+    const a = R.buildArgs({ setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, prices: 'marketplace-2026-11-03.json' }, goal: 'profit', budgets: { Alpha: 1, Beta: 1 },
         levers: ['owned', 'abilities', 'books', 'abilitylevels'], unitHours: 1, confirmHours: 1, maxRounds: 3, lockRule: 'reading', readingStep: 8, swaps: false, z: 0, jobs: 2, ...body }, d).filter((x) => x !== '--low-priority');
     let out = '';
     try { out = execFileSync(process.execPath, [path.join(root, 'tools/whatif/optimize.mjs'), ...a], { encoding: 'utf8', timeout: 600000, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return { error: String(e.stderr || e.message).slice(0, 400) }; }
@@ -83,7 +83,7 @@ if (mapRun.res) {
     check('map: Beta is skipped by owned, abilities and books; Alpha by none', group(r, 'owned') === 'Beta' && group(r, 'abilities') === 'Beta' && group(r, 'books') === 'Beta' && r.skippedNoExport.every((g) => !g.players.includes('Alpha')), JSON.stringify(r.skippedNoExport));
     check('map: ability levels never skip (their upper-bound rows stay)', !r.skippedNoExport.some((g) => g.lever === 'abilitylevels'));
     check('map: the levers ran for Alpha (an owned candidate) and none for Beta', r.candidateList.some((c) => c.id.startsWith('Alpha:') && c.id.includes('=own:')) && !r.candidateList.some((c) => c.id.startsWith('Beta:') && c.id.includes('=own:')), JSON.stringify(r.candidateList.map((c) => c.id)));
-    check('map: the budgets come from --budgets', JSON.stringify(r.budgets) === JSON.stringify({ Alpha: 0, Beta: 0 }) && /per player/.test(r.budgetSource), r.budgetSource);
+    check('map: the budgets come from --budgets', JSON.stringify(r.budgets) === JSON.stringify({ Alpha: 1, Beta: 1 }) && /per player/.test(r.budgetSource), r.budgetSource);
 }
 const noneRun = run('opt-none', {});
 check('optimizer, no export at all: no throw', !noneRun.error, noneRun.error);

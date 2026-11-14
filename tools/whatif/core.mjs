@@ -24,7 +24,7 @@ import { tMult, dfOf, contention, eliminate, nearestSeparation, bounds, poolKey,
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
-import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay } from './budgets.mjs';
+import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay, NO_LIMIT_TEXT } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { playerFit, misfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
@@ -103,7 +103,7 @@ export async function main(settings, seams) {
     else throw new Error('--budget, --budgets or --export required');
     if (Object.keys(budgetList).length && budget != null) budgetSource = `per player, else ${budgetSource}`;
     const budgets = resolveBudgets(players, budgetList, budget ?? NaN);
-    const maxPayback = Number(arg('max-payback', 365));
+    const maxPayback = Number(arg('max-payback', 0));
     if (!(maxPayback >= 0)) throw new Error('--max-payback: a number of days, 0 for no limit');
 
     const [probeK, probeH] = String(arg('probe', '1x50')).split('x').map(Number);
@@ -1171,7 +1171,7 @@ export async function main(settings, seams) {
             result.skills = sk.json;
             skillLines = sk.lines;
         }
-        const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${partyEntries(budgets).map(([p, b]) => `${p} ${fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Rounds: ${firstK} seeds of ${unitH} h for every candidate, then ${roundSeeds} more per round for those not paused; ${leadersK} leaders per pool, paused below the leaders' lower bound at ${pauseMult} errors, ranges at ${(coverage * 100).toFixed(0)}% coverage. Costs ${TAX_LABEL} on every sale.`, ''];
+        const L = [`# What-if result`, '', `Run: \`node tools/whatif/optimize.mjs ${result.args}\``, '', `Goal: ${goal === 'exp' ? 'party EXP per hour' : 'party profit per day, ' + TAX_LABEL}. Budget per player: ${partyEntries(budgets).map(([p, b]) => `${p} ${b === Infinity ? NO_LIMIT_TEXT : fmt(b)}`).join(', ')} (${budgetSource}). Error rule: ${errorRule}, gain on the same seeds, accept at ${z} se. Rounds: ${firstK} seeds of ${unitH} h for every candidate, then ${roundSeeds} more per round for those not paused; ${leadersK} leaders per pool, paused below the leaders' lower bound at ${pauseMult} errors, ranges at ${(coverage * 100).toFixed(0)}% coverage. Costs ${TAX_LABEL} on every sale.`, ''];
         // The cost path as the report shows it: the note without the upper-bound caveat (the "≤" on the cost carries that).
         const pathMd = (s) => { const note = (s.note || '').replace('; upper bound (XP inside the level unknown)', ''); return s.costPath + (note ? ' (' + note + ')' : ''); };
         // A gain within one error of zero reads "no change" with the real value in brackets (a file has no hover); the error is in the same cell ("value ± se").

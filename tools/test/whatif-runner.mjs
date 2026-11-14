@@ -30,6 +30,12 @@ check(JSON.stringify(B.parseBudgetList('A=1M, B=0')) === '{"A":1000000,"B":0}' &
 check(throws(() => B.parseBudgetList('A')) && throws(() => B.parseBudgetList('A=x')), 'parseBudgetList: a malformed entry throws');
 check(JSON.stringify(B.resolveBudgets(['A', 'B'], { A: 5 }, 9)) === '{"A":5,"B":9}', 'resolveBudgets: --budgets per name, --budget for the rest');
 check(throws(() => B.resolveBudgets(['A', 'B'], { A: 5 }, NaN)), 'resolveBudgets: a player with no budget throws (never a silent zero)');
+{
+    const u = B.resolveBudgets(['A', 'B', 'C'], { A: 0, B: 7 }, 0);
+    check(u.A === Infinity && u.B === 7 && u.C === Infinity, 'resolveBudgets: a budget of 0 (the window sends an empty field as 0), per player or by --budget, is no limit (Infinity); any other amount stays');
+    const c = (player, cost) => ({ player, cost: { cost } });
+    check(B.affordable(c('A', 1e12), { A: u.A }, { A: 5e11 }) && !B.affordable(c('B', 8), { B: u.B }, null), 'affordable: an unlimited budget affords any cost, however much it has already spent');
+}
 check(throws(() => B.resolveBudgets(['A'], { A: 5, Z: 1 }, NaN)), 'resolveBudgets: a budget for a player not in --players throws');
 const budgets = { A: 100, B: 10 }, cand = (player, cost) => ({ player, cost: { cost } });
 check(B.affordable(cand('A', 100), budgets, null) && !B.affordable(cand('B', 11), budgets, null), 'affordable: within its own player\'s budget only');
@@ -283,7 +289,7 @@ const lastSnapIs = (dirName, res) => {
     return '';
 };
 const rb = await real.listen(0);
-const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
+const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 1 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
 const r1 = await call(rb, 'POST', '/api/search', req);
 const id = r1.json.id, dir = path.join(tmp, 'real', id);
@@ -304,7 +310,7 @@ check(runsAfter.startsWith(runsAtStop) && res?.timing.runsThisCall === runsAfter
 check(fin.trace.some((p) => p && p.runsDone > 0 && p.secondsPerRun > 0 && p.etaSeconds != null), 'progress: runs done, seconds per run measured, time left');
 check(fin.r.progress?.stage === 'done', 'progress: the last stage is done');
 if (res) {
-    check(JSON.stringify(res.budgets) === JSON.stringify({ Alpha: 1e9, Beta: 0 }) && res.setups.length === 2 && res.options.zone === '/actions/combat/fly' && res.options.levers.includes('equip') && res.partySize === 2, 'result: budgets per player, the base setups, the run options at the top');
+    check(JSON.stringify(res.budgets) === JSON.stringify({ Alpha: 1e9, Beta: 1 }) && res.setups.length === 2 && res.options.zone === '/actions/combat/fly' && res.options.levers.includes('equip') && res.partySize === 2, 'result: budgets per player, the base setups, the run options at the top');
     check(res.options.pricesTimestamp === 1700000000 && res.options.pricesSource === 'snapshot' && res.options.prices.endsWith(id + '/' + R.MARKETPLACE_FILE) && existsSync(path.join(dir, R.MARKETPLACE_FILE)), 'result: the request\'s snapshot was used, its timestamp beside options.prices');
     check(res.overBudget.length > 0 && res.overBudget.every((c) => c.player === 'Beta' && c.cost > 0 && c.desc && c.id) && !res.candidateList.some((c) => res.overBudget.some((o) => o.id === c.id)), 'result: Beta\'s priced changes are listed as over budget (id, player, desc, cost), never screened');
     check(readFileSync(path.join(dir, 'result.md'), 'utf8').includes('## Priced, over budget, not ranked'), 'result.md: the over-budget list');
