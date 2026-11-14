@@ -27,7 +27,7 @@ import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs
 import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay, NO_LIMIT_TEXT } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
-import { playerFit, misfit } from './stylefit.mjs';
+import { playerFit, misfit, abilityMisfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
 import { SURE_BLOCK, SURE_MAX, verdict, checkPick, firstConfirmed, confirmFillings } from './sure.mjs';
 import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
@@ -308,13 +308,24 @@ export async function main(settings, seams) {
     const meetsReq = (setup, item) => (item.equipmentDetail.levelRequirements || []).every((r) => (setup.player[r.skillHrid.split('/').pop() + 'Level'] ?? 0) >= r.level);
     // Market swaps no better on any combat stat (dominated.mjs): never offered, listed in result.json `dominated`.
     const dominated = [], dominatedKeys = new Set();
-    // Swaps to gear whose only bonuses are another combat style's (or another element's), stylefit.mjs: never offered, the
-    // market and owned ones alike, listed in result.json `otherStyle` (each with the style and element it is bound to).
+    // Changes that do not fit the player's combat style or element (stylefit.mjs): never offered, listed in result.json
+    // `otherStyle` (each with why: `bound`, and what the player wants: `wants`). Gear: market swaps, owned items and enhance
+    // steps on a held piece (styleDrop); abilities: swaps, books and level steps on a held ability (abilityDrop here,
+    // levers/houses.mjs through leaveOut).
     const otherStyle = [], otherStyleKeys = new Set();
+    function leaveOut(entry) {
+        if (!otherStyleKeys.has(entry.desc)) { otherStyleKeys.add(entry.desc); otherStyle.push(entry); }
+    }
     function styleDrop(fit, item, rec) {
         const bound = misfit(item, fit);
         if (!bound) return false;
-        if (!otherStyleKeys.has(rec.desc)) { otherStyleKeys.add(rec.desc); otherStyle.push({ ...rec, bound, wants: fit }); }
+        leaveOut({ ...rec, bound, wants: fit });
+        return true;
+    }
+    function abilityDrop(fit, ability, rec) {
+        const bound = abilityMisfit(ability, fit);
+        if (!bound) return false;
+        leaveOut({ ...rec, bound, wants: fit });
         return true;
     }
 
@@ -339,8 +350,10 @@ export async function main(settings, seams) {
             if (!it && !(swapsOn && emptySlotOpen(setups, p, slot))) continue;
             const name = it ? it.itemHrid.split('/').pop() : 'empty';
             for (let d = 1; it && d <= maxUp; d++) {
+                const id = `${p}:${slot}+${d}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`;
+                if (styleDrop(fit, itemDetailMap[it.itemHrid], { id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: it.itemHrid, level: it.enhancementLevel + d } })) continue;
                 const c = pricer.upgrade(it.itemHrid, it.enhancementLevel, it.enhancementLevel + d);
-                out.push({ id: `${p}:${slot}+${d}`, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: true, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
+                out.push({ id, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: true, desc, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
             }
             if (!swapsOn) continue;
             const type = it ? itemDetailMap[it.itemHrid]?.equipmentDetail?.type : '/equipment_types/' + slot;
@@ -458,7 +471,7 @@ export async function main(settings, seams) {
     // Swaps to a learned ability at its learned level (slot 0 takes special abilities only, src/main.js:807-812), and
     // every order of the other slots.
     function abilityCands(setups, p, withSwaps, withOrder) {
-        const s = setups.find((x) => x.name === p), out = [], ex = exportFor(p);
+        const s = setups.find((x) => x.name === p), out = [], ex = exportFor(p), fit = playerFit(s, itemDetailMap);
         const ab = s.abilities || [], open = (i) => (s.player.intelligenceLevel ?? 0) >= abilitySlotsLevelRequirementList[i + 1];
         const name = (a) => (a?.abilityHrid ? short(a.abilityHrid) + ' ' + a.level : 'empty');
         if (withSwaps && ex) {
@@ -467,7 +480,9 @@ export async function main(settings, seams) {
                 if (!open(i)) continue;
                 for (const l of ex.learnedAbilities || []) {
                     if (held.has(l.abilityHrid) || !abilityDetailMap[l.abilityHrid] || !!abilityDetailMap[l.abilityHrid].isSpecialAbility !== (i === 0)) continue;
-                    out.push({ id: `${p}:ability${i}=${short(l.abilityHrid)}`, kind: 'ability', groups: [`${p}:ability${i}`], player: p, monotone: false, desc: `${p} ability ${i + 1} ${name(ab[i])} -> ${short(l.abilityHrid)} ${l.level}`, ops: [{ op: 'ability', player: p, index: i, ability: l.abilityHrid, level: l.level }], cost: FREE('learned') });
+                    const id = `${p}:ability${i}=${short(l.abilityHrid)}`, desc = `${p} ability ${i + 1} ${name(ab[i])} -> ${short(l.abilityHrid)} ${l.level}`;
+                    if (abilityDrop(fit, l.abilityHrid, { id, player: p, slot: `ability${i}`, desc, from: ab[i]?.abilityHrid ? { ability: ab[i].abilityHrid, level: ab[i].level } : null, to: { ability: l.abilityHrid, level: l.level } })) continue;
+                    out.push({ id, kind: 'ability', groups: [`${p}:ability${i}`], player: p, monotone: false, desc, ops: [{ op: 'ability', player: p, index: i, ability: l.abilityHrid, level: l.level }], cost: FREE('learned') });
                 }
             }
         }
@@ -490,7 +505,7 @@ export async function main(settings, seams) {
             ...(levers.has('equip') ? candidatesFor(setups, p, openSlots) : []),
             ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
             ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
-            ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p) }),
+            ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p), onDrop: leaveOut }),
             ...(levers.has('triggers') ? triggerCands(setups.find((x) => x.name === p), p, probeStore, { ...trigOpts, user: userTrig[p] }) : []),
             ...(levers.has('skills') ? skillCands(setups, p, skillOpts) : []),
             ...(levers.has('shrines') ? shrineCands(setups.find((x) => x.name === p), p, { pricer, ...shrineOpts }) : []),

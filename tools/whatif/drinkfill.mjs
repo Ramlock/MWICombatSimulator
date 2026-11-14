@@ -16,15 +16,20 @@ const FREE = (path) => ({ cost: 0, known: true, path, mirrors: 0, note: '' });
 const askOf = (market, h) => market?.[h]?.['0']?.a;
 const MELEE_STYLES = new Set(['stab', 'slash', 'smash']);
 
-// The player's combat style, 'melee' | 'ranged' | 'magic', from the weapon in his setup the way the engine reads it
-// (player.js: the main hand's, else the two hand's `combatStyleHrids[0]`; no weapon is smash, which is melee).
-export function combatStyleOf(setup, items) {
+// The weapon's own combat style, 'stab' | 'slash' | 'smash' | 'ranged' | 'magic', the way the engine reads it (player.js:
+// the main hand's, else the two hand's `combatStyleHrids[0]`; no weapon is smash).
+export function weaponStyleOf(setup, items) {
     for (const slot of ['main_hand', 'two_hand']) {
         const e = setup.player?.equipment?.find((x) => x.itemLocationHrid === '/item_locations/' + slot);
         const style = e && items[e.itemHrid]?.equipmentDetail?.combatStats?.combatStyleHrids?.[0];
-        if (style) { const s = short(style); return MELEE_STYLES.has(s) ? 'melee' : s; }
+        if (style) return short(style);
     }
-    return 'melee';
+    return 'smash';
+}
+// The player's combat style, 'melee' | 'ranged' | 'magic' (stab, slash and smash are melee).
+export function combatStyleOf(setup, items) {
+    const s = weaponStyleOf(setup, items);
+    return MELEE_STYLES.has(s) ? 'melee' : s;
 }
 
 // Every combat drink with an ask: { hrid, type, ask, buffs: { '<unique>|<buff type>': [flat, ratio] } }.

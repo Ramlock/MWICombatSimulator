@@ -35,6 +35,7 @@ const result = {
     notConfirmed: [{ id: 'nc', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', step: 2, fresh: { seeds: 64, seedFrom: 20001, seedTo: 20064, gain: 30, se: 20, gainPerUser: 10, sePerUser: 7, buyerNet: 40, buyerNetSe: 25, accepted: false }, cost: 100, costPath: 'market' }],
     apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }],
     overBudget: [{ id: 'o', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 7000000000, costPath: 'market' }, { id: 'o2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 8000000000, costPath: 'market' }, { id: 'o3', player: 'Player 1', desc: 'Player 1 body royal_nature_robe_top +10 -> rainbow_plate_body +10', cost: 12022450000, costPath: 'buy via mirror, sell old', note: '', mirrors: 20, mirrorFrom: 4, to: 10 }],
+    otherStyle: [{ id: 'Player 1:ability2=book:cleave@1', player: 'Player 1', slot: 'ability2', desc: 'Player 1 ability 3 empty -> learn cleave 1', from: null, to: { ability: '/abilities/cleave', level: 1 }, bound: { styles: ['slash'], elements: [] }, wants: { style: 'magic', element: 'fire', kind: 'magic' } }, { id: 'Player 1:body=rainbow_plate_body+0', player: 'Player 1', slot: 'body', desc: 'Player 1 body cotton_robe_top +0 -> rainbow_plate_body +0', from: { item: '/items/cotton_robe_top', level: 0 }, to: { item: '/items/rainbow_plate_body', level: 0 }, bound: { styles: [], elements: [], penalty: ['magicAccuracy'] }, wants: { style: 'magic', element: 'fire', kind: 'magic' } }],
     dominated: [{ id: 's1', player: 'Player 1', slot: 'feet', desc: 'Player 1 feet cotton_boots +0 -> pathseeker_boots_refined +0', from: { item: '/items/cotton_boots', level: 0 }, to: { item: '/items/pathseeker_boots_refined', level: 0 } }, { id: 's2', player: 'Player 1', slot: 'feet', desc: 'Player 1 not_a_real_item_x +1 -> +2', from: { item: '/items/not_a_real_item_x', level: 1 }, to: { item: '/items/not_a_real_item_x', level: 2 } }],
     overPayback: [{ id: 'sl', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 900000, costPath: 'market', paybackDays: 612 }, { id: 'sl2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 800000, costPath: 'market', paybackDays: null }],
     options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot', zone: '/actions/combat/fly', tier: 0, maxPaybackDays: 365 },
@@ -457,6 +458,8 @@ try {
     check('an over-budget row priced by a mirror chain names its price path on its line (TODO row 99)', await js(`document.getElementById('whatIfOverBudget').querySelectorAll('tbody tr')[2].textContent.includes("(no +10 listed: 20 Philosopher's Mirrors from +4, sell old)")`));
     check('a chosen row priced by mirrors names its price path in How it is bought', await js(`document.getElementById('whatIfResult').textContent.includes("no +6 listed: 2 Philosopher's Mirrors from +4, sell old")`));
     await shot('whatIfModal', 'whatif-over-budget-open.png');
+    await openFolds('whatIfOtherStyle');
+    check('the left-out changes (another style or element) are one fold line with their count chip and help mark, and open to a table with game names: a book and a plate body', await js(`(() => { const ul = document.getElementById('whatIfOtherStyle'), line = document.querySelector('[data-whatif-more="whatIfOtherStyle"]').parentElement, rows = ul.querySelectorAll('tbody tr'); return !ul.hidden && line.textContent.startsWith(i18next.t('common:whatIf.result.otherStyleK')) && line.querySelector('.whatif-chip-n').textContent === '2' && line.querySelector('.whatif-help').dataset.tip === '2 changes left out (another combat style or element)' && rows.length === 2 && rows[0].children[0].textContent === 'Player 1' && /Cleave/.test(rows[0].textContent) && /Rainbow Plate Body/.test(rows[1].textContent); })()`), await js(`document.getElementById('whatIfOtherStyle')?.parentElement?.textContent`));
     if (shots) {
         // The price path pictures (TODO row 99): at 1920 wide, the window's body scrolled to the chosen changes, then to the open over-budget list.
         await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
@@ -467,6 +470,9 @@ try {
         await scrollTo(`document.getElementById('whatIfOverBudget')`);
         await new Promise((r) => setTimeout(r, 300));
         await shot('whatIfModal', 'price-path-over-budget.png');
+        await scrollTo(`document.getElementById('whatIfOtherStyle')`);
+        await new Promise((r) => setTimeout(r, 300));
+        await shot('whatIfModal', 'whatif-left-out.png');
     }
     await js(`document.querySelector('[data-whatif-more="whatIfOverBudget"]').click(), true`);
     check('a second click closes it again', await js(`document.getElementById('whatIfOverBudget').hidden && document.querySelector('[data-whatif-more="whatIfOverBudget"]').textContent === 'Show'`));

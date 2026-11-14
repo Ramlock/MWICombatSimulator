@@ -15,11 +15,15 @@
 // - books: an ability not learned (needs the exporter's learnedAbilities) learned into each open slot (slot 0 takes
 //   special abilities only) at each level in --book-levels (default 1): the first book learns it at level 1, XP 0
 //   (Combat.md:11; learned abilities at level 1 show experience 0 in the export), duplicates add their XP.
+// Ability levels and books follow the player's style and element (stylefit.mjs abilityMisfit): an ability that does not fit
+// him is never learned and a held one is never levelled; each such candidate goes to onDrop(entry) (the optimizer's
+// left-out list, result.json `otherStyle`) instead.
 import xpTable from '../levelExperienceTable.json' with { type: 'json' };
 import houseRoomDetailMap from '../../../src/combatsimulator/data/houseRoomDetailMap.json' with { type: 'json' };
 import itemDetailMap from '../../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
 import abilityDetailMap from '../../../src/combatsimulator/data/abilityDetailMap.json' with { type: 'json' };
 import abilitySlotsLevelRequirementList from '../../../src/combatsimulator/data/abilitySlotsLevelRequirementList.json' with { type: 'json' };
+import { playerFit, abilityMisfit } from '../stylefit.mjs';
 
 // The game's experience table, as charm.mjs reads it (read here, not imported: engine.mjs imports this file).
 export const XP = xpTable.table;
@@ -82,9 +86,17 @@ function bookCost(ability, books, buy, upper) {
     return { cost: unit * books, known: true, path: 'books', mirrors: 0, ...(upper ? { costBound: 'upper' } : {}), note: `${books} x ${short(book.hrid)}${upper ? '; upper bound (XP inside the level unknown)' : ''}` };
 }
 
+// An ability that does not fit the player: hands the candidate to onDrop and returns true.
+function dropped(fit, ability, rec, onDrop) {
+    const bound = abilityMisfit(ability, fit);
+    if (!bound) return false;
+    onDrop?.({ ...rec, bound, wants: fit });
+    return true;
+}
+
 // learned: the exporter's learnedAbilities for this player, or null.
-export function abilityLevelCands(setup, p, { steps = [1, 3, 5], buy, learned = null }) {
-    const out = [];
+export function abilityLevelCands(setup, p, { steps = [1, 3, 5], buy, learned = null, onDrop = null }) {
+    const out = [], fit = playerFit(setup, itemDetailMap);
     (setup.abilities || []).forEach((a, i) => {
         if (!a?.abilityHrid) return;
         const level = Number(a.level), book = BOOK_OF[a.abilityHrid];
@@ -92,8 +104,10 @@ export function abilityLevelCands(setup, p, { steps = [1, 3, 5], buy, learned = 
         const xpNow = ex ? Number(ex.experience) : xpAt(level);
         for (const d of steps) {
             if (level + d > MAX_LEVEL) continue;
+            const id = `${p}:ability${i}+${d}`, desc = `${p} ${short(a.abilityHrid)} ${level} -> ${level + d}`;
+            if (dropped(fit, a.abilityHrid, { id, player: p, slot: `ability${i}`, desc, from: { ability: a.abilityHrid, level }, to: { ability: a.abilityHrid, level: level + d } }, onDrop)) continue;
             const books = book ? booksNeeded(xpNow, level + d, book.abilityBookDetail.experienceGain) : 0;
-            out.push({ id: `${p}:ability${i}+${d}`, kind: 'abilityLevel', groups: [`${p}:ability${i}`], player: p, monotone: true, desc: `${p} ${short(a.abilityHrid)} ${level} -> ${level + d}`, ops: [{ op: 'abilityLevel', player: p, index: i, delta: d }], cost: bookCost(a.abilityHrid, books, buy, !ex) });
+            out.push({ id, kind: 'abilityLevel', groups: [`${p}:ability${i}`], player: p, monotone: true, desc, ops: [{ op: 'abilityLevel', player: p, index: i, delta: d }], cost: bookCost(a.abilityHrid, books, buy, !ex) });
         }
     });
     return out;
@@ -102,8 +116,9 @@ export function abilityLevelCands(setup, p, { steps = [1, 3, 5], buy, learned = 
 const meetsReq = (setup, req = []) => req.every((r) => (setup.player[short(r.skillHrid) + 'Level'] ?? 0) >= r.level);
 export const slotOpen = (setup, i) => (setup.player.intelligenceLevel ?? 0) >= abilitySlotsLevelRequirementList[i + 1];
 
-export function bookCands(setup, p, { levels = [1], buy, learned }) {
+export function bookCands(setup, p, { levels = [1], buy, learned, onDrop = null }) {
     if (!learned) return [];
+    const fit = playerFit(setup, itemDetailMap);
     const known = new Set(learned.filter((l) => Number(l.level) > 0).map((l) => l.abilityHrid));
     const held = new Set((setup.abilities || []).map((a) => a?.abilityHrid).filter(Boolean));
     const out = [];
@@ -114,8 +129,10 @@ export function bookCands(setup, p, { levels = [1], buy, learned }) {
             if (!slotOpen(setup, i) || !!det.isSpecialAbility !== (i === 0)) continue;
             const was = setup.abilities?.[i]?.abilityHrid ? `${short(setup.abilities[i].abilityHrid)} ${setup.abilities[i].level}` : 'empty';
             for (const L of levels) {
+                const id = `${p}:ability${i}=book:${short(ability)}@${L}`, desc = `${p} ability ${i + 1} ${was} -> learn ${short(ability)} ${L}`;
+                if (dropped(fit, ability, { id, player: p, slot: `ability${i}`, desc, from: setup.abilities?.[i]?.abilityHrid ? { ability: setup.abilities[i].abilityHrid, level: setup.abilities[i].level } : null, to: { ability, level: L } }, onDrop)) continue;
                 const books = booksNeeded(0, L, book.abilityBookDetail.experienceGain, true);
-                out.push({ id: `${p}:ability${i}=book:${short(ability)}@${L}`, kind: 'book', groups: [`${p}:ability${i}`], player: p, monotone: false, desc: `${p} ability ${i + 1} ${was} -> learn ${short(ability)} ${L}`, ops: [{ op: 'ability', player: p, index: i, ability, level: L }], cost: bookCost(ability, books, buy, false) });
+                out.push({ id, kind: 'book', groups: [`${p}:ability${i}`], player: p, monotone: false, desc, ops: [{ op: 'ability', player: p, index: i, ability, level: L }], cost: bookCost(ability, books, buy, false) });
             }
         }
     }
@@ -126,18 +143,18 @@ export function bookCands(setup, p, { levels = [1], buy, learned }) {
 // ex is the exporter JSON when it is this player's, else null. warn(line) prints a warning, once per player and
 // lever for the run (the optimizer rebuilds candidates after each greedy step).
 const warned = new Set();
-export function upgradeCands(setup, p, levers, { arg, pricer, ex, warn = (l) => console.log(l) }) {
+export function upgradeCands(setup, p, levers, { arg, pricer, ex, onDrop = null, warn = (l) => console.log(l) }) {
     const buy = (h) => pricer.buy(h, 0).cost;
     const nums = (v, d) => (v && v !== true ? String(v).split(',').map(Number) : d);
     const learned = ex?.learnedAbilities || null;
     const once = (key, line) => { if (!warned.has(key)) { warned.add(key); warn(line); } };
-    const levels = levers.has('abilitylevels') ? abilityLevelCands(setup, p, { steps: nums(arg('ability-steps', null), [1, 3, 5]), buy, learned }) : [];
+    const levels = levers.has('abilitylevels') ? abilityLevelCands(setup, p, { steps: nums(arg('ability-steps', null), [1, 3, 5]), buy, learned, onDrop }) : [];
     const bounds = levels.filter((c) => c.cost.costBound === 'upper').length;
     if (bounds) once(p + ':abilitylevels', `warning: ${p}: ${bounds} of ${levels.length} ability-level rows cost an upper bound (no exporter experience for ${p} at that level; pass --export with ${p}'s export)`);
     if (levers.has('books') && !learned) once(p + ':books', `warning: ${p}: no book candidates generated; books need the exporter's learned-ability list for ${p} (--export with ${p}'s export)`);
     return [
         ...(levers.has('houses') ? houseCands(setup, p, { rooms: roomsFor(arg('house-rooms', 'combat')), maxUp: Number(arg('house-up', 2)), buy }) : []),
         ...levels,
-        ...(levers.has('books') ? bookCands(setup, p, { levels: nums(arg('book-levels', null), [1]), buy, learned }) : []),
+        ...(levers.has('books') ? bookCands(setup, p, { levels: nums(arg('book-levels', null), [1]), buy, learned, onDrop }) : []),
     ];
 }
