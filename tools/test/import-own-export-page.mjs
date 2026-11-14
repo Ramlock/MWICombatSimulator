@@ -129,7 +129,7 @@ try {
     await closeImport();
     await reopenWindow();
     check('in the What-if window Player 2\'s mark reads "items and abilities: Tracker import", Player 1\'s "none"', await until(`document.querySelector('#whatIfBudgets [data-export-status="Player 2"]')?.textContent === 'items and abilities: Tracker import' && document.querySelector('#whatIfBudgets [data-export-status="Player 1"]')?.textContent === 'items and abilities: none'`), await js(`[...document.querySelectorAll('#whatIfBudgets [data-export-status]')].map((m) => m.dataset.exportStatus + ': ' + m.textContent).join(' | ')`));
-    if (shotPlayer) { await new Promise((r) => setTimeout(r, 600)); await saveWindow(shotPlayer); }
+    if (shotPlayer) { await js(`document.getElementById('buttonWhatIf').click(), true`); await until(`document.getElementById('whatIfModal').classList.contains('show') && document.querySelector('#whatIfModal .modal-content').getBoundingClientRect().width > 0`); await new Promise((r) => setTimeout(r, 600)); await saveWindow(shotPlayer); await js(`document.querySelector('#whatIfModal .btn-close').click(), true`); await until(`!document.getElementById('whatIfModal').classList.contains('show')`); }
     await importBoxes({ 2: { player: { attackLevel: 53 }, name: 'Player 2' } });
     await closeImport();
     await reopenWindow();
