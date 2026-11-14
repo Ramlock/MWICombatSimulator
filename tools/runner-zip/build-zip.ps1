@@ -32,7 +32,7 @@ New-Item -ItemType Directory -Force $root | Out-Null
 try {
     # The committed files only (never the working tree): the engine, the what-if code, the page, the launcher.
     $tar = Join-Path $stage 'tree.tar'
-    git -C $repo archive --format=tar -o $tar $sha src/combatsimulator src/whatif src/marketplace.mjs src/importGuildBuffs.js tools/whatif tools/calibration dist tools/runner-zip/start-runner.cmd package.json package-lock.json
+    git -C $repo archive --format=tar -o $tar $sha src/combatsimulator src/whatif src/marketplace.mjs src/importGuildBuffs.js src/guildLevels.mjs tools/whatif tools/calibration dist tools/runner-zip/start-runner.cmd package.json package-lock.json
     if ($LASTEXITCODE -ne 0) { throw "git archive failed ($LASTEXITCODE)" }
     tar.exe -x -f $tar -C $root
     if ($LASTEXITCODE -ne 0) { throw "tar extract failed ($LASTEXITCODE)" }
