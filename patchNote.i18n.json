@@ -692,7 +692,12 @@
                 "战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐",
                 "假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）",
                 "运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面",
-                "假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）"
+                "假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）",
+                "假设分析：从游戏导入队伍时，现在也会填入你自己角色的物品和技能（MWI Combat Tracker 0.9.3）。",
+                "假设分析：“单项改动”默认折叠；价格行仅在市场数据达到一天或更旧时显示。",
+                "假设分析：进度列表中的阶段名称更清晰。",
+                "假设分析：各明细列表各占一行，收在一个“查看详情”链接下；食物或饮料没有变化的玩家不再显示行；每个已完成的阶段占一行。",
+                "假设分析：Windows 运行器现在是单个文件 WhatIfRunner.exe：保存后双击即可，无需解压。"
             ]
         },
         "pt": {
@@ -713,7 +718,12 @@
                 "Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números",
                 "E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)",
                 "Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página",
-                "E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)"
+                "E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)",
+                "E se: importar o grupo do jogo agora também preenche os itens e as habilidades do seu próprio personagem (MWI Combat Tracker 0.9.3).",
+                "E se: \"Cada alteração sozinha\" começa recolhida; a linha de preços só aparece quando os dados do mercado têm um dia ou mais.",
+                "E se: nomes de etapa mais claros na lista de progresso.",
+                "E se: as listas de detalhes ocupam uma linha cada, sob um único link \"Ver detalhes\"; um jogador cujas comidas ou bebidas não mudam não tem linha; cada etapa concluída ocupa uma linha.",
+                "E se: o executor para Windows agora é um arquivo só, WhatIfRunner.exe: salve e dê dois cliques, nada para extrair."
             ]
         }
     },

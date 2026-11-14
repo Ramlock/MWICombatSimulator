@@ -1,5 +1,5 @@
 // Test: the What-if button on a page with no runner (the public site) opens the window in its "get the runner" state:
-// why, the download link (the one constant in src/whatif/runnerDownload.mjs), four steps, in en, pt and zh; the search
+// why, the download links (the exe and the zip constants in src/whatif/runnerDownload.mjs), four steps, in en, pt and zh; the search
 // controls are hidden. On a page a runner serves (a fake /api/version) the same window shows the search and no download pane.
 // The built page (dist/) in our own headless Chrome. Needs a built dist/ (npx webpack) and network for the page's CDN scripts.
 // Usage: node tools/test/whatif-get-runner-page.mjs [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves a dark Full HD picture.
@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome } from '../chrome-launcher.mjs';
-import { RUNNER_DOWNLOAD_URL } from '../../src/whatif/runnerDownload.mjs';
+import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from '../../src/whatif/runnerDownload.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const dist = path.join(root, 'dist');
@@ -74,7 +74,7 @@ try {
     check('no runner: one paragraph and the four steps, in English', paras.length === 5 && paras[0] === locales.en.get.why && [1, 2, 3, 4].every((i) => paras[i] === locales.en.get['step' + i]), JSON.stringify(paras));
     check('no runner: the link reads in English', (await text('#linkWhatIfRunner'))[0] === locales.en.get.download);
     check('no runner: the Linux part follows the Windows steps: heading, four steps, report line, in English', await linuxOk('en') && await js(`document.getElementById('whatIfGetRunner').children[3].id === 'whatIfGetRunnerLinux'`) && (await text('#whatIfGetRunnerLinux > h6'))[0].startsWith('Linux (not tested yet'));
-    check('no runner: the Linux link is the same constant, new tab, no leak', (await js(`document.getElementById('linkWhatIfRunnerLinux').href`)) === RUNNER_DOWNLOAD_URL && (await js(`document.getElementById('linkWhatIfRunnerLinux').target + ' ' + document.getElementById('linkWhatIfRunnerLinux').rel`)) === '_blank noopener' && (await visible('linkWhatIfRunnerLinux')));
+    check('no runner: the Linux link is the zip constant, new tab, no leak', (await js(`document.getElementById('linkWhatIfRunnerLinux').href`)) === RUNNER_ZIP_URL && (await js(`document.getElementById('linkWhatIfRunnerLinux').target + ' ' + document.getElementById('linkWhatIfRunnerLinux').rel`)) === '_blank noopener' && (await visible('linkWhatIfRunnerLinux')));
     check('no runner: no runner version in the header', (await text('#whatIfVersion'))[0] === '');
     check('no runner: no horizontal scroll inside the window', await js(`(() => { const b = document.querySelector('#whatIfModal .modal-body'); return b.scrollWidth <= b.clientWidth; })()`));
     check('no runner: the page is dark', await js(`document.body.classList.contains('dark-mode')`));

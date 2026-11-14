@@ -4,7 +4,7 @@ The page's What-if window runs the what-if optimizer (`tools/whatif/optimize.mjs
 
 ## Two states
 
-`initWhatIf` (`src/main.js`) asks `/api/version`. When no runner answers, `whatIfShowGetRunner` shows the button and puts `whatif-norunner` on `#whatIfModal`; the CSS in `index.html` then shows only `#whatIfGetRunner` (one paragraph on why, the download link, four steps: start, SmartScreen, the black window, the What-if button) and hides the search; with a runner the class is absent and that pane is hidden. The link target is `RUNNER_DOWNLOAD_URL` (`src/whatif/runnerDownload.mjs`), the one constant. Strings: `common:whatIf.get.*` in en, pt and zh (pt and zh not checked by a native speaker; the pt SmartScreen names are Microsoft's own). The zip itself: `runner-zip.md`. Test: `tools/test/whatif-get-runner-page.mjs`.
+`initWhatIf` (`src/main.js`) asks `/api/version`. When no runner answers, `whatIfShowGetRunner` shows the button and puts `whatif-norunner` on `#whatIfModal`; the CSS in `index.html` then shows only `#whatIfGetRunner` (one paragraph on why, the download link (the exe), four steps: start, SmartScreen, the black window, the What-if button) and hides the search; with a runner the class is absent and that pane is hidden. The link targets are the two constants of `src/whatif/runnerDownload.mjs`: `RUNNER_DOWNLOAD_URL` (Windows, `WhatIfRunner.exe`) and `RUNNER_ZIP_URL` (the Linux part, `WhatIfRunner.zip`). Strings: `common:whatIf.get.*` in en, pt and zh (pt and zh not checked by a native speaker; the pt SmartScreen names are Microsoft's own). The downloads themselves (the Windows exe, the Linux zip): `runner-zip.md`. Test: `tools/test/whatif-get-runner-page.mjs`.
 
 ## Files
 
