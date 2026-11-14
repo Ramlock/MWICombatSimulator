@@ -1,6 +1,6 @@
 // What-if runner (delivery design sections 3 and 10): a local web server on the loopback address that serves the built
 // simulator (dist/) at / and the search interface under /api/, and runs the optimizer (tools/whatif/optimize.mjs) at
-// the lowest priority on every core. Code doc: docs/codebase/whatif-runner.md.
+// the lowest priority on every core (the server itself runs below normal, one step above). Code doc: docs/codebase/whatif-runner.md.
 //
 // Usage: node tools/whatif/runner/server.mjs [--port 8787] [--results <dir>] [--dist <dir>] [--demo-runs <runs.jsonl>] [--demo-prices <marketplace.json>] [--synthetic <scenario.json>]
 //   --port 0 picks a free port. --results defaults to <home>/MWI-WhatIf/results (never inside the repo).
@@ -114,8 +114,8 @@ export function buildArgs(body, outDir, demo = {}) {
     return args;
 }
 
-// Starts the optimizer for one search at the lowest priority; it inherits the runner's (low) class and is set to it
-// explicitly as well. Every log line is timestamped into <out>/log.txt.
+// Starts the optimizer for one search at the lowest priority: set right after the fork (the runner's own server is one step above, below
+// normal), and by the optimizer's own --low-priority. Every log line is timestamped into <out>/log.txt.
 export function forkOptimizer(args, outDir) {
     const log = createWriteStream(path.join(outDir, 'log.txt'), { flags: 'a' });
     const stamp = (src) => (buf) => { for (const l of String(buf).split(/\r?\n/).filter(Boolean)) log.write(`${new Date().toISOString()} ${src} ${l}\n`); };
@@ -152,7 +152,9 @@ export function createRunner(opts = {}) {
     const launch = opts.launch || forkOptimizer;
     const synthFile = opts.synthetic ? path.resolve(opts.synthetic) : null, scenario = synthFile ? loadScenario(synthFile) : null; // the runner's --synthetic <scenario.json>
     mkdirSync(resultsDir, { recursive: true });
-    if (opts.lowPriority !== false) os.setPriority(os.constants.priority.PRIORITY_LOW);
+    // The web server itself runs one step above the searches (below normal), so the window's requests are answered while every core is busy; the
+    // optimizer it forks is set to the lowest at once (forkOptimizer), and its run processes take the optimizer's.
+    if (opts.lowPriority !== false) os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL);
     const version = { runner: RUNNER_VERSION + (gitVersion() ? '+' + gitVersion() : ''), engine: engineVersion(distDir) };
     const searches = new Map(); // id -> { state, progress, error, handle }
     let running = null;
@@ -198,12 +200,21 @@ export function createRunner(opts = {}) {
         };
         return { status: 200, body: { id } };
     }
+    // The list of finished searches. A result.json is read (in full: it is one JSON) only when it is new or changed since the last list
+    // (its size and time), so opening the window does not parse every saved result each time.
+    const listed = new Map(); // id -> { mtimeMs, size, entry }
     function results() {
         if (!existsSync(resultsDir)) return [];
-        return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d) && existsSync(path.join(resultsDir, d, 'result.json'))).map((d) => {
-            const f = path.join(resultsDir, d, 'result.json'), r = readJson(f);
-            return { id: d, finished: statSync(f).mtime.toISOString(), goal: r.goal, players: r.players };
-        }).sort((a, b) => (a.finished < b.finished ? 1 : -1));
+        return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d)).map((d) => {
+            const f = path.join(resultsDir, d, 'result.json');
+            let st;
+            try { st = statSync(f); } catch { listed.delete(d); return null; }
+            const seen = listed.get(d);
+            if (seen && seen.mtimeMs === st.mtimeMs && seen.size === st.size) return seen.entry;
+            const r = readJson(f), entry = { id: d, finished: st.mtime.toISOString(), goal: r.goal, players: r.players };
+            listed.set(d, { mtimeMs: st.mtimeMs, size: st.size, entry });
+            return entry;
+        }).filter(Boolean).sort((a, b) => (a.finished < b.finished ? 1 : -1));
     }
 
     // Same origin only: the Host must be this loopback address and port (no DNS rebinding), and an Origin, when the
@@ -334,6 +345,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         log(e.code === 'EADDRINUSE' ? `EADDRINUSE: port ${port} is used by another program (not the What-if runner).` : `The runner could not start: ${e.message}`);
         process.exit(1);
     }
-    log(`What-if runner ${url} (results: ${path.resolve(arg('results', DEFAULT_RESULTS))}, lowest priority)`);
+    log(`What-if runner ${url} (results: ${path.resolve(arg('results', DEFAULT_RESULTS))}, searches at the lowest priority)`);
     if (open) { log('Opening the page in your browser.'); openBrowser(url); }
 }

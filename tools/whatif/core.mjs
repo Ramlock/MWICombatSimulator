@@ -7,9 +7,9 @@
 //   seams     { data, store, pool, sink, stop, hash, sim }:
 //     data   { setups, market, pricesTimestamp, exportData, userTrig }: the party, the price snapshot, the exporter JSON, the user's trigger candidates
 //     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json and probe.json
-//     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once kill() ended it
+//     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once drop() (the runs in flight) or kill() (the pool) ended it
 //     sink   progress(p), partial(snapshot), round(r), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
-//     stop   { requested, done }: requested is true once the user asked to stop; done is 'accept' or 'skip' once he pressed one of the two stage buttons (the race stage running now ends: Accept after its round in flight, with its pick taken as it is; Skip at once, the runs already going finishing)
+//     stop   { requested, done }: requested is true once the user asked to stop; done is 'accept' or 'skip' once he pressed one of the two stage buttons (the race stage running now ends at once, its runs in flight ended: Accept with its pick taken as it is; Skip with a pool that has no lock left unchanged); press(mode) is the core's (set by main()): the shell calls it on a press, never sets done itself
 //     hash   sha1 hex of a text (the run keys)
 //     sim    { runParty, measureNeed, buildDtos, Trigger }: the engine's own functions and Trigger class
 // Resolves with { stopped } (stopped: the search ended early, every finished run is in the store, the same call resumes).
@@ -45,6 +45,10 @@ export async function main(settings, seams) {
     const { data, store: runStore, pool: runPool, sink: outSink, stop: stopSignal, hash, sim } = seams;
     const { runParty, measureNeed, buildDtos, Trigger } = sim;
     const arg = makeArg(settings.flags);
+    // A press of a stage button (the shell calls stop.press(mode) on the runner's { done } message): stop.done takes the mode, and a race batch that
+    // runs now has its runs in flight ended at once (dropRuns, set by ensure() while such a batch runs: the pool's drop()).
+    let dropRuns = null;
+    stopSignal.press = (mode) => { stopSignal.done = mode; dropRuns?.(); };
 
     const goal = arg('goal', 'profit');
     const errorRule = arg('error', 'unpaired'); // design revision 6 (main c2ed824), his pick 23:27 BRT
@@ -172,8 +176,9 @@ export async function main(settings, seams) {
 
     // reqs: [{ops, seed, h, tag}], run in the order given (tasks of equal length keep it). `onRun`: called after each finished run (the first
     // look of round 1 listens: it only reads the cache and the sink, it never feeds a choice).
-    // `skippable` (the race's own batches): a press of the window's Skip button (stopSignal.done === 'skip') stops the lanes taking new runs; the
-    // runs in flight finish and are stored, none is killed, and the call returns SKIPPED (not false, which ends the whole search) when runs were left.
+    // `skippable` (the race's own batches): a press of one of the window's two stage buttons (stopSignal.done, 'accept' or 'skip') ends the batch at
+    // once: the lanes take no new run, and the runs in flight are ended (dropRuns, set here while the lanes run: stopSignal.press calls it, the pool's drop); an ended
+    // run is not stored (its compute is lost). The call then returns BY_USER (not false, which ends the whole search) when runs were left or ended.
     async function ensure(reqs, { onRun, skippable = false } = {}) {
         const tasks = [], need = new Map(); // id -> task, at the longest length asked for that run
         for (const r of reqs) {
@@ -190,16 +195,16 @@ export async function main(settings, seams) {
         if (!tasks.length) return true;
         if (stopSignal.requested) { stoppedByTime = true; return false; }
         console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] ${nOf(tasks.length, 'run')}, ${tasks.reduce((a, t) => a + t.h, 0)} sim h`);
-        let next = 0;
+        let next = 0, ended = false;
         // One lane per core: each takes the next task while there is one, no stop was asked and the time limit has not passed.
-        const skipping = () => skippable && stopSignal.done === 'skip';
+        const byUser = () => skippable && !!stopSignal.done;
         const lane = async () => {
             for (;;) {
-                if (skipping()) return;
+                if (byUser()) return;
                 if (!(next < tasks.length && !stopSignal.requested && (Date.now() - t0) / 60000 < maxMinutes)) { if (next < tasks.length || stopSignal.requested) stoppedByTime = true; return; }
                 const t = tasks[next++];
                 const res = await runPool.run(t);
-                if (res === null) return; // the pool was killed by a stop request: the run in flight is dropped
+                if (res === null) { ended = true; return; } // the run was ended (a stop request killed the pool, or a stage button dropped the runs in flight): not stored
                 const rec = { key: res.variant, seed: res.seed, hours: t.h, tag: t.tag, wallSeconds: res.wallSeconds, checkpoints: res.checkpoints };
                 runStore.put(rec);
                 put(rec);
@@ -210,11 +215,13 @@ export async function main(settings, seams) {
                 onRun?.();
             }
         };
-        await Promise.all(Array.from({ length: Math.min(jobs, tasks.length) }, lane));
+        if (skippable) dropRuns = () => runPool.drop();
+        try { await Promise.all(Array.from({ length: Math.min(jobs, tasks.length) }, lane)); }
+        finally { if (skippable) dropRuns = null; }
         if (stoppedByTime || stopSignal.requested) return false; // a stop kills runs in flight, so this batch is incomplete
-        return skipping() && next < tasks.length ? SKIPPED : true;
+        return byUser() && (next < tasks.length || ended) ? BY_USER : true;
     }
-    const SKIPPED = Symbol('skipped'); // ensure(): the user's Skip ended the batch with runs left (the stage ends, the search goes on)
+    const BY_USER = Symbol('byUser'); // ensure(): a stage button ended the batch with runs left or ended (the stage ends, the search goes on)
     const val = (ops, seed, h) => metric(cache.get(keyOf(ops) + '#' + seed).byHours[h]);
     // The parts of a checkpoint (no new run, same cache); the readers and the buyer's net are in buyer.mjs.
     const cpOf = (ops, seed, h) => cache.get(keyOf(ops) + '#' + seed).byHours[h];
@@ -709,20 +716,25 @@ export async function main(settings, seams) {
         stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
         // The stage's end (the one path): its last figures and its end go to the progress record at once (stageEnded names the stage), so the row stops
         // reading "running" and drops the buttons however long the pick checks take. A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
-        let prevLive = []; // the leaders of the last finished round (what a Skip before the next round finishes returns)
+        let prevLive = [], prevTakes = new Map(); // the leaders of the last finished round and what its Accept would take (what a press before the next round finishes returns)
         const endStage = (leaders, accepted, bySkip = false) => {
             onEnd?.(); // the report takes the end mark (result.endedByUser) at once, not after the pick checks that follow
             Object.assign(progress, stageCtx(), { stageEnded: stage }, bySkip ? { stageSkipped: true } : {});
             report();
             return { locked: byPlayer ? lockedBy : lockedBy.get('*') ?? null, leaders, accepted };
         };
-        // Skip pressed while a round's runs were still being asked for: the stage ends at once, with the locks it already has (a pool with none stays as it
-        // is), the leaders of the last finished round (none in round 1) and the number of rounds it finished (0: ended before the first round finished).
-        const skipEnd = (stageRound) => {
+        // A stage button pressed while a round's runs were still being asked for: ensure() ended the runs in flight, and the stage ends at once with the
+        // locks it already has, the leaders of the last finished round, read from stored runs (none in round 1), and the number of rounds it finished (0:
+        // ended before the first round finished). Skip leaves a pool with no lock as it is; Accept also locks what that round offered to accept
+        // (prevTakes: the window offers Accept from the last finished round's figures).
+        const userEnd = (stageRound) => {
+            const mode = stopSignal.done;
             stopSignal.done = false;
             endedByUser[stage] = stageRound - 1;
-            endedBySkip[stage] = true;
-            return endStage(prevLive, [], true);
+            if (mode === 'skip') endedBySkip[stage] = true;
+            const accepted = mode === 'accept' ? prevTakes : new Map();
+            for (const [k, c] of accepted) lockedBy.set(k, c);
+            return endStage(prevLive, [...accepted.values()], mode === 'skip');
         };
         try {
         for (;;) {
@@ -758,7 +770,7 @@ export async function main(settings, seams) {
             } : undefined;
             if (first) look(true);
             const searched = await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun, skippable: true });
-            if (searched === SKIPPED) return skipEnd(stageRound);
+            if (searched === BY_USER) return userEnd(stageRound);
             if (!searched) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
             // The elimination rule (rounds.mjs eliminate): per pool, the changes and the current setup; who is out leaves the race for good (c.out).
@@ -771,7 +783,7 @@ export async function main(settings, seams) {
                 const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
                 report({ stage, round: stageRound, phase: 'reading', candidatesLeft: leaders.length });
                 const read1 = await ensure(reqs, { skippable: true });
-                if (read1 === SKIPPED) return skipEnd(stageRound);
+                if (read1 === BY_USER) return userEnd(stageRound);
                 if (!read1) return null;
             }
             // Readings, the pick check on them, the refuted, the locks.
@@ -833,8 +845,8 @@ export async function main(settings, seams) {
             // Nothing but the current setup can still stand in the pool(s): the pool(s) end as "no change" (a refuted last candidate leaves none).
             const resolved = (pools) => pools.every((q) => q.changes.every((c) => c.refuted));
             const settled = byPlayer ? players.every((p) => lockedBy.has(p) || resolved(standing.filter((q) => q.player === p))) : lockedBy.size > 0 || resolved(standing);
-            // The window's two buttons (stop.done is 'accept' or 'skip'): the race ends here, after the round just published, with the leaders as
-            // --max-rounds returns them. 'skip' leaves a pool that has no lock unchanged; 'accept' first locks the best positive leader of every pool
+            // The window's two buttons (stop.done is 'accept' or 'skip') pressed once the round's runs were all in (a press during them ends the stage at
+            // once, userEnd above): the race ends here, after the round just published, with the leaders as --max-rounds returns them. 'skip' leaves a pool that has no lock unchanged; 'accept' first locks the best positive leader of every pool
             // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).
             const mode = stopSignal.done, byUser = !!mode;
             if (byUser) stopSignal.done = false;
@@ -846,7 +858,7 @@ export async function main(settings, seams) {
                 for (const [k, c] of accepted) lockedBy.set(k, c);
                 return endStage(live, [...accepted.values()], byUser && !settled && mode === 'skip'); // the race has ended (by its lock, the round limit or a button)
             }
-            prevLive = live;
+            prevLive = live; prevTakes = takes;
         }
         } finally {
             // The stage's own fields leave the shared progress object with the stage: the next, non-race stage (the confirmation) or message (a pick check) must not

@@ -154,6 +154,10 @@ export async function searchRequest(params, getMarketplace) {
     return { body: searchBody({ ...params, marketplace }) };
 }
 
+// The settings of a request, without its prices: the body searchBody builds with no market snapshot, as one string. Two starts with the
+// same key differ only in their prices; the window offers Resume on a stopped search while its settings still give the key it was started with.
+export const settingsKey = (params) => JSON.stringify(searchBody({ ...params, marketplace: null }));
+
 // Apply ops to the page's slots. Returns { missing: [player names no slot holds] } and applies nothing when any op
 // names a player the page does not hold; else { slots: { "<slot id>": "<new slot JSON>" } } for every slot an op touched.
 export function applyToSlots(slots, ops) {
@@ -235,14 +239,24 @@ const fill = (t, key, params) => t(key, params);
 const plural = (t, key, n, params) => t(Number(n) === 1 ? key + 'One' : key, params);
 // A part's key (the buttons' data-whatif-part, and the pressed button main.js keeps): the same part keeps the same key across polls.
 export const partKey = (r) => r.kind + ':' + (r.index ?? 0);
+// The window's status poll (main.js whatIfPoll, the one poll loop): the wait before the next poll. POLL_MS normally; FAST_POLL_MS while a press is
+// still to show: until `fastUntil` (set FAST_FOR_MS after a press of Stop, Resume or a stage button), and, for a pressed stage button, as long as
+// its part is still running (a stage normally ends within a poll or two of the press; this keeps the poll fast if it takes longer than FAST_FOR_MS).
+export const POLL_MS = 1000, FAST_POLL_MS = 250, FAST_FOR_MS = 30000;
+export function pollDelay(status, pressed, now, fastUntil) {
+    if (now < fastUntil) return FAST_POLL_MS;
+    const parts = status?.progress?.parts;
+    if (pressed && Array.isArray(parts) && parts.some((r) => partKey(r) === pressed.key && r.state === 'running')) return FAST_POLL_MS;
+    return POLL_MS;
+}
 // The name of a greedy-step race by the change it looks for: the screen is the race for change 1 (progress.partScreen), the race of
 // "greedy step n" (the search's stage name, tools/whatif/core.mjs) runs after change n and looks for change n + 1. The one place the +1 is made.
 const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 });
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
-// lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Accept ends the stage after the round it is in,
-// with its pick as it is; Skip ends it at once. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn, both buttons disabled
-// (the second press would change the first), and Accept's note says the round is being finished (Skip ends at once: no note). The state is in the
-// markup, so the redraw of the next poll gives the same button.
+// lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Both end the stage at once (its runs in flight
+// are ended): Accept with its pick as it is, Skip with nothing taken. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn
+// in its pending state ("Accepting…" / "Skipping…", whatif-pending), both buttons disabled (the second press would change the first). The state is
+// in the markup, so the redraw of the next poll gives the same button.
 // The window's small parts: a chip (a short fact, its label dim), a help mark (a sentence on hover and on keyboard focus; `tip` is escaped
 // html), a labelled figure, and a change "from → to" split in two (the text is escaped html; "->" or "→" splits it).
 const chip = (html, cls = '', tip = '') => `<span class="whatif-chip${cls ? ' ' + cls : ''}"${tip ? ` title="${tip}"` : ''}>${html}</span>`;
@@ -251,9 +265,8 @@ const fig = (k, v) => `<span class="whatif-fig"><span class="whatif-fig-k">${esc
 const arrowed = (html) => html.replace(/^(.*?)\s*(?:-&gt;|→)\s*(.*)$/, '<span class="whatif-from">$1</span><span class="whatif-arrow">→</span><span class="whatif-to">$2</span>');
 function stageButtons(t, acceptable, key, pressed) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
-    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(done === mode && mode === 'accept' ? 'progress.stageFinishing' : tip))}"${done ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
-    const note = '';
-    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip') + note;
+    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
+    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
 export function renderParts(status, t, pressed = null) {
     const p = status.progress || {}, parts = p.parts;

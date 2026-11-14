@@ -52,18 +52,23 @@ export function checkpointFor(scenario, task, h, confirmOffset = 10000) {
     return { simHours: h, players, party: { profitAfterTaxPerDay: loot - consumables, consumablesPerDay: consumables, expPerHour: m.expPerHour, deathsPerHour: m.deathsPerHour }, encountersPerHour: m.encountersPerHour };
 }
 
-// The pool seam: run(task) resolves with the run's result (after msPerRun, so a page can watch the search), null once kill() was called.
+// The pool seam: run(task) resolves with the run's result (after msPerRun, so a page can watch the search); null when drop() was called while it
+// ran (the runs in flight end) or once kill() was called (every run ends).
 export function createSyntheticPool(scenario, { confirmOffset = 10000 } = {}) {
     let killed = false;
     const ms = scenario.model.msPerRun ?? 0;
+    const inFlight = new Set(); // each run's pause, as a function that ends it now (the run then answers null)
+    const end = () => { for (const f of inFlight) f(); inFlight.clear(); };
+    const pause = () => new Promise((res) => { const f = () => { clearTimeout(timer); res(false); }; const timer = setTimeout(() => { inFlight.delete(f); res(true); }, ms); inFlight.add(f); });
     return {
         async run(task) {
             if (killed) return null;
-            if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+            if (ms > 0 && !(await pause())) return null;
             if (killed) return null;
             return { variant: task.variant, seed: task.seed, wallSeconds: Math.max(ms, 1) / 1000, checkpoints: task.checkpoints.map((h) => checkpointFor(scenario, task, h, confirmOffset)) };
         },
-        kill() { killed = true; },
+        drop() { end(); },
+        kill() { killed = true; end(); },
     };
 }
 
@@ -100,7 +105,7 @@ export function flagsFromRequest(req, extra = {}) {
 }
 
 // The whole search on a scenario, in this process, without a page: the real core on the real seams except the pool and measureNeed (above) and an in-memory store
-// and sink. `extra` flags win over the scenario's request; `onRound(record, stop)` can press the stage buttons (stop.done = 'accept' | 'skip') or stop.requested = true.
+// and sink. `extra` flags win over the scenario's request; `onRound(record, stop)` can press the stage buttons (stop.press('accept' | 'skip'), the core's own press) or stop.requested = true.
 // `records` primes the store with earlier runs (a run that reaches the pool is a store miss, counted in `runs`). Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, records, stop, seen }.
 export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, records: prior = [], poolWrap = (p) => p } = {}) {
     const E = await import('./engine.mjs'); // registers the loader hooks: the core is imported after it
@@ -112,7 +117,7 @@ export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, 
     const stop = { requested: false, done: false };
     let result = null, markdown = null, lastProgress = null, runs = 0;
     const pool = createSyntheticPool({ ...scenario, model: { ...scenario.model, msPerRun: 0 } }, { confirmOffset: Number(flags['confirm-seed-offset'] ?? 10000) });
-    const counted = poolWrap({ run: async (t) => { runs++; return pool.run(t); }, kill: pool.kill });
+    const counted = poolWrap({ run: async (t) => { runs++; return pool.run(t); }, drop: pool.drop, kill: pool.kill });
     const seams = {
         data: { setups: structuredClone(scenario.players), market: scenario.market.marketData, pricesTimestamp: scenario.market.timestamp, exportData: null, userTrig: {} },
         store: { *load() { yield* records; }, put(r) { records.push(r); }, readAux: (n) => aux.get(n) ?? null, writeAux: (n, v) => { aux.set(n, JSON.parse(JSON.stringify(v))); } },

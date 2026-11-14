@@ -563,7 +563,11 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 {
     const html = read('index.html');
     check('page: the What-if button is hidden by default', /id="buttonWhatIf"[^>]*style="display: none;"/.test(html));
-    check('page: the window and its parts', ['whatIfModal', 'selectWhatIfGoal', 'whatIfBudgets', 'whatIfLevers', 'buttonWhatIfStart', 'buttonWhatIfStop', 'selectWhatIfResult', 'whatIfProgress', 'whatIfResult', 'whatIfDiff'].every((id) => html.includes(`id="${id}"`)));
+    {
+        const params = { slots: [{ id: '1', name: 'A', json: JSON.stringify({ player: {} }) }], goal: 'profit', budgets: { A: 100 }, levers: ['foods'], zone: 'z', tier: 1, exports: {}, maxPayback: '365' };
+        check(`settingsKey: the prices are not a setting (a marketplace in the params changes nothing); a budget is`, panel.settingsKey(params) === panel.settingsKey({ ...params, marketplace: { marketData: {}, timestamp: 1 } }) && panel.settingsKey(params) !== panel.settingsKey({ ...params, budgets: { A: 101 } }) && !panel.settingsKey(params).includes(`marketplace`));
+    }
+    check('page: the window and its parts', ['whatIfModal', 'selectWhatIfGoal', 'whatIfBudgets', 'whatIfLevers', 'buttonWhatIfSearch', 'selectWhatIfResult', 'whatIfProgress', 'whatIfResult', 'whatIfDiff'].every((id) => html.includes(`id="${id}"`)));
     const main = read('src/main.js');
     check('page: main.js starts the window', /\ninitWhatIf\(\);/.test(main));
     check('page: Apply saves the current tab first', /function whatIfSlots[\s\S]*?savePreviousPlayer\(currentPlayerTabId\)/.test(main));
@@ -918,6 +922,13 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('not confirmed: a filling is listed as left out in the foods or the drinks, a pick as at its step', JSON.stringify(ncRows.map((r) => r.slice(0, 4))) === JSON.stringify([['Alpha', 'food filling', 'in the foods', '9 ± 2'], ['Alpha', 'drink filling', 'in the drinks', '9 ± 2'], ['Alpha', 'undefined filling', 'at step 4', '9 ± 2']]) && ncRows.length === 3 && panel.renderResult({ ...live1, notConfirmed: [nc('food', null)] }, t).includes('<span class="whatif-chip" title="fresh runs">in the foods</span>'), JSON.stringify(ncRows));
     check('live: the pt and zh strings exist for every new key and keep the placeholders', ['running', 'stoppedMark', 'soFar', 'notConfirmedAtStep', 'notConfirmedAtFood', 'notConfirmedAtDrink', 'notConfirmedItem'].every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).every((ph) => locales[l].result[k].includes(ph)))));
     check('live: the status URL carries the version the window has, none at 0', panel.API.status('a b', 0) === '/api/search/a%20b' && panel.API.status('x', 7) === '/api/search/x?since=7');
+}
+{ // The poll wait: 1 s normally; 250 ms until fastUntil (after a press), and while a pressed stage button's part is still running.
+    const { pollDelay, POLL_MS, FAST_POLL_MS } = panel;
+    const st = (state) => ({ state: 'running', progress: { parts: [{ kind: 'drinks', index: 0, state }, { kind: 'steps', index: 0, state: 'waiting' }] } });
+    const pressed = { key: 'drinks:0', mode: 'skip' };
+    check('poll wait: 1 s with nothing pressed, 250 ms before fastUntil', POLL_MS === 1000 && FAST_POLL_MS === 250 && pollDelay(st('running'), null, 100, 0) === POLL_MS && pollDelay(st('running'), null, 100, 200) === FAST_POLL_MS && pollDelay(null, null, 100, 200) === FAST_POLL_MS);
+    check('poll wait: fast while the pressed part runs, normal once it is done, or for a part not in the progress', pollDelay(st('running'), pressed, 100, 0) === FAST_POLL_MS && pollDelay(st('done'), pressed, 100, 0) === POLL_MS && pollDelay(st('running'), { key: 'foods:0', mode: 'skip' }, 100, 0) === POLL_MS && pollDelay({ state: 'running', progress: {} }, pressed, 100, 0) === POLL_MS);
 }
 // The payback limit (his picks 2026-11-11): the list of changes left out for paying back too slowly, closed by default after the
 // over-budget list, in the one list renderer; and the field in the request.

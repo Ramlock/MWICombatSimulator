@@ -4,7 +4,7 @@
 //   store  runs.jsonl and --cache-from files, and the small cache files <out>/need.json and <out>/probe.json (createNodeStore)
 //   pool   forked run processes (batch.mjs --child), one engine run per task, at this process's priority (createNodePool)
 //   sink   progress.json, partial.json, rounds.jsonl, result.json, result.md, and the IPC messages to the runner (createNodeSink)
-//   stop   { requested }, set by the runner's 'stop' message (optimize.mjs)
+//   stop   { requested }, set by the runner's 'stop' message; its { done } message goes to stop.press, the core's (optimize.mjs)
 //   hash   sha1 of a text (run keys)
 //   sim    the engine's own functions (engine.mjs) and the Trigger class
 import { fork } from 'node:child_process';
@@ -49,11 +49,14 @@ export function createNodeStore(out, cacheFrom) {
 }
 
 // The pool seam. run(task) sends the task to an idle run process (forked on demand, at this process's priority) and resolves with its
-// result message { variant, seed, wallSeconds, checkpoints }; resolves null when kill() ended it. A run process that exits by itself rejects.
+// result message { variant, seed, wallSeconds, checkpoints }; resolves null when its process was ended by drop() or kill(). A run process that
+// exits by itself rejects. drop() ends the runs in flight (their processes are killed; the pool forks new ones for later runs); kill() ends the
+// pool: every process, and every later run() resolves null. Both go through end(), the one way a run is ended.
 export function createNodePool() {
     const self = fileURLToPath(new URL('./batch.mjs', import.meta.url));
-    const idle = [], all = new Set();
+    const idle = [], all = new Set(), ended = new WeakSet();
     let killed = false;
+    const end = (children) => { for (const c of children) { ended.add(c); c.kill(); } };
     function spawn() {
         const c = fork(self, ['--child'], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
         try { os.setPriority(c.pid, os.getPriority()); } catch { /* the child exited already */ }
@@ -67,20 +70,21 @@ export function createNodePool() {
             const c = idle.pop() || spawn();
             return new Promise((resolve, reject) => {
                 const onMessage = (res) => { c.off('exit', onExit); idle.push(c); resolve(res); };
-                const onExit = (code) => { c.off('message', onMessage); if (killed) resolve(null); else reject(new Error('child exited ' + code)); };
+                const onExit = (code) => { c.off('message', onMessage); if (ended.has(c)) resolve(null); else reject(new Error('child exited ' + code)); };
                 c.once('message', onMessage);
                 c.once('exit', onExit);
                 c.send(task);
             });
         },
-        kill() { killed = true; for (const c of all) c.kill(); },
+        drop() { end([...all].filter((c) => !idle.includes(c))); },
+        kill() { killed = true; end(all); },
     };
 }
 
 // Replay counter: wraps any pool seam and counts the runs that reach it. The core asks the pool only for a run the store does not hold
 // (core.mjs ensure(): a run in the cache is never asked), so every run counted here is a real simulation and every other run of the search was replayed from
 // recorded runs. count() is the total so far, byTag() the total per task tag; the wrapper logs 'N real simulations so far' every `every` runs.
-// It changes neither the pool nor the store: it only forwards run() and kill().
+// It changes neither the pool nor the store: it only forwards run(), drop() and kill().
 export function createCountingPool(pool, log = (line) => console.log(line), every = 50) {
     let total = 0;
     const tags = new Map();
@@ -92,6 +96,7 @@ export function createCountingPool(pool, log = (line) => console.log(line), ever
             if (total % every === 0) log(`${stamp()} replay counter: ${total} real simulations so far (the rest of the runs came from recorded runs)`);
             return pool.run(task);
         },
+        drop() { return pool.drop(); },
         kill() { return pool.kill(); },
         count() { return total; },
         byTag() { return Object.fromEntries(tags); },
