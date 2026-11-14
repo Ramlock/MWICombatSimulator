@@ -33,7 +33,7 @@ const firstItem = rooms['/house_rooms/dojo'].upgradeCostsMap[1].find((x) => x.it
 const noSeller = H.roomUpgradeCost('/house_rooms/dojo', 0, 1, (h) => (h === firstItem ? Infinity : 10));
 check(!noSeller.known && noSeller.note.includes(firstItem.split('/').pop()), 'an item with no seller makes the cost unknown and is named');
 
-const setup = { name: 'P', player: { intelligenceLevel: 60, magicLevel: 50, staminaLevel: 50, attackLevel: 50, meleeLevel: 50, defenseLevel: 50, rangedLevel: 50, equipment: [] }, houseRooms: { '/house_rooms/dojo': 7, '/house_rooms/gym': 2 }, abilities: [null, { abilityHrid: '/abilities/entangle', level: 10 }, { abilityHrid: '/abilities/toxic_pollen', level: 199 }, null, null] };
+const setup = { name: 'P', player: { intelligenceLevel: 60, magicLevel: 50, staminaLevel: 50, attackLevel: 50, meleeLevel: 50, defenseLevel: 50, rangedLevel: 50, equipment: [{ itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/wooden_nature_staff', enhancementLevel: 0 }] }, houseRooms: { '/house_rooms/dojo': 7, '/house_rooms/gym': 2 }, abilities: [null, { abilityHrid: '/abilities/entangle', level: 10 }, { abilityHrid: '/abilities/toxic_pollen', level: 199 }, null, null] };
 const hc = H.houseCands(setup, 'P', { rooms: ['/house_rooms/dojo', '/house_rooms/gym'], maxUp: 2, buy: flat });
 check(hc.map((c) => c.id).join() === 'P:house:dojo+1,P:house:gym+1,P:house:gym+2', 'house candidates: +1, +2, never past the top level');
 check(hc.every((c) => c.monotone && c.kind === 'house') && hc[2].cost.cost === byHand('/house_rooms/gym', 2, 4), 'house candidates are monotone and costed from their own level');
@@ -76,6 +76,18 @@ check(reqOk, 'books: level requirements met');
 const one = bc.find((c) => c.id.endsWith('@5'));
 check(one && one.cost.cost === 10 * (1 + Math.ceil(XP[4] / H.BOOK_OF[one.ops[0].ability].abilityBookDetail.experienceGain)), 'book cost at level 5: one to learn plus duplicates');
 check(applyOps([setup], one.ops)[0].abilities[Number(one.id.match(/ability(\d)/)[1])].level === 5, 'book op learns it at the level');
+
+// ---- Style and element (stylefit.mjs abilityMisfit): books and level steps follow the player ----
+const dropsB = [], bAll = H.bookCands(setup, 'P', { buy: flat, learned, levels: [1], onDrop: (e) => dropsB.push(e) });
+check(bAll.length > 0 && !bAll.some((c) => /book:(cleave|poke|water_strike|fireball|berserk|frenzy|aqua_arrow)@/.test(c.id)), 'books: a nature mage is never offered another style\'s or element\'s ability, nor a physical self buff');
+check(bAll.some((c) => /book:(heal|minor_heal)@/.test(c.id)) && bAll.some((c) => /book:(fierce_aura|mystic_aura|speed_aura)@/.test(c.id)), 'books: heals and auras stay');
+check(dropsB.length > 0 && dropsB.some((e) => /learn cleave 1$/.test(e.desc) && e.bound.styles.includes('slash') && e.wants.element === 'nature') && dropsB.every((e) => e.player === 'P' && e.to.ability && e.id.includes('=book:')), 'books: every dropped book goes to onDrop with why (bound) and what the player wants');
+const meleeSetup = { ...setup, player: { ...setup.player, equipment: [{ itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/cheese_sword', enhancementLevel: 0 }] } };
+const dropsL = [], alMelee = H.abilityLevelCands(meleeSetup, 'P', { steps: [1], buy: flat, onDrop: (e) => dropsL.push(e) });
+check(alMelee.length === 0 && dropsL.map((e) => e.id).join() === 'P:ability1+1,P:ability2+1' && dropsL[0].desc === 'P entangle 10 -> 11', 'ability levels: a melee player is never offered levelling a held nature ability; each step goes to onDrop');
+check(H.abilityLevelCands(meleeSetup, 'P', { steps: [1], buy: flat }).length === 0, 'ability levels: no onDrop still drops');
+const mageRooms = H.houseCands(setup, 'P', { rooms: H.COMBAT_ROOMS, maxUp: 1, buy: flat }).map((c) => c.id), meleeRooms = H.houseCands(meleeSetup, 'P', { rooms: H.COMBAT_ROOMS, maxUp: 1, buy: flat }).map((c) => c.id);
+check(['gym', 'archery_range', 'mystical_study'].every((r) => mageRooms.includes(`P:house:${r}+1`) && meleeRooms.includes(`P:house:${r}+1`)), 'house rooms are unchanged: every combat room stays offered to every style');
 
 // The optimizer entry reads its flags.
 const fakeArg = (n, d) => ({ 'house-rooms': 'gym', 'house-up': '1', 'ability-steps': '2' }[n] ?? d);

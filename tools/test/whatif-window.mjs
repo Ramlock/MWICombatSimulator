@@ -35,6 +35,7 @@ const result = {
     notConfirmed: [{ id: 'nc', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', step: 2, fresh: { seeds: 64, seedFrom: 20001, seedTo: 20064, gain: 30, se: 20, gainPerUser: 10, sePerUser: 7, buyerNet: 40, buyerNetSe: 25, accepted: false }, cost: 100, costPath: 'market' }],
     apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }],
     overBudget: [{ id: 'o', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 7000000000, costPath: 'market' }, { id: 'o2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 8000000000, costPath: 'market' }],
+    otherStyle: [{ id: 'Player 1:ability2=book:cleave@1', player: 'Player 1', slot: 'ability2', desc: 'Player 1 ability 3 empty -> learn cleave 1', from: null, to: { ability: '/abilities/cleave', level: 1 }, bound: { styles: ['slash'], elements: [] }, wants: { style: 'magic', element: 'fire', kind: 'magic' } }, { id: 'Player 1:body=rainbow_plate_body+0', player: 'Player 1', slot: 'body', desc: 'Player 1 body cotton_robe_top +0 -> rainbow_plate_body +0', from: { item: '/items/cotton_robe_top', level: 0 }, to: { item: '/items/rainbow_plate_body', level: 0 }, bound: { styles: [], elements: [], penalty: ['magicAccuracy'] }, wants: { style: 'magic', element: 'fire', kind: 'magic' } }],
     dominated: [{ id: 's1', player: 'Player 1', slot: 'feet', desc: 'Player 1 feet cotton_boots +0 -> pathseeker_boots_refined +0', from: { item: '/items/cotton_boots', level: 0 }, to: { item: '/items/pathseeker_boots_refined', level: 0 } }, { id: 's2', player: 'Player 1', slot: 'feet', desc: 'Player 1 not_a_real_item_x +1 -> +2', from: { item: '/items/not_a_real_item_x', level: 1 }, to: { item: '/items/not_a_real_item_x', level: 2 } }],
     overPayback: [{ id: 'sl', player: 'Player 1', desc: 'Player 1 feet pathseeker_boots_refined +12 -> cotton_boots +0', cost: 900000, costPath: 'market', paybackDays: 612 }, { id: 'sl2', player: 'Player 1', desc: 'Player 1 not_a_real_item_x +1 -> +2', cost: 800000, costPath: 'market', paybackDays: null }],
     options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot', zone: '/actions/combat/fly', tier: 0, maxPaybackDays: 365 },
@@ -411,6 +412,17 @@ try {
     check('the toggle opens the skipped swaps with game names and a second click closes them', await js(`(() => { const ul = document.getElementById('whatIfDominated'); const b = document.querySelector('[data-whatif-more="whatIfDominated"]'); const open = !ul.hidden && b.textContent === 'Hide' && ul.children[0].textContent === 'Player 1, Feet Cotton Boots +0 -> Pathseeker Boots ★ +0' && ul.children[1].textContent.startsWith('Player 1, not_a_real_item_x'); b.click(); return open && ul.hidden && b.textContent === 'Show'; })()`));
     check('the toggle opens the over-budget list without touching the grey rows', await js(`!document.getElementById('whatIfOverBudget').hidden && document.querySelector('[data-whatif-more="whatIfOverBudget"]').textContent === 'Hide the 2 priced over budget' && !document.getElementById('whatIfMoreSingles').hidden`));
     await shot('whatIfModal', 'whatif-over-budget-open.png');
+    await openFolds('whatIfOtherStyle');
+    check('the left-out changes (another style or element) open on their own line with game names: a book and a plate body', await js(`(() => { const ul = document.getElementById('whatIfOtherStyle'), line = document.querySelector('[data-whatif-more="whatIfOtherStyle"]').parentElement; return !ul.hidden && line.textContent.startsWith('2 changes left out (another combat style or element)') && ul.children.length === 2 && /Cleave/.test(ul.children[0].textContent) && /Rainbow Plate Body/.test(ul.children[1].textContent); })()`), await js(`document.getElementById('whatIfOtherStyle')?.parentElement?.textContent`));
+    if (shots) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+        await new Promise((r) => setTimeout(r, 400));
+        await js(`(() => { document.getElementById('whatIfOtherStyle').scrollIntoView({ block: 'center' }); return true; })()`);
+        await new Promise((r) => setTimeout(r, 300));
+        const v = await page.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 } });
+        fs.writeFileSync(path.join(shots, 'whatif-left-out.png'), Buffer.from(v.data, 'base64'));
+        await page.send('Emulation.clearDeviceMetricsOverride');
+    }
     await js(`document.querySelector('[data-whatif-more="whatIfOverBudget"]').click(), true`);
     check('a second click closes it again', await js(`document.getElementById('whatIfOverBudget').hidden && document.querySelector('[data-whatif-more="whatIfOverBudget"]').textContent === 'Show the 2 priced over budget'`));
     check('the report has no second fresh line and no seed count anywhere', await js(`(() => { const r = document.getElementById('whatIfResult'); return !r.querySelector('.whatif-fresh') && !/\\bseeds\\b/.test(r.textContent); })()`), await resultText());
