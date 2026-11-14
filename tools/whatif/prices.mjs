@@ -63,7 +63,7 @@ export function makePricer(market) {
 // "no seller", as before), then, when allListed (no --max-up given), every higher level the market sells.
 export function upgradeLevels(pricer, hrid, from, maxUp, allListed) {
     const out = [];
-    for (let d = 1; d <= maxUp; d++) out.push(from + d);
+    for (let d = 1; d <= maxUp && from + d <= MAX_ENHANCEMENT; d++) out.push(from + d);
     if (allListed) for (const l of pricer.listedLevels(hrid)) if (l > from + maxUp) out.push(l);
     return out;
 }

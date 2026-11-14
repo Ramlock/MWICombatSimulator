@@ -49,6 +49,10 @@ const legs = P.makePricer({ '/items/legs': { 0: { a: 1000, b: 900 }, 5: { a: 500
 const lg = P.upgradeLevels(legs, '/items/legs', 5, 3, true).map((to) => legs.upgrade('/items/legs', 5, to)), ten = lg.find((c) => c.to === 10);
 check(same(known(lg), [7, 10]) && ten.cost === 9000000 - 40000 * 0.96 && ten.path === 'buy, sell old', 'upgrade: a worn +5 sold at +7 and +10 is offered +5 -> +10 directly, a jump of 5 levels, at the +10 ask less the +5 bid after tax (today only +5 -> +7, then +7 -> +10 in a later step)');
 
+const top = P.makePricer({ '/items/top': { 0: { a: 1000, b: 900 }, 20: { a: 9000000, b: 8000000 } } });
+check(same(P.upgradeLevels(top, '/items/top', 19, 3, true), [20]) && same(P.upgradeLevels(top, '/items/top', 19, 3, false), [20]), 'upgrade: a worn +19 is offered +20 only, with --max-up or without (no level above +20)');
+check(same(P.upgradeLevels(top, '/items/top', 20, 3, true), []) && same(P.upgradeLevels(top, '/items/top', 20, 3, false), []), 'upgrade: a worn +20 is offered nothing, with --max-up or without');
+
 // Either option given: its old meaning.
 check(same(P.upgradeLevels(pr, '/items/sword', 0, 3, false), [1, 2, 3]), '--max-up 3: +1 to +3 only');
 check(same(P.swapLevelsOf(pr, '/items/sword', 4, ['0', 'same'], false), [0, 4]) && same(P.swapLevelsOf(pr, '/items/sword', null, ['0', 'same'], false), [0]), '--swap-levels 0,same: the old levels (an empty slot +0)');
