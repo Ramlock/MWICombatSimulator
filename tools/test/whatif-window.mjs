@@ -548,6 +548,17 @@ try {
         check(`at ${w}x${h} a result of real size (3 players, 11 columns, changes up to 235 characters) has no horizontal scroll, every Apply button is inside the window, every table fits and no Change is taller than 3 lines${w === 1920 ? ', no number cell of the steps table wraps' : ''}`, fit.noBar && fit.n >= 6 && fit.inside && fit.tables.every(Boolean) && fit.changeLines <= 3 && (w !== 1920 || fit.numberLines === 1), JSON.stringify(fit));
         check(`at ${w}x${h} the free change reads "N/A" in the steps table and in Each change alone, and the best block shows`, await js(`(() => { const r = document.getElementById('whatIfResult'); const free = [...r.querySelectorAll('tbody tr')].filter((tr) => tr.textContent.includes('poke trigger') || tr.textContent.includes('Poke')); return free.length >= 2 && free.every((tr) => tr.textContent.includes('N/A')) && r.textContent.includes('Best foods') && r.querySelectorAll('.whatif-best-table tbody tr').length === 6; })()`));
     }
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+    await js(`i18next.changeLanguage('pt').then(() => true)`);
+    // A trigger change reads whole in the page's language: the window's words and the game's (the free step "poke trigger: game default (always)").
+    check('in Portuguese a trigger change reads whole', await until(`document.getElementById('whatIfResult').textContent.includes(i18next.t('abilityNames./abilities/poke') + ' gatilho: padrão do jogo (sempre)')`), await resultText());
+    await js(`(() => { const td = [...document.querySelectorAll('#whatIfResult td.chg')].find((x) => x.textContent.includes('(sempre)')); td?.scrollIntoView({ block: 'center' }); return true; })()`);
+    await shot('whatIfModal', 'trigger-change-pt.png');
+    await js(`i18next.changeLanguage('zh').then(() => true)`);
+    check('in Chinese a trigger change reads whole', await until(`document.getElementById('whatIfResult').textContent.includes(i18next.t('abilityNames./abilities/poke') + ' 触发条件: 游戏默认（始终）')`), await resultText());
+    await js(`(() => { const td = [...document.querySelectorAll('#whatIfResult td.chg')].find((x) => x.textContent.includes('\u59cb\u7ec8')); td?.scrollIntoView({ block: 'center' }); return true; })()`);
+    await shot('whatIfModal', 'trigger-change-zh.png');
+    await js(`i18next.changeLanguage('en').then(() => true)`);
     serveBig = false;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
     await new Promise((r) => setTimeout(r, 400));
