@@ -45,6 +45,10 @@ check(same(sw.map((c) => c.to), [1, 2, 3, 5, 7]) && same(known(sw), [5, 7]), 'up
 check(sw.filter((c) => !c.known).every((c) => c.note === 'no seller') && sw.filter((c) => !c.known).length === 3, 'upgrade: +1 to +3 with no ask are listed apart as no seller');
 check(same(ups('/items/sword', 5, 3, true).map((c) => c.to), [6, 7, 8]) && same(known(ups('/items/sword', 5, 3, true)), [7]), 'upgrade: a level beyond +3 with no ask is not listed at all (the apart list does not grow by it)');
 
+const legs = P.makePricer({ '/items/legs': { 0: { a: 1000, b: 900 }, 5: { a: 50000, b: 40000 }, 7: { a: 200000, b: 150000 }, 10: { a: 9000000, b: 8000000 } } });
+const lg = P.upgradeLevels(legs, '/items/legs', 5, 3, true).map((to) => legs.upgrade('/items/legs', 5, to)), ten = lg.find((c) => c.to === 10);
+check(same(known(lg), [7, 10]) && ten.cost === 9000000 - 40000 * 0.96 && ten.path === 'buy, sell old', 'upgrade: a worn +5 sold at +7 and +10 is offered +5 -> +10 directly, a jump of 5 levels, at the +10 ask less the +5 bid after tax (today only +5 -> +7, then +7 -> +10 in a later step)');
+
 // Either option given: its old meaning.
 check(same(P.upgradeLevels(pr, '/items/sword', 0, 3, false), [1, 2, 3]), '--max-up 3: +1 to +3 only');
 check(same(P.swapLevelsOf(pr, '/items/sword', 4, ['0', 'same'], false), [0, 4]) && same(P.swapLevelsOf(pr, '/items/sword', null, ['0', 'same'], false), [0]), '--swap-levels 0,same: the old levels (an empty slot +0)');
