@@ -551,8 +551,8 @@ try {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
     await js(`i18next.changeLanguage('pt').then(() => true)`);
     // A trigger change reads whole in the page's language: the window's words and the game's (the free step "poke trigger: game default (always)").
-    check('in Portuguese a trigger change reads whole', await until(`document.getElementById('whatIfResult').textContent.includes(i18next.t('abilityNames./abilities/poke') + ' gatilho: padrão do jogo (sempre)')`), await resultText());
-    await js(`(() => { const td = [...document.querySelectorAll('#whatIfResult td.chg')].find((x) => x.textContent.includes('(sempre)')); td?.scrollIntoView({ block: 'center' }); return true; })()`);
+    check('in Portuguese a trigger change reads whole', await until(`document.getElementById('whatIfResult').textContent.includes(i18next.t('abilityNames./abilities/poke') + ' gatilho: padrão do jogo (Sempre)')`), await resultText());
+    await js(`(() => { const td = [...document.querySelectorAll('#whatIfResult td.chg')].find((x) => x.textContent.includes('(Sempre)')); td?.scrollIntoView({ block: 'center' }); return true; })()`);
     await shot('whatIfModal', 'trigger-change-pt.png');
     await js(`i18next.changeLanguage('zh').then(() => true)`);
     check('in Chinese a trigger change reads whole', await until(`document.getElementById('whatIfResult').textContent.includes(i18next.t('abilityNames./abilities/poke') + ' 触发条件: 游戏默认（始终）')`), await resultText());

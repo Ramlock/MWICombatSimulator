@@ -628,7 +628,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
         const self = (b) => g(b, 'combatTriggerDependencyNames', '/combat_trigger_dependencies/self'), hp = (b) => g(b, 'combatTriggerConditionNames', '/combat_trigger_conditions/current_hp');
         const poke = (b) => g(b, 'abilityNames', '/abilities/poke'), active = (b) => g(b, 'combatTriggerComparatorNames', '/combat_trigger_comparators/is_active');
         const cases = {
-            'Alpha poke trigger: game default (always)': { pt: `${poke(pt)} gatilho: padrão do jogo (sempre)`, zh: `${poke(zh)} 触发条件: 游戏默认（始终）` },
+            'Alpha poke trigger: game default (always)': { pt: `${poke(pt)} gatilho: padrão do jogo (Sempre)`, zh: `${poke(zh)} 触发条件: 游戏默认（始终）` },
             'Alpha poke trigger: drop self current_hp <= 60': { pt: `${poke(pt)} gatilho: remover ${self(pt)} ${hp(pt)} <= 60`, zh: `${poke(zh)} 触发条件: 删除 ${self(zh)} ${hp(zh)} <= 60` },
             'Alpha poke trigger: add self current_hp >= 5': { pt: `${poke(pt)} gatilho: adicionar ${self(pt)} ${hp(pt)} >= 5`, zh: `${poke(zh)} 触发条件: 添加 ${self(zh)} ${hp(zh)} >= 5` },
             'Alpha poke trigger: self current_hp <= 60 -> >= 40': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 -> >= 40`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 -> >= 40` },

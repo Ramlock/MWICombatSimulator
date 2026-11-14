@@ -142,7 +142,7 @@
     "whatIf": {
         "trig": {
             "trigger": "gatilho",
-            "always": "sempre",
+            "always": "Sempre",
             "and": "E",
             "then": "depois",
             "gameDefault": "padrão do jogo ({{x}})",

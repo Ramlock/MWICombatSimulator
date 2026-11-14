@@ -188,7 +188,7 @@
         "players": "Players",
         "zone": "Zone",
         "tier": "Tier",
-        "choicesNote": "Players whose tab holds a setup start ticked when this window opens; changes here affect only this search.",
+        "choicesNote": "Players whose tab holds a setup are ticked when this window opens; changes here affect only this search.",
         "exportLeverOff": "Needs the character export, which comes from a Tracker import.",
         "exportFromTracker": "items and abilities: Tracker import",
         "exportFromNone": "items and abilities: none",
