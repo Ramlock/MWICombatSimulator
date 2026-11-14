@@ -65,6 +65,22 @@ const slots = [{ id: '1', name: 'Alpha', json: JSON.stringify(setup(5)) }, { id:
 
 check('variants.mjs re-exports the shared applyOps', variants.applyOps === applyOps);
 
+// Which players the window ticks when it opens: a slot that holds a character (slotHasData).
+{
+    const empty = { player: { attackLevel: 1, magicLevel: 1, meleeLevel: 1, rangedLevel: 1, defenseLevel: 1, staminaLevel: 1, intelligenceLevel: 1, equipment: [] }, food: { '/action_types/combat': [{ itemHrid: '' }, { itemHrid: '' }, { itemHrid: '' }] }, drinks: { '/action_types/combat': [{ itemHrid: '' }, { itemHrid: '' }, { itemHrid: '' }] }, abilities: [0, 1, 2, 3, 4].map(() => ({ abilityHrid: '', level: '1' })), triggerMap: {}, zone: '/actions/combat/fly', simulationTime: '100', houseRooms: { '/house_rooms/dojo': 0 } };
+    const w = (f) => { const o = structuredClone(empty); f(o); return JSON.stringify(o); };
+    check('slotHasData: the empty player (as the page keeps it) holds none', panel.slotHasData(JSON.stringify(empty)) === false);
+    check('slotHasData: a zone, a simulation time, house rooms, a name or triggers alone hold none', panel.slotHasData(w((o) => { o.zone = '/actions/combat/smelly_planet'; o.simulationTime = '24'; o.houseRooms['/house_rooms/dojo'] = 3; o.name = 'Player 1'; o.triggerMap = { '/abilities/x': [] }; })) === false);
+    check('slotHasData: a skill level above 1, a piece of equipment, a food, a drink or an ability each hold one', [
+        w((o) => { o.player.staminaLevel = 2; }),
+        w((o) => { o.player.equipment.push({ itemLocationHrid: '/item_locations/head', itemHrid: '/items/x', enhancementLevel: 0 }); }),
+        w((o) => { o.food['/action_types/combat'][1].itemHrid = '/items/apple'; }),
+        w((o) => { o.drinks['/action_types/combat'][0].itemHrid = '/items/x_coffee'; }),
+        w((o) => { o.abilities[2].abilityHrid = '/abilities/x'; }),
+    ].every(panel.slotHasData));
+    check('slotHasData: bad JSON and nothing hold none', !panel.slotHasData('{') && !panel.slotHasData(undefined) && !panel.slotHasData('null'));
+}
+
 {
     const body = panel.searchBody({ slots, goal: 'profit', budgets: { Alpha: 1e6, Beta: 0 }, levers: ['equip', 'houses'], zone: '/actions/combat/x', tier: '4' });
     check('search body: setups carry the tab names', body.setups.map((s) => s.name).join() === 'Alpha,Beta');

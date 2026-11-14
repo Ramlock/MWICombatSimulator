@@ -106,6 +106,22 @@ export function pageSetups(slots) {
     return slots.map((s) => ({ ...JSON.parse(s.json), name: s.name }));
 }
 
+// Whether a player slot (its setup JSON, as the page keeps it) holds a character: some skill level above 1, some equipment, or
+// some food, drink or ability chosen. An untouched tab is the page's empty player (every level 1, nothing chosen) and does not;
+// an import (a party's or one player's) or a hand-made setup does. Zone, simulation time, house rooms, triggers, achievements
+// and the name are not looked at. The window ticks the players that hold one when it opens (whatIfRenderChoices).
+export function slotHasData(json) {
+    let s;
+    try { s = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return false; }
+    if (!s || typeof s !== 'object') return false;
+    const p = s.player || {};
+    if (Object.keys(p).some((k) => /Level$/.test(k) && Number(p[k]) > 1)) return true;
+    if ((p.equipment || []).some((e) => e && e.itemHrid)) return true;
+    const list = (v) => (Array.isArray(v) ? v : Object.values(v?.['/action_types/combat'] ?? v ?? {}));
+    if ([...list(s.food), ...list(s.drinks)].some((x) => x && x.itemHrid)) return true;
+    return Object.values(s.abilities || {}).some((a) => a && a.abilityHrid);
+}
+
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
 export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap }) {

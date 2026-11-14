@@ -178,7 +178,7 @@
         "players": "玩家",
         "zone": "区域",
         "tier": "难度",
-        "choicesNote": "打开此窗口时从页面复制（页面上未勾选的玩家在此也未勾选）；在此的更改只影响本次搜索。",
+        "choicesNote": "打开此窗口时，标签页中有配置的玩家默认勾选；在此的更改只影响本次搜索。",
         "exportLeverOff": "需要角色导出，它来自 Tracker 导入。",
         "exportFromTracker": "物品和技能：Tracker 导入",
         "exportFromNone": "物品和技能：无",

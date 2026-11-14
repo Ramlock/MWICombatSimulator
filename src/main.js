@@ -35,7 +35,7 @@ import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
@@ -4096,16 +4096,18 @@ function whatIfPlayerNames() {
     return shownNames(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
 }
 
-// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. Copied
-// from the page when the window opens (fromPage); otherwise (a language change) only the names are redrawn and the
-// window's own picks are kept. Nothing here writes to the page.
+// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. When the window
+// opens (fromPage) every player whose slot holds a character (slotHasData: an import or a setup made by hand) starts ticked and
+// every other unticked, whatever the page's own ticks (a reload does not keep them, and an import may set none); the zone and
+// tier are copied from the page. Otherwise (a language change) only the names are redrawn and the window's own picks are kept.
+// Nothing here writes to the page.
 function whatIfRenderChoices(fromPage) {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
     savePreviousPlayer(currentPlayerTabId);
     const shownNames = whatIfPlayerNames();
     const players = document.getElementById('whatIfPlayers');
     const ticked = new Set(fromPage
-        ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
+        ? tabs.map((_, i) => i + 1).filter((i) => whatIfSlotHasData(playerDataMap[i])).map(String)
         : [...players.querySelectorAll('input:checked')].map((c) => c.value));
     players.replaceChildren();
     // One row of equal columns, one per player (a long name is cut with an ellipsis, its title holds the whole name).
