@@ -232,10 +232,10 @@ export function diffSetups(page, base) {
 }
 
 // Progress line from GET /api/search/<id>: the runner's own fields, shown as they come.
-export function renderProgress(status, t, pressed = null) {
+export function renderProgress(status, t, pressed = null, stopping = false) {
     if (!status) return '';
     const p = status.progress || {};
-    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t, pressed);
+    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t, pressed, stopping);
     const parts = [`<b>${esc(t('state.' + status.state))}</b>`];
     if (p.stage) parts.push(esc(t('progress.stage')) + ' ' + esc(p.stage));
     if (p.candidatesLeft !== undefined) parts.push(esc(t('progress.candidatesLeft')) + ' ' + num(p.candidatesLeft));
@@ -274,8 +274,9 @@ const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 })
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
 // lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Both end the stage at once (its runs in flight
 // are ended): Accept with its pick as it is, Skip with nothing taken. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn
-// in its pending state ("Accepting…" / "Skipping…", whatif-pending), both buttons disabled (the second press would change the first). The state is
-// in the markup, so the redraw of the next poll gives the same button.
+// in its pending state ("Accepting…" / "Skipping…", whatif-pending), both buttons disabled (the second press would change the first). `stopping`:
+// the Start / Stop button reads Stopping, so both are drawn disabled in place (the row keeps its shape). The state is in the markup, so the redraw
+// of the next poll gives the same button.
 // The window's small parts: a chip (a short fact, its label dim), a help mark (a sentence on hover and on keyboard focus; `tip` is escaped
 // html), a labelled figure, and a change "from → to" split in two (the text is escaped html; "->" or "→" splits it; a change of several
 // parts, each "a -> b" and joined by ", " like a shrine row's all five, splits each part, so no raw "->" is left).
@@ -285,12 +286,12 @@ const fig = (k, v) => `<span class="whatif-fig"><span class="whatif-fig-k">${esc
 const arrowOne = (html) => html.replace(/^(.*?)\s*(?:-&gt;|→)\s*(.*)$/, '<span class="whatif-from">$1</span><span class="whatif-arrow">→</span><span class="whatif-to">$2</span>');
 const ARROW = /-&gt;|→/g;
 const arrowed = (html) => { const parts = html.split(', '); return parts.length > 1 && parts.every((x) => (x.match(ARROW) || []).length === 1) ? parts.map(arrowOne).join(', ') : arrowOne(html); };
-function stageButtons(t, acceptable, key, pressed) {
+function stageButtons(t, acceptable, key, pressed, stopping = false) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
-    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
+    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done || stopping ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
     return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
-export function renderParts(status, t, pressed = null) {
+export function renderParts(status, t, pressed = null, stopping = false) {
     const p = status.progress || {}, parts = p.parts;
     // The search's own state decides what is drawn as running: a search that is stopped, done or failed has no part that runs, whatever the
     // last progress record says (the part that was running when it stopped is drawn halted, with the figures it had).
@@ -341,7 +342,7 @@ export function renderParts(status, t, pressed = null) {
             ? `<td class="num">${num(r.state === 'done' ? r.runsPlanned : r.runsDone)} / ${num(r.runsPlanned)}${cls === 'running' || cls === 'halted' ? `<div class="progress whatif-progress mt-1" style="height: 4px;"><div class="progress-bar" style="width: ${pct}%"></div></div>` : ''}</td>` : '<td></td>';
         const round = rounded && (Number(r.round) > 1 || race) ? `<td class="num">${num(r.round)}</td>` : '<td></td>';
         const left = !rounded && (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? r.candidatesLeft : null;
-        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</td></tr>`;
+        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed, stopping) : ''}</td></tr>`;
     }).join('');
     const cols = ['', 'stage', 'state', 'round', 'runs', 'hours', 'contending', 'paused', 'dropped', ''];
     const head = cols.map((c, i) => `<th${i >= 3 && i <= 8 ? ' class="num"' : ''}>${c ? esc(t('progress.col.' + c)) : ''}</th>`).join('');

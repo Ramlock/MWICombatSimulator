@@ -4342,12 +4342,12 @@ function whatIfShowDiff() {
 
 // Redraws the progress box without replacing a stage button whose markup did not change: a button replaced under the pointer loses its hover until the
 // mouse moves (the flicker), so an unchanged button (same part, same mode, same markup) keeps its node. `whatIf.pressed` ({ key, mode }) is in the markup,
-// so a pressed button is drawn disabled by every redraw, not only by the click.
+// so a pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
 function whatIfDrawProgress() {
     const box = document.getElementById('whatIfProgress');
     if (!whatIf.status) return;
     const next = document.createElement('div');
-    next.innerHTML = whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed);
+    next.innerHTML = whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping');
     const buttonKey = (b) => b.dataset.whatifPart + '/' + b.dataset.whatifDone;
     const old = new Map([...box.querySelectorAll('[data-whatif-done]')].map((b) => [buttonKey(b), b]));
     for (const b of next.querySelectorAll('[data-whatif-done]')) { const o = old.get(buttonKey(b)); if (o && o.outerHTML === b.outerHTML) b.replaceWith(o); }
@@ -4365,8 +4365,8 @@ function whatIfSetState(key) {
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
-    whatIfDrawProgress();
     if (whatIf.pending === 'starting' || status.state !== 'running') whatIf.pending = null; // the press shows: the state the runner reports is drawn
+    whatIfDrawProgress();
     whatIfDrawSearchButton();
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
@@ -4529,8 +4529,8 @@ async function whatIfPostSearch() {
 async function whatIfStopOrResume() {
     if (!whatIf.searchId || whatIf.pending) return;
     const resuming = whatIf.state === 'stopped';
-    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); // until the runner's state shows (whatIfShowStatus)
-    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfMessage(message); };
+    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); whatIfDrawProgress(); // until the runner's state shows (whatIfShowStatus); Stopping disables the stage buttons
+    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfDrawProgress(); whatIfMessage(message); };
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { failed(body.error || whatIfT('runnerError')); return; }

@@ -400,6 +400,22 @@ try {
     live = liveWith(pickEntry({}), 7);
     check('the pick note goes when the pick is the first row', await until(`!document.querySelector('#whatIfResult [data-best-note]') && !!document.querySelector('#whatIfResult table[data-best="foods"]')`));
     check('while it runs the state chip reads Searching', await js(`document.getElementById('whatIfState').textContent === 'Searching'`), await js(`document.getElementById('whatIfState').textContent`));
+    // While the button reads Stopping, the stage row keeps Accept and Skip in place, disabled; a failed Stop gives them back.
+    raceProgress = true;
+    await until(`!!document.querySelector('#whatIfProgress [data-whatif-done="skip"]')`);
+    await js(`(() => { const f = window.fetch; window.fetch = (u, o) => { if (String(u).endsWith('/stop')) { window.fetch = f; return new Promise((r) => setTimeout(() => r(new Response(JSON.stringify({ error: 'stop failed (test)' }), { status: 500 })), 1500)); } return f(u, o); }; return true; })()`);
+    const stageBtns = `[...document.querySelectorAll('#whatIfProgress [data-whatif-done]')].map((b) => [b.dataset.whatifDone, b.disabled, Math.round(b.getBoundingClientRect().left), b.textContent, getComputedStyle(b).opacity])`;
+    const btnsBefore = await js(stageBtns);
+    const btnsAtClick = await js(`(document.getElementById('buttonWhatIfSearch').click(), ${stageBtns})`);
+    await new Promise((r) => setTimeout(r, 700));
+    const btnsLater = await js(stageBtns), labelLater = await js(`document.getElementById('buttonWhatIfSearch').textContent`);
+    await shot('whatIfModal', 'stage-buttons-while-stopping.png');
+    const keep = (a) => JSON.stringify(a.map(([m, , x, t]) => [m, x, t]));
+    check('while Stopping, Accept and Skip stay in place with their labels, disabled with the disabled look, at the click and on later polls', btnsBefore.length === 2 && btnsBefore.every((b) => !b[1]) && [btnsAtClick, btnsLater].every((s) => s.length === 2 && s.every((b) => b[1] && Number(b[4]) < 1) && keep(s) === keep(btnsBefore)) && labelLater === 'Stopping…', JSON.stringify({ btnsBefore, btnsAtClick, btnsLater, labelLater }));
+    check('a failed Stop gives Accept and Skip back, enabled', await until(`document.getElementById('buttonWhatIfSearch').textContent === 'Stop'`, 5000) && JSON.stringify(await js(stageBtns)) === JSON.stringify(btnsBefore), JSON.stringify(await js(stageBtns)));
+    await js(`(document.getElementById('whatIfMessage').textContent = '', true)`);
+    raceProgress = false;
+    await until(`!document.querySelector('#whatIfProgress [data-whatif-done]')`);
     // A failed Stop (the runner answers with an error, once): Stopping at the click, then back to Stop with the message.
     await js(`(() => { const f = window.fetch; window.fetch = (u, o) => { if (String(u).endsWith('/stop')) { window.fetch = f; return Promise.resolve(new Response(JSON.stringify({ error: 'stop failed (test)' }), { status: 500 })); } return f(u, o); }; return true; })()`);
     const stopFail = await js(`new Promise((res) => { const b = document.getElementById('buttonWhatIfSearch'); b.click(); const pending = { text: b.textContent, disabled: b.disabled, danger: b.classList.contains('btn-outline-danger') }; setTimeout(() => res({ pending, text: b.textContent, disabled: b.disabled, danger: b.classList.contains('btn-outline-danger'), message: document.getElementById('whatIfMessage').textContent }), 300); })`);
