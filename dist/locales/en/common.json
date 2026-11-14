@@ -5,6 +5,10 @@
         "consumablePrices": "Consumable Prices",
         "dropPrices": "Drop Prices"
     },
+    "talismans": {
+        "title": "Talismans",
+        "power": "Talisman Power"
+    },
     "equipment": {
         "presets": "Presets"
     },

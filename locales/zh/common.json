@@ -5,6 +5,10 @@
         "consumablePrices": "消耗品价格",
         "dropPrices": "掉落物价格"
     },
+    "talismans": {
+        "title": "Talismans",
+        "power": "Talisman Power"
+    },
     "equipment": {
         "presets": "Presets"
     },

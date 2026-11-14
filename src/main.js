@@ -37,6 +37,7 @@ import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
+import { talismanViewHtml } from "./talismanView.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -3351,6 +3352,7 @@ function parsePlayerJson(playerJson, hrid) {
     player.labyrinthUpgrades = convertLabyrinthExportToUpgrades(playerJson.labyrinth);
     player.guildBuffs = getImportedGuildBuffs(playerJson);
     player.achievements = playerJson.achievements ?? {};
+    if (playerJson.talismans) player.talismans = playerJson.talismans; // applied by the engine's one talisman step (src/simSetup.js)
     return player;
 }
 // read JSON file to simulate
@@ -4741,6 +4743,8 @@ function doSoloExport() {
         guildBuffs: player.guildBuffs,
         achievements: player.achievements
     };
+    // The talismans the import carried (not on the screen, no input): kept with the slot, absent when it has none.
+    if (player.talismans) state.talismans = player.talismans;
     try {
         navigator.clipboard.writeText(JSON.stringify(state)).then(() => alert("Current set has been copied to clipboard."));
     } catch (err) {
@@ -5020,6 +5024,8 @@ function doSoloImport() {
         applyGuildBuffsToState(getImportedGuildBuffs(importSet));
     }
 
+    // Talismans: a kind missing from the import is unknown, so the slot keeps its own (the Tracker leaves the field out with no talisman data).
+    if ("talismans" in importSet) setPlayerTalismans(importSet.talismans);
     if (importSet.achievements) {
         for (const achievement in importSet.achievements) {
             const field = document.querySelector('[data-achievement-hrid="' + achievement + '"]');
@@ -5043,6 +5049,17 @@ function doSoloImport() {
         let simulationDuration = document.getElementById("inputSimulationTime");
         simulationDuration.value = importSet["simulationTime"];
     }
+}
+
+// The screen player's talismans ({ power, lines }, src/combatsimulator/talismans.js; null or absent = none): kept on `player`, so the sim DTO
+// (buildSimPlayerDTO) carries them to the engine's one talisman step, and shown read-only with the equipment (src/talismanView.mjs).
+function setPlayerTalismans(talismans) {
+    if (talismans && Array.isArray(talismans.lines) && talismans.lines.length) player.talismans = talismans;
+    else delete player.talismans;
+    const box = document.getElementById("talismanView");
+    if (!box) return;
+    box.innerHTML = talismanViewHtml(player.talismans, (key) => i18next.t(key));
+    box.hidden = !box.innerHTML;
 }
 
 function savePreviousPlayer(playerId) {
@@ -5095,6 +5112,8 @@ function savePreviousPlayer(playerId) {
         guildBuffs: player.guildBuffs,
         achievements: player.achievements
     };
+    // The talismans the import carried (not on the screen, no input): kept with the slot, absent when it has none.
+    if (player.talismans) state.talismans = player.talismans;
     // The slot's character name (carried by an import) is not on the screen; keep what the slot held.
     try {
         const slotName = JSON.parse(playerDataMap[playerId] || "null")?.name;
@@ -5110,6 +5129,7 @@ function savePreviousPlayer(playerId) {
 function updateNextPlayer(currentPlayerNumber) {
     let playerImportData = playerDataMap[currentPlayerNumber];
     let importSet = JSON.parse(playerImportData);
+    setPlayerTalismans(importSet.talismans);
     ["stamina", "intelligence", "attack", "melee", "defense", "ranged", "magic"].forEach((skill) => {
         let levelInput = document.getElementById("inputLevel_" + skill);
         if (skill == "melee" && !importSet.player["meleeLevel"] && importSet.player["powerLevel"]) {

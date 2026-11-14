@@ -5,6 +5,10 @@
         "consumablePrices": "Preços dos consumíveis",
         "dropPrices": "Preços dos itens"
     },
+    "talismans": {
+        "title": "Talismans",
+        "power": "Talisman Power"
+    },
     "equipment": {
         "presets": "Predefinições"
     },

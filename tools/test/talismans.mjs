@@ -189,5 +189,9 @@ let seen = null;
 await E.runParty({ setups: [gen({ talismans: TAL })], seed: 7, checkpoints: [0.01], tier: 0, zone: '/actions/combat/fly', onPlayers: (pls) => { seen = pls[0].talismanStats; } });
 check(same(seen, { armor: 8, criticalRate: 0.024, damageTaken: -0.02 }), 'engine: the player carries the summed talisman stats', JSON.stringify(seen));
 
+// A page-shaped setup: the slot JSON the page keeps (its import carried `talismans`), made into the search's setup by the page's own pageSetups.
+const { pageSetups } = await import(pathToFileURL(path.join(root, 'src/whatif/panel.mjs')).href);
+const fromPage = (extra) => pageSetups([{ id: '1', name: 'P', json: JSON.stringify(gen(extra)) }])[0];
+check(await runOf(fromPage({ talismans: TAL })) === eTal && await runOf(fromPage()) === eBase, 'engine: a what-if run from a page-shaped setup counts its talismans, and without the field equals the run with none');
 console.log(fails === 0 ? 'PASS: talismans.' : `FAIL: ${fails} problems.`);
 process.exit(fails === 0 ? 0 : 1);
