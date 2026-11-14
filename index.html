@@ -138,7 +138,8 @@
         .whatif-from { color: #9aa4ae; } .whatif-arrow { color: #6c757d; margin: 0 .25em; } .whatif-to { font-weight: 600; }
         .whatif-summary { display: flex; align-items: center; gap: .75rem; padding: .45rem .6rem; background: #2b3035; border: 1px solid #495057; border-radius: .4rem; }
         .whatif-summary .whatif-chips { flex: 1; }
-        .whatif-toolbar { padding-bottom: .5rem; border-bottom: 1px solid #495057; }
+        /* display: flex here, not Bootstrap's d-flex: its !important would beat the "get the runner" rule above and show the toolbar with no runner. */
+        .whatif-toolbar { display: flex; padding-bottom: .5rem; border-bottom: 1px solid #495057; }
         #whatIfLevers { display: grid; grid-template-columns: repeat(4, max-content); gap: .3rem 1.75rem; }
         #whatIfLevers .form-check { display: flex; align-items: center; }
         #whatIfLevers .form-check-input { margin-right: .4rem; }
@@ -1936,7 +1937,7 @@
                             </div>
                         </div>
                     </div>
-                            <div class="d-flex flex-wrap gap-2 align-items-center whatif-toolbar" id="whatIfStartRow">
+                            <div class="flex-wrap gap-2 align-items-center whatif-toolbar" id="whatIfStartRow">
                                 <button type="button" class="btn btn-primary btn-sm" id="buttonWhatIfStart" data-i18n="common:whatIf.start">Start search</button>
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="buttonWhatIfStop" disabled data-i18n="common:whatIf.stop">Stop</button>
                                 <span class="ms-3" data-i18n="common:whatIf.earlier">Earlier searches</span>

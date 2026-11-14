@@ -180,8 +180,8 @@
         "tier": "Nível",
         "choicesNote": "Copiado da página ao abrir esta janela (um jogador desmarcado na página fica desmarcado aqui); mudanças aqui afetam só esta busca.",
         "exportLeverOff": "Precisa da exportação do personagem, que vem de uma importação do Tracker.",
-        "exportFromTracker": "itens e habilidades: importação do Tracker",
-        "exportFromNone": "itens e habilidades: nenhum",
+        "exportFromTracker": "itens e técnicas: importação do Tracker",
+        "exportFromNone": "itens e técnicas: nenhum",
         "levers": "O que buscar",
         "lever": {
             "equip": {

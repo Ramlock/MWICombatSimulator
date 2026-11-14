@@ -63,7 +63,7 @@ try {
         fs.writeFileSync(path.join(shots, 'whatif-get-runner-button.png'), Buffer.from((await page.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     }
     check('no runner: the button opens the window', await open());
-    check('no runner: the get-the-runner pane is shown, the search controls are not', (await visible('whatIfGetRunner')) && !(await visible('buttonWhatIfStart')) && !(await visible('whatIfPlayers')) && !(await visible('selectWhatIfGoal')));
+    check('no runner: the get-the-runner pane is shown, the search controls are not', (await visible('whatIfGetRunner')) && !(await visible('buttonWhatIfStart')) && !(await visible('whatIfPlayers')) && !(await visible('selectWhatIfGoal')), JSON.stringify(await js(`['whatIfGetRunner', 'buttonWhatIfStart', 'whatIfPlayers', 'selectWhatIfGoal'].map((id) => { const e = document.getElementById(id); return id + ':' + (e ? e.getClientRects().length + '/' + getComputedStyle(e).display : 'none'); })`)));
     check('no runner: the download link is the one constant', (await js(`document.getElementById('linkWhatIfRunner').href`)) === RUNNER_DOWNLOAD_URL && (await visible('linkWhatIfRunner')), await js(`document.getElementById('linkWhatIfRunner').href`));
     check('no runner: the link opens in a new tab without leaking the page', (await js(`document.getElementById('linkWhatIfRunner').target + ' ' + document.getElementById('linkWhatIfRunner').rel`)) === '_blank noopener');
     const winPart = '#whatIfGetRunner > p:not(:has(a)), #whatIfGetRunner > ol > li';
