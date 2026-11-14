@@ -435,6 +435,26 @@
             "payback": "回本天数",
             "costPath": "购买方式"
         },
+        "price": {
+            "buy": "购买",
+            "mirrorChain": "市场无 +{{to}}：用 {{n}} 个贤者之镜从 +{{from}} 制作",
+            "mirrorChainOne": "市场无 +{{to}}：用 1 个贤者之镜从 +{{from}} 制作",
+            "mirrorCheaper": "用 {{n}} 个贤者之镜从 +{{from}} 制作，比市场上的 +{{to}} 便宜",
+            "mirrorCheaperOne": "用 1 个贤者之镜从 +{{from}} 制作，比市场上的 +{{to}} 便宜",
+            "mirrorOwn": "对你自己的 +{{from}} 使用 {{n}} 个贤者之镜",
+            "mirrorOwnOne": "对你自己的 +{{from}} 使用 1 个贤者之镜",
+            "sellOld": "，卖出旧装备",
+            "buySellOld": "购买，卖出旧装备",
+            "loadout": "配置调整",
+            "loadoutUsed": "配置调整；消耗按买价计入开销",
+            "owned": "已拥有",
+            "learned": "已学会",
+            "house": "房屋升级",
+            "books": "技能书",
+            "time": "时间",
+            "noteMirrorCheck": "+10 以下贤者之镜更便宜：请核对价格",
+            "noteNoBuyer": "旧物品无人收购：保留，不计入"
+        },
         "apply": "应用",
         "applyTo": "应用 1 至 {{n}}",
         "diff": {

@@ -436,6 +436,26 @@
             "payback": "Payback days",
             "costPath": "How it is bought"
         },
+        "price": {
+            "buy": "buy",
+            "mirrorChain": "no +{{to}} listed: {{n}} Philosopher's Mirrors from +{{from}}",
+            "mirrorChainOne": "no +{{to}} listed: 1 Philosopher's Mirror from +{{from}}",
+            "mirrorCheaper": "{{n}} Philosopher's Mirrors from +{{from}}, cheaper than the +{{to}} listed",
+            "mirrorCheaperOne": "1 Philosopher's Mirror from +{{from}}, cheaper than the +{{to}} listed",
+            "mirrorOwn": "{{n}} Philosopher's Mirrors on your own +{{from}}",
+            "mirrorOwnOne": "1 Philosopher's Mirror on your own +{{from}}",
+            "sellOld": ", sell old",
+            "buySellOld": "buy, sell old",
+            "loadout": "loadout change",
+            "loadoutUsed": "loadout change; what it uses is counted at the buy price",
+            "owned": "already owned",
+            "learned": "already learned",
+            "house": "house upgrade",
+            "books": "ability books",
+            "time": "time",
+            "noteMirrorCheck": "a Mirror win below +10: check the price",
+            "noteNoBuyer": "the old item has no buyer: kept, not counted"
+        },
         "apply": "Apply",
         "applyTo": "Apply 1 to {{n}}",
         "diff": {
