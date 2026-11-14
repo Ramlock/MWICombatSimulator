@@ -92,7 +92,7 @@ export function grid(samples, conditionHrid) {
 const roundStep = (m) => (m >= 10000 ? 500 : m >= 1000 ? 50 : m >= 100 ? 10 : 1);
 
 // ---- Candidates ----
-const TRIG = (p, hrid, kind, id, desc, triggers, extra = {}) => ({ id: `${p}:trig:${short(hrid)}:${id}`, kind: 'trigger', owner: hrid, groups: [`${p}:trigger:${hrid}`], player: p, monotone: false, desc: `${p} ${short(hrid)} ${EN.trigger}: ${desc}`, ops: [{ op: 'trigger', player: p, hrid, triggers }], cost: { cost: 0, known: true, path: 'loadout tweak', mirrors: 0, note: '' }, ...extra });
+const TRIG = (p, hrid, kind, id, desc, triggers, extra = {}) => ({ id: `${p}:trig:${short(hrid)}:${id}`, kind: 'trigger', owner: hrid, groups: [`${p}:trigger:${hrid}`], player: p, monotone: false, desc: `${p} ${short(hrid)} ${EN.trigger}: ${desc}`, ops: [{ op: 'trigger', player: p, hrid, triggers }], cost: { cost: 0, known: true, path: 'loadout tweak', note: '' }, ...extra });
 // The words come from src/whatif/trigger-words.mjs (the one wording, which the window reads back and words in the page's language).
 export const termText = (t) => termWords(termOf(t));
 const listText = (ts) => listWords(ts.map(termOf));

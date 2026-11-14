@@ -525,17 +525,14 @@ function gainCells(row, goalExp, t, floor, withFresh = false) {
 // either bought as market items (Coin) or paid with spare tokens (how many). Html: the figures are numberHtml, as in the other figure texts (i18next does not escape).
 export const shrineSplitText = (sp, t) => t('shrine.split', { tokens: num(sp.tokens), coin: num(sp.creditsCoin), alt: Number.isFinite(sp.creditsTokens) ? num(sp.creditsTokens) : '—' });
 // How a row was priced (its price path), in the shown language: the one helper of every list with a cost (chosen changes, each change alone,
-// priced over budget, pays back too slowly). From the core's fields (tools/whatif/core.mjs priceFields): costPath, note and, with Philosopher's
-// Mirrors, mirrors / mirrorFrom / to / toListed. A cost path or note this table does not know shows as the core wrote it (an older result).
+// priced over budget, pays back too slowly). From the core's fields (tools/whatif/core.mjs priceFields): costPath and note. A cost path or note this table does not know shows as the core wrote it (an older result).
 // The upper-bound caveat is left out (the "≤" on the cost and the footnote carry it). priceHow is the path, priceNotes its notes; pricePath is
 // both as one plain text, "<path> (<notes>)" ('' when the row has no path).
 const PATH_KEYS = { market: 'buy', buy: 'buy', 'buy, sell old': 'buySellOld', 'loadout tweak': 'loadout', 'loadout tweak, used x buy price in expenses': 'loadoutUsed', owned: 'owned', learned: 'learned', 'house upgrade': 'house', books: 'books' };
-const NOTE_KEYS = { 'Mirror win below +10: price to check': 'noteMirrorCheck', 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
+const NOTE_KEYS = { 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
 function priceHow(s, t) {
-    const path = String(s?.costPath || ''), m = Number(s?.mirrors) || 0;
+    const path = String(s?.costPath || '');
     if (/^time\b/.test(path)) return t('price.time');
-    if (m > 0 && path === 'mirror own item') return plural(t, 'price.mirrorOwn', m, { n: m, from: s.mirrorFrom });
-    if (m > 0 && /mirror/.test(path)) return plural(t, s.toListed ? 'price.mirrorCheaper' : 'price.mirrorChain', m, { n: m, from: s.mirrorFrom, to: s.to }) + (/sell old/.test(path) ? t('price.sellOld') : '');
     return PATH_KEYS[path] ? t('price.' + PATH_KEYS[path]) : path;
 }
 const priceNotes = (s, t) => String(s?.note || '').split('; ').filter((x) => x && !/^upper bound/.test(x)).map((x) => (NOTE_KEYS[x] ? t('price.' + NOTE_KEYS[x]) : x)).join('; ');
@@ -552,8 +549,8 @@ const pathCell = (s, t) => {
     const notes = priceNotes(s, t);
     return `<td class="wrap">${chip(s.shrineSplit ? shrineSplitText(s.shrineSplit, t) : esc(priceHow(s, t)), '', notes ? esc(notes) : '')}</td>`;
 };
-// A plain market buy (cost path "market", no mirror, no note): a list line names no path for it.
-const isPlainBuy = (s) => s?.costPath === 'market' && !(Number(s.mirrors) > 0) && !s.note;
+// A plain market buy (cost path "market", no note): a list line names no path for it.
+const isPlainBuy = (s) => s?.costPath === 'market' && !s.note;
 // The same after a cost in a list's Cost cell: "(<price path>)", nothing for a plain market buy or a row with no path.
 const pathAfter = (s, t) => { if (isPlainBuy(s)) return ''; const how = pathHtml(s, t); return how ? ` <span class="text-secondary">(${how})</span>` : ''; };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.

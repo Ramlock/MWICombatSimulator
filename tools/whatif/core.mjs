@@ -14,7 +14,7 @@
 //     sim    { runParty, measureNeed, buildDtos, Trigger }: the engine's own functions and Trigger class
 // Resolves with { stopped } (stopped: the search ended early, every finished run is in the store, the same call resumes).
 import { applyOps } from '../../src/whatif/applyOps.mjs';
-import { makePricer, TAX_LABEL } from './prices.mjs';
+import { makePricer, TAX_LABEL, upgradeLevels, swapLevelsOf } from './prices.mjs';
 import { consumableType } from './consumables.mjs';
 import { foodFillCands } from './foodfill.mjs';
 import { hideSettingAlternatives } from './alternatives.mjs';
@@ -76,9 +76,14 @@ export async function main(settings, seams) {
     const fin = { k: finK, h: finH }; // the measurement of the pick checks, the confirmation and the trigger refinement
     const keep = [];
     const players = list(arg('players', 'Ramlock'));
+    // With no --max-up, the upgrades are every level the market sells above the worn one (+1 to +3 with no ask listed apart as no
+    // seller); with no --swap-levels, the swaps are every level of the new item the market sells (prices.mjs upgradeLevels,
+    // swapLevelsOf). Either option given keeps its old meaning: +1 to +max-up (3); the given levels (0 and the worn level).
     const maxUp = Number(arg('max-up', 3));
+    const upAllListed = arg('max-up', null) == null;
     const swapsOn = arg('swaps', true) !== false;
     const swapLevels = list(arg('swap-levels', '0,same'));
+    const swapAllListed = arg('swap-levels', null) == null;
     const onlySlots = list(arg('slots', null));
     const sellDown = arg('sell-down', false) === true;
     const onlyCands = list(arg('only-candidates', null));
@@ -353,19 +358,18 @@ export async function main(settings, seams) {
             const it = slotItem(setups, p, slot);
             if (!it && !(swapsOn && emptySlotOpen(setups, p, slot))) continue;
             const name = it ? it.itemHrid.split('/').pop() : 'empty';
-            for (let d = 1; it && d <= maxUp; d++) {
-                const id = `${p}:${slot}+${d}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`;
+            for (const to of it ? upgradeLevels(pricer, it.itemHrid, it.enhancementLevel, maxUp, upAllListed) : []) {
+                const d = to - it.enhancementLevel, id = `${p}:${slot}+${d}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`;
                 if (styleDrop(fit, itemDetailMap[it.itemHrid], { id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: it.itemHrid, level: it.enhancementLevel + d } })) continue;
-                const c = pricer.upgrade(it.itemHrid, it.enhancementLevel, it.enhancementLevel + d);
+                const c = pricer.upgrade(it.itemHrid, it.enhancementLevel, to);
                 out.push({ id, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: true, desc, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
             }
             if (!swapsOn) continue;
             const type = it ? itemDetailMap[it.itemHrid]?.equipmentDetail?.type : '/equipment_types/' + slot;
             const was = it ? `${name} +${it.enhancementLevel}` : 'empty';
-            const levels = it ? [...new Set(swapLevels.map((x) => (x === 'same' ? it.enhancementLevel : Number(x))))] : [0];
             for (const item of Object.values(itemDetailMap)) {
                 if (item.hrid === it?.itemHrid || item.equipmentDetail?.type !== type || !meetsReq(s, item)) continue;
-                for (const L of levels) {
+                for (const L of swapLevelsOf(pricer, item.hrid, it ? it.enhancementLevel : null, swapLevels, swapAllListed)) {
                     const c = pricer.swap(it?.itemHrid ?? null, it?.enhancementLevel ?? 0, item.hrid, L);
                     if (!c.known) continue; // no seller at this level: not a market swap
                     if (c.cost <= 0 && !sellDown) continue; // frees gold: a sell-down, dropped (design 4.3 item 2)
@@ -384,7 +388,7 @@ export async function main(settings, seams) {
 
     // ---- Phase 2 levers (design 1.1-1.3, 3.6 item 2): loadout tweaks, no gold cost ----
     const short = (h) => h.split('/').pop();
-    const FREE = (path, note = '') => ({ cost: 0, known: true, path, mirrors: 0, note });
+    const FREE = (path, note = '') => ({ cost: 0, known: true, path, note });
     const exportFor = (p) => (exportMap ? (exportMap[p] && typeof exportMap[p] === 'object' ? exportMap[p] : null) : exportData && exportData.name === p ? exportData : null);
     // The players a lever skipped for want of their export: lever -> Set(player). The levers that need it: owned, abilities
     // (swaps) and books. Ability levels have a labelled upper-bound cost without it and never skip.
@@ -1149,11 +1153,9 @@ export async function main(settings, seams) {
         return done(result);
     }
 
-    // How a row was priced, for the window's price path (src/whatif/panel.mjs pricePath): the cost path and note, and, when Philosopher's
-    // Mirrors are in it, their count, the level the chain starts from (mirrorFrom), the level bought (to) and whether that level had a
-    // dearer ask (toListed). One helper for every list.
+    // How a row was priced, for the window's price path (src/whatif/panel.mjs pricePath): the cost path and note. One helper for every list.
     function priceFields(cost) {
-        return { costPath: cost.path, note: cost.note || '', ...(cost.split ? { shrineSplit: cost.split } : {}), ...(cost.mirrors > 0 ? { mirrors: cost.mirrors, mirrorFrom: cost.from, to: cost.to, ...(cost.toListed ? { toListed: true } : {}) } : {}) };
+        return { costPath: cost.path, note: cost.note || '', ...(cost.split ? { shrineSplit: cost.split } : {}) };
     }
     // Per user: the party figure split equally over the party (the contract's gainPerUser / sePerUser).
     const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: se / setups0.length });

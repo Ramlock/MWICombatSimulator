@@ -1,5 +1,5 @@
 // His first example, priced: each equipped slot of a player +1, +2, +3 ..., the cost of the upgrade after 4%
-// market tax, the cheaper of the market (buy +N, sell the current item) and the Mirror path (prices.mjs).
+// market tax: buy +N, sell the current item (prices.mjs).
 // Usage: node tools/whatif/price-upgrades.mjs [--player Ramlock] [--max-up 3] [--prices <marketplace.json>] [--setups <dir>]
 import { readParty } from './variants.mjs';
 import { makePricer, TAX_LABEL } from './prices.mjs';
@@ -11,7 +11,7 @@ const player = arg('player', 'Ramlock'), maxUp = Number(arg('max-up', 3)), file 
 const pricer = makePricer(loadMarket(file));
 const s = readParty(arg('setups', undefined), [player])[0];
 const fmt = (x) => (Number.isFinite(x) ? (x / 1e6).toFixed(1) + 'M' : 'no seller');
-console.log(`${player}, prices ${file}, costs ${TAX_LABEL} on the sale of the replaced item. Mirror ask ${fmt(pricer.mirrorAsk)}.\n`);
+console.log(`${player}, prices ${file}, costs ${TAX_LABEL} on the sale of the replaced item.\n`);
 console.log('| Slot | Item | ' + Array.from({ length: maxUp }, (_, i) => `+${i + 1}`).join(' | ') + ' |');
 console.log('|---|---|' + '---|'.repeat(maxUp));
 for (const e of s.player.equipment) {

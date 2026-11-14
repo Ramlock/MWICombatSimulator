@@ -986,22 +986,19 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 {
     const plain = (s) => nums(s).replace(/<[^>]+>/g, '');
     const { makePricer } = await imp('tools/whatif/prices.mjs');
-    // A synthetic market: the body has asks at +0..+4 only, the mirror 100; the robe has a +10 bid.
+    // A synthetic market: the body has asks at +0..+4 and +6 only; the robe has a +10 bid; a Philosopher's Mirror is listed and prices nothing (not priced for now).
     const market = { '/items/philosophers_mirror': { 0: { a: 100, b: -1 } }, '/items/b': { 0: { a: 1, b: -1 }, 2: { a: 2, b: -1 }, 3: { a: 3, b: -1 }, 4: { a: 4, b: 3 }, 6: { a: 1e9, b: -1 } }, '/items/r': { 10: { a: 50, b: 40 } } };
     const P = makePricer(market), sw = P.swap('/items/r', 10, '/items/b', 10), six = P.buy('/items/b', 6), up = P.upgrade('/items/b', 4, 5);
-    check('prices: a mirror chain names the listed level it starts from and the level bought, and whether that level had a dearer ask', sw.mirrors === 20 && sw.from === 4 && sw.to === 10 && !sw.toListed && six.path === 'mirror' && six.from === 4 && six.listed === true, JSON.stringify({ sw, six }));
-    check('prices: mirroring the own item names the owned level as the start', up.path === 'mirror own item' && up.from === 4 && up.to === 5 && up.mirrors === 1, JSON.stringify(up));
-    const chain = { costPath: 'buy via mirror, sell old', note: '', mirrors: 20, mirrorFrom: 4, to: 10 };
+    check('prices: a level the market does not sell has no price, a Mirror listed or not; a level it sells costs its ask', !sw.known && sw.note === 'no seller' && !up.known && six.cost === 1e9 && six.path === 'market' && !('mirrors' in sw), JSON.stringify({ sw, six, up }));
+    const sold = { costPath: 'buy, sell old', note: '' };
     const tOf = (l) => (key, params = {}) => { const s = lookup(locales[l], key); return typeof s === 'string' ? s.replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k])) : '#' + key; };
-    check('price path en: a mirror chain', panel.pricePath(chain, t) === "no +10 listed: 20 Philosopher's Mirrors from +4, sell old", panel.pricePath(chain, t));
-    check('price path pt and zh: the game\'s own names of the mirror', panel.pricePath(chain, tOf('pt')).includes('20 Espelhos Filosofais a partir do +4') && panel.pricePath(chain, tOf('zh')).includes('20 个贤者之镜'), panel.pricePath(chain, tOf('pt')) + ' | ' + panel.pricePath(chain, tOf('zh')));
-    check('price path: one mirror is singular; a cheaper chain than a listed level says so; the own item', panel.pricePath({ ...chain, mirrors: 1, mirrorFrom: 4, to: 5 }, t) === "no +5 listed: 1 Philosopher's Mirror from +4, sell old" && panel.pricePath({ ...chain, toListed: true }, t).includes('cheaper than the +10 listed') && panel.pricePath({ costPath: 'mirror own item', mirrors: 3, mirrorFrom: 7, to: 9 }, t) === "3 Philosopher's Mirrors on your own +7");
+    check('price path: buy, sell old in en, pt and zh', panel.pricePath(sold, t) === 'buy, sell old' && ['pt', 'zh'].every((l) => { const x = panel.pricePath(sold, tOf(l)); return x && !x.startsWith('#') && x !== 'buy, sell old'; }), panel.pricePath(sold, tOf('pt')) + ' | ' + panel.pricePath(sold, tOf('zh')));
     check('price path: the other paths and notes in the shown language, an unknown one as written, no upper-bound caveat', panel.pricePath({ costPath: 'buy, sell old', note: 'old item has no buyer, kept, not counted' }, t) === 'buy, sell old (the old item has no buyer: kept, not counted)' && panel.pricePath({ costPath: 'books', note: '25 x berserk; upper bound (XP inside the level unknown)' }, t) === 'ability books (25 x berserk)' && panel.pricePath({ costPath: 'something new' }, t) === 'something new');
-    const res = { ...result, steps: [{ ...result.steps[0], ...chain, cost: 5e9 }], overBudget: [{ id: 'ob', player: 'Alpha', desc: 'Body b +10', cost: 12e9, ...chain }, { id: 'ob2', player: 'Alpha', desc: 'Ring eight', cost: 5e9, costPath: 'market', note: '' }], overPayback: [{ id: 'sl', player: 'Alpha', desc: 'Ring nine', cost: 90000, costPath: 'buy, sell old', note: '', paybackDays: 612, accepted: true, ops: [] }] };
+    const res = { ...result, steps: [{ ...result.steps[0], ...sold, cost: 5e9 }], overBudget: [{ id: 'ob', player: 'Alpha', desc: 'Body b +10', cost: 12e9, ...sold }, { id: 'ob2', player: 'Alpha', desc: 'Ring eight', cost: 5e9, costPath: 'market', note: '' }], overPayback: [{ id: 'sl', player: 'Alpha', desc: 'Ring nine', cost: 90000, costPath: 'buy, sell old', note: '', paybackDays: 612, accepted: true, ops: [] }] };
     const h = panel.renderResult(res, t), ob = plain(h.slice(h.indexOf('id="whatIfOverBudget"'))), op = plain(h.slice(h.indexOf('id="whatIfOverPayback"')));
-    check('lists: an over-budget row names its price path in its Cost cell; a plain market buy names none', ob.includes("AlphaBody b +1012000000000 (no +10 listed: 20 Philosopher's Mirrors from +4, sell old)") && /AlphaRing eight5000000000(?! \()/.test(ob), ob.slice(0, 400));
+    check('lists: an over-budget row names its price path in its Cost cell; a plain market buy names none', ob.includes('AlphaBody b +1012000000000 (buy, sell old)') && /AlphaRing eight5000000000(?! \()/.test(ob), ob.slice(0, 400));
     check('lists: a pays-back-too-slowly row names its price path in its Cost cell, before the payback days', op.includes('AlphaRing nine90000 (buy, sell old)612'), op.slice(0, 300));
-    check('tables: the chosen row\'s How it is bought cell is the same text', bodyRows(tablesOf(h)[0])[0].some((c) => c === "no +10 listed: 20 Philosopher's Mirrors from +4, sell old"), JSON.stringify(bodyRows(tablesOf(h)[0])[0]));
+    check('tables: the chosen row\'s How it is bought cell is the same text', bodyRows(tablesOf(h)[0])[0].some((c) => c === 'buy, sell old'), JSON.stringify(bodyRows(tablesOf(h)[0])[0]));
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

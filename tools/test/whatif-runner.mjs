@@ -297,7 +297,10 @@ const lastSnapIs = (dirName, res) => {
     return '';
 };
 const rb = await real.listen(0);
-const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 1 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
+// The real search's market: the snapshot with an ask for the cheese helmet at +2, which it does not list (a level with no ask is not a
+// candidate since the Philosopher's Mirror is not priced), so Alpha keeps its 4 upgrades (sword and helmet, +1 and +2) the round-1 checks count on.
+const bigHelm2 = { ...big, marketData: { ...big.marketData, '/items/cheese_helmet': { ...big.marketData['/items/cheese_helmet'], 2: { a: 30000, b: 25000 } } } };
+const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...bigHelm2, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 1 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
 const r1 = await call(rb, 'POST', '/api/search', req);
 const id = r1.json.id, dir = path.join(tmp, 'real', id);

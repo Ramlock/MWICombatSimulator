@@ -12,7 +12,7 @@
 import { consumableType } from './consumables.mjs';
 
 const short = (h) => h.split('/').pop();
-const FREE = (path) => ({ cost: 0, known: true, path, mirrors: 0, note: '' });
+const FREE = (path) => ({ cost: 0, known: true, path, note: '' });
 const askOf = (market, h) => market?.[h]?.['0']?.a;
 const MELEE_STYLES = new Set(['stab', 'slash', 'smash']);
 

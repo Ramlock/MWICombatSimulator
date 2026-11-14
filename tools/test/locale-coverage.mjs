@@ -123,12 +123,6 @@ const notTheGameWord = {
     'whatIf.rounds.poolCounts:paused': 'the word is the placeholder name {{paused}}; the text says "set aside" (deixadas de lado), no game Pausado is meant',
     'whatIf.result.paysBackIn:back': '"pays back" is the verb phrase (se paga), not the Back equipment slot (Costas)',
     'whatIf.result.answer:all': "Todas agrees in gender and number with \"as mudanças\"; the game's Tudo is \"everything\"",
-    'whatIf.price.mirrorChain:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
-    'whatIf.price.mirrorChainOne:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
-    'whatIf.price.mirrorCheaper:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
-    'whatIf.price.mirrorCheaperOne:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
-    'whatIf.price.mirrorOwn:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
-    'whatIf.price.mirrorOwnOne:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
 };
 let termChecks = 0;
 for (const [key, enValue] of Object.entries(flat(JSON.parse(read('locales/en/common.json'))))) {
