@@ -343,8 +343,6 @@
         },
         "result": {
             "goal": "目标",
-            "zone": "区域：{{zone}}，难度 {{tier}}",
-            "zoneNoTier": "区域：{{zone}}",
             "baseProfit": "队伍基础利润",
             "baseLoses": "在此区域，队伍在基础状态下是亏损的，因此这里的收益只意味着少亏一些。",
             "steps": "选定的改动（按顺序）",
@@ -409,7 +407,7 @@
             "detailsHide": "隐藏详情",
             "overPayback": "回本太慢",
             "overPaybackNote": "（{{n}} 项，未选用：每项回本都超过 {{days}} 天）",
-            "answer": "选定改动的收益（已用新的运行确认）",
+            "answer": "所有已选改动合计，经新一轮模拟复核",
             "leftOutPayback": "{{n}} 项超过回本期限",
             "leftOutPaybackOne": "1 项超过回本期限",
             "leftOutBudget": "{{n}} 项超出预算",

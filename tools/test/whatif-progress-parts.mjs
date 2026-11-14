@@ -168,7 +168,8 @@ const html = panel.renderProgress({ state: 'running', progress: { stage: 'halvin
 const rows = partRows(html).map((r) => r.cls);
 check('panel: one row per part with its state class', rows.join(' ') === 'done running waiting waiting waiting', rows.join(' '));
 const plain = html.replace(/<span class="whatif-part-mark">[^<]*<\/span>/g, (m) => m).replace(/<[^>]+>/g, '');
-check('panel: title is Running · part 2 of 5', plain.includes('Running · part 2 of 5'), plain);
+// The state word is in the window's state chip (whatif-window.mjs); the part count is the head's Stage figure.
+check('panel: the head says Stage 2 / 5', plain.startsWith('Search progressStage 2 / 5'), plain);
 const pr0 = partRows(html);
 check('panel: done row text, no "done" (the tick says it) in its label or runs cell', pr0[0].label === 'Change 1' && pr0[0].runs === '80 / 80' && pr0[0].mark === '✓' && !/done/i.test(pr0[0].label + pr0[0].runs), JSON.stringify(pr0[0]));
 check('panel: running row text and options left (its runs, the time left in its state chip, the options left in the In the running cell)', pr0[1].label === 'Narrowing down, round 1' && pr0[1].cont === '10' && pr0[1].runs === '36 / 80' && pr0[1].stTip === '0:03:55 left', JSON.stringify(pr0[1]));
@@ -181,7 +182,6 @@ check('panel: one icon cell per row, same family, no colour emoji', marks.length
 check('panel: icon column has one fixed width and rows start with it', /\.whatif-parts-table td\.whatif-part-mark \{[^}]*width: 1\.75em/.test(read('index.html')) && pr0.every((r) => r.html.startsWith('<tr class="whatif-part') && r.html.indexOf('<td class="whatif-part-mark">') < r.html.indexOf('<td class="whatif-part-label">') && r.html.indexOf('<td class="whatif-part-mark">') === r.html.indexOf('>') + 1));
 const headText = txt(html.match(/<div class="whatif-parts-head">([^]*?)<\/div>/)[1]);
 check('panel: small line seconds per run and elapsed, no whole-search time (in the head line; the label "Final check of the whole set" is a stage name)', headText.includes('Seconds per run 241.46') && headText.includes('elapsed 1:12:30') && !/whole|total time/i.test(headText), headText);
-check('panel: bars at 100, 45 and 0 percent', ['width: 100%', 'width: 45%', 'width: 0%'].every((w) => html.includes(w)));
 check('panel: numbers keep their raw value', html.includes('data-num="36"') && html.includes('title="241.4567"'));
 const stoppedHtml = panel.renderProgress({ state: 'stopped', progress: { stage: 'stopped', parts: [{ kind: 'screen', index: 0, state: 'running', runsPlanned: 10, runsDone: 4, etaSeconds: 5 }] } }, t);
 check('panel: stopped keeps the rows and their figures, but nothing reads or is marked running (item 27)', stoppedHtml.includes('whatif-part-halted') && partRows(stoppedHtml)[0].runs === '4 / 10' && !stoppedHtml.includes('whatif-part-running') && !/Running/.test(stoppedHtml), stoppedHtml);

@@ -631,8 +631,8 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => arrowed(esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player)));
     // Goal and zone show once, in the summary bar over the result (or in the open setup form); the result's own row keeps the base profit.
-    const zp = zoneParts(result, names);
-    if (zp && Number.isFinite(zp.base)) L.push(`<div class="mb-2 whatif-chips whatif-context">${chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(zp.base)}`, '', esc(t('result.perUserDay')))}</div>`);
+    const base = zoneBase(result);
+    if (base !== null) L.push(`<div class="mb-2 whatif-chips whatif-context">${chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(base)}`, '', esc(t('result.perUserDay')))}</div>`);
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn whatif-callout">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     const pricesChip = prices ? `<span data-prices-stale>${chip(esc(t('result.pricesChip')), 'whatif-chip-warn', esc(prices.replace(/<[^>]+>/g, '')))}</span>` : '';
@@ -772,23 +772,12 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     return L.join('');
 }
 
-// "Zone: <name>, tier <N> · base party profit <figure> per user per day": the request's zone and tier (result.options)
-// and the party base profit the search compared against (result.basePerUser, already per user). The
-// zone name is the page's own name for the zone in the shown language (the id's last part when there is none).
-// Returns '' when the result holds no zone (an older result), and omits what it lacks.
-export function zoneLine(result, t, names) {
-    const z = zoneParts(result, names);
-    if (!z) return '';
-    const parts = [esc(Number.isFinite(z.tier) ? t('result.zone', { zone: z.name, tier: z.tier }) : t('result.zoneNoTier', { zone: z.name }))];
-    if (Number.isFinite(z.base)) parts.push(esc(t('result.baseProfit')) + ' ' + num(z.base) + ' ' + esc(t('result.perUserDay')));
-    return parts.join(' · ');
-}
-// The zone's shown name, its tier and the party base profit per user (profit goal only); null when the result holds no zone.
-function zoneParts(result, names) {
+// The party base profit per user the search compared against (result.basePerUser, already per user; profit goal only), for the
+// base-profit chip; null when the result holds no zone (an older result), the goal is exp, or the figure is missing.
+function zoneBase(result) {
     const hrid = result?.options?.zone;
     if (typeof hrid !== 'string' || !hrid) return null;
-    const name = names?.get('actionNames', hrid.replace(/^\/actions\//, '')) ?? hrid.split('/').pop();
-    return { name, tier: result.options.tier, base: result.goal !== 'exp' && Number.isFinite(result.basePerUser) ? result.basePerUser : null };
+    return result.goal !== 'exp' && Number.isFinite(result.basePerUser) ? result.basePerUser : null;
 }
 
 // The prices the search used: the snapshot's own time (result.options.pricesTimestamp, seconds) and its age at `now`

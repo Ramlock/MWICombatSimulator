@@ -82,16 +82,9 @@
         body.dark-mode .whatif-warn { color: #f0c060; }
         body.dark-mode .whatif-progress { background-color: #1e2125; border: 1px solid #6c757d; }
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
-        .whatif-part { display: grid; grid-template-columns: 1.5em minmax(10em, 24em) 1fr minmax(12em, 18em); gap: 0.75em; align-items: center; margin-top: 0.25em; }
-        .whatif-part-waiting, .whatif-part-skipped { opacity: 0.6; }
         .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
-        .whatif-no-bar { display: block; height: 8px; }
-        .whatif-part-race { grid-template-columns: 1.5em 1fr; }
-        .whatif-part-race .whatif-no-bar { display: none; }
         .whatif-part-race .whatif-part-label { white-space: normal; overflow: visible; text-overflow: clip; }
-        .whatif-part-race .whatif-part-text { white-space: normal; text-align: left; grid-column: 2; }
         .whatif-part-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .whatif-part-text { text-align: right; white-space: nowrap; }
         .whatif-part-done .progress-bar { background-color: #198754; }
         body.dark-mode .whatif-part-done .progress-bar { background-color: #2e9e5e; }
         .whatif-part-running .progress-bar { background-color: #3d8bfd; }
@@ -163,7 +156,6 @@
         body.dark-mode #whatIfModal .whatif-table > tbody > tr:nth-child(even) > td { background-color: rgba(255, 255, 255, .03); }
         #whatIfModal .whatif-table td.num, .whatif-fig-v { font-variant-numeric: tabular-nums; }
         #whatIfModal .whatif-best .whatif-best-table, #whatIfModal .whatif-rounds .whatif-table { margin-bottom: .75rem; }
-        .whatif-part-running .whatif-part-mark { color: #6ea8fe; }
         .whatif-parts-table tr.whatif-part-running .whatif-part-mark { color: #6ea8fe; }
         .whatif-part-halted .whatif-part-mark { color: #fd7e14; }
         .whatif-part-done .whatif-part-label { color: #ced4da; }

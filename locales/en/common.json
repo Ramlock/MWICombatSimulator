@@ -344,8 +344,6 @@
         },
         "result": {
             "goal": "Goal",
-            "zone": "Zone: {{zone}}, tier {{tier}}",
-            "zoneNoTier": "Zone: {{zone}}",
             "baseProfit": "base party profit",
             "baseLoses": "At this zone the party loses money at base, so a gain here means losing less.",
             "steps": "Chosen changes, in order",
@@ -410,7 +408,7 @@
             "detailsHide": "Hide details",
             "overPayback": "Pays back too slowly",
             "overPaybackNote": "({{n}}, not chosen: each pays back in more than {{days}} days)",
-            "answer": "What the chosen changes give, confirmed on fresh runs",
+            "answer": "All chosen changes together, checked on fresh runs",
             "leftOutPayback": "{{n}} over the payback limit",
             "leftOutPaybackOne": "1 over the payback limit",
             "leftOutBudget": "{{n}} over budget",

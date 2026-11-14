@@ -342,8 +342,6 @@
         },
         "result": {
             "goal": "Objetivo",
-            "zone": "Zona: {{zone}}, nível {{tier}}",
-            "zoneNoTier": "Zona: {{zone}}",
             "baseProfit": "lucro-base do grupo",
             "baseLoses": "Nesta zona o grupo perde dinheiro na base, então um ganho aqui significa perder menos.",
             "steps": "Mudanças escolhidas, em ordem",
@@ -408,7 +406,7 @@
             "detailsHide": "Ocultar detalhes",
             "overPayback": "Retorno lento demais",
             "overPaybackNote": "({{n}}, não escolhidas: cada uma se paga em mais de {{days}} dias)",
-            "answer": "O que as mudanças escolhidas dão, confirmado em execuções novas",
+            "answer": "Todas as mudanças escolhidas juntas, conferidas em novas simulações",
             "leftOutPayback": "{{n}} acima do limite de retorno",
             "leftOutPaybackOne": "1 acima do limite de retorno",
             "leftOutBudget": "{{n}} acima do orçamento",

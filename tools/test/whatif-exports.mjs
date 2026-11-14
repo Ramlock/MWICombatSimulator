@@ -40,11 +40,7 @@ check('request: the export map rides along as sent', JSON.stringify(panel.search
 check('paste: an object with an inventory or learned abilities is a character export', panel.parseExport(JSON.stringify(exA)).ok && panel.parseExport('{"learnedAbilities":[]}').ok && panel.parseExport('{"inventory":[]}').ok);
 check('paste: anything else is not', ['', 'hello', '[]', '{}', '{"name":"x"}', '{"inventory":3}', 'null', '5'].every((x) => !panel.parseExport(x).ok));
 check('status: a kept export reads that items and abilities come from the Tracker import', panel.exportStatus(exA, t) === 'items and abilities: Tracker import');
-// Fact gone with the paste field (the mark names no levers): left failing, made not to throw on the new signature.
-check('status: none names the ticked levers that need it, in the window\'s names', (() => { try { return panel.exportStatus({ kept: null, text: '' }, ['equip', 'owned', 'books', 'abilitylevels'], t) === 'no export: skipped by Items you own'; } catch (e) { return false; } })());
 check('status: no kept export reads none, with nothing extra', panel.exportStatus(null, t) === 'items and abilities: none');
-// Fact gone with the paste field (nothing is pasted in the window any more): left failing, made not to throw on the new signature.
-check('status: a bad paste says so, even over a kept export', (() => { try { return panel.exportStatus({ kept: exA, text: 'nope' }, [], t) === 'not a character export: not kept'; } catch (e) { return false; } })());
 check('status: one key per player name', panel.exportKey('Alpha') !== panel.exportKey('Beta') && panel.exportKey('Alpha').includes('Alpha'));
 const skipped = [{ lever: 'owned', players: ['Beta'] }, { lever: 'books', players: ['Beta', 'Gamma'] }];
 const base = { goal: 'profit', budgets: {}, steps: [], singles: [], skippedNoExport: skipped };

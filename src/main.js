@@ -4315,8 +4315,9 @@ function whatIfShowSetup() {
     const sel = (id) => document.getElementById(id).selectedOptions[0]?.textContent ?? '';
     const pay = Number(document.getElementById('inputWhatIfMaxPayback').value);
     document.getElementById('whatIfSummaryChips').replaceChildren(
-        chip(whatIfT('goalLabel'), sel('selectWhatIfGoal')),
-        chip(whatIfT('zone'), sel('selectWhatIfZone') + ' · ' + sel('selectWhatIfTier')),
+        // Goal and zone names come from the locale, not from the selects' text: on a language change this runs before the page relabels the selects.
+        chip(whatIfT('goalLabel'), whatIfT('goal.' + document.getElementById('selectWhatIfGoal').value)),
+        chip(whatIfT('zone'), i18next.t('actionNames.' + document.getElementById('selectWhatIfZone').value) + ' · ' + sel('selectWhatIfTier')),
         ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? formatNumber(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
         chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('budgetPlaceholder')),
         chip(whatIfT('levers'), [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => whatIfT('lever.' + i.value + '.name')).join(', ')));

@@ -108,6 +108,7 @@ const server = http.createServer((req, res) => {
     const m = url.pathname.match(/^\/api\/search\/([^/]+)(\/stop)?$/);
     if (m && search && m[1] === search.id) {
         if (m[2] && req.method === 'POST') { search.state = search.state === 'running' ? 'stopped' : 'running'; return send(res, 200, { state: search.state, progress: progress() }); }
+        if (search.state === 'running' && failNext) search.state = 'error';
         if (search.state === 'running' && ++polls >= 3 && !holdRunning) search.state = 'done';
         const since = Number(url.searchParams.get('since')) || 0;
         sinces.push(since);
@@ -122,6 +123,7 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(file).pipe(res);
 });
 let holdRunning = true;
+let failNext = false;
 let raceProgress = false; // true: the progress message of a race stage in a late round (round 12, 10 ruled out), the long label and counters of the real run
 let raceDone = false; // true: the finished Screen race row of the real run (round 1 finished, 473 in the running, the pick checks still going)
 const progress0 = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, acceptable: 1, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }] } : {}) });
@@ -368,8 +370,10 @@ try {
     check('the pick note shows under Best foods when the pick is not the table\'s first row, exact English, and the slots read greyed current / plain new / greyed empty', await js(`(() => { const n = document.querySelector('#whatIfResult [data-best-note="foods"]'), t = document.querySelector('#whatIfResult table[data-best="foods"]'), td = [...t.querySelectorAll('tbody tr td.chg')]; return n.textContent === "This one is the search's pick on its search runs; the table above is ordered by the fresh runs." && !!td[0].querySelector('.whatif-dim') && !td[1].querySelector('.whatif-dim') && td[2].textContent === 'empty' && !!td[2].querySelector('.whatif-dim') && n.previousElementSibling === t; })()`));
     live = liveWith(pickEntry({}), 7);
     check('the pick note goes when the pick is the first row', await until(`!document.querySelector('#whatIfResult [data-best-note]') && !!document.querySelector('#whatIfResult table[data-best="foods"]')`));
+    check('while it runs the state chip reads Searching', await js(`document.getElementById('whatIfState').textContent === 'Searching'`), await js(`document.getElementById('whatIfState').textContent`));
     await js(`document.getElementById('buttonWhatIfStop').click(), true`);
     check('Stop stops it and offers Resume', await until(`document.getElementById('buttonWhatIfStop').textContent === 'Resume'`) && search.state === 'stopped');
+    check('after Stop the state chip reads "Stopped by you"', await until(`document.getElementById('whatIfState').textContent === 'Stopped by you'`));
     check('after Stop no element of the progress area reads Running; it reads Stopped once, the rows keep their figures', await js(`(() => { const p = document.getElementById('whatIfProgress'); const texts = [p, ...p.querySelectorAll('*')].map((e) => e.textContent); return !texts.some((x) => /Running|round \\d+ running/.test(x)) && /^Stopped/.test(p.textContent.trim()) && !p.querySelector('[data-whatif-done], .whatif-part-running'); })()`), await js(`document.getElementById('whatIfProgress').textContent`));
     check('live: a stopped search keeps its report on screen, marked Stopped', await until(`document.querySelector('#whatIfResult .whatif-running .whatif-chip.whatif-st-halted')?.title.includes('Stopped: this is where the search got to.') === true`) && await js(`![...document.querySelectorAll('#whatIfResult [title], #whatIfResult [data-tip]')].some((e) => (e.title + (e.dataset.tip || '')).includes('Running: the report fills in'))`) && !(await resultText()).includes('Running: the report fills in') && (await resultText()).includes('Magic 1→2'));
     live = null;
@@ -431,6 +435,7 @@ try {
     const switchTo = (prefix) => js(`(document.querySelector('.language-switcher') ? [...document.querySelectorAll('.language-switcher button')].find((b) => b.textContent.startsWith('${prefix}')).click() : null, true)`);
     await switchTo('Portugu');
     check('in Portuguese the new labels and the zone names follow the language, and the window picks stay', await until(`(() => { const z = document.getElementById('selectWhatIfZone'); const pz = document.getElementById('selectZone'); return document.querySelector('[data-i18n="common:whatIf.players"]').textContent === 'Jogadores' && document.querySelector('label[for="selectWhatIfZone"]').textContent === 'Zona' && i18next.t('common:whatIf.choicesNote').includes('desmarcado') && z.value === ${JSON.stringify(windowZone)} && z.options[3].textContent === pz.options[3].textContent && z.options[3].textContent === i18next.t('actionNames.' + z.options[3].value) && z.options[3].textContent !== 'Porcupine' && document.getElementById('selectWhatIfTier').value === '1'; })()`));
+    check('in Portuguese the summary bar\'s zone chip reads Zona and the zone name the window shows', await until(`(() => { const c = [...document.querySelectorAll('#whatIfSummaryChips .whatif-chip')].find((x) => x.querySelector('.whatif-chip-k')?.textContent === 'Zona'); const z = document.getElementById('selectWhatIfZone').selectedOptions[0].textContent; return !!c && c.textContent.includes(z) && z === i18next.t('actionNames.' + document.getElementById('selectWhatIfZone').value); })()`), await js(`i18next.language + ' | ' + i18next.t('common:whatIf.goalLabel') + ' | ' + document.getElementById('whatIfSummaryChips').textContent`));
     await switchTo('English');
     await js(`i18next.changeLanguage('en').then(() => true)`);
     check('back in English the names are English', await until(`document.getElementById('whatIfOverBudget').textContent.includes('Feet Pathseeker Boots ★ +12')`));
@@ -470,6 +475,12 @@ try {
     check('a three-player page gives three tick boxes in the window', await js(`document.querySelectorAll('#whatIfPlayers input').length === 3 && [...document.querySelectorAll('#whatIfPlayers label')].map((l) => l.textContent).join() === 'Player 1,Player 2,Player 3'`));
     await js(`document.getElementById('whatIfPlayer_3').click(), true`);
     check('the budget rows follow the ticks in a three-player window', await js(`[...document.querySelectorAll('#whatIfBudgets input')].map((i) => i.dataset.player).join() === 'Player 1,Player 3'`));
+    // A search the runner reports failed: the state chip reads Error, and nothing in the progress area reads Running or Searching.
+    failNext = true;
+    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    check('a failed search: the state chip reads Error, no element of the progress area reads Running or Searching', await until(`document.getElementById('whatIfState').textContent === 'Error'`) && await js(`(() => { const p = document.getElementById('whatIfProgress'); return ![p, ...p.querySelectorAll('*')].some((e) => /Running|Searching/.test(e.textContent)); })()`), await js(`document.getElementById('whatIfState').textContent + ' | ' + document.getElementById('whatIfProgress').textContent.slice(0, 120)`));
+    failNext = false;
+    search.state = 'done';
     // Kept across page loads: a reload, the page's player ticked again, the window opened.
     await page.send('Page.navigate', { url: base });
     await until(`document.getElementById('buttonWhatIf')?.style.display === ''`);
