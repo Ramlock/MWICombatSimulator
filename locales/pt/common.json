@@ -175,6 +175,7 @@
         "starting": "Iniciando…",
         "stopping": "Parando…",
         "stateChip": { "idle": "Ociosa", "starting": "Iniciando", "searching": "Buscando", "stopping": "Parando", "stopped": "Parada por você", "done": "Concluída", "error": "Erro" },
+        "shrineCap": "Nível do santuário da guilda (vazio = o máximo do jogo)",
         "players": "Jogadores",
         "zone": "Zona",
         "tier": "Nível",
@@ -223,6 +224,10 @@
             "books": {
                 "name": "Novas técnicas",
                 "desc": "aprender uma técnica que você não tem em um espaço livre (precisa das técnicas aprendidas do exportador)"
+            },
+            "shrines": {
+                "name": "Santuários da guilda",
+                "desc": "subir cada santuário de combate (+1, +2, +3 ou até o nível do santuário; também os cinco de uma vez), com o custo em Créditos de Guilda comprados como itens do mercado mais as Fichas de Guilda do nível"
             }
         },
         "start": "Iniciar",
@@ -233,6 +238,10 @@
         "noPlayers": "Marque pelo menos um jogador para simular.",
         "badBudget": "O orçamento de {{player}} não é um número de moedas.",
         "badMaxPayback": "O limite de retorno não é um número de dias (0 para nenhum).",
+        "badShrineCap": "O nível do santuário da guilda não é um número inteiro (deixe vazio para o máximo do jogo).",
+        "shrine": {
+            "split": "{{tokens}} Fichas de Guilda exigidas; Créditos de Guilda: {{coin}} Moedas em itens do mercado, ou {{alt}} Fichas de Guilda de sobra"
+        },
         "noLevers": "Marque pelo menos uma coisa para buscar.",
         "sameNames": "Dois jogadores têm o mesmo nome; renomeie uma aba antes.",
         "alreadyRunning": "Uma busca já está rodando; mostrando ela.",

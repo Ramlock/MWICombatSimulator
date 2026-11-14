@@ -56,10 +56,10 @@ export function makePricer(market) {
         return finish(best, to);
     }
 
-    // Own `fromHrid` +from -> buy `toHrid` +to, sell the old.
+    // Own `fromHrid` +from -> buy `toHrid` +to, sell the old. fromHrid null: an empty slot, nothing to sell (cost = the buy price).
     function swap(fromHrid, from, toHrid, to) {
-        const b = buy(toHrid, to), s = sell(fromHrid, from);
-        return finish({ cost: b.cost - s.value, path: b.path === 'mirror' ? 'buy via mirror, sell old' : 'buy, sell old', mirrors: b.mirrors, ...(b.path === 'mirror' ? { from: b.from, toListed: b.listed } : {}), noBuyer: !!s.noBuyer }, to);
+        const b = buy(toHrid, to), s = fromHrid ? sell(fromHrid, from) : { value: 0 }, sold = fromHrid ? ', sell old' : '';
+        return finish({ cost: b.cost - s.value, path: (b.path === 'mirror' ? 'buy via mirror' : 'buy') + sold, mirrors: b.mirrors, ...(b.path === 'mirror' ? { from: b.from, toListed: b.listed } : {}), noBuyer: !!s.noBuyer }, to);
     }
 
     function finish(r, to) {

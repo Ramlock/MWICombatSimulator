@@ -24,6 +24,7 @@ import { tMult, dfOf, contention, eliminate, nearestSeparation, bounds, poolKey,
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
+import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay, NO_LIMIT_TEXT } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
 import { playerFit, misfit } from './stylefit.mjs';
@@ -89,7 +90,8 @@ export async function main(settings, seams) {
     const sureOffset = confirmOffset + 10000;
     const setupsDir = settings.setupsDir, pricesFile = settings.pricesFile;
     const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
-    const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS];
+    const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS, 'shrines'];
+    const shrineOpts = { cap: parseShrineCap(arg('shrine-cap', null)), steps: parseShrineSteps(arg('shrine-steps', null)) }; // the guild's shrine level (null = the game's maximum) and the jumps
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
     // `pairs` is no longer a lever (the foods and drinks race tries whole combinations): an old command line or request that names it still runs, the name is ignored.
     // `consumables`, the one lever the foods and the drinks were before they were split, is read as both (an old command line, request or saved search).
@@ -321,28 +323,38 @@ export async function main(settings, seams) {
     const charmsOn = goal === 'exp' || arg('charms', false) === true;
     // Each candidate names the groups it changes (`<player>:<slot>`, `:food<i>`, `:drink<i>`, `:ability<i>`); after a
     // greedy step, candidates touching the accepted change's groups are rebuilt from the new setup.
+    // An empty slot offers the market items of the slot's own type at +0 (cost = the buy price, nothing sold), through the same swap
+    // loop below (pricer.swap with no old item). The weapon slots are left alone while any of them holds a weapon (a two-hand weapon
+    // empties the main and off hand; a main-hand weapon leaves the two-hand slot empty), and the two-hand slot is never filled here.
+    function emptySlotOpen(setups, p, slot) {
+        if (slot === 'two_hand') return false;
+        if (slot === 'main_hand' || slot === 'off_hand') return !slotItem(setups, p, 'two_hand');
+        return true;
+    }
     function candidatesFor(setups, p, slots) {
         const s = setups.find((x) => x.name === p), out = [], fit = playerFit(s, itemDetailMap);
         for (const slot of slots) {
             if (slot === 'charm' && !charmsOn) continue;
             const it = slotItem(setups, p, slot);
-            if (!it) continue;
-            const name = it.itemHrid.split('/').pop();
-            for (let d = 1; d <= maxUp; d++) {
+            if (!it && !(swapsOn && emptySlotOpen(setups, p, slot))) continue;
+            const name = it ? it.itemHrid.split('/').pop() : 'empty';
+            for (let d = 1; it && d <= maxUp; d++) {
                 const c = pricer.upgrade(it.itemHrid, it.enhancementLevel, it.enhancementLevel + d);
                 out.push({ id: `${p}:${slot}+${d}`, kind: 'equip', groups: [`${p}:${slot}`], player: p, slot, monotone: true, desc: `${p} ${slot} ${name} +${it.enhancementLevel} -> +${it.enhancementLevel + d}`, ops: [{ op: 'enhance', player: p, slot, delta: d }], cost: c });
             }
             if (!swapsOn) continue;
-            const type = itemDetailMap[it.itemHrid]?.equipmentDetail?.type;
+            const type = it ? itemDetailMap[it.itemHrid]?.equipmentDetail?.type : '/equipment_types/' + slot;
+            const was = it ? `${name} +${it.enhancementLevel}` : 'empty';
+            const levels = it ? [...new Set(swapLevels.map((x) => (x === 'same' ? it.enhancementLevel : Number(x))))] : [0];
             for (const item of Object.values(itemDetailMap)) {
-                if (item.hrid === it.itemHrid || item.equipmentDetail?.type !== type || !meetsReq(s, item)) continue;
-                for (const L of [...new Set(swapLevels.map((x) => (x === 'same' ? it.enhancementLevel : Number(x))))]) {
-                    const c = pricer.swap(it.itemHrid, it.enhancementLevel, item.hrid, L);
+                if (item.hrid === it?.itemHrid || item.equipmentDetail?.type !== type || !meetsReq(s, item)) continue;
+                for (const L of levels) {
+                    const c = pricer.swap(it?.itemHrid ?? null, it?.enhancementLevel ?? 0, item.hrid, L);
                     if (!c.known) continue; // no seller at this level: not a market swap
                     if (c.cost <= 0 && !sellDown) continue; // frees gold: a sell-down, dropped (design 4.3 item 2)
-                    const id = `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, desc = `${p} ${slot} ${name} +${it.enhancementLevel} -> ${item.hrid.split('/').pop()} +${L}`;
-                    if (styleDrop(fit, item, { id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } })) continue;
-                    if (isDominatedSwap(itemDetailMap[it.itemHrid], it.enhancementLevel, item, L)) {
+                    const id = `${p}:${slot}=${item.hrid.split('/').pop()}+${L}`, desc = `${p} ${slot} ${was} -> ${item.hrid.split('/').pop()} +${L}`;
+                    if (styleDrop(fit, item, { id, player: p, slot, desc, from: it ? { item: it.itemHrid, level: it.enhancementLevel } : null, to: { item: item.hrid, level: L } })) continue;
+                    if (it && isDominatedSwap(itemDetailMap[it.itemHrid], it.enhancementLevel, item, L)) {
                         if (!dominatedKeys.has(desc)) { dominatedKeys.add(desc); dominated.push({ id, player: p, slot, desc, from: { item: it.itemHrid, level: it.enhancementLevel }, to: { item: item.hrid, level: L } }); }
                         continue;
                     }
@@ -481,6 +493,7 @@ export async function main(settings, seams) {
             ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p) }),
             ...(levers.has('triggers') ? triggerCands(setups.find((x) => x.name === p), p, probeStore, { ...trigOpts, user: userTrig[p] }) : []),
             ...(levers.has('skills') ? skillCands(setups, p, skillOpts) : []),
+            ...(levers.has('shrines') ? shrineCands(setups.find((x) => x.name === p), p, { pricer, ...shrineOpts }) : []),
         ];
     }
 
@@ -918,7 +931,7 @@ export async function main(settings, seams) {
 
     // ---- Search ----
     async function search() {
-        const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
+        const result = { args: settings.argsText, goal, errorRule, baseMult, z, stages: stages.map((s) => `${s.k}x${s.h}`), keep, budget, budgets, budgetSource, taxLabel: TAX_LABEL, players, partySize: setups0.length, options: { ...keyOptions, ...pricesMeta, levers: [...levers], maxPaybackDays: maxPayback, ...(levers.has('shrines') ? { shrineCap: shrineOpts.cap } : {}) }, setups: setups0, steps: [], singles: [], apart: [], overBudget: [], overPayback: [], dominated, otherStyle, skippedNoExport: [], notConfirmed: [], pickCheck: { seedsPerBlock: SURE_BLOCK, maxSeeds: SURE_MAX, firstSeed: sureOffset + 1 } };
         notConfirmedList = result.notConfirmed;
         result.rounds = { firstSeeds: firstK, roundSeeds, unitHours: unitH, leaders: leadersK, pauseMult, coverage, readingStep: readStep, readingMin: readMin, lockRule, confirmSeeds: finK, confirmHours: finH, maxRounds };
         let baseOps = [], spent = zeroSpend(budgets);
@@ -983,7 +996,7 @@ export async function main(settings, seams) {
         // Monotone levers first (3.2 item 1), then the rest; screen then halving.
         cands.sort((a, b) => (b.monotone - a.monotone));
         result.candidates = cands.length;
-        result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "" }));
+        result.candidateList = cands.map((c) => ({ id: c.id, desc: c.desc, cost: c.cost.cost, path: c.cost.path, note: c.cost.note || "", ...(c.cost.split ? { shrineSplit: c.cost.split } : {}) }));
         publish(result); // snapshot 3: the candidates are priced (over-budget list, unknown costs, skipped swaps, the count)
         console.log(`${nOf(cands.length, 'candidate')} within budget, ${result.overBudget.length} priced over budget and ${result.apart.length} with unknown cost listed apart; ${nOf(dominated.length, 'swap')} skipped (no better on any stat), ${nOf(otherStyle.length, 'swap')} skipped (only another style's bonuses)`);
 
@@ -1118,7 +1131,7 @@ export async function main(settings, seams) {
     // Mirrors are in it, their count, the level the chain starts from (mirrorFrom), the level bought (to) and whether that level had a
     // dearer ask (toListed). One helper for every list.
     function priceFields(cost) {
-        return { costPath: cost.path, note: cost.note || '', ...(cost.mirrors > 0 ? { mirrors: cost.mirrors, mirrorFrom: cost.from, to: cost.to, ...(cost.toListed ? { toListed: true } : {}) } : {}) };
+        return { costPath: cost.path, note: cost.note || '', ...(cost.split ? { shrineSplit: cost.split } : {}), ...(cost.mirrors > 0 ? { mirrors: cost.mirrors, mirrorFrom: cost.from, to: cost.to, ...(cost.toListed ? { toListed: true } : {}) } : {}) };
     }
     // Per user: the party figure split equally over the party (the contract's gainPerUser / sePerUser).
     const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: se / setups0.length });

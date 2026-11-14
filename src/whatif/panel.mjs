@@ -23,6 +23,7 @@ export const LEVERS = [
     { id: 'order', def: true },
     { id: 'triggers', def: true },
     { id: 'houses', def: true },
+    { id: 'shrines', def: true }, // guild shrines, capped by the guild's shrine level field (shrineCap)
 ];
 
 export const API = {
@@ -107,7 +108,7 @@ export function pageSetups(slots) {
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback }) {
+export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
@@ -118,6 +119,8 @@ export function searchBody({ slots, goal, budgets, levers, zone, tier, marketpla
     if (exports && Object.keys(exports).length) body.export = exports;
     // The payback limit in days (0 = no limit): the runner passes it to the search as --max-payback.
     if (maxPayback !== undefined && maxPayback !== null && maxPayback !== '') body.maxPayback = Number(maxPayback);
+    // The guild's shrine level (one for every buff), only with Shrines ticked; empty = the game's maximum (sent as nothing): --shrine-cap.
+    if (shrineCap !== undefined && shrineCap !== null && shrineCap !== '' && (levers || []).includes('shrines')) body.shrineCap = Number(shrineCap);
     return body;
 }
 
@@ -420,11 +423,13 @@ const NAME_TABLES = {
     combatTriggerConditionNames: '/combat_trigger_conditions/',
     actionNames: '/actions/', // the zone: "combat/fly"
     houseRoomNames: '/house_rooms/', // the "where the page differs" warning holds room hrids
+    guildShrineNames: '/guild_shrines/', // a shrine change: "force 2 -> 3"
     combatTriggerComparatorNames: '/combat_trigger_comparators/', // and trigger terms as JSON
 };
 // The lookups `localizeDesc` takes, from the game bundle of the shown language (`current`) and of English (`english`,
 // the fallback i18next uses and the language the room names are written in). A bundle is { itemNames: { "/items/x": name }, ... }.
-export function namesFrom(current, english = current) {
+// words: the window's own words a desc may hold, by their English id ({ empty: <the shown language's word> }: an empty slot).
+export function namesFrom(current, english = current, words = {}) {
     const get = (table, slug) => {
         const hrid = NAME_TABLES[table] + slug;
         const name = current?.[table]?.[hrid] ?? english?.[table]?.[hrid];
@@ -432,15 +437,15 @@ export function namesFrom(current, english = current) {
     };
     const rooms = Object.entries(english?.houseRoomNames || {}).map(([hrid, en]) => [en, current?.houseRoomNames?.[hrid] || en])
         .sort((a, b) => b[0].length - a[0].length);
-    return { get, rooms };
+    return { get, rooms, words };
 }
 
-const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames'];
+const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames', 'guildShrineNames'];
 const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames'];
 const SLUG = /(?<![A-Za-z0-9_])[a-z][a-z0-9_]*(?![A-Za-z0-9_])/g;
 const swap = (text, tables, names) => text.replace(SLUG, (id) => {
     for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
-    return id;
+    return typeof names.words?.[id] === 'string' ? names.words[id] : id;
 });
 // A desc with every game id replaced by its name; an id with no name stays. `players` are the names the result
 // holds: the player name leads the desc and is never touched. Trigger descs ("<owner> trigger: <terms>") read the
@@ -483,12 +488,15 @@ function gainCells(row, goalExp, t, floor, withFresh = false) {
     const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
     return gainCell(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainCell(net, netSe, t, floor) : '<td class="num">—</td>');
 }
+// A shrine change's split (the row's shrineSplit, tools/whatif/levers/shrines.mjs): the Guild Tokens its levels require, and its Guild Credits
+// either bought as market items (Coin) or paid with spare tokens (how many). Html: the figures are numberHtml, as in the other figure texts (i18next does not escape).
+export const shrineSplitText = (sp, t) => t('shrine.split', { tokens: num(sp.tokens), coin: num(sp.creditsCoin), alt: Number.isFinite(sp.creditsTokens) ? num(sp.creditsTokens) : '—' });
 // How a row was priced (its price path), in the shown language: the one helper of every list with a cost (chosen changes, each change alone,
 // priced over budget, pays back too slowly). From the core's fields (tools/whatif/core.mjs priceFields): costPath, note and, with Philosopher's
 // Mirrors, mirrors / mirrorFrom / to / toListed. A cost path or note this table does not know shows as the core wrote it (an older result).
 // The upper-bound caveat is left out (the "≤" on the cost and the footnote carry it). priceHow is the path, priceNotes its notes; pricePath is
 // both as one plain text, "<path> (<notes>)" ('' when the row has no path).
-const PATH_KEYS = { market: 'buy', 'buy, sell old': 'buySellOld', 'loadout tweak': 'loadout', 'loadout tweak, used x buy price in expenses': 'loadoutUsed', owned: 'owned', learned: 'learned', 'house upgrade': 'house', books: 'books' };
+const PATH_KEYS = { market: 'buy', buy: 'buy', 'buy, sell old': 'buySellOld', 'loadout tweak': 'loadout', 'loadout tweak, used x buy price in expenses': 'loadoutUsed', owned: 'owned', learned: 'learned', 'house upgrade': 'house', books: 'books' };
 const NOTE_KEYS = { 'Mirror win below +10: price to check': 'noteMirrorCheck', 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
 function priceHow(s, t) {
     const path = String(s?.costPath || ''), m = Number(s?.mirrors) || 0;
@@ -502,17 +510,19 @@ export function pricePath(s, t) {
     const how = priceHow(s, t), notes = priceNotes(s, t);
     return how + (notes ? ` (${notes})` : '');
 }
-// The How it is bought cell: the price path as a chip, its notes as the chip's hover text. A skill level (cost path "time ..."): the word,
-// the runner's full text on hover.
+// The price path as html: a shrine change names its split (shrineSplitText), any other row its price path.
+const pathHtml = (s, t) => (s?.shrineSplit ? shrineSplitText(s.shrineSplit, t) : esc(pricePath(s, t)));
+// The How it is bought cell: the price path as a chip, its notes as the chip's hover text; a shrine change, its split. A skill level (cost
+// path "time ..."): the word, the runner's full text on hover.
 const pathCell = (s, t) => {
     if (/^time\b/.test(String(s.costPath || ''))) return `<td title="${esc(s.costPath)}">${esc(priceHow(s, t))}</td>`;
     const notes = priceNotes(s, t);
-    return `<td class="wrap">${chip(esc(priceHow(s, t)), '', notes ? esc(notes) : '')}</td>`;
+    return `<td class="wrap">${chip(s.shrineSplit ? shrineSplitText(s.shrineSplit, t) : esc(priceHow(s, t)), '', notes ? esc(notes) : '')}</td>`;
 };
 // A plain market buy (cost path "market", no mirror, no note): a list line names no path for it.
 const isPlainBuy = (s) => s?.costPath === 'market' && !(Number(s.mirrors) > 0) && !s.note;
 // The same after a cost in a list's Cost cell: "(<price path>)", nothing for a plain market buy or a row with no path.
-const pathAfter = (s, t) => { if (isPlainBuy(s)) return ''; const how = pricePath(s, t); return how ? ` <span class="text-secondary">(${esc(how)})</span>` : ''; };
+const pathAfter = (s, t) => { if (isPlainBuy(s)) return ''; const how = pathHtml(s, t); return how ? ` <span class="text-secondary">(${how})</span>` : ''; };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
 const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath || ''));
 // A chosen change (withFresh) with a fresh reading and a cost: the cost over the fresh buyer's gain (paybackDays, the search's own helper);

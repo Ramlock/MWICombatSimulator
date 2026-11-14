@@ -17,7 +17,11 @@
 //                                skills (each trained combat skill +1..+skill-up; days to reach, never stacked),
 //                                houses, abilitylevels, books (phase 3, tools/whatif/levers/houses.mjs; its flags
 //                                --house-rooms, --house-up, --ability-steps, --book-levels; a cost that is only an
-//                                upper bound carries costBound: 'upper' in its row and prints as "≤"); all
+//                                upper bound carries costBound: 'upper' in its row and prints as "≤"),
+//                                shrines (each combat guild shrine buff raised by --shrine-steps, default 1,2,3,cap, up to
+//                                --shrine-cap, the guild's shrine level, empty = the game's maximum; per player also all
+//                                five +1 and all five up to the cap; cost in Coin from the price snapshot, the split in
+//                                shrineSplit; tools/whatif/levers/shrines.mjs); all
 //   --skill-up 2  --skill-left P1:stamina=300.5K,magic=1.2M;P2:...   experience left to the next level (levers/skills.mjs)
 //   --charms                     keep charm candidates on a profit goal (left out by default: they change only EXP)
 //   --goal profit|exp            party profit per day after tax, or party EXP per hour (1.8)
