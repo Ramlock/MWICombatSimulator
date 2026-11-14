@@ -4,6 +4,7 @@ import Player from "./combatsimulator/player";
 import Zone from "./combatsimulator/zone";
 import Labyrinth from "./combatsimulator/labyrinth";
 import { scaleConsumableBuff, scaleAbilityBuff } from "./combatsimulator/buffScaling";
+import { talismanStats } from "./combatsimulator/talismans";
 
 // Buffs from the page's extra toggles: Moo Pass, community buffs and personal buffs (seals).
 export function buildExtraBuffs(extra) {
@@ -142,11 +143,20 @@ export function createZoneAndLabyrinth(zoneSpec, labyrinthSpec) {
     return { zone, labyrinth };
 }
 
+// The player's talisman stats: the optional DTO field `talismans` ({ power, lines: [{ modifier, grade }] }, see
+// combatsimulator/talismans.js) becomes gear stats summed with the equipment's (Player.talismanStats). This is the only
+// place the field is read, shared by the page's worker and the what-if engine. Absent: the player is left as it is.
+export function applyTalismans(simPlayer, talismans) {
+    if (talismans) simPlayer.talismanStats = talismanStats(talismans);
+    return simPlayer;
+}
+
 // The engine player for one player DTO, with the zone (or labyrinth) buffs and the extra buffs.
 export function createSimPlayer(playerDTO, zone, labyrinth, extraBuffs) {
     let simPlayer = Player.createFromDTO(structuredClone(playerDTO));
     simPlayer.zoneBuffs = zone?.buffs || labyrinth?.buffs || [];
     simPlayer.extraBuffs = extraBuffs;
+    applyTalismans(simPlayer, playerDTO.talismans);
     return simPlayer;
 }
 

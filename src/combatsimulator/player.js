@@ -173,7 +173,8 @@ class Player extends CombatUnit {
             "meleeExperience",
             "rangedExperience",
             "magicExperience",
-            "retaliation"
+            "retaliation",
+            "damageTaken"
         ];
         // The equipment sums only change when a slot does: cache them, keyed on the equipment objects.
         const slots = Object.values(this.equipment);
@@ -189,9 +190,13 @@ class Player extends CombatUnit {
             this.equipmentStatsCache = { slots, sums };
         }
         const sums = this.equipmentStatsCache.sums;
+        // Talisman lines (talismans.js, set by simSetup applyTalismans) are gear stats too; none set = 0, nothing changes.
+        const talismanStats = this.talismanStats;
         for (const stat of stats) {
-            this.combatDetails.combatStats[stat] = sums[stat];
+            this.combatDetails.combatStats[stat] = talismanStats?.[stat] ? sums[stat] + talismanStats[stat] : sums[stat];
         }
+        // damageTaken is rebuilt from the buffs in CombatUnit.updateCombatDetails; the gear (talisman) part is kept here for it.
+        this.gearDamageTaken = this.combatDetails.combatStats.damageTaken;
 
         if (this.equipment["/equipment_types/pouch"]) {
             this.combatDetails.combatStats.foodSlots =

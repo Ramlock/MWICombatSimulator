@@ -158,6 +158,7 @@ class CombatUnit {
     permanentBuffs = {};
     zoneBuffs = {};
     extraBuffs = {};
+    gearDamageTaken = 0; // the gear (talisman) part of damageTaken, set by Player.updateCombatDetails
 
     constructor() { }
 
@@ -265,7 +266,7 @@ class CombatUnit {
             this.combatDetails.rangedEvasionRating += baseRangedEvasion * boost.ratioBoost;
         }
 
-        this.combatDetails.combatStats.damageTaken = this.getBuffBoost("/buff_types/damage_taken").flatBoost;
+        this.combatDetails.combatStats.damageTaken = this.getBuffBoost("/buff_types/damage_taken").flatBoost + this.gearDamageTaken;
         // if (this.combatDetails.combatStats.damageTaken > 0) {
         //     console.log("Damage taken: " + this.combatDetails.combatStats.damageTaken);
         // }
@@ -524,7 +525,7 @@ class CombatUnit {
         this.isBlinded = false;
         this.blindExpireTime = null;
         if (this.combatDetails?.combatStats && this.combatDetails.combatStats.damageTaken !== 0) {
-            this.statsDirty = true; // a rebuild restores damageTaken from the buffs
+            this.statsDirty = true; // a rebuild restores damageTaken from the buffs and the gear
         }
         this.combatDetails.combatStats.damageTaken = 0;
     }
