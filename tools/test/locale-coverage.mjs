@@ -103,6 +103,32 @@ const notTheGameWord = {
     'whatIf.get.linuxStep2:install': 'Instale is the imperative of Instalar; the English "nvm install 24" is a shell command kept as written',
     'whatIf.get.linuxStep3:tools': 'the word is the folder name tools/ in the command, not the game\'s Ferramentas',
     'simulationResults.heldByTriggerOverlap:add': '"do not add up" is a sum, not the Add button; pt says não somam',
+    'whatIf.get.step1:save': "Salve is the imperative of the game's Salvar",
+    'whatIf.get.step2:time': "\"the first time\" is primeira vez, not the game's Tempo (a duration)",
+    'whatIf.progress.partStepsShort:time': "\"one at a time\" is uma a uma, not the game's Tempo (a duration)",
+    'whatIf.progress.partSteps:time': "\"one at a time\" is uma a uma, not the game's Tempo (a duration)",
+    'whatIf.progress.partConfirmationWaiting:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.progress.partScreen:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.progress.partStep:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.progress.partPicks:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.rounds.status.zero:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.rounds.status.zeroTip:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.result.otherStyleOne:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.rounds.col.candidate:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.rounds.col.candidate': '"Mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.result.running:change': "\"podem mudar\" (the lists may still change) is the plain verb, not the game's button Alterar",
+    'whatIf.result.running:report': "\"relatório\" is the noun (this report), not the game's verb Reportar (report a player)",
+    'whatIf.rounds.slotEmpty': "lower case on purpose: it stands mid-line (\"Pés vazio → ...\") like the en \"empty\"; the game's Vazio is a label",
+    'whatIf.rounds.pausedTip:back': '"come back by themselves" is the verb phrase (voltam sozinhas), not the Back equipment slot (Costas)',
+    'whatIf.rounds.poolCounts:paused': 'the word is the placeholder name {{paused}}; the text says "set aside" (deixadas de lado), no game Pausado is meant',
+    'whatIf.result.paysBackIn:back': '"pays back" is the verb phrase (se paga), not the Back equipment slot (Costas)',
+    'whatIf.result.answer:all': "Todas agrees in gender and number with \"as mudanças\"; the game's Tudo is \"everything\"",
+    'whatIf.price.mirrorChain:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
+    'whatIf.price.mirrorChainOne:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
+    'whatIf.price.mirrorCheaper:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
+    'whatIf.price.mirrorCheaperOne:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
+    'whatIf.price.mirrorOwn:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
+    'whatIf.price.mirrorOwnOne:philosopher': "Filosofais is from the game's own item name Espelho Filosofal; the game's Filósofo is from an achievement name",
 };
 let termChecks = 0;
 for (const [key, enValue] of Object.entries(flat(JSON.parse(read('locales/en/common.json'))))) {
@@ -122,9 +148,28 @@ for (const [key, enValue] of Object.entries(flat(JSON.parse(read('locales/en/com
     }
 }
 
+// Every whatIf string of pt and zh is translated: a value equal to the en one fails, except where the text is rightly the
+// same in that language (the reason beside each).
+const sameAsEn = {
+    'pt:whatIf.days': '"d" is the pt abbreviation of dias too',
+    'pt:whatIf.rounds.col.status': "Status is the game's own pt word (marketplacePanel.status and others)",
+    'pt:whatIf.result.noCost': 'N/A is the usual pt abbreviation too (não se aplica)',
+};
+const enFlat = flat(JSON.parse(read('locales/en/common.json')));
+let sameChecks = 0;
+for (const lang of ['pt', 'zh']) {
+    const other = flat(JSON.parse(read(`locales/${lang}/common.json`)));
+    for (const [key, enValue] of Object.entries(enFlat)) {
+        if (!key.startsWith('whatIf.') || other[key] === undefined) continue;
+        sameChecks++;
+        if (other[key] === enValue && !sameAsEn[`${lang}:${key}`]) failures.push(`${lang} ${key} is the en text "${enValue}"`);
+    }
+}
+for (const k of Object.keys(sameAsEn)) { const [lang, key] = [k.slice(0, 2), k.slice(3)]; if (flat(JSON.parse(read(`locales/${lang}/common.json`)))[key] !== enFlat[key]) failures.push(`sameAsEn ${k} is no longer the en text: remove it from the list`); }
+
 if (failures.length) {
     console.log(failures.join('\n'));
     console.log(`FAIL ${failures.length}`);
     process.exit(1);
 }
-console.log(`PASS: pt common.json matches en (${en.size} keys); ${termChecks} game-term checks; ${inEnToo} page game keys resolve in pt; ${names.join(', ')} fully covered`);
+console.log(`PASS: pt common.json matches en (${en.size} keys); ${termChecks} game-term checks; ${sameChecks} whatIf pt/zh strings translated; ${inEnToo} page game keys resolve in pt; ${names.join(', ')} fully covered`);

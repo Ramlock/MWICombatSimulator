@@ -446,7 +446,7 @@
             "otherStyle": "{{n}} changes left out (another combat style or element)",
             "otherStyleOne": "{{n}} change left out (another combat style or element)",
             "dominatedK": "Swaps skipped",
-            "otherStyleK": "Other style only",
+            "otherStyleK": "Other style or element",
             "skippedNoExportK": "Players skipped",
             "leftOutItemTip": "readings in the race",
             "notConfirmedItemTip": "fresh runs",
