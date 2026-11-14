@@ -476,6 +476,30 @@ else {
     } finally { await chrome.close(); other.close(); await web.close(); }
 }
 
+// ---- The port holder probe (holderVersion): a busy runner of ours is recognized; a stranger is decided at once, a silent one after the wait ----
+{
+    const serve = (handler) => new Promise((r) => { const s = http.createServer(handler); s.listen(0, '127.0.0.1', () => r(s)); });
+    const timed = async (f) => { const t0 = Date.now(); const v = await f(); return [v, Date.now() - t0]; };
+    const busy = await serve((req, res) => setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ runner: 'r1', engine: 'e1' })); }, 3500));
+    const [v1, ms1] = await timed(() => R.holderVersion(busy.address().port));
+    check(v1?.runner === 'r1' && v1?.engine === 'e1' && ms1 >= 3400, `holderVersion: a runner of ours that answers after 3.5 s (busy) is recognized (${ms1} ms)`);
+    const web = await serve((req, res) => { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('<h1>not found</h1>'); });
+    const [v2, ms2] = await timed(() => R.holderVersion(web.address().port));
+    check(v2 === null && ms2 < 1000, `holderVersion: another web server is a stranger, decided at once (${ms2} ms)`);
+    const json = await serve((req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"name":"other"}'); });
+    const [v3, ms3] = await timed(() => R.holderVersion(json.address().port));
+    check(v3 === null && ms3 < 1000, `holderVersion: a JSON answer without runner and engine is a stranger, decided at once (${ms3} ms)`);
+    const net = await import('node:net');
+    const closer = await new Promise((r) => { const s = net.createServer((c) => c.destroy()); s.listen(0, '127.0.0.1', () => r(s)); });
+    const [v4, ms4] = await timed(() => R.holderVersion(closer.address().port));
+    check(v4 === null && ms4 < 1000, `holderVersion: a program that drops the connection is a stranger, decided at once (${ms4} ms)`);
+    const silent = await new Promise((r) => { const s = net.createServer(() => {}); s.listen(0, '127.0.0.1', () => r(s)); });
+    const [v5, ms5] = await timed(() => R.holderVersion(silent.address().port, 1200));
+    check(v5 === null && ms5 >= 1100 && ms5 < 3000 && R.HOLDER_WAIT_MS === 10000, `holderVersion: a silent holder is a stranger once the wait ends (1.2 s here, ${ms5} ms; 10 s by default)`);
+    for (const s of [busy, web, json, closer, silent]) { s.closeAllConnections?.(); s.close(); }
+    silent.unref(); closer.unref();
+}
+
 // Chrome lets go of its profile some seconds after it is killed.
 for (let i = 0; ; i++) { try { rmSync(tmp, { recursive: true, force: true }); break; } catch (e) { if (i === 30) { console.log(`warning: could not remove ${tmp}: ${e.code}`); break; } await sleep(1000); } }
 console.log(fails ? `${fails} FAILED` : 'all passed');

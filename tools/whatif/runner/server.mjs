@@ -298,10 +298,14 @@ export function createRunner(opts = {}) {
 }
 
 // Is the holder of this loopback port one of our runners? Its /api/version answers { runner, engine }; a stranger's server does not.
-// Returns that version, or null for a stranger.
-export async function holderVersion(port) {
+// Returns that version, or null for a stranger. A runner of ours busy with a search can take seconds to answer (its event loop is
+// shared with the search's messages, on a full CPU), so the probe waits up to HOLDER_WAIT_MS for an answer. The wait is only that long
+// for a holder that takes the connection and stays silent: a stranger that answers anything (another web server) or refuses the
+// connection is decided as soon as it does, and nothing that answers is ever waited on past its answer.
+export const HOLDER_WAIT_MS = 10000;
+export async function holderVersion(port, wait = HOLDER_WAIT_MS) {
     try {
-        const r = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(2000) });
+        const r = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(wait) });
         const j = await r.json();
         return r.ok && typeof j?.runner === 'string' && typeof j?.engine === 'string' ? { runner: j.runner, engine: j.engine } : null;
     } catch { return null; }
