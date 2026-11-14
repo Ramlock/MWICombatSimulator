@@ -261,11 +261,14 @@ const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 })
 // in its pending state ("Accepting…" / "Skipping…", whatif-pending), both buttons disabled (the second press would change the first). The state is
 // in the markup, so the redraw of the next poll gives the same button.
 // The window's small parts: a chip (a short fact, its label dim), a help mark (a sentence on hover and on keyboard focus; `tip` is escaped
-// html), a labelled figure, and a change "from → to" split in two (the text is escaped html; "->" or "→" splits it).
+// html), a labelled figure, and a change "from → to" split in two (the text is escaped html; "->" or "→" splits it; a change of several
+// parts, each "a -> b" and joined by ", " like a shrine row's all five, splits each part, so no raw "->" is left).
 const chip = (html, cls = '', tip = '') => `<span class="whatif-chip${cls ? ' ' + cls : ''}"${tip ? ` title="${tip}"` : ''}>${html}</span>`;
 const help = (tip) => (tip ? `<span class="whatif-help" tabindex="0" data-tip="${tip}">?</span>` : '');
 const fig = (k, v) => `<span class="whatif-fig"><span class="whatif-fig-k">${esc(k)}</span> <span class="whatif-fig-v">${v}</span></span>`;
-const arrowed = (html) => html.replace(/^(.*?)\s*(?:-&gt;|→)\s*(.*)$/, '<span class="whatif-from">$1</span><span class="whatif-arrow">→</span><span class="whatif-to">$2</span>');
+const arrowOne = (html) => html.replace(/^(.*?)\s*(?:-&gt;|→)\s*(.*)$/, '<span class="whatif-from">$1</span><span class="whatif-arrow">→</span><span class="whatif-to">$2</span>');
+const ARROW = /-&gt;|→/g;
+const arrowed = (html) => { const parts = html.split(', '); return parts.length > 1 && parts.every((x) => (x.match(ARROW) || []).length === 1) ? parts.map(arrowOne).join(', ') : arrowOne(html); };
 function stageButtons(t, acceptable, key, pressed) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
     const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;

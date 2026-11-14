@@ -1,4 +1,15 @@
 {
+    "2026-11-14":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "What-if: a new look. One summary bar, every list a table, a setup form that folds while a search runs, and one Start / Stop button that answers at once.",
+            "What-if: guild shrine upgrades are proposed, with their cost in Guild Tokens and Coin; an item can go into an empty slot.",
+            "What-if: changes that do not fit a player's combat style or element are no longer tried.",
+            "What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit."
+        ]
+    },
     "2026-11-13":
     {
         "fork": "Ramlock",

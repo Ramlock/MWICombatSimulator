@@ -161,9 +161,13 @@ export async function main(settings, seams) {
     const sure = { planned: 0, done: 0, counted: new Set() };
     let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
     const STAGE_FIELDS = ['round', 'phase', 'stageContending', 'stagePaused', 'stageAcceptable', 'stageSeparate', 'stageDropped', 'stageRuns', 'stageSimHours', 'stageEnded', 'stageSkipped']; // the progress fields of a race stage
+    // The end mark of a race stage outlives the race: the pick checks that follow report under the same stage name, and the row must stay done (no
+    // stage buttons) through them. It goes when the next race starts, and at the confirmation and the end (they carry no stage field).
+    const STAGE_END = ['stageEnded', 'stageSkipped'];
     let notConfirmedList = null; // result.notConfirmed once the report exists (read by report())
     let stageCtx = null; // the race stage's own counters (race() sets it, clears it at the stage's end): added to every progress message of the stage
     function report(patch = {}) {
+        if (patch.stage === 'confirmation' || patch.stage === 'done') for (const k of STAGE_END) delete progress[k];
         Object.assign(progress, patch, stageCtx ? stageCtx() : {});
         const wall = wallLog.reduce((a, r) => a + r.wallSeconds, 0), hours = wallLog.reduce((a, r) => a + r.h, 0);
         const left = progress.runsPlanned - progress.runsDone;
@@ -734,6 +738,7 @@ export async function main(settings, seams) {
         for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; c.out = undefined; }
         const lockedBy = new Map(); // player (or '*') -> candidate
         stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
+        for (const k of STAGE_END) delete progress[k]; // the stage before this one has its row done already (its key is not this one)
         const sinceStart = roundNo, hours0 = wallLog.reduce((a, r) => a + r.h, 0), runs0 = wallLog.length;
         // A race stage has no total known in advance, so its progress part shows no bar: only counters that never go down (the round being run,
         // the runs finished in the stage and the simulated hours spent in it, both cumulative over every batch of every round, and the
@@ -891,9 +896,9 @@ export async function main(settings, seams) {
         } finally {
             // The stage's own fields leave the shared progress object with the stage: the next, non-race stage (the confirmation) or message (a pick check) must not
             // carry the round, phase and counters of the race before it (progress.mjs copies them onto any row whose message has a round). The ended stage's row
-            // already holds its last figures (endStage's report).
+            // already holds its last figures (endStage's report); its end mark (STAGE_END) stays, so the pick checks after it do not draw it running again.
             stageCtx = null;
-            for (const k of STAGE_FIELDS) delete progress[k];
+            for (const k of STAGE_FIELDS) if (!STAGE_END.includes(k)) delete progress[k];
         }
     }
     // An object keyed by player name, rebuilt in the party's own order (the order of `players`; a key that is no player after them).

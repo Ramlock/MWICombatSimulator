@@ -54,7 +54,7 @@ try {
     const load = async (query = '') => { await page.send('Page.navigate', { url: base + query }); return until(`document.getElementById('selectZone')?.options.length > 3`, 30000); };
     const visible = (id) => js(`(() => { const e = document.getElementById('${id}'); return !!e && e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none'; })()`);
     const text = (sel) => js(`[...document.querySelectorAll(${JSON.stringify(sel)})].map((e) => e.textContent.trim())`);
-    const open = async () => { await js(`document.getElementById('buttonWhatIf').click(), true`); return until(`document.getElementById('whatIfModal').classList.contains('show')`); };
+    const open = async () => { await js(`document.getElementById('buttonWhatIf').click(), true`); return until(`document.getElementById('whatIfModal').classList.contains('show')`, 20000); };
     const closeModal = async () => { await js(`document.querySelector('#whatIfModal .btn-close').click(), true`); return until(`!document.getElementById('whatIfModal').classList.contains('show')`); };
 
     // ---- No runner ----
@@ -91,7 +91,9 @@ try {
     // ---- The page's own language flow: ?lng= ----
     for (const l of ['pt', 'zh']) {
         check(`${l}: the page loads`, await load('?lng=' + l));
-        check(`${l}: the window opens`, await until(`document.getElementById('buttonWhatIf').style.display === ''`) && await open());
+        check(`${l}: the window opens`, await until(`document.getElementById('buttonWhatIf').style.display === ''`, 30000) && await open());
+        // Under load the strings may land a moment after the window shows: wait for them (up to 20 s), then judge.
+        await until(`(() => { const t = [...document.querySelectorAll(${JSON.stringify(winPart)})].map((e) => e.textContent.trim()); return t.length === 5 && t[0] === ${JSON.stringify(locales[l].get.why)}; })()`, 20000);
         const p = await text(winPart);
         check(`${l}: the paragraph and the four steps are the ${l} strings, none left in English`, p.length === 5 && p[0] === locales[l].get.why && [1, 2, 3, 4].every((i) => p[i] === locales[l].get['step' + i]) && locales[l].get.why !== locales.en.get.why, JSON.stringify(p));
         check(`${l}: the link reads in ${l}`, (await text('#linkWhatIfRunner'))[0] === locales[l].get.download);

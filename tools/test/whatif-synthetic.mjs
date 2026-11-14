@@ -67,12 +67,21 @@ const t0 = Date.now();
 // stage (the confirmation, the pick check after a race, the end) never shows the counters of the stage before it (the Confirmation row once showed "Greedy step 4"'s).
 const STAGE_FIELDS = ['round', 'phase', 'stageContending', 'stagePaused', 'stageAcceptable', 'stageSeparate', 'stageDropped', 'stageRuns', 'stageSimHours', 'stageEnded', 'stageSkipped'];
 const carried = [], seenStages = new Set();
+// A race stage that has ended stays a done row (no stage buttons) through the pick checks that follow under its name (TODO row 93: a Skip pressed
+// just before the pick check showed its stage running, buttons and all, until the search ended, 25 s on a real search).
+let endedStage = null, afterEnd = 0;
+const reran = [];
 const run = await runSynthetic(scenario, {}, { onProgress: (p) => {
+    if (p.stageEnded) endedStage = p.stageEnded;
+    else if (endedStage && p.stage === endedStage) reran.push(`${p.stage}: the end mark went`);
+    if (endedStage && p.stage === endedStage) { afterEnd++; const live = (p.parts || []).filter((r) => r.state === 'running' && r.kind !== 'picks'); if (live.length) reran.push(`${p.stage}: ${live.map((r) => r.kind + ':' + r.index).join(',')} running`); }
+    if (endedStage && p.stage !== endedStage) endedStage = null;
     seenStages.add(/^greedy step/.test(p.stage) ? 'greedy step' : p.stage);
     const conf = (p.parts || []).find((x) => x.kind === 'confirmation');
     if ((p.stage === 'confirmation' || p.stage === 'done') && (STAGE_FIELDS.some((k) => p[k] !== undefined) || (conf && (conf.round !== undefined || conf.runs !== undefined || conf.simHours !== undefined)))) carried.push(`${p.stage}: ${STAGE_FIELDS.filter((k) => p[k] !== undefined).join(',')} ${JSON.stringify(conf)}`);
 } });
 const res = run.result, steps = res.steps, step = (i) => steps[i];
+check(`progress: an ended race stage stays done (no running row, its end mark kept) on every message under its name after its end (${afterEnd} such messages)`, afterEnd > 0 && reran.length === 0, reran.slice(0, 3).join(' | '));
 check('progress: a greedy step with rounds, then the confirmation: the confirmation (and the end) carry no round and no stage counters, on the record or on its row', seenStages.has('greedy step') && seenStages.has('confirmation') && carried.length === 0, carried.slice(0, 2).join(' | '));
 const opsOf = (s) => (s.ops ?? s.est?.ops ?? []);
 const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"${player}","slot":"${slot}","delta":${delta}`);
@@ -151,7 +160,8 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
 
 // ---- The two buttons ----
 {
-    const press = (stage, round, mode) => { let pressed = false; return (rec, stop) => { if (rec.stage === stage && rec.round === round) { stop.press(mode); pressed = true; } else if (pressed && rec.stage === 'screen') stop.requested = true; }; }; // after the button, the search is stopped when the Screen starts (the Screen of a no-step search has no lock to end it by)
+    // The press comes on the published record of that round, not on round 1's first look (provisional): a press during a round ends the stage at once.
+    const press = (stage, round, mode) => { let pressed = false; return (rec, stop) => { if (!rec.provisional && rec.stage === stage && rec.round === round) { stop.press(mode); pressed = true; } else if (pressed && rec.stage === 'screen') stop.requested = true; }; }; // after the button, the search is stopped when the Screen starts (the Screen of a no-step search has no lock to end it by)
     const skip = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('foods', 3, 'skip') });
     check('button: Skip on the foods stage ends it after that round with nothing taken (endedByUser 3, a Skip: "ended by you during round 4, its finished runs kept"; the report text is checked on the searches that finish, below)', skip.result.endedByUser.foods === 3 && skip.result.endedBySkip.foods === true && Object.values(skip.result.best.foods).every((e) => e.unchanged) && skip.rounds.filter((r) => r.stage === 'foods').length === 3);
     const accept = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: press('drinks', 8, 'accept') });
@@ -204,11 +214,12 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     const hs = hangAfter('foods', 1, 'skip');
     const skip3 = await runSynthetic(scenario, short, hs.opts);
     check('button: Skip ends the stage without waiting for the runs in flight (they are dropped, not finished): ended after round 1, a Skip, the search goes on', hs.hung > 0 && hs.dropped === 1 && skip3.result.endedByUser.foods === 1 && skip3.result.endedBySkip.foods === true && skip3.rounds.filter((r) => r.stage === 'foods').length === 1 && skip3.rounds.some((x) => x.stage === 'drinks') && !skip3.result.incomplete, `${hs.hung} ${hs.dropped} ${JSON.stringify(skip3.result.endedByUser)}`);
-    check('button: a run that Skip dropped is not stored (the store holds every run but the dropped ones)', skip3.records.length === skip3.runs - hs.hung, `${skip3.records.length} ${skip3.runs} ${hs.hung}`);
+    // `runs` counts the runs that reached the synthetic pool; a hung run never did (the wrap holds it), so the store holds exactly `runs` records.
+    check('button: a run that Skip dropped is not stored (the store holds every run but the dropped ones)', hs.hung > 0 && skip3.records.length === skip3.runs, `${skip3.records.length} ${skip3.runs} ${hs.hung}`);
     const ha = hangAfter('drinks', 8, 'accept');
     const accept2 = await runSynthetic(scenario, { 'max-steps': 0 }, ha.opts);
     check('button: Accept ends the stage without waiting for the runs in flight: ended after round 8, not a Skip, and it takes what round 8 offered (the same picks as an Accept at the end of round 8), marked accepted as is', ha.hung > 0 && ha.dropped === 1 && accept2.result.endedByUser.drinks === 8 && !accept2.result.endedBySkip.drinks && accept2.rounds.filter((r) => r.stage === 'drinks').length === 8 && JSON.stringify(accept2.result.best.drinks) === JSON.stringify(accept.result.best.drinks) && Object.values(accept2.result.best.drinks).some((e) => e.acceptedAsIs), `${ha.hung} ${ha.dropped} ${JSON.stringify(accept2.result.endedByUser)}`);
-    check('button: a run that Accept dropped is not stored', accept2.records.length === accept2.runs - ha.hung, `${accept2.records.length} ${accept2.runs} ${ha.hung}`);
+    check('button: a run that Accept dropped is not stored', ha.hung > 0 && accept2.records.length === accept2.runs, `${accept2.records.length} ${accept2.runs} ${ha.hung}`);
 }
 
 // ---- A search whose every pick is left out inside the race: the pick check ran, so the picks part is done ("None confirmed"), not "Not run" ----

@@ -365,11 +365,13 @@ if (res) {
         check(rl.length > 0 && rl.every((r) => !r.provisional && r.readingMin === res.rounds.readingMin && r.pools.every((p) => p.leaders.every((l) => Number.isFinite(l.hours) && l.hours === l.searchHours + l.readHours))), 'rounds.jsonl: only finished rounds (no provisional record), each with the reading minimum and the hours of every leader (search + fresh)');
         check(rl.every((r) => r.pools.every(sortedOk)), 'rounds.jsonl: each pool is sorted by its one column (free by the buyer\'s gain, paid by payback shortest first) among the rows with a figure (4 seeds or more), the others after them in build order; a pool with no such row stays in build order, sortedBy null, its column in sortPending');
         check(rl.every((r) => r.pools.every((p) => p.leaders.every((l) => l.status !== 'zero' || (Number.isFinite(l.netLow) ? l.netLow <= 0 && l.netHigh >= 0 : l.low <= 0 && l.high >= 0)))), 'rounds.jsonl: a leader is "zero" only when its range reaches 0');
-        // round 1 asks for the runs seed by seed (seed 1 of every candidate, then seed 2, ...): in the order they finished (2 lanes), no run finishes
-        // 4 places before one of a lower seed.
+        // round 1 asks for the runs seed by seed (seed 1 of every candidate, then seed 2, ...).
         // (the first 4 sweeps of 4 candidates: with the elimination rule the first race can lock in its 5th sweep, and the next race's seed 1 then follows)
+        // Judged on the order they were asked in, which the finish order bounds whatever the load: with 2 lanes, by the i-th finish only the
+        // first i + 2 runs were handed out, so a run finishing i-th was asked i-th or i+1-th at the latest; asked seed-major, every run of a
+        // lower seed came before it, so no more than i + 1 of them can exist. A slow run (a busy machine) only finishes later, which this allows.
         const vr = lines.filter((l) => l.tag === 'variant').slice(0, 16);
-        check(vr.length >= 8 && vr.every((l, i) => vr.slice(0, Math.max(0, i - 3)).every((e) => e.seed <= l.seed)), 'round 1: the runs are asked for seed-major (no variant run finishes after one of a higher seed that came 4 or more places earlier): ' + vr.map((l) => l.seed).join());
+        check(vr.length >= 8 && vr.every((l, i) => vr.filter((e) => e.seed < l.seed).length <= i + 1), 'round 1: the runs are asked for seed-major (with 2 lanes, the i-th run to finish has at most i + 1 runs of a lower seed among the first 16): ' + vr.map((l) => l.seed).join());
         const picks = fin.trace.map((p) => p?.parts?.find((r) => r.kind === 'picks')).filter(Boolean);
         check(picks.length > 0 && picks.every((r, i) => i === 0 || (r.runsPlanned >= picks[i - 1].runsPlanned)) && picks.every((r) => r.runsDone <= r.runsPlanned) && (res.steps.length === 0 || fin.r.progress.parts.find((r) => r.kind === 'picks').state === 'done'), 'pick check: the progress has the picks row, planned never drops, done never exceeds it, done at the end');
         console.log(`     (pick check: ${res.steps.length} confirmed, ${res.notConfirmed.length} not confirmed, ${lines.filter((l) => l.tag === 'sure').length} runs on fresh seeds, ${lines.filter((l) => l.tag === 'sure').reduce((a, l) => a + l.wallSeconds, 0).toFixed(1)} core-seconds for ${lines.filter((l) => l.tag === 'sure').reduce((a, l) => a + l.hours, 0)} sim hours)`);

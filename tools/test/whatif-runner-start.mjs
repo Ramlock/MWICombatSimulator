@@ -25,7 +25,7 @@ const m = /127\\.0\\.0\\.1:(\\d+)/.exec(arg);
 if (!arg.endsWith('server.mjs') && m) {
     const url = 'http://127.0.0.1:' + m[1] + '/';
     const t = Date.now(); let answers = 'no';
-    try { const r = await fetch(url + 'api/version', { signal: AbortSignal.timeout(3000) }); answers = String(r.status); } catch (e) { answers = 'error ' + e.code; }
+    try { const r = await fetch(url + 'api/version', { signal: AbortSignal.timeout(10000) }); answers = String(r.status); } catch (e) { answers = 'error ' + e.code; }
     fs.appendFileSync(${JSON.stringify(openedFile)}, JSON.stringify({ t, url, answers }) + '\\n');
     process.exit(0);
 }
@@ -36,6 +36,8 @@ let failed = 0;
 const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL ') + name + (cond ? '' : ' ' + extra)); if (!cond) failed++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const opened = () => (fs.existsSync(openedFile) ? fs.readFileSync(openedFile, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+// Waits on the browser stub's record (a busy machine starts the stub late) instead of a fixed pause; then a short settle for a second, wrong open.
+const openedAtLeast = async (n, ms = 20000) => { const t0 = Date.now(); while (opened().length < n && Date.now() - t0 < ms) await sleep(100); await sleep(300); };
 const freePort = () => new Promise((res) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 
 function start(port, extra = ['--open']) {
@@ -54,7 +56,7 @@ const noStack = (out) => !/\n\s+at /.test(out) && !out.includes('node:net');
 const port = await freePort();
 const a = start(port);
 check('free port: the runner starts and says where it listens', await a.listening(), a.out);
-await sleep(1500);
+await openedAtLeast(1);
 let o = opened();
 check('free port: the browser is opened once', o.length === 1 && o[0].url === `http://127.0.0.1:${port}/`, JSON.stringify(o));
 check('free port: when the browser was opened the runner already answered (listen came first)', o[0]?.answers === '200', JSON.stringify(o));
@@ -65,7 +67,7 @@ const b = start(port);
 const bCode = await b.done;
 check('ours holds the port: the second start exits with the "already running" code (3)', bCode === 3, `exit ${bCode}\n${b.out}`);
 check('ours holds the port: it says the runner is already running, never "stopped", no EADDRINUSE and no stack trace', /already running/.test(b.out) && !/stopped|EADDRINUSE/i.test(b.out) && noStack(b.out), b.out);
-await sleep(1500);
+await openedAtLeast(2);
 o = opened();
 check('ours holds the port: the page is opened on the running one (a second open, same address, it answered)', o.length === 2 && o[1].url === o[0].url && o[1].answers === '200', JSON.stringify(o));
 const b2 = start(port, []);

@@ -8,6 +8,12 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = json.load(open(os.path.join(root, 'patchNote.json'), encoding='utf-8'))
 
 ZH = {
+    "2026-11-14": [
+        "假设分析：全新外观。一个摘要栏，每个列表都是表格，搜索运行时设置表单会折叠，还有一个立即响应的“开始 / 停止”按钮。",
+        "假设分析：会提出公会神龛升级，并列出所需的公会代币和金币成本；物品可以放入空栏位。",
+        "假设分析：不再尝试与玩家战斗风格或元素不符的改动。",
+        "假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。",
+    ],
     "2026-11-13": [
         "假设分析：食物和饮品现在是两个独立选项，可以只搜索其中一个",
         "假设分析：运行次数太少的数值显示为短横线，而不是数字",
@@ -208,6 +214,12 @@ EN = [
 ]
 
 PT = [
+    [
+        "E se: um novo visual. Uma barra de resumo, todas as listas em tabela, um formulário de configuração que se recolhe enquanto uma busca roda, e um único botão Iniciar / Parar que responde na hora.",
+        "E se: melhorias dos santuários da guilda são propostas, com o custo em Fichas de Guilda e Moedas; um item pode ir para um espaço vazio.",
+        "E se: alterações que não combinam com o estilo de combate ou o elemento de um jogador não são mais testadas.",
+        "E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite.",
+    ],
     [
         "E se: Comidas e Bebidas agora são duas opções separadas, para buscar uma sem a outra",
         "E se: um valor de poucas execuções mostra um traço em vez de um número",
