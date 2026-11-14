@@ -1,4 +1,4 @@
-// Node test for userscript/mwics-exporter.user.js 0.10.0, on made-up messages (no real player's data): the test server beside the live one, the equipped
+// Node test for userscript/mwics-exporter.user.js 0.10.1, on made-up messages (no real player's data): the test server beside the live one, the equipped
 // talisman lines in the encounter, the raw trace rows, and tools/echo-analysis.mjs on a small stream.
 // Run: node userscript/test/talisman.test.cjs
 // Covers: server from the host, storage keys per server, a record carrying its server, the sink's body and key prefix, a live tab and a test tab over one
@@ -179,16 +179,16 @@ test('the test tab keeps its party state and snapshot under suffixed keys; the l
     assert.ok('mwicsGroupState' in store && 'mwicsGroupState.test' in store);
 });
 
-test('the status toast names the test server; the version is 0.10.0 in the header and the constant', () => {
+test('the status toast names the test server; the version is 0.10.1 in the header and the constant', () => {
     const store = {};
     const test = boot(store, 'test.milkywayidle.com', { charId: 9 });
     test.commands.Status();
-    assert.ok(test.toasts.some((x) => /v0\.10\.0 \(test server\)/.test(x)));
+    assert.ok(test.toasts.some((x) => /v0.10.1 \(test server\)/.test(x)));
     const live = boot(store, 'www.milkywayidle.com');
     live.commands.Status();
-    assert.ok(live.toasts.some((x) => /v0\.10\.0:/.test(x) && !/test server/.test(x)));
-    assert.match(SRC, /@version\s+0\.10\.0/);
-    assert.ok(SRC.includes("const VERSION = '0.10.0'"));
+    assert.ok(live.toasts.some((x) => /v0.10.1:/.test(x) && !/test server/.test(x)));
+    assert.match(SRC, /@version\s+0.10.1/);
+    assert.ok(SRC.includes("const VERSION = '0.10.1'"));
 });
 
 // ---------- talismans ----------

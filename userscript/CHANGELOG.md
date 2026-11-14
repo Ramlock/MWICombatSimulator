@@ -4,6 +4,17 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.10.1 (2026-11-13)
+
+- Several game tabs open at once no longer overwrite each other's recording: a save adds to what the other tabs saved (fights, windows, task lists, counters and the list of what was already sent), and a fight another tab already sent is not sent again.
+- Several tabs also keep each other's party profiles: a member's profile seen in any tab stays (the newest 20 players are kept); the party itself is the one of the last tab to save.
+- A labyrinth run is noted as the zone of the fights that follow, so a labyrinth fight no longer carries the previous combat zone and starts its own window.
+- One party snapshot per character: each game tab also saves its own character's party (the newest 10 characters are kept). On the simulator page, when two or more characters are stored, a drop-down beside "Import party from game" picks which one to import (name and time of the last save, the most recent selected); with one or none the button works as before.
+- The test server: the script also runs on test.milkywayidle.com and keeps that server's recording, sent list, party and snapshots apart from the live server's; what it sends to the helper says which server it came from, and the Status entry says "(test server)" there.
+- Equipped talismans: each fight records every player's talisman power and slot count as the game shows them and, for your own character, the equipped talismans (grade, value, locked, unique) and the belt.
+- On the test server each fight also keeps raw per-update rows, for checking how an ability's effects land.
+- For a user of 0.10.0 (a build that was never published): this also brings everything from 0.9.1 to 0.9.4. Sending to the helper starts off on a fresh install that never held a token; the import button follows the page's language; the party for the simulator page carries your inventory and learned abilities; and a lost request no longer stops sending.
+
 ### 0.9.4 (2026-11-13)
 
 - Fix: sending to the helper could stop for good until the page was reloaded. If the script manager lost a request and never answered it, the script kept waiting for that answer and sent nothing more. Now a request with no answer after 30 seconds counts as failed and the usual retry takes over.
