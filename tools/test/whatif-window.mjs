@@ -170,7 +170,7 @@ try {
         JSON.stringify(await js(pageState)) === JSON.stringify(pageChoices));
     await js(`document.getElementById('whatIfPlayer_2').click(), document.getElementById('whatIfPlayer_1').click(), true`);
     check('unticking every player shows the message and no budget rows', await js(`document.getElementById('whatIfMessage').textContent === 'Tick at least one player to simulate.' && document.querySelectorAll('#whatIfBudgets input').length === 0`));
-    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    await js(`document.getElementById('buttonWhatIfSearch').click(), true`);
     check('Start with none ticked sends nothing', received === null && (await js(`document.getElementById('whatIfMessage').textContent`)) === 'Tick at least one player to simulate.');
     await js(`document.getElementById('whatIfPlayer_1').click(), true`);
     check('ticking a player again clears the message and brings the budget row back', await js(`document.getElementById('whatIfMessage').textContent === '' && document.querySelectorAll('#whatIfBudgets input').length === 1`));
@@ -216,7 +216,7 @@ try {
         const cols = [0, 1, 2, 3].map((i) => new Set(rows.map((x) => Math.round(r(x.children[i]).width))).size === 1 && new Set(rows.map((x) => Math.round(r(x.children[i]).left))).size === 1);
         const tops = rows.map((x) => r(x).top), pitch = tops.slice(1).map((t, i) => Math.round((t - tops[i]) * 10) / 10), heights = rows.map((x) => Math.round(r(x).height));
         const oneLine = rows.every((x) => [...x.children].every((c) => r(c).height <= 32) && r(x.children[3]).left >= r(x.children[2]).right - 0.5 && Math.abs(r(x.children[2]).top - r(x.children[3]).top) < 16);
-        const left = document.querySelector('#whatIfModal .col-md-5'), right = document.querySelector('#whatIfModal .col-md-7'), btn = document.getElementById('buttonWhatIfStart').parentElement;
+        const left = document.querySelector('#whatIfModal .col-md-5'), right = document.querySelector('#whatIfModal .col-md-7'), btn = document.getElementById('buttonWhatIfSearch').parentElement;
         const kids = [...left.children].map(r), gaps = kids.slice(1).map((k, i) => k.top - kids[i].bottom);
         const colBottom = Math.max(r(left).bottom, 0), rightBottom = [...right.children].reduce((m, c) => Math.max(m, r(c).bottom), 0);
         const startInRight = right.contains(btn);
@@ -251,38 +251,45 @@ try {
     await page.send('Emulation.clearDeviceMetricsOverride');
     await tickOnly(1);
     await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = 'abc'; return true; })()`);
-    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    await js(`document.getElementById('buttonWhatIfSearch').click(), true`);
     check('a budget that is not a number is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('Player 1')`) && received === null);
     check('the window has a payback limit field next to the budgets, 365 days by default', await js(`(() => { const i = document.getElementById('inputWhatIfMaxPayback'); return i.value === '365' && document.querySelector('label[for="inputWhatIfMaxPayback"]').textContent === 'Payback limit (days, 0 = no limit)' && !!i.closest('.modal-body') && (document.getElementById('whatIfBudgets').compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0; })()`));
     await js(`(() => { document.getElementById('inputWhatIfMaxPayback').value = '-5'; return true; })()`);
-    await js(`(document.querySelector('#whatIfBudgets input').value = '1000000', document.getElementById('buttonWhatIfStart').click(), true)`);
+    await js(`(document.querySelector('#whatIfBudgets input').value = '1000000', document.getElementById('buttonWhatIfSearch').click(), true)`);
     check('a payback limit that is not a number of days is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('payback limit')`) && received === null);
     await js(`(() => { document.getElementById('inputWhatIfMaxPayback').value = '365'; document.querySelector('#whatIfBudgets input').value = '1000000'; return true; })()`);
     // The market snapshot: the page's fetch of marketplace.json is answered here (no network for it in the test).
     await js(`(() => { const f = window.fetch; window.__mpCalls = 0; window.fetch = (u, o) => { if (!String(u).includes('marketplace.json')) return f(u, o); window.__mpCalls++;
         return window.__mpFail ? Promise.reject(new Error('offline')) : Promise.resolve(new Response(JSON.stringify({ marketData: { '/items/apple': { 0: { a: 10, b: 9 } } }, timestamp: 1700000000 }), { status: 200 })); }; window.__mpFail = true; return true; })()`);
-    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    await js(`document.getElementById('buttonWhatIfSearch').click(), true`);
     check('a failed price fetch starts no search and says so', await until(`document.getElementById('whatIfMessage').textContent.includes('could not be fetched')`) && received === null && (await js('window.__mpCalls')) >= 1);
     await js(`(window.__mpFail = false, true)`);
     // The budget field reads what the page writes (parseNumber): each text reaches the request as the whole number of coin; "abc" blocks the start and marks the field invalid.
     // The search POST is answered here with an error for these starts, so no search runs; the real start follows.
     await js(`(() => { const f = window.fetch; window.__posts = []; window.__realFetch = f; window.fetch = (u, o) => { if (String(u).endsWith('/api/search') && o?.method === 'POST') { window.__posts.push(JSON.parse(o.body)); return Promise.resolve(new Response(JSON.stringify({ error: 'test' }), { status: 400 })); } return f(u, o); }; return true; })()`);
     for (const [text, coins] of [['1 500 k', 1500000], ['1,500,000', 1500000], ['1.5M', 1500000], ['2.6', 3]]) {
-        await js(`(() => { window.__posts.length = 0; document.querySelector('#whatIfBudgets input').value = ${JSON.stringify(text)}; document.getElementById('buttonWhatIfStart').click(); return true; })()`);
+        await js(`(() => { window.__posts.length = 0; document.querySelector('#whatIfBudgets input').value = ${JSON.stringify(text)}; document.getElementById('buttonWhatIfSearch').click(); return true; })()`);
         check(`budget typed as "${text}" reaches the search request as ${coins}, and the field keeps what was typed`, await until('window.__posts.length === 1') && (await js('window.__posts[0].budgets["Player 1"]')) === coins && (await js("document.querySelector('#whatIfBudgets input').value")) === text);
     }
-    await js(`(() => { window.__posts.length = 0; document.querySelector('#whatIfBudgets input').value = 'abc'; document.getElementById('buttonWhatIfStart').click(); return true; })()`);
+    check('a failed start (the runner answers with an error): the button is back to Start, enabled, btn-primary, and the message shows', await until(`(() => { const b = document.getElementById('buttonWhatIfSearch'); return b.textContent === 'Start' && !b.disabled && b.classList.contains('btn-primary') && !b.classList.contains('btn-outline-danger'); })()`) && (await js(`document.getElementById('whatIfMessage').textContent`)) === 'test');
+    await js(`(() => { window.__posts.length = 0; document.querySelector('#whatIfBudgets input').value = 'abc'; document.getElementById('buttonWhatIfSearch').click(); return true; })()`);
     await new Promise((r) => setTimeout(r, 600));
     check('a budget typed as "abc" blocks the start (no request) and the field is marked invalid; a good text clears the mark', (await js('window.__posts.length')) === 0 && await js(`document.querySelector('#whatIfBudgets input').classList.contains('is-invalid')`) && await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); i.value = '1 500 k'; i.dispatchEvent(new Event('input', { bubbles: true })); return !i.classList.contains('is-invalid'); })()`));
     check('the budget field is a text field with a decimal keypad hint', await js(`(() => { const i = document.querySelector('#whatIfBudgets input'); return i.type === 'text' && i.inputMode === 'decimal'; })()`));
     await js(`(window.fetch = window.__realFetch, document.querySelector('#whatIfBudgets input').value = '1.5M', true)`);
-    await js(`document.getElementById('buttonWhatIfStart').click(), true`);
+    const starting = await js(`(() => { const b = document.getElementById('buttonWhatIfSearch'), idle = { text: b.textContent, disabled: b.disabled, primary: b.classList.contains('btn-primary') }; b.click(); return { idle, text: b.textContent, disabled: b.disabled }; })()`);
+    check('the one button reads Start (btn-primary, enabled) before the click, and Starting, disabled, right at the click', starting.idle.text === 'Start' && !starting.idle.disabled && starting.idle.primary && starting.text === 'Starting' && starting.disabled === true, JSON.stringify(starting));
+    check('the search running: the button reads Stop, btn-outline-danger, enabled', await until(`(() => { const b = document.getElementById('buttonWhatIfSearch'); return b.textContent === 'Stop' && !b.disabled && b.classList.contains('btn-outline-danger') && !b.classList.contains('btn-primary'); })()`));
     check('progress is shown while it runs', await until(`document.getElementById('whatIfProgress').textContent.includes('candidates left')`));
     check('the request carries the party, budgets, levers, zone and tier', received && received.setups.length >= 1 && received.setups.some((s) => s.name === 'Player 1' && s.player) &&
         received.budgets['Player 1'] === 1500000 && received.maxPayback === 365 && received.levers.join() === 'equip,foods,drinks,owned,abilities,order,triggers,houses' && received.goal === 'profit' && typeof received.options.tier === 'number' && !!received.options.zone, JSON.stringify(received)?.slice(0, 300));
     check('the request follows the window\'s zone, tier and players, not the page\'s', received.options.zone === windowZone && windowZone !== pageChoices.zone && received.options.tier === 1 && received.players.join() === 'Player 1', JSON.stringify(received.options.zone) + ' ' + JSON.stringify(received.players));
     check('the request carries the export map for the ticked players that have one, nobody else', !!received.export && Object.keys(received.export).join() === 'Player 1' && received.export['Player 1'].coin === 6, JSON.stringify(received.export)?.slice(0, 200));
     check('the request carries the market snapshot the page fetched', received?.options?.marketplace?.timestamp === 1700000000 && !!received.options.marketplace.marketData['/items/apple']);
+    await js(`document.getElementById('whatIfModal').dispatchEvent(new Event('show.bs.modal')), true`);
+    check('a window opened on a running search shows Stop', await js(`(() => { const b = document.getElementById('buttonWhatIfSearch'); return b.textContent === 'Stop' && !b.disabled && b.classList.contains('btn-outline-danger'); })()`));
+    // The reopen copied the page again: the window's settings this search was started with are put back (its zone and tier, the budget).
+    await js(`(() => { const set = (id, v, type) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event(type, { bubbles: true })); }; set('selectWhatIfZone', ${JSON.stringify(windowZone)}, 'change'); set('selectWhatIfTier', '1', 'change'); const i = document.querySelector('#whatIfBudgets input'); i.value = '1.5M'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     check('the progress bar has a dark track and a fill of its own in dark mode', await js(`(() => { const p = document.querySelector('#whatIfProgress .whatif-progress'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const t = getComputedStyle(p).backgroundColor, b = getComputedStyle(p.querySelector('.progress-bar')).backgroundColor; return lum(t) < 150 && t !== b && getComputedStyle(p).borderTopWidth !== '0px'; })()`));
     await shot('whatIfModal', 'whatif-progress.png');
     // The live report: the runner's status carries the latest snapshot while the search runs; the window draws the same report from it.
@@ -368,10 +375,21 @@ try {
     live = liveWith(pickEntry({}), 7);
     check('the pick note goes when the pick is the first row', await until(`!document.querySelector('#whatIfResult [data-best-note]') && !!document.querySelector('#whatIfResult table[data-best="foods"]')`));
     const sincesAtStop = sinces.length, lastSince = sinces.at(-1);
-    const stopSeen = await js(`new Promise((res) => { const b = document.getElementById('buttonWhatIfStop'), t0 = performance.now(); b.click(); const pending = { text: b.textContent, disabled: b.disabled }; const iv = setInterval(() => { if (b.textContent === 'Resume') { clearInterval(iv); res({ ms: performance.now() - t0, pending, enabled: !b.disabled }); } }, 5); })`);
+    // A failed Stop (the runner answers with an error, once): Stopping at the click, then back to Stop with the message.
+    await js(`(() => { const f = window.fetch; window.fetch = (u, o) => { if (String(u).endsWith('/stop')) { window.fetch = f; return Promise.resolve(new Response(JSON.stringify({ error: 'stop failed (test)' }), { status: 500 })); } return f(u, o); }; return true; })()`);
+    const stopFail = await js(`new Promise((res) => { const b = document.getElementById('buttonWhatIfSearch'); b.click(); const pending = { text: b.textContent, disabled: b.disabled, danger: b.classList.contains('btn-outline-danger') }; setTimeout(() => res({ pending, text: b.textContent, disabled: b.disabled, danger: b.classList.contains('btn-outline-danger'), message: document.getElementById('whatIfMessage').textContent }), 300); })`);
+    check('a failed Stop: Stopping (disabled, btn-outline-danger) at the click, then back to Stop, enabled, with the runner message', stopFail.pending.text === 'Stopping' && stopFail.pending.disabled && stopFail.pending.danger && stopFail.text === 'Stop' && !stopFail.disabled && stopFail.danger && stopFail.message === 'stop failed (test)' && search.state === 'running', JSON.stringify(stopFail));
+    await js(`(document.getElementById('whatIfMessage').textContent = '', true)`);
+    const stopSeen = await js(`new Promise((res) => { const b = document.getElementById('buttonWhatIfSearch'), t0 = performance.now(); b.click(); const pending = { text: b.textContent, disabled: b.disabled }; const iv = setInterval(() => { if (!b.disabled && b.textContent !== 'Stop') { clearInterval(iv); res({ ms: performance.now() - t0, pending, enabled: !b.disabled, text: b.textContent, primary: b.classList.contains('btn-primary') && !b.classList.contains('btn-outline-danger') }); } }, 5); })`);
     const stopMs = stopSeen.ms;
-    check('Stop pending: right after the click, before the runner has stopped, the button reads "Stopping…" and is disabled', stopSeen.pending.text === 'Stopping…' && stopSeen.pending.disabled === true, JSON.stringify(stopSeen.pending));
-    check('Stop stops it and offers Resume, enabled again', search.state === 'stopped' && stopSeen.enabled);
+    check('Stop pending: right after the click, before the runner has stopped, the button reads "Stopping" and is disabled', stopSeen.pending.text === 'Stopping' && stopSeen.pending.disabled === true, JSON.stringify(stopSeen.pending));
+    check('Stop stops it: nothing changed, so the button reads Resume (btn-primary, enabled)', search.state === 'stopped' && stopSeen.enabled && stopSeen.text === 'Resume' && stopSeen.primary, JSON.stringify(stopSeen));
+    const readButton = `(() => { const b = document.getElementById('buttonWhatIfSearch'); return b.textContent + (b.disabled ? ' disabled' : '') + (b.classList.contains('btn-primary') ? ' primary' : ''); })()`;
+    const setPayback = (v) => js(`(() => { const i = document.getElementById('inputWhatIfMaxPayback'); i.value = '${'${v}'}'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await setPayback(300);
+    check('a stopped search with a setting changed (the payback limit): the button reads Start', (await js(readButton)) === 'Start primary', await js(readButton));
+    await setPayback(365);
+    check('the setting changed back: the button reads Resume again', (await js(readButton)) === 'Resume primary', await js(readButton));
     check(`Stop: Resume shows within 900 ms of the click when the runner stops 300 ms after it (the window polls at once and every 250 ms after a press; was 1 s): ${Math.round(stopMs)} ms`, stopMs < 900);
     check('Stop keeps the report version the window has: no status request after it asks from 0', lastSince > 0 && sinces.slice(sincesAtStop).every((x) => x === lastSince), JSON.stringify(sinces.slice(sincesAtStop - 1)));
     check('after Stop no element of the progress area reads Running; it reads Stopped once, the rows keep their figures', await js(`(() => { const p = document.getElementById('whatIfProgress'); const texts = [p, ...p.querySelectorAll('*')].map((e) => e.textContent); return !texts.some((x) => /Running|round \\d+ running/.test(x)) && /^Stopped/.test(p.textContent.trim()) && !p.querySelector('[data-whatif-done], .whatif-part-running'); })()`), await js(`document.getElementById('whatIfProgress').textContent`));
@@ -379,10 +397,14 @@ try {
     live = null;
     rounds = null;
     holdRunning = false;
-    await js(`document.getElementById('buttonWhatIfStop').click(), true`);
+    const receivedBefore = received;
+    const resumed = await js(`(() => { const b = document.getElementById('buttonWhatIfSearch'); b.click(); return { text: b.textContent, disabled: b.disabled }; })()`);
+    check('Resume: right at the click the button reads Starting, disabled', resumed.text === 'Starting' && resumed.disabled, JSON.stringify(resumed));
+    check('Resume continues the stopped search (the same search id, by the runner restarting it), no new search is posted', await until(`document.getElementById('buttonWhatIfSearch').textContent !== 'Starting'`) && received?.options?.marketplace?.timestamp === 1700000000 && received === receivedBefore);
     check('Resume runs it to the end and the result shows', await until(`document.getElementById('whatIfResult').textContent.includes('Apply 1 to 2')`));
     check('the result shows "≤" and the unknown-cost list', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('≤') && t.includes('A token item'); })()`));
     check('the result shows the snapshot time and the priced over-budget group', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('market snapshot of 2023-11-14 22:13 UTC') && t.includes('Priced, over budget') && t.includes('Feet Pathseeker Boots ★ +12 -> Cotton Boots +0'); })()`));
+    check('a finished search: the button reads Start', (await js(readButton)) === 'Start primary', await js(readButton));
     check('the earlier searches list fills', await until(`document.getElementById('selectWhatIfResult').options.length === 1`));
     check('the chosen-changes table reads party gain, error, buyer gain, error, cost, payback, How it is bought, and a row shows its fresh reading and the payback on it (a loss as a minus)', await js(`(() => { const T = [...document.querySelectorAll('#whatIfResult table')].find((x) => x.textContent.includes('How it is bought')); const th = [...T.querySelector('thead tr').children].map((e) => e.textContent); const td = [...T.querySelector('tbody tr').children].map((e) => e.textContent); const i = th.indexOf('Shared loot gain per user'); return i === 3 && th.slice(i, i + 5).join('|') === "Shared loot gain per user|Buyer's gain|Cost|Payback days|How it is bought" && !th.some((x) => /Spent|Stage|Shared gain|Own supplies|error/.test(x)) && td[i].startsWith('266') && td[i].endsWith('± 40') && td[i + 1].startsWith('3,300') && td[i + 1].endsWith('± 150') && td[i + 3] === '76' && td[i + 4] === 'books (25 x berserk)'; })()`));
     check('the buyer payback of a net of 0 or below is a dash (a loss shows as a minus), and the confirmation shows the party gain and a line per player', await js(`(() => { const r = [...document.querySelectorAll('#whatIfResult table')].find((x) => x.textContent.includes('How it is bought')).querySelectorAll('tbody tr')[1]; const t = document.getElementById('whatIfResult').textContent; return r.children[6].textContent === '—' && r.children[4].textContent.startsWith('-200') && t.includes('Player 13,300 ± 150≤ 34') && t.includes('Party (the shared loot, per user)417 ± 47') && !t.includes('Spent') && !t.includes('Stage'); })()`));

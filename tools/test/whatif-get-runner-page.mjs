@@ -63,7 +63,7 @@ try {
         fs.writeFileSync(path.join(shots, 'whatif-get-runner-button.png'), Buffer.from((await page.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     }
     check('no runner: the button opens the window', await open());
-    check('no runner: the get-the-runner pane is shown, the search controls are not', (await visible('whatIfGetRunner')) && !(await visible('buttonWhatIfStart')) && !(await visible('whatIfPlayers')) && !(await visible('selectWhatIfGoal')));
+    check('no runner: the get-the-runner pane is shown, the search controls are not', (await visible('whatIfGetRunner')) && !(await visible('buttonWhatIfSearch')) && !(await visible('whatIfPlayers')) && !(await visible('selectWhatIfGoal')));
     check('no runner: the download link is the one constant', (await js(`document.getElementById('linkWhatIfRunner').href`)) === RUNNER_DOWNLOAD_URL && (await visible('linkWhatIfRunner')), await js(`document.getElementById('linkWhatIfRunner').href`));
     check('no runner: the link opens in a new tab without leaking the page', (await js(`document.getElementById('linkWhatIfRunner').target + ' ' + document.getElementById('linkWhatIfRunner').rel`)) === '_blank noopener');
     const winPart = '#whatIfGetRunner > p:not(:has(a)), #whatIfGetRunner > ol > li';
@@ -101,7 +101,7 @@ try {
     runnerUp = true;
     check('runner: the page loads', await load());
     check('runner: the button is shown', await until(`document.getElementById('buttonWhatIf').style.display === ''`));
-    check('runner: the window shows the search, no download pane', await open() && await until(`document.getElementById('whatIfVersion').textContent.includes('0.0.0')`) && (await visible('buttonWhatIfStart')) && !(await visible('whatIfGetRunner')) && !(await js(`document.getElementById('whatIfModal').classList.contains('whatif-norunner')`)));
+    check('runner: the window shows the search, no download pane', await open() && await until(`document.getElementById('whatIfVersion').textContent.includes('0.0.0')`) && (await visible('buttonWhatIfSearch')) && !(await visible('whatIfGetRunner')) && !(await js(`document.getElementById('whatIfModal').classList.contains('whatif-norunner')`)));
     await closeModal();
 } finally {
     await chrome.close();

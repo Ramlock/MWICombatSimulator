@@ -218,10 +218,11 @@
                 "desc": "learn an ability you do not have into an open slot (needs the exporter's learned abilities)"
             }
         },
-        "start": "Start search",
+        "start": "Start",
+        "starting": "Starting",
         "stop": "Stop",
         "resume": "Resume",
-        "stopping": "Stopping…",
+        "stopping": "Stopping",
         "earlier": "Earlier searches",
         "load": "Show",
         "noPlayers": "Tick at least one player to simulate.",

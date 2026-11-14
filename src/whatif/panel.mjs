@@ -156,6 +156,10 @@ export async function searchRequest(params, getMarketplace) {
     return { body: searchBody({ ...params, marketplace }) };
 }
 
+// The settings of a request, without its prices: the body searchBody builds with no market snapshot, as one string. Two starts with the
+// same key differ only in their prices; the window offers Resume on a stopped search while its settings still give the key it was started with.
+export const settingsKey = (params) => JSON.stringify(searchBody({ ...params, marketplace: null }));
+
 // Apply ops to the page's slots. Returns { missing: [player names no slot holds] } and applies nothing when any op
 // names a player the page does not hold; else { slots: { "<slot id>": "<new slot JSON>" } } for every slot an op touched.
 export function applyToSlots(slots, ops) {

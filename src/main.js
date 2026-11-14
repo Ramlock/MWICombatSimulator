@@ -35,7 +35,7 @@ import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL } from "./whatif/runnerDownload.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
@@ -4073,7 +4073,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null };
+const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4334,8 +4334,8 @@ function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
     whatIfDrawProgress();
-    if (status.state !== 'running') whatIf.stopping = false;
-    whatIfDrawStop();
+    if (whatIf.pending === 'starting' || status.state !== 'running') whatIf.pending = null; // the press shows: the state the runner reports is drawn
+    whatIfDrawSearchButton();
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
@@ -4349,12 +4349,36 @@ function whatIfShowStatus(status) {
     if (status.state === 'done') whatIfLoadList();
 }
 
-// The Stop / Resume button: Stop on a running search, Resume on a stopped one; from a press of Stop until the search reads stopped (or fails),
-// "Stopping…" and disabled (whatIf.stopping), so the press shows at once and cannot be repeated.
-function whatIfDrawStop() {
-    const stop = document.getElementById('buttonWhatIfStop'), state = whatIf.state;
-    stop.disabled = whatIf.stopping || !(state === 'running' || state === 'stopped');
-    stop.textContent = whatIfT(whatIf.stopping ? 'stopping' : state === 'stopped' ? 'resume' : 'stop');
+// The one Start / Stop button (#buttonWhatIfSearch): this function is the one place that decides its label, its look and what a click does,
+// from the window's search state, and returns that action ('start' / 'stop' / 'resume', null while a click is pending). Start (btn-primary)
+// when no search runs; Starting, disabled, from the click until the runner reports the search; Stop (btn-outline-danger) while it runs;
+// Stopping, disabled, from the click until it reads stopped. On a stopped search it reads Resume while the window's settings are still the
+// ones that search was started with (whatIf.sentKey, settingsKey in panel.mjs: the request without its prices), and a click continues it with
+// its stored runs (the runner restarts it from its own saved request); once a setting differs it reads Start (a new search). A finished
+// search reads Start. whatIf.pending is the click not yet shown ('starting' / 'stopping'); a failed start or stop clears it, so the button is
+// back to what it was.
+function whatIfDrawSearchButton() {
+    const button = document.getElementById('buttonWhatIfSearch'), pending = whatIf.pending, state = whatIf.state;
+    const action = pending ? null : state === 'running' ? 'stop' : state === 'stopped' && whatIf.sentKey && whatIf.sentKey === whatIfSettingsKeyNow() ? 'resume' : 'start';
+    const look = pending === 'stopping' || action === 'stop' ? 'stop' : 'start';
+    button.textContent = whatIfT(pending || action);
+    button.disabled = !!pending;
+    button.classList.toggle('btn-primary', look === 'start');
+    button.classList.toggle('btn-outline-danger', look === 'stop');
+    return action;
+}
+
+// The window's settings as a start would send them, without the prices (null when a start would refuse them).
+function whatIfSettingsKeyNow() {
+    const read = whatIfReadSettings(false);
+    return read.params ? whatIfSettingsKey(read.params) : null;
+}
+
+// A click on the one button does what it reads (whatIfDrawSearchButton decides it).
+function whatIfSearchButton() {
+    const action = whatIfDrawSearchButton();
+    if (action === 'stop' || action === 'resume') whatIfStopOrResume();
+    else if (action === 'start') whatIfStart();
 }
 
 function whatIfStopWatching() {
@@ -4370,7 +4394,6 @@ function whatIfWatch(id) {
     if (id !== whatIf.searchId) {
         whatIf.partialVersion = 0; // the report so far is asked for again (the runner sends it only when newer than this)
         whatIf.round = null;
-        whatIf.stopping = false;
     }
     whatIf.searchId = id;
     whatIf.pressed = null; whatIf.status = null;
@@ -4403,48 +4426,65 @@ async function whatIfPoll(w) {
     w.timer = setTimeout(() => whatIfPoll(w), delay);
 }
 
+// Start: the button reads Starting at the click; once a search is watched the status it reports draws the button (whatIfShowStatus); a start
+// that ends with no search watched (a check, the prices or the runner failed; its message is shown) puts the button back to Start.
 async function whatIfStart() {
-    whatIfMessage('');
+    whatIf.pending = 'starting'; whatIfDrawSearchButton();
+    try { await whatIfPostSearch(); }
+    finally { if (!whatIf.watch && whatIf.pending === 'starting') { whatIf.pending = null; whatIfDrawSearchButton(); } }
+}
+
+// The window's settings for a start: { params } (searchBody's input, without the prices), or { message } when a start must refuse them.
+// mark: the budget fields are marked valid or not (a start does; the button's draw only reads).
+function whatIfReadSettings(mark) {
     const slots = whatIfSlots(true);
-    if (!slots.length) { whatIfMessage(whatIfT('noPlayers')); return; }
+    if (!slots.length) return { message: whatIfT('noPlayers') };
     const budgets = {};
     let badBudget = null;
     for (const input of document.querySelectorAll('#whatIfBudgets input')) {
-        whatIfMarkBudget(input);
+        if (mark) whatIfMarkBudget(input);
         const value = whatIfBudgetValue(input);
         if (value === null) { badBudget ??= input; continue; }
         budgets[input.dataset.player] = value;
     }
-    if (badBudget) { whatIfMessage(whatIfT('badBudget', { player: badBudget.dataset.player })); return; }
+    if (badBudget) return { message: whatIfT('badBudget', { player: badBudget.dataset.player }) };
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
-    if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) { whatIfMessage(whatIfT('badMaxPayback')); return; }
+    if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfT('badMaxPayback') };
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
-    if (!levers.length) { whatIfMessage(whatIfT('noLevers')); return; }
+    if (!levers.length) return { message: whatIfT('noLevers') };
     const exports = {};
     for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
-    if (new Set(names).size !== names.length) { whatIfMessage(whatIfT('sameNames')); return; }
+    if (new Set(names).size !== names.length) return { message: whatIfT('sameNames') };
+    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
+        zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value } };
+}
+
+async function whatIfPostSearch() {
+    whatIfMessage('');
+    const read = whatIfReadSettings(true);
+    if (read.message) { whatIfMessage(read.message); return; }
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await whatIfSearchRequest({ slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback,
-        zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value }, () => fetchMarketplace());
+    const request = await whatIfSearchRequest(read.params, () => fetchMarketplace());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
         const { ok, body: answer } = await whatIfRequest(WHATIF_API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (ok) whatIfWatch(answer.id);
-        else if (answer.id) { whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
+        // whatIf.sentKey: the settings this search was started with, so a stop of it offers Resume while they stay the same.
+        if (ok) { whatIf.sentKey = whatIfSettingsKey(read.params); whatIfWatch(answer.id); }
+        else if (answer.id) { whatIf.sentKey = null; whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
         else whatIfMessage(answer.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
 
 async function whatIfStopOrResume() {
-    if (!whatIf.searchId || whatIf.stopping) return;
+    if (!whatIf.searchId || whatIf.pending) return;
     const resuming = whatIf.state === 'stopped';
-    if (!resuming) { whatIf.stopping = true; whatIfDrawStop(); } // "Stopping…" until the search reads stopped (whatIfShowStatus)
-    const failed = (message) => { whatIf.stopping = false; whatIfDrawStop(); whatIfMessage(message); };
+    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); // until the runner's state shows (whatIfShowStatus)
+    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfMessage(message); };
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { failed(body.error || whatIfT('runnerError')); return; }
@@ -4511,11 +4551,12 @@ async function initWhatIf() {
     // Strings are read when the window opens: i18next may not be ready when this runs.
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
-        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); });
+        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfDrawSearchButton(); });
     document.getElementById('whatIfLevers').addEventListener('change', whatIfShowExportStatus);
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
-    document.getElementById('buttonWhatIfStart').addEventListener('click', whatIfStart);
-    document.getElementById('buttonWhatIfStop').addEventListener('click', whatIfStopOrResume);
+    document.getElementById('buttonWhatIfSearch').addEventListener('click', whatIfSearchButton);
+    // A setting changed in the window: the button reads Resume or Start on a stopped search (whatIfDrawSearchButton).
+    for (const type of ['input', 'change']) document.getElementById('whatIfModal').addEventListener(type, () => { if (whatIf.state === 'stopped') whatIfDrawSearchButton(); });
     document.getElementById('buttonWhatIfLoad').addEventListener('click', whatIfLoadResult);
     // "Accept current winner" / "Skip <stage>" (the buttons on the race stage that runs now): the runner ends that stage at once, its runs in flight ended (Accept with its pick taken as it is; Skip with nothing taken).
     document.getElementById('whatIfProgress').addEventListener('click', async (event) => {
