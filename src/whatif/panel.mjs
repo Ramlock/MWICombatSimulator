@@ -633,10 +633,9 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (running) L.push(`<div class="mb-2 whatif-running">${chip(esc(t(running === 'stopped' ? 'progress.st.halted' : 'result.soFar')), running === 'stopped' ? 'whatif-st-halted' : 'whatif-st-running', esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running')))}</div>`);
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => arrowed(esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player)));
-    const goal = result.goal === 'exp' ? t('goal.exp') : t('goal.profit');
+    // Goal and zone show once, in the summary bar over the result (or in the open setup form); the result's own row keeps the base profit.
     const zp = zoneParts(result, names);
-    const kv = (k, v, tip = '') => chip(`<span class="whatif-chip-k">${esc(k)}</span> ${v}`, '', tip);
-    L.push(`<div class="mb-2 whatif-chips whatif-context">${kv(t('result.goal'), esc(goal))}${zp ? kv(t('zone'), esc(zp.name) + (Number.isFinite(zp.tier) ? ' · T' + zp.tier : '')) : ''}${zp && Number.isFinite(zp.base) ? kv(t('result.baseProfit'), num(zp.base), esc(t('result.perUserDay'))) : ''}</div>`);
+    if (zp && Number.isFinite(zp.base)) L.push(`<div class="mb-2 whatif-chips whatif-context">${chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(zp.base)}`, '', esc(t('result.perUserDay')))}</div>`);
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn whatif-callout">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     const pricesChip = prices ? `<span data-prices-stale>${chip(esc(t('result.pricesChip')), 'whatif-chip-warn', esc(prices.replace(/<[^>]+>/g, '')))}</span>` : '';
