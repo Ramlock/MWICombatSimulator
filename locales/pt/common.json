@@ -459,6 +459,26 @@
             "payback": "Dias de retorno",
             "costPath": "Como é comprado"
         },
+        "price": {
+            "buy": "Comprar",
+            "mirrorChain": "sem +{{to}} à venda: {{n}} Espelhos Filosofais a partir do +{{from}}",
+            "mirrorChainOne": "sem +{{to}} à venda: 1 Espelho Filosofal a partir do +{{from}}",
+            "mirrorCheaper": "{{n}} Espelhos Filosofais a partir do +{{from}}, mais barato que o +{{to}} à venda",
+            "mirrorCheaperOne": "1 Espelho Filosofal a partir do +{{from}}, mais barato que o +{{to}} à venda",
+            "mirrorOwn": "{{n}} Espelhos Filosofais no seu próprio +{{from}}",
+            "mirrorOwnOne": "1 Espelho Filosofal no seu próprio +{{from}}",
+            "sellOld": ", vender o antigo",
+            "buySellOld": "Comprar, vender o antigo",
+            "loadout": "Alterar o Loadout",
+            "loadoutUsed": "Alterar o Loadout; o que ele usa conta pelo preço de compra",
+            "owned": "já possui",
+            "learned": "já aprendida",
+            "house": "Melhorar a casa",
+            "books": "Livros de Técnica",
+            "time": "Tempo",
+            "noteMirrorCheck": "Espelho vence abaixo de +10: confira o preço",
+            "noteNoBuyer": "o item antigo não tem comprador: mantido, não contado"
+        },
         "apply": "Aplicar",
         "applyTo": "Aplicar 1 a {{n}}",
         "diff": {

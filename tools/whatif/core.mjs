@@ -978,7 +978,7 @@ export async function main(settings, seams) {
         if (onlyCands) cands = cands.filter((c) => onlyCands.includes(c.id));
         result.apart = cands.filter((c) => !c.cost.known).map((c) => ({ id: c.id, desc: c.desc, note: c.cost.note }));
         // Priced but over its own player's budget: listed in their own group, never ranked (so a result with no steps says why).
-        result.overBudget = cands.filter((c) => c.cost.known && !affordable(c, budgets, null)).map((c) => ({ id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '' }));
+        result.overBudget = cands.filter((c) => c.cost.known && !affordable(c, budgets, null)).map((c) => ({ id: c.id, player: c.player, desc: c.desc, cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), ...priceFields(c.cost) }));
         cands = cands.filter((c) => c.cost.known && affordable(c, budgets, null)); // each within its own player's budget
         // Monotone levers first (3.2 item 1), then the rest; screen then halving.
         cands.sort((a, b) => (b.monotone - a.monotone));
@@ -1114,12 +1114,18 @@ export async function main(settings, seams) {
         return done(result);
     }
 
+    // How a row was priced, for the window's price path (src/whatif/panel.mjs pricePath): the cost path and note, and, when Philosopher's
+    // Mirrors are in it, their count, the level the chain starts from (mirrorFrom), the level bought (to) and whether that level had a
+    // dearer ask (toListed). One helper for every list.
+    function priceFields(cost) {
+        return { costPath: cost.path, note: cost.note || '', ...(cost.mirrors > 0 ? { mirrors: cost.mirrors, mirrorFrom: cost.from, to: cost.to, ...(cost.toListed ? { toListed: true } : {}) } : {}) };
+    }
     // Per user: the party figure split equally over the party (the contract's gainPerUser / sePerUser).
     const perUser = (gain, se) => ({ gainPerUser: gain / setups0.length, sePerUser: se / setups0.length });
     function row(c) {
         const est = c.est, n = setups0.length;
         const split = goal === 'profit' && est.shared ? { sharedGainPerUser: est.shared.gain / n, sharedSePerUser: est.shared.se / n, sharedSeSamePerUser: est.shared.seSame / n, ownSuppliesPerDay: est.own.gain, ownSuppliesSe: est.own.se, paybackOwn: paybackOwnOf(c.cost.cost, est.shared.gain / n, est.own.gain) } : {};
-        return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), costPath: c.cost.path, note: c.cost.note || '', gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
+        return { ...split, ...(c.timeOnly ? { timeOnly: true } : {}), id: c.id, player: c.player, ops: c.ops, desc: c.desc, ...perUser(c.est.gain, c.est.se), cost: c.cost.cost, ...(c.cost.costBound ? { costBound: c.cost.costBound } : {}), ...priceFields(c.cost), gain: c.est.gain, se: c.est.se, payback: c.est.payback, score: c.est.score, accepted: c.est.accepted, judged: c.est.judged ?? null, ...(c.est.net !== undefined ? { buyerNet: c.est.net, buyerNetSe: c.est.netSe, buyerNetSeSame: c.est.netSeSame } : {}), lastStage: c.est.stage, stageIndex: c.history?.length ?? 0, history: c.history?.map((h) => ({ stage: h.stage, gain: h.gain, se: h.se, seeds: h.seeds, baseSeeds: h.baseSeeds })) };
     }
     // "Each change alone": only a change with a reading from reading seeds (at least --reading-min of them, on the baseline the race ran from) is a
     // row, and its figures are the reading's (figure, error, buyer's gain, error, payback, accepted by the search's own rule); the others are counted

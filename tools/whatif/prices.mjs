@@ -21,7 +21,8 @@ export function makePricer(market) {
     const mirrorAsk = entry(MIRROR, 0)?.a > 0 ? entry(MIRROR, 0).a : Infinity;
     const memo = new Map();
 
-    // { cost, path: 'market' | 'mirror', mirrors } ; cost Infinity = no seller.
+    // { cost, path: 'market' | 'mirror', mirrors, from } ; cost Infinity = no seller. `from` (mirror path only): the listed level the
+    // chain of primaries starts from (the window's "no +10 listed: 20 mirrors from +4").
     function buy(hrid, lvl) {
         const key = hrid + '+' + lvl;
         if (memo.has(key)) return memo.get(key);
@@ -30,7 +31,7 @@ export function makePricer(market) {
         if (lvl >= 2) {
             const p = buy(hrid, lvl - 1), c = buy(hrid, lvl - 2);
             const m = p.cost + c.cost + mirrorAsk;
-            if (m < best.cost) best = { cost: m, path: 'mirror', mirrors: p.mirrors + c.mirrors + 1 };
+            if (m < best.cost) best = { cost: m, path: 'mirror', mirrors: p.mirrors + c.mirrors + 1, from: p.path === 'mirror' ? p.from : lvl - 1, listed: ask > 0 };
         }
         memo.set(key, best);
         return best;
@@ -44,25 +45,25 @@ export function makePricer(market) {
     // Own +from -> +to, to > from.
     function upgrade(hrid, from, to) {
         const b = buy(hrid, to), s = sell(hrid, from);
-        const market = { cost: b.cost - s.value, path: b.path === 'mirror' ? 'buy via mirror, sell old' : 'buy, sell old', mirrors: b.mirrors, noBuyer: !!s.noBuyer };
+        const market = { cost: b.cost - s.value, path: b.path === 'mirror' ? 'buy via mirror, sell old' : 'buy, sell old', mirrors: b.mirrors, ...(b.path === 'mirror' ? { from: b.from, toListed: b.listed } : {}), noBuyer: !!s.noBuyer };
         let own = { cost: 0, mirrors: 0 };
         for (let k = from + 1; k <= to; k++) {
             if (k < 2) { own = { cost: Infinity }; break; }
             const c = buy(hrid, k - 2);
             own = { cost: own.cost + mirrorAsk + c.cost, mirrors: own.mirrors + 1 + c.mirrors };
         }
-        const best = own.cost < market.cost ? { cost: own.cost, path: 'mirror own item', mirrors: own.mirrors, noBuyer: false } : market;
+        const best = own.cost < market.cost ? { cost: own.cost, path: 'mirror own item', mirrors: own.mirrors, from, noBuyer: false } : market;
         return finish(best, to);
     }
 
     // Own `fromHrid` +from -> buy `toHrid` +to, sell the old.
     function swap(fromHrid, from, toHrid, to) {
         const b = buy(toHrid, to), s = sell(fromHrid, from);
-        return finish({ cost: b.cost - s.value, path: b.path === 'mirror' ? 'buy via mirror, sell old' : 'buy, sell old', mirrors: b.mirrors, noBuyer: !!s.noBuyer }, to);
+        return finish({ cost: b.cost - s.value, path: b.path === 'mirror' ? 'buy via mirror, sell old' : 'buy, sell old', mirrors: b.mirrors, ...(b.path === 'mirror' ? { from: b.from, toListed: b.listed } : {}), noBuyer: !!s.noBuyer }, to);
     }
 
     function finish(r, to) {
-        const out = { ...r, known: Number.isFinite(r.cost) };
+        const out = { ...r, to, known: Number.isFinite(r.cost) };
         if (!out.known) out.note = 'no seller';
         else if (r.mirrors > 0 && to < MIRROR_CHECK_BELOW) out.note = 'Mirror win below +10: price to check';
         if (r.noBuyer) out.note = (out.note ? out.note + '; ' : '') + 'old item has no buyer, kept, not counted';

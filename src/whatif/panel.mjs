@@ -483,13 +483,36 @@ function gainCells(row, goalExp, t, floor, withFresh = false) {
     const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
     return gainCell(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainCell(net, netSe, t, floor) : '<td class="num">—</td>');
 }
-// How it is bought: the cost path and its note, without the upper-bound caveat (the "≤" on the cost and the footnote carry it).
-const pathCell = (s) => {
-    const note = String(s.note || '').replace('; upper bound (XP inside the level unknown)', '');
-    // A skill level (cost path "time ..."): the word "time", the runner's full text on hover.
-    if (/^time\b/.test(String(s.costPath || ''))) return `<td title="${esc(s.costPath)}">time</td>`;
-    return `<td class="wrap">${chip(esc(s.costPath), '', note ? esc(note) : '')}</td>`;
+// How a row was priced (its price path), in the shown language: the one helper of every list with a cost (chosen changes, each change alone,
+// priced over budget, pays back too slowly). From the core's fields (tools/whatif/core.mjs priceFields): costPath, note and, with Philosopher's
+// Mirrors, mirrors / mirrorFrom / to / toListed. A cost path or note this table does not know shows as the core wrote it (an older result).
+// The upper-bound caveat is left out (the "≤" on the cost and the footnote carry it). priceHow is the path, priceNotes its notes; pricePath is
+// both as one plain text, "<path> (<notes>)" ('' when the row has no path).
+const PATH_KEYS = { market: 'buy', 'buy, sell old': 'buySellOld', 'loadout tweak': 'loadout', 'loadout tweak, used x buy price in expenses': 'loadoutUsed', owned: 'owned', learned: 'learned', 'house upgrade': 'house', books: 'books' };
+const NOTE_KEYS = { 'Mirror win below +10: price to check': 'noteMirrorCheck', 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
+function priceHow(s, t) {
+    const path = String(s?.costPath || ''), m = Number(s?.mirrors) || 0;
+    if (/^time\b/.test(path)) return t('price.time');
+    if (m > 0 && path === 'mirror own item') return plural(t, 'price.mirrorOwn', m, { n: m, from: s.mirrorFrom });
+    if (m > 0 && /mirror/.test(path)) return plural(t, s.toListed ? 'price.mirrorCheaper' : 'price.mirrorChain', m, { n: m, from: s.mirrorFrom, to: s.to }) + (/sell old/.test(path) ? t('price.sellOld') : '');
+    return PATH_KEYS[path] ? t('price.' + PATH_KEYS[path]) : path;
+}
+const priceNotes = (s, t) => String(s?.note || '').split('; ').filter((x) => x && !/^upper bound/.test(x)).map((x) => (NOTE_KEYS[x] ? t('price.' + NOTE_KEYS[x]) : x)).join('; ');
+export function pricePath(s, t) {
+    const how = priceHow(s, t), notes = priceNotes(s, t);
+    return how + (notes ? ` (${notes})` : '');
+}
+// The How it is bought cell: the price path as a chip, its notes as the chip's hover text. A skill level (cost path "time ..."): the word,
+// the runner's full text on hover.
+const pathCell = (s, t) => {
+    if (/^time\b/.test(String(s.costPath || ''))) return `<td title="${esc(s.costPath)}">${esc(priceHow(s, t))}</td>`;
+    const notes = priceNotes(s, t);
+    return `<td class="wrap">${chip(esc(priceHow(s, t)), '', notes ? esc(notes) : '')}</td>`;
 };
+// A plain market buy (cost path "market", no mirror, no note): a list line names no path for it.
+const isPlainBuy = (s) => s?.costPath === 'market' && !(Number(s.mirrors) > 0) && !s.note;
+// The same after a cost in a list's Cost cell: "(<price path>)", nothing for a plain market buy or a row with no path.
+const pathAfter = (s, t) => { if (isPlainBuy(s)) return ''; const how = pricePath(s, t); return how ? ` <span class="text-secondary">(${esc(how)})</span>` : ''; };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
 const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath || ''));
 // A chosen change (withFresh) with a fresh reading and a cost: the cost over the fresh buyer's gain (paybackDays, the search's own helper);
@@ -669,7 +692,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
-                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s) +
+                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
         L.push('</tbody></table>');
@@ -719,7 +742,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         const eachHead = '<thead><tr>' + [t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') + `<th>${esc(t('col.costPath'))}</th>` + '<th></th></tr></thead>';
         // Accepted rows first; the grey rows sit in a second body, collapsed behind one toggle (N is a row count).
         const row = (s, i) => `<tr${s.accepted ? '' : ' class="whatif-weak"'}><td>${esc(s.player)}</td><td class="chg">${shown(s)}</td>` +
-            gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s) +
+            gainCells(s, goalExp, t, floor) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t)}` + pathCell(s, t) +
             (isTimeOnly(s) ? '<td></td>' : `<td><button type="button" class="btn ${s.accepted ? 'btn-primary' : 'btn-secondary'} btn-sm py-0" data-whatif-apply="single:${i}">${esc(t('apply'))}</button></td>`) + '</tr>';
         const rows = result.singles.map((s, i) => [s, i]).filter(([s]) => !hiddenRow(s));
         const weak = rows.filter(([s]) => !s.accepted);
@@ -745,12 +768,12 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const td = (html, isNum = false) => `<td${isNum ? ' class="num"' : ''}>${html}</td>`;
     if (result.overBudget?.length) {
         // The list sits closed behind one toggle, as the grey singles do; the heading keeps its count.
-        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a), true)}</tr>`), {}, t, [H.player, H.change, H.cost]));
+        D.push(closedList('overBudget', 'whatIfOverBudget', result.overBudget.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a) + pathAfter(a, t), true)}</tr>`), {}, t, [H.player, H.change, H.cost]));
     }
     if (result.overPayback?.length) {
         // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
         const days = (a) => (Number.isFinite(a.paybackDays) ? num(a.paybackDays) : chip(esc(t('result.overPaybackNever'))));
-        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a), true)}${td(days(a), true)}</tr>`), { days: formatNumber(result.options?.maxPaybackDays) }, t, [H.player, H.change, H.cost, H.payback]));
+        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a) + pathAfter(a, t), true)}${td(days(a), true)}</tr>`), { days: formatNumber(result.options?.maxPaybackDays) }, t, [H.player, H.change, H.cost, H.payback]));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
