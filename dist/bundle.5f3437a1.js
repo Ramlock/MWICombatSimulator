@@ -3654,6 +3654,76 @@ const showsFigure = (row) => hasFigure(row) && !row.tooFew && row.status !== 'ze
 
 /***/ }),
 
+/***/ "./src/whatif/minGain.mjs":
+/*!********************************!*\
+  !*** ./src/whatif/minGain.mjs ***!
+  \********************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   MIN_GAIN_PCT: () => (/* binding */ MIN_GAIN_PCT),
+/* harmony export */   parseMinGain: () => (/* binding */ parseMinGain)
+/* harmony export */ });
+// The smallest gain worth showing (the pick check's floor, tools/whatif/sure.mjs): one setting, a share of the buyer's own profit per day, in %.
+// Its unit lives here (the default and the field's parse) and in the field's label (whatIf.minGainPct); the search's flag is --min-gain-pct.
+const MIN_GAIN_PCT = 0.12;
+// The field's text -> the share in % (empty = the default), or null when it is not a share (not a number, below 0). A decimal comma is read as a point.
+function parseMinGain(text) {
+    const s = String(text ?? '').trim().replace(',', '.');
+    if (s === '') return MIN_GAIN_PCT;
+    const v = Number(s);
+    return Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+
+/***/ }),
+
+/***/ "./src/whatif/morph.mjs":
+/*!******************************!*\
+  !*** ./src/whatif/morph.mjs ***!
+  \******************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   morphInto: () => (/* binding */ morphInto)
+/* harmony export */ });
+// The window's live boxes (the progress rows, the search rounds) are redrawn at every status poll. Replacing their nodes, or moving a kept node out
+// of the document and back, drops the hover of whatever is under the pointer: a button then shows its plain look until the browser's next hover update
+// and fades back in through its transition (the stage button flicker), and a help mark's tooltip blinks. So the redraw is made in place: the new
+// markup is parsed apart and compared with the box, node by node at the same place; a node of the same kind (the same tag, or text) is kept and only
+// its changed attributes and text are written; only a node that differs is replaced. A control whose markup did not change is not touched at all,
+// and one whose state changed (disabled, its label, its classes) shows the change at once, in the same node.
+
+// Brings `box`'s children to the markup `html`.
+function morphInto(box, html) {
+    const tpl = box.ownerDocument.createElement('template');
+    tpl.innerHTML = html;
+    morphChildren(box, tpl.content);
+}
+
+function morphChildren(old, neu) {
+    const a = [...old.childNodes], b = [...neu.childNodes];
+    b.forEach((n, i) => {
+        const o = a[i];
+        if (!o) old.appendChild(n);
+        else if (o.nodeType === n.nodeType && o.nodeName === n.nodeName) morphNode(o, n);
+        else old.replaceChild(n, o);
+    });
+    for (let i = b.length; i < a.length; i++) a[i].remove();
+}
+
+function morphNode(o, n) {
+    if (o.nodeType !== 1) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; return; }
+    for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+    for (const { name, value } of n.attributes) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+    morphChildren(o, n);
+}
+
+
+/***/ }),
+
 /***/ "./src/whatif/panel.mjs":
 /*!******************************!*\
   !*** ./src/whatif/panel.mjs ***!
@@ -3667,6 +3737,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   FAST_FOR_MS: () => (/* binding */ FAST_FOR_MS),
 /* harmony export */   FAST_POLL_MS: () => (/* binding */ FAST_POLL_MS),
 /* harmony export */   LEVERS: () => (/* binding */ LEVERS),
+/* harmony export */   PART_COL_WIDTHS: () => (/* binding */ PART_COL_WIDTHS),
 /* harmony export */   POLL_MS: () => (/* binding */ POLL_MS),
 /* harmony export */   STALE_PRICES_SECONDS: () => (/* binding */ STALE_PRICES_SECONDS),
 /* harmony export */   age: () => (/* binding */ age),
@@ -3674,6 +3745,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   bestBlock: () => (/* binding */ bestBlock),
 /* harmony export */   diffLabel: () => (/* binding */ diffLabel),
 /* harmony export */   diffSetups: () => (/* binding */ diffSetups),
+/* harmony export */   diffValue: () => (/* binding */ diffValue),
 /* harmony export */   duration: () => (/* binding */ duration),
 /* harmony export */   exportKey: () => (/* binding */ exportKey),
 /* harmony export */   exportLeverView: () => (/* binding */ exportLeverView),
@@ -3699,18 +3771,24 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   searchRequest: () => (/* binding */ searchRequest),
 /* harmony export */   settingsKey: () => (/* binding */ settingsKey),
 /* harmony export */   shrineSplitText: () => (/* binding */ shrineSplitText),
+/* harmony export */   slotHasData: () => (/* binding */ slotHasData),
+/* harmony export */   soFarSteps: () => (/* binding */ soFarSteps),
 /* harmony export */   stepsOps: () => (/* binding */ stepsOps)
 /* harmony export */ });
-/* harmony import */ var _applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./applyOps.mjs */ "./src/whatif/applyOps.mjs");
-/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../numberFormat.js */ "./src/numberFormat.js");
-/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../marketplace.mjs */ "./src/marketplace.mjs");
-/* harmony import */ var _payback_mjs__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./payback.mjs */ "./src/whatif/payback.mjs");
-/* harmony import */ var _figure_mjs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./figure.mjs */ "./src/whatif/figure.mjs");
+/* harmony import */ var _minGain_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./minGain.mjs */ "./src/whatif/minGain.mjs");
+/* harmony import */ var _trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./trigger-words.mjs */ "./src/whatif/trigger-words.mjs");
+/* harmony import */ var _applyOps_mjs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./applyOps.mjs */ "./src/whatif/applyOps.mjs");
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../numberFormat.js */ "./src/numberFormat.js");
+/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../marketplace.mjs */ "./src/marketplace.mjs");
+/* harmony import */ var _payback_mjs__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./payback.mjs */ "./src/whatif/payback.mjs");
+/* harmony import */ var _figure_mjs__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./figure.mjs */ "./src/whatif/figure.mjs");
 // The What-if window's logic, DOM-free so it is tested in Node (tools/test/whatif-panel.mjs). The window talks to the
 // local runner (docs/codebase/whatif-window.md): it sends the page's setup and the search settings, shows the runner's
 // progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
+
+
 
 
 
@@ -3746,15 +3824,16 @@ const API = {
 };
 
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.numberHtml)(v) : '—');
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.numberHtml)(v) : '—');
+const plainNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(v) : '—'); // a number as plain text, for a title attribute (no markup)
 const upper = (row) => row?.costBound === 'upper';
 // A figure is read as "no change" (a player is not used to error margins) when it is strictly inside one error, or smaller than
 // `floor` (the size floor: result.basePerUser / 10000, worked out once in renderResult and passed down; null = no floor). The word
 // replaces the value and its error, so they never show on different scales; the real value ("+288K ± 242K") is its hover title.
 // Exactly one error shows the number. This is the one helper for the rule: every place that shows a value with its error goes through it.
 const isNoChange = (v, se, floor) => Number.isFinite(v) && ((Number.isFinite(se) && Math.abs(v) < se) || (Number.isFinite(floor) && Math.abs(v) < floor));
-const signedPlain = (v) => (v > 0 ? '+' : '') + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(v);
-const realValue = (v, se) => signedPlain(v) + (Number.isFinite(se) ? ' ± ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(se) : '');
+const signedPlain = (v) => (v > 0 ? '+' : '') + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(v);
+const realValue = (v, se) => signedPlain(v) + (Number.isFinite(se) ? ' ± ' + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(se) : '');
 const noChange = (v, se, t) => `<span title="${esc(realValue(v, se))}">${esc(t('result.noChange'))}</span>`;
 // Precision follows the error: a figure is written with no digit finer than its ± supports (the ± itself to its leading two digits), so a
 // figure never reads "-2,118 ± 337k". `half`: the ± (the error, or half a range, which is symmetric: a t range around the figure). The one
@@ -3768,9 +3847,9 @@ function fit(v, half) {
 // raw error `raw` (a margin is never written smaller than it is): 2,293k ± 7,500 reads "2,293k ± 8k", 303k ± 300 reads "303k ± 1k". A margin of 0
 // or none has no unit to round up in: it reads as the plain number. The one helper every ± in the window goes through (html and plain text);
 // the hover titles keep the full figures. The html span carries its unit (data-scale) so the ISO toggle and the column pass keep it.
-const marginOptions = (shown) => { const u = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.unitOf)(shown); return { scale: u.base, decimals: u.decimals }; };
-const marginHtml = (shown, raw) => (raw > 0 ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.numberHtml)(raw, '', marginOptions(shown)) : num(raw));
-const marginText = (shown, raw) => (raw > 0 ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(raw, { ...marginOptions(shown), up: true }) : (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(raw));
+const marginOptions = (shown) => { const u = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.unitOf)(shown); return { scale: u.base, decimals: u.decimals }; };
+const marginHtml = (shown, raw) => (raw > 0 ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.numberHtml)(raw, '', marginOptions(shown)) : num(raw));
+const marginText = (shown, raw) => (raw > 0 ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(raw, { ...marginOptions(shown), up: true }) : (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(raw));
 // Half the width of a range [low, high] (the ± of a t range), null without one.
 const halfOf = (low, high) => (Number.isFinite(low) && Number.isFinite(high) ? (high - low) / 2 : null);
 // The parts of "<figure> ± <error>": { main, err, zero }. A figure whose range reaches 0 (|v| <= ±) reads "≈ 0"; no error known (one run): the
@@ -3792,7 +3871,7 @@ function pm(v, half) {
 // One table cell for the party gain or the buyer's gain, in the rounds tables and the Best tables (the one helper for both columns). `seeds`: the
 // runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than FIGURE_MIN_SEEDS: a dim "—" and a hover text.
 function pmCell(v, half, t, seeds = null) {
-    if (Number.isFinite(seeds) && seeds < _figure_mjs__WEBPACK_IMPORTED_MODULE_4__.FIGURE_MIN_SEEDS) return `<td class="num whatif-dim" title="${esc(t('rounds.needsMoreRuns'))}">—</td>`;
+    if (Number.isFinite(seeds) && seeds < _figure_mjs__WEBPACK_IMPORTED_MODULE_6__.FIGURE_MIN_SEEDS) return `<td class="num whatif-dim" title="${esc(t('rounds.needsMoreRuns'))}">—</td>`;
     return `<td class="num">${pm(v, half)}</td>`;
 }
 // One figure in a line of text: "no change", or "<value> ± <error>".
@@ -3814,9 +3893,25 @@ function pageSetups(slots) {
     return slots.map((s) => ({ ...JSON.parse(s.json), name: s.name }));
 }
 
+// Whether a player slot (its setup JSON, as the page keeps it) holds a character: some skill level above 1, some equipment, or
+// some food, drink or ability chosen. An untouched tab is the page's empty player (every level 1, nothing chosen) and does not;
+// an import (a party's or one player's) or a hand-made setup does. Zone, simulation time, house rooms, triggers, achievements
+// and the name are not looked at. The window ticks the players that hold one when it opens (whatIfRenderChoices).
+function slotHasData(json) {
+    let s;
+    try { s = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return false; }
+    if (!s || typeof s !== 'object') return false;
+    const p = s.player || {};
+    if (Object.keys(p).some((k) => /Level$/.test(k) && Number(p[k]) > 1)) return true;
+    if ((p.equipment || []).some((e) => e && e.itemHrid)) return true;
+    const list = (v) => (Array.isArray(v) ? v : Object.values(v?.['/action_types/combat'] ?? v ?? {}));
+    if ([...list(s.food), ...list(s.drinks)].some((x) => x && x.itemHrid)) return true;
+    return Object.values(s.abilities || {}).some((a) => a && a.abilityHrid);
+}
+
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap }) {
+function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap, minGainPct }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
@@ -3827,6 +3922,9 @@ function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exp
     if (exports && Object.keys(exports).length) body.export = exports;
     // The payback limit in days (0 = no limit): the runner passes it to the search as --max-payback.
     if (maxPayback !== undefined && maxPayback !== null && maxPayback !== '') body.maxPayback = Number(maxPayback);
+    // The smallest gain worth showing, in % of the buyer's own profit per day (src/whatif/minGain.mjs): sent as --min-gain-pct only when it is not the
+    // default, so a runner from before the setting still takes a search left at the default.
+    if (Number.isFinite(minGainPct) && minGainPct !== _minGain_mjs__WEBPACK_IMPORTED_MODULE_0__.MIN_GAIN_PCT) body.minGainPct = minGainPct;
     // The guild's shrine level (one for every buff), only with Shrines ticked; empty = the game's maximum (sent as nothing): --shrine-cap.
     if (shrineCap !== undefined && shrineCap !== null && shrineCap !== '' && (levers || []).includes('shrines')) body.shrineCap = Number(shrineCap);
     return body;
@@ -3861,7 +3959,7 @@ function exportStatus(kept, t) {
 async function searchRequest(params, getMarketplace) {
     let marketplace;
     try { marketplace = await getMarketplace(); } catch (e) { return { error: String(e?.message || e) }; }
-    if (!(0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_2__.isMarketplace)(marketplace)) return { error: 'no marketData or timestamp' };
+    if (!(0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_4__.isMarketplace)(marketplace)) return { error: 'no marketData or timestamp' };
     return { body: searchBody({ ...params, marketplace }) };
 }
 
@@ -3876,7 +3974,7 @@ function applyToSlots(slots, ops) {
     const missing = [...new Set(ops.map((o) => o.player).filter((p) => !names.has(p)))];
     if (missing.length) return { missing };
     const touched = new Set(ops.map((o) => o.player));
-    const after = (0,_applyOps_mjs__WEBPACK_IMPORTED_MODULE_0__.applyOps)(pageSetups(slots), ops);
+    const after = (0,_applyOps_mjs__WEBPACK_IMPORTED_MODULE_2__.applyOps)(pageSetups(slots), ops);
     const out = {};
     slots.forEach((s, i) => {
         if (!touched.has(s.name)) return;
@@ -3924,10 +4022,10 @@ function diffSetups(page, base) {
 }
 
 // Progress line from GET /api/search/<id>: the runner's own fields, shown as they come.
-function renderProgress(status, t, pressed = null) {
+function renderProgress(status, t, pressed = null, stopping = false, names = null) {
     if (!status) return '';
     const p = status.progress || {};
-    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t, pressed);
+    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t, pressed, stopping, names);
     const parts = [`<b>${esc(t('state.' + status.state))}</b>`];
     if (p.stage) parts.push(esc(t('progress.stage')) + ' ' + esc(p.stage));
     if (p.candidatesLeft !== undefined) parts.push(esc(t('progress.candidatesLeft')) + ' ' + num(p.candidatesLeft));
@@ -3966,8 +4064,9 @@ const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 })
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
 // lock has a leader whose figure is shown with a gain above 0: row.acceptable) and "Skip <stage>". Both end the stage at once (its runs in flight
 // are ended): Accept with its pick as it is, Skip with nothing taken. `pressed` ({ key, mode }, main.js): the button pressed on this part stays drawn
-// in its pending state ("Accepting…" / "Skipping…", whatif-pending), both buttons disabled (the second press would change the first). The state is
-// in the markup, so the redraw of the next poll gives the same button.
+// in its pending state ("Accepting…" / "Skipping…", whatif-pending), both buttons disabled (the second press would change the first). `stopping`:
+// the Start / Stop button reads Stopping, so both are drawn disabled in place (the row keeps its shape). The state is in the markup, so the redraw
+// of the next poll gives the same button.
 // The window's small parts: a chip (a short fact, its label dim), a help mark (a sentence on hover and on keyboard focus; `tip` is escaped
 // html), a labelled figure, and a change "from → to" split in two (the text is escaped html; "->" or "→" splits it; a change of several
 // parts, each "a -> b" and joined by ", " like a shrine row's all five, splits each part, so no raw "->" is left).
@@ -3977,13 +4076,23 @@ const fig = (k, v) => `<span class="whatif-fig"><span class="whatif-fig-k">${esc
 const arrowOne = (html) => html.replace(/^(.*?)\s*(?:-&gt;|→)\s*(.*)$/, '<span class="whatif-from">$1</span><span class="whatif-arrow">→</span><span class="whatif-to">$2</span>');
 const ARROW = /-&gt;|→/g;
 const arrowed = (html) => { const parts = html.split(', '); return parts.length > 1 && parts.every((x) => (x.match(ARROW) || []).length === 1) ? parts.map(arrowOne).join(', ') : arrowOne(html); };
-function stageButtons(t, acceptable, key, pressed) {
+function stageButtons(t, acceptable, key, pressed, stopping = false) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
-    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
-    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
+    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done || stopping ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
+    // With no winner to accept, a hidden slot of the same size stands in for Accept, so its coming and going never changes the row's height.
+    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') : '<span class="btn btn-sm py-0 whatif-btn-slot" aria-hidden="true">&nbsp;</span>') + ' ' + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
-function renderParts(status, t, pressed = null) {
+// The Search progress table's column widths (a fixed layout: no state, badge, count, bar or text of a row moves a column; the Details column takes the rest
+// of the width and cuts a long text, its whole text in its tooltip). One per column of `cols` below, in order; null = the rest.
+const PART_COL_WIDTHS = ['1.75rem', '10rem', '10.5rem', '4rem', '5.5rem', '6rem', '6rem', '5.5rem', '5.5rem', '8rem', null, '16rem'];
+// Markup to plain text, for a title attribute (escaped again where it is put in one).
+const plainOf = (html) => String(html).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+function renderParts(status, t, pressed = null, stopping = false, names = null) {
     const p = status.progress || {}, parts = p.parts;
+    // A change a row names (the winner under check, one its check left out): the result's own wording (localizeDesc: the game's names in the page's
+    // language), its player first.
+    const whatHtml = (w) => (w ? `${w.player ? chip(esc(w.player)) + ' ' : ''}${arrowed(esc(localizeDesc(w.desc, names, w.player ? [w.player] : [], w.player)))}` : '');
+    const pm = (v, se) => (Number.isFinite(v) ? num(fit(v, se)) + ' ± ' + marginHtml(fit(v, se), se) : '—');
     // The search's own state decides what is drawn as running: a search that is stopped, done or failed has no part that runs, whatever the
     // last progress record says (the part that was running when it stopped is drawn halted, with the figures it had).
     const live = status.state === 'running';
@@ -3992,13 +4101,12 @@ function renderParts(status, t, pressed = null) {
     // (checking picks, why a part never ran, the time left) is the state chip's tooltip.
     const cell = (v) => `<td class="num">${Number(v) > 0 ? num(v) : ''}</td>`;
     const rowsHtml = parts.map((row) => {
-        const r = row.state === 'running' && !live ? { ...row, state: 'halted' } : row;
+        const r = (row.state === 'running' || row.checking) && !live ? { ...row, state: 'halted', checking: false } : row;
         const label = r.kind === 'foods' ? t('progress.partFoods')
             : r.kind === 'drinks' ? t('progress.partDrinks')
             : r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
             : r.kind === 'steps' ? t('progress.partStepsShort')
-            : r.kind === 'picks' ? t('progress.partPicks')
             : r.kind === 'step' ? stepLabel(t, r.index)
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
             : t('progress.partConfirmation');
@@ -4006,14 +4114,14 @@ function renderParts(status, t, pressed = null) {
         const labelTip = r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps }) : r.kind === 'confirmation' && r.state === 'waiting' ? t('progress.partConfirmationWaiting') : '';
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
         const race = rounded && r.state === 'running';
-        const noneConfirmed = r.state === 'done' && r.kind === 'picks' && !(r.runsPlanned > 0) && r.leftOut > 0;
+        // The row's winner under its check (one code flow for every kind of row): the row reads "Checking the winner", the Details cell names the change and
+        // the check's runs (done / planned); the state's tooltip says the same in a sentence (foods and drinks: whose pick, of how many).
+        const checkRuns = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
         let text = '', cls;
         if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = plural(t, 'progress.upTo', r.runsUpTo, { n: num(r.runsUpTo) }); cls = 'waiting'; }
         else if (r.state === 'done') {
-            const runs = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
-            const checking = r.checking ? (r.checkWho ? fill(t, 'progress.checkingPicksOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs }) : fill(t, 'progress.checkingPicks', { runs })) : null;
-            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : (checking ?? '');
-            cls = checking ? 'running' : 'done';
+            text = r.checking ? (r.checkWho ? fill(t, 'progress.checkingWinnerOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs: checkRuns }) : fill(t, 'progress.checkingWinnerTip', { runs: checkRuns })) : '';
+            cls = r.checking ? 'running' : 'done';
         }
         else if (r.state === 'skipped') { text = esc(t(r.kind === 'confirmation' ? 'progress.skippedNoStep' : 'progress.skippedNoPick')); cls = 'skipped'; }
         else if (r.state === 'halted') cls = 'halted';
@@ -4023,9 +4131,8 @@ function renderParts(status, t, pressed = null) {
         }
         if (race && r.separate) text = r.separate.rounds === null ? t('progress.separateFar') : plural(t, 'progress.separateRounds', r.separate.rounds, { n: num(r.separate.rounds) });
         const mark = { done: '✓', running: '▶︎', waiting: '○', halted: '■︎', skipped: '–' }[cls];
-        const stKey = cls !== 'running' ? (r.state === 'done' && r.skipped ? 'ended' : cls) : r.state === 'done' ? 'checkingPicks' : rounded ? (r.phase === 'reading' ? 'checking' : 'searching') : 'running';
-        const strip = (html) => String(html).replace(/<[^>]+>/g, '');
-        const st = `<span class="whatif-chip whatif-st-${cls}"${text ? ` title="${esc(strip(text))}"` : ''}>${esc(t('progress.st.' + stKey))}</span>`;
+        const stKey = cls !== 'running' ? (r.state === 'done' && r.skipped ? 'ended' : cls) : r.state === 'done' ? 'checkingWinner' : rounded ? (r.phase === 'reading' ? 'checking' : 'searching') : 'running';
+        const st = `<span class="whatif-chip whatif-st-${cls}"${text ? ` title="${esc(plainOf(text))}"` : ''}>${esc(t('progress.st.' + stKey))}</span>`;
         const pct = (r.state === 'running' || r.state === 'halted') && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
         // Runs: a race stage's count; another part's "done / planned", with a thin bar while it runs (a waiting part has none; a waiting
         // re-check whose runs are planned shows them).
@@ -4033,15 +4140,32 @@ function renderParts(status, t, pressed = null) {
             ? `<td class="num">${num(r.state === 'done' ? r.runsPlanned : r.runsDone)} / ${num(r.runsPlanned)}${cls === 'running' || cls === 'halted' ? `<div class="progress whatif-progress mt-1" style="height: 4px;"><div class="progress-bar" style="width: ${pct}%"></div></div>` : ''}</td>` : '<td></td>';
         const round = rounded && (Number(r.round) > 1 || race) ? `<td class="num">${num(r.round)}</td>` : '<td></td>';
         const left = !rounded && (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? r.candidatesLeft : null;
-        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed) : ''}</td></tr>`;
+        // A row that is done has no candidate in the running nor set aside: its race is over (a done row whose winner its check left out says so in Details).
+        const over = r.state === 'done';
+        // Progress of a race row: its candidates ruled out over all its candidates (a count of candidates, not of time); a done row is 100 %.
+        const ruled = rounded && (over || Number(r.candidates) > 0) ? (over ? 100 : Math.min(100, Math.max(0, (100 * (Number(r.dropped) || 0)) / Number(r.candidates)))) : null;
+        const pctCell = ruled === null ? '<td></td>' : `<td class="whatif-part-pct"><div class="whatif-pct-in"><div class="progress whatif-progress" style="height: 6px;"><div class="progress-bar" style="width: ${ruled}%"></div></div><span class="num">${Math.floor(ruled)}%</span></div></td>`;
+        // Details: the winner under check and its runs; otherwise the runs of this round kept from before a stop, and the last winner a check left out (every
+        // one, with the check's two figures, in its help mark). A long text is cut, its whole text the cell's tooltip; it never widens the column.
+        const failed = !r.checking && Array.isArray(r.failed) && r.failed.length ? r.failed : [];
+        const lastFail = failed[failed.length - 1];
+        const bits = r.checking ? [`<span class="whatif-part-what">${whatHtml(r.checkWhat)}</span>`, `<span class="whatif-part-runs">${checkRuns}</span>`]
+            : [...(r.kept && r.state !== 'waiting' ? [`<span class="whatif-part-kept">${plural(t, 'progress.keptRuns', r.kept.total, { kept: num(r.kept.kept), total: num(r.kept.total) })}</span>`] : []),
+                ...(lastFail ? [`<span class="whatif-part-what" data-left-out="${failed.length}" data-ending="${esc(lastFail.ending ?? '')}">${esc(t(lastFail.ending === 'unsure' ? (over ? 'progress.unsureEnded' : 'progress.unsureGoesOn') : over ? 'progress.leftOutEnded' : 'progress.leftOutGoesOn'))} ${whatHtml(lastFail)}</span>`] : []),
+                // The changes that winner had put out and that came back into the race (progress.stageBack), while the race goes on.
+                ...(lastFail && !over && Number(r.back) > 0 ? [`<span class="whatif-part-runs whatif-part-back">${plural(t, 'progress.backInRace', r.back, { n: num(r.back) })}</span>`] : [])];
+        const failTip = failed.map((f) => plainOf(t('progress.leftOutTip', { change: whatHtml(f), ending: f.ending ? endingText(f, t, f.goal) : esc(t('progress.leftOutPlain')), gain: pm(f.gainPerUser, f.sePerUser), buyer: pm(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) }))).join('\n');
+        const detail = bits.length ? `<td class="whatif-part-detail"><div class="whatif-part-detail-in" title="${esc(bits.map(plainOf).join(' · '))}">${bits.join('')}</div>${help(esc(failTip))}</td>` : '<td class="whatif-part-detail"></td>';
+        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(over ? null : rounded ? r.contending : left)}${cell(over ? null : r.paused)}${cell(r.dropped)}${pctCell}${detail}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed, stopping) : ''}</td></tr>`;
     }).join('');
-    const cols = ['', 'stage', 'state', 'round', 'runs', 'hours', 'contending', 'paused', 'dropped', ''];
-    const head = cols.map((c, i) => `<th${i >= 3 && i <= 8 ? ' class="num"' : ''}>${c ? esc(t('progress.col.' + c)) : ''}</th>`).join('');
+    const cols = ['', 'stage', 'state', 'round', 'runs', 'hours', 'contending', 'paused', 'dropped', 'progress', 'detail', ''];
+    const head = cols.map((c, i) => `<th${i >= 3 && i <= 8 ? ' class="num"' : ''}>${c ? esc(t('progress.col.' + c)) : ''}${c === 'progress' ? help(esc(t('progress.col.progressTip'))) : ''}</th>`).join('');
+    const colgroup = `<colgroup>${PART_COL_WIDTHS.map((w) => (w ? `<col style="width: ${w}">` : '<col>')).join('')}</colgroup>`;
     const figs = [];
     if (running >= 0) figs.push(fig(t('progress.col.part'), `${num(running + 1)} / ${num(parts.length)}`));
     if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) figs.push(fig(t('progress.secondsPerRunCap'), `<span title="${esc(p.secondsPerRun)}">${esc(Number(p.secondsPerRun).toFixed(2))}</span>`));
     if (p.elapsedSeconds !== undefined && p.elapsedSeconds !== null) figs.push(fig(t('progress.elapsed'), esc(duration(p.elapsedSeconds))));
-    let html = `<div class="whatif-parts"><div class="whatif-parts-head"><span class="whatif-title">${esc(t('progress.title'))}</span>${figs.join('')}</div><table class="table table-sm whatif-table whatif-parts-table"><thead><tr>${head}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    let html = `<div class="whatif-parts"><div class="whatif-parts-head"><span class="whatif-title">${esc(t('progress.title'))}</span>${figs.join('')}</div><table class="table table-sm whatif-table whatif-parts-table">${colgroup}<thead><tr>${head}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
     if (status.state === 'error' && status.error) html += `<div class="whatif-callout whatif-callout-danger">${esc(status.error)}</div>`;
     return html;
 }
@@ -4066,6 +4190,8 @@ function renderRounds(round, t, names = null) {
             fig(t('rounds.contending'), `<span data-rounds="contending">${num(c.contending)}</span>`),
             fig(t('rounds.paused'), `<span data-rounds="paused">${num(c.paused)}</span>`) + help(esc(t('rounds.pausedTip'))),
             ...(c.refuted ? [fig(t('rounds.refuted'), num(c.refuted))] : []),
+            // The leaders this race's check left out, by ending (round.candidates.leftOut), each count only when above 0.
+            ...[['loss', 'outLoss'], ['small', 'outSmall'], ['unsure', 'outUnsure']].filter(([e]) => c.leftOut?.[e] > 0).map(([e, k]) => `<span data-rounds="out-${e}">${fig(t('rounds.' + k), num(c.leftOut[e]))}</span>` + help(esc(t('rounds.outTip')))),
             fig(t('rounds.coverageK'), `${Math.round((round.coverage ?? 0) * 100)}%`),
         ]),
     ].join('');
@@ -4101,8 +4227,8 @@ function renderRounds(round, t, names = null) {
             // One or two words that say what a user can do with the row; the counts and the internal state are the cell's tooltip (facts only).
             const sk = l.tooFew ? 'tooFew' : l.status, vals = { n: l.status === 'first' ? l.seeds : l.readingSeeds, more: Math.max(0, readingMin - (l.readingSeeds ?? 0)), min: readingMin };
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
-            const figSeeds = (0,_figure_mjs__WEBPACK_IMPORTED_MODULE_4__.figureSeeds)(l);
-            const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(l.searchHours), fresh: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
+            const figSeeds = (0,_figure_mjs__WEBPACK_IMPORTED_MODULE_6__.figureSeeds)(l);
+            const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(l.searchHours), fresh: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
             return `<tr data-status="${esc(l.status)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
@@ -4152,7 +4278,13 @@ function namesFrom(current, english = current, words = {}) {
 }
 
 const ITEMS_ETC = ['itemNames', 'abilityNames', 'skillNames', 'equipmentTypeNames', 'guildShrineNames'];
-const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames'];
+const TRIGGER_TERMS = ['combatTriggerDependencyNames', 'combatTriggerConditionNames', 'combatTriggerComparatorNames'];
+// A trigger change in the page's language: the runner's text read back (trigger-words.mjs readChange) and worded with the window's strings
+// (names.words.trig) and the game's names; null when the text is not one (an older or a hand-written text, then shown with its ids swapped).
+const TRIG_TABLE = { dep: 'combatTriggerDependencyNames', cond: 'combatTriggerConditionNames', cmp: 'combatTriggerComparatorNames' };
+const trigNames = (names) => (kind, slug) => names.get(TRIG_TABLE[kind], slug);
+const trigWords = (names) => ({ ..._trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.EN, ...(names.words?.trig || {}) });
+const changeShown = (text, names) => { const c = (0,_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.readChange)(text); return c && (0,_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.changeWords)(c, trigWords(names), trigNames(names)); };
 const SLUG = /(?<![A-Za-z0-9_])[a-z][a-z0-9_]*(?![A-Za-z0-9_])/g;
 const swap = (text, tables, names) => text.replace(SLUG, (id) => {
     for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
@@ -4172,7 +4304,13 @@ function localizeDesc(desc, names, players = [], dropPlayer = null) {
     const room = names.rooms.find(([en]) => rest.startsWith(en + ' '));
     if (room) return head + room[1] + rest.slice(room[0].length);
     const at = rest.indexOf(' trigger: ');
-    if (at >= 0) return head + swap(rest.slice(0, at), ITEMS_ETC, names) + ' trigger: ' + swap(rest.slice(at + ' trigger: '.length), TRIGGER_TERMS, names);
+    // Two trigger changes of one owner in a row ("<change>; then <player> <owner> trigger: <change>"): each part is worded alone.
+    const then = rest.indexOf(`; ${_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.EN.then} `);
+    if (at >= 0 && then > at) return localizeDesc(text.slice(0, skip + then), names, players, dropPlayer) + `; ${trigWords(names).then} ` + localizeDesc(rest.slice(then + _trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.EN.then.length + 3), names, players, dropPlayer);
+    if (at >= 0) {
+        const change = rest.slice(at + ' trigger: '.length);
+        return head + swap(rest.slice(0, at), ITEMS_ETC, names) + ' ' + trigWords(names).trigger + ': ' + (changeShown(change, names) ?? swap(change, TRIGGER_TERMS, names));
+    }
     return head + swap(rest, ITEMS_ETC, names);
 }
 
@@ -4196,24 +4334,21 @@ const paybackCell = (row, t) => (row.payback === null || row.payback === undefin
 const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
 // withFresh: a chosen change, whose row shows its fresh reading.
 function gainCells(row, goalExp, t, floor, withFresh = false) {
-    const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
+    const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(row.members ? null : f, row, 'buyerNet', 'buyerNetSe'); // a set: the buyer its payback is (row.payer), never the fresh reading's weakest
     return gainCell(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainCell(net, netSe, t, floor) : '<td class="num">—</td>');
 }
 // A shrine change's split (the row's shrineSplit, tools/whatif/levers/shrines.mjs): the Guild Tokens its levels require, and its Guild Credits
 // either bought as market items (Coin) or paid with spare tokens (how many). Html: the figures are numberHtml, as in the other figure texts (i18next does not escape).
 const shrineSplitText = (sp, t) => t('shrine.split', { tokens: num(sp.tokens), coin: num(sp.creditsCoin), alt: Number.isFinite(sp.creditsTokens) ? num(sp.creditsTokens) : '—' });
 // How a row was priced (its price path), in the shown language: the one helper of every list with a cost (chosen changes, each change alone,
-// priced over budget, pays back too slowly). From the core's fields (tools/whatif/core.mjs priceFields): costPath, note and, with Philosopher's
-// Mirrors, mirrors / mirrorFrom / to / toListed. A cost path or note this table does not know shows as the core wrote it (an older result).
+// priced over budget, pays back too slowly). From the core's fields (tools/whatif/core.mjs priceFields): costPath and note. A cost path or note this table does not know shows as the core wrote it (an older result).
 // The upper-bound caveat is left out (the "≤" on the cost and the footnote carry it). priceHow is the path, priceNotes its notes; pricePath is
 // both as one plain text, "<path> (<notes>)" ('' when the row has no path).
 const PATH_KEYS = { market: 'buy', buy: 'buy', 'buy, sell old': 'buySellOld', 'loadout tweak': 'loadout', 'loadout tweak, used x buy price in expenses': 'loadoutUsed', owned: 'owned', learned: 'learned', 'house upgrade': 'house', books: 'books' };
-const NOTE_KEYS = { 'Mirror win below +10: price to check': 'noteMirrorCheck', 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
+const NOTE_KEYS = { 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
 function priceHow(s, t) {
-    const path = String(s?.costPath || ''), m = Number(s?.mirrors) || 0;
+    const path = String(s?.costPath || '');
     if (/^time\b/.test(path)) return t('price.time');
-    if (m > 0 && path === 'mirror own item') return plural(t, 'price.mirrorOwn', m, { n: m, from: s.mirrorFrom });
-    if (m > 0 && /mirror/.test(path)) return plural(t, s.toListed ? 'price.mirrorCheaper' : 'price.mirrorChain', m, { n: m, from: s.mirrorFrom, to: s.to }) + (/sell old/.test(path) ? t('price.sellOld') : '');
     return PATH_KEYS[path] ? t('price.' + PATH_KEYS[path]) : path;
 }
 const priceNotes = (s, t) => String(s?.note || '').split('; ').filter((x) => x && !/^upper bound/.test(x)).map((x) => (NOTE_KEYS[x] ? t('price.' + NOTE_KEYS[x]) : x)).join('; ');
@@ -4230,8 +4365,8 @@ const pathCell = (s, t) => {
     const notes = priceNotes(s, t);
     return `<td class="wrap">${chip(s.shrineSplit ? shrineSplitText(s.shrineSplit, t) : esc(priceHow(s, t)), '', notes ? esc(notes) : '')}</td>`;
 };
-// A plain market buy (cost path "market", no mirror, no note): a list line names no path for it.
-const isPlainBuy = (s) => s?.costPath === 'market' && !(Number(s.mirrors) > 0) && !s.note;
+// A plain market buy (cost path "market", no note): a list line names no path for it.
+const isPlainBuy = (s) => s?.costPath === 'market' && !s.note;
 // The same after a cost in a list's Cost cell: "(<price path>)", nothing for a plain market buy or a row with no path.
 const pathAfter = (s, t) => { if (isPlainBuy(s)) return ''; const how = pathHtml(s, t); return how ? ` <span class="text-secondary">(${how})</span>` : ''; };
 // A skill level is not a setup change: it comes with time spent fighting (cost path "time ..."), so it has no Apply button.
@@ -4239,7 +4374,7 @@ const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath
 // A chosen change (withFresh) with a fresh reading and a cost: the cost over the fresh buyer's gain (paybackDays, the search's own helper);
 // with no cost or no positive buyer's gain, or any other row, what the row says.
 const buyerPayback = (row, goalExp, t, withFresh = false) => {
-    const days = withFresh && !goalExp ? (0,_payback_mjs__WEBPACK_IMPORTED_MODULE_3__.paybackDays)(row.cost, row.fresh?.buyerNet) : null;
+    const days = withFresh && !goalExp && !row.members ? (0,_payback_mjs__WEBPACK_IMPORTED_MODULE_5__.paybackDays)(row.cost, row.fresh?.buyerNet) : null; // a set carries its own payback (its payer's)
     if (days !== null) return paybackCell({ payback: days, costBound: row.costBound, cost: row.cost }, t);
     return goalExp || !hasSplit(row) ? paybackCell(row, t) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound, cost: row.cost }, t);
 };
@@ -4254,7 +4389,8 @@ const slugOf = (hrid) => String(hrid).split('/').pop();
 // An item's shown name (the page's own, else its id) and, for a food with a trigger, the readable text of the trigger in parentheses.
 const itemLabel = (x, names) => {
     const name = names?.get('itemNames', slugOf(x.item)) ?? slugOf(x.item);
-    return esc(name) + (x.trigger ? ' (' + esc(names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
+    const list = names && x.trigger ? (0,_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.readList)(String(x.trigger)) : null;
+    return esc(name) + (x.trigger ? ' (' + esc(list ? (0,_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.listWords)(list, trigWords(names), trigNames(names)) : names ? swap(String(x.trigger), TRIGGER_TERMS, names) : String(x.trigger)) + ')' : '');
 };
 // A slot the change leaves alone shows what the player has there now, greyed (an item flagged `same`); a slot empty now and staying empty says
 // "empty" greyed. The one place these two are written, for the rounds, Best foods and Best drinks tables.
@@ -4309,7 +4445,7 @@ function bestBlock(result, t, names = null, running = false, floor = null) {
             // The core flags a leader without a clear gain (`unclear`, and `loses` when the shared loot falls): the row shows the player's current items
             // (the final's unchanged form) and the status; the leader's items and figures are the status cell's tooltip, a fact.
             const unclear = e.soFar && e.unclear;
-            const plainPm = (v, half) => (Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(fit(v, half)) +(half > 0 ? ' ± ' + (Math.abs(v) <= half ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(fit(half, half)) : marginText(fit(v, half), half)) : '') : '—');
+            const plainPm = (v, half) => (Number.isFinite(v) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(fit(v, half)) +(half > 0 ? ' ± ' + (Math.abs(v) <= half ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(fit(half, half)) : marginText(fit(v, half), half)) : '') : '—');
             const tip = !unclear ? '' : e.loses ? t('rounds.status.losesTip') : t('rounds.status.bestTip', {
                 items: (e.candidate || []).map((x) => names?.get('itemNames', slugOf(x.item)) ?? slugOf(x.item)).join(', ') || '—',
                 figures: e.tooFew ? t('rounds.tooFew') : `${t('col.partyGain')} ${plainPm(e.gainPerUser, halfOf(e.low, e.high))}; ${t('col.buyerGain')} ${plainPm(e.buyerNet, halfOf(e.netLow, e.netHigh))}`,
@@ -4355,6 +4491,19 @@ function foldLine(id, heading, note, show, hide, n = null) {
     const toggle = id ? `<button type="button" class="btn btn-link btn-sm p-0 whatif-fold" data-whatif-more="${id}" data-show="${esc(show)}" data-hide="${esc(hide)}">${esc(show)}</button>` : '';
     return `<div class="whatif-fold-line"><span class="fw-bold">${heading}</span>${n !== null ? chip(num(n), 'whatif-chip-n') : ''}${help(note)}${toggle}</div>`;
 }
+// A change a check left out (a result.notConfirmed entry or a progress record's checkFailed): its ending in words with its range (`range`: sure.mjs
+// rangeOf, the buyer's gain per day on the profit goal, per user on another), as HTML. One function for the result's lists and the progress row's tip.
+function endingText(a, t, goal) {
+    const r = a.range || {}, nums = { low: num(r.low), high: num(r.high), floor: num(r.floor) };
+    if (a.ending === 'small') return t(goal === 'exp' ? 'result.ending.smallExp' : 'result.ending.small', nums);
+    return a.ending === 'loss' || a.ending === 'unsure' ? t('result.ending.' + a.ending, nums) : a.ending === 'slow' ? esc(t('result.ending.slow')) : '—';
+}
+// The same as a chip with its tooltip (the result's "Why" column); an older result with no ending shows a dash.
+function endingChip(a, result, t) {
+    if (!a.ending) return '—';
+    const tip = t('result.ending.' + a.ending + 'Tip', { z: num(result.z), pct: num(result.pickCheck?.minGainPct), seeds: num(a.fresh?.seeds) });
+    return `<span data-ending="${esc(a.ending)}">${chip(endingText(a, t, result.goal), '', esc(plainOf(tip)))}</span>`;
+}
 // A closed list: its fold line and the items (html of <li>s) hidden behind it. The over-budget, pays-back-too-slowly, left-out, not-confirmed and
 // unknown-cost lists are this one renderer; `key` names their locale keys: <key>, <key>Note, <key>Show, <key>Hide.
 function closedList(key, id, rows, note, t, head) {
@@ -4381,15 +4530,34 @@ function gainTh(t, key, cls = '') { return `<th class="num${cls}">${esc(t('col.'
 // `running`: true, or 'stopped' for the last report of a search that stopped or failed: the result is the report so far of a search that is still going (a snapshot of the optimizer, the runner's `partial`): the
 // same report with a "running" mark; what only the end has (the totals) is not there to draw, "so far" follows the steps heading, and
 // the messages that say there is nothing ("no steps", "no change") are not shown, since the rows may simply not have come yet.
-function renderResult(result, t, now = Date.now(), names = null, running = false) {
+// The "so far" rows of the Change being searched: from the latest round record (the one the Search rounds table draws), every candidate whose gain so far
+// (its figure in that table, shown there too) is above 0, shaped as a chosen change and drawn by the same row code, marked "so far", with no Apply button.
+// Only while that record's stage (the screen or a greedy step) is the stage running now, its pick check included; a candidate already among the chosen
+// changes is not repeated (its check passed: it is a confirmed row now). A round record lists each pool's leaders, so those are the candidates that can show.
+// Largest gain so far first.
+function soFarSteps(round, progress, steps = []) {
+    const now = progress?.stage === 'confirming picks' ? progress.checkingStage : progress?.stage;
+    if (!round || !Array.isArray(round.pools) || !/^(screen|greedy step \d+)$/.test(String(round.stage)) || round.stage !== now) return [];
+    const taken = new Set((steps || []).flatMap((s) => (Array.isArray(s.members) && s.members.length ? s.members : [s]).map((m) => m.desc)));
+    return round.pools.flatMap((p) => p.leaders || [])
+        .filter((l) => l.status !== 'refuted' && !l.tooFew && (0,_figure_mjs__WEBPACK_IMPORTED_MODULE_6__.figureSeeds)(l) >= _figure_mjs__WEBPACK_IMPORTED_MODULE_6__.FIGURE_MIN_SEEDS && Number(l.reading) > 0 && !taken.has(l.desc))
+        .sort((a, b) => b.reading - a.reading)
+        .map((l) => ({ player: l.player, desc: l.desc, gainPerUser: l.reading, sePerUser: halfOf(l.low, l.high), buyerNet: l.buyerNet, buyerNetSe: halfOf(l.netLow, l.netHigh), cost: l.cost, payback: l.payback, soFar: true }));
+}
+// soFar: the "so far" rows (soFarSteps), drawn under the chosen changes while the search runs.
+function renderResult(result, t, now = Date.now(), names = null, running = false, soFar = []) {
     if (!result) return '';
     const L = [];
-    if (running) L.push(`<div class="mb-2 whatif-running">${chip(esc(t(running === 'stopped' ? 'progress.st.halted' : 'result.soFar')), running === 'stopped' ? 'whatif-st-halted' : 'whatif-st-running', esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running')))}</div>`);
+    // The top line: the running (or stopped) mark and the base profit share one row of chips, which wraps only when the width runs out; with no
+    // answer drawn (a report still running, or a result with no confirmation) the left-out and stale-prices chips join it (topChips, below).
+    const topChips = [];
+    if (running) topChips.push(`<span class="whatif-running">${chip(esc(t(running === 'stopped' ? 'progress.st.halted' : 'result.soFar')), running === 'stopped' ? 'whatif-st-halted' : 'whatif-st-running', esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running')))}</span>`);
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => arrowed(esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player)));
     // Goal and zone show once, in the summary bar over the result (or in the open setup form); the result's own row keeps the base profit.
     const base = zoneBase(result);
-    if (base !== null) L.push(`<div class="mb-2 whatif-chips whatif-context">${chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(base)}`, '', esc(t('result.perUserDay')))}</div>`);
+    if (base !== null) topChips.push(chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(base)}`, '', esc(t('result.baseProfitTip'))));
+    const topAt = L.length;
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn whatif-callout">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     const pricesChip = prices ? `<span data-prices-stale>${chip(esc(t('result.pricesChip')), 'whatif-chip-warn', esc(prices.replace(/<[^>]+>/g, '')))}</span>` : '';
@@ -4401,21 +4569,33 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
     if (bestHtml) L.push(bestHtml);
     // The screen and the greedy steps the user ended with "done with this stage": one line each, under the steps heading.
     const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
-    if (!running || result.steps?.length) L.push(`<div class="whatif-h">${esc(t('result.steps'))}${result.best ? help(esc(t('result.bestBaseline'))) : ''}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
+    if (!running || result.steps?.length || soFar.length) L.push(`<div class="whatif-h">${esc(t('result.steps'))}${result.best ? help(esc(t('result.bestBaseline'))) : ''}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     for (const [stage, n] of endedStages) {
         const m = /^greedy step (\d+)$/.exec(stage), name = m ? stepLabel(t, Number(m[1])) : stage === 'screen' ? t('progress.partScreen') : stage;
         L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
     }
-    if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
+    if (!result.steps?.length && !soFar.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
-        result.steps.forEach((s, i) => {
-            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
-                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
-                `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
-        });
+        // One row of the chosen changes: a confirmed step (its number, its fresh reading, its Apply button) or a "so far" row (no number, its figure so far,
+        // the "so far" mark where the Apply button stands: it can never be applied or read as final).
+        const stepRow = (s, i) => {
+            // A step that holds a set accepted together: its members joined, each worded alone, the players joined, and each member's own gain (its marginal) in the tooltip.
+            const set = Array.isArray(s.members) && s.members.length > 1;
+            const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${plainNum(m.marginal.gainPerUser)} ± ${plainNum(m.marginal.sePerUser)}` : '—'}`),
+                ...(s.buyers && Object.keys(s.buyers).length > 1 ? Object.entries(s.buyers).map(([p, b]) => t('result.setBuyer', { who: p, net: plainNum(b.buyerNet), days: Number.isFinite(b.payback) ? b.payback.toFixed(1) : '—' })) : [])].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
+            const who = set ? [...new Set(s.members.map((m) => m.player))].join(', ') : s.player, what = set ? s.members.map((m) => shown(m)).join(' + ') : shown(s);
+            const cls = s.soFar ? ' class="whatif-so-far" data-so-far' : s.accepted === false ? ' class="whatif-weak"' : '';
+            const end = s.soFar ? `<td>${chip(esc(t('result.soFar')), 'whatif-st-running', esc(t('result.soFarRowTip')))}</td>`
+                : `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td>`;
+            return `<tr${cls}><td>${s.soFar ? '' : i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
+                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + (s.soFar && !s.costPath ? '<td></td>' : pathCell(s, t)) + end + '</tr>';
+        };
+        (result.steps || []).forEach((s, i) => L.push(stepRow(s, i)));
+        // Below the confirmed rows, the "so far" rows of the Change being searched.
+        soFar.forEach((s, i) => L.push(stepRow(s, i)));
         L.push('</tbody></table>');
     }
     const confAt = L.length;
@@ -4444,10 +4624,14 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
     const answer = L.splice(confAt);
     if (answer.length) answer.unshift(`<div class="whatif-h">${esc(t('result.answer'))}</div>`);
     // What a limit or a missing price left out, and stale prices: one row of chips under the answer, each opening its list under See details.
-    const leftOut = [['overPayback', 'leftOutPayback', 'whatIfOverPayback', { days: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(result.options?.maxPaybackDays) }], ['overBudget', 'leftOutBudget', 'whatIfOverBudget', {}], ['apart', 'leftOutApart', 'whatIfApart', {}]]
+    // (No chip for the changes with no known cost: their list under See details says it.)
+    const leftOut = [['overPayback', 'leftOutPayback', 'whatIfOverPayback', { days: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(result.options?.maxPaybackDays) }], ['overBudget', 'leftOutBudget', 'whatIfOverBudget', {}]]
         .filter(([k]) => result[k]?.length).map(([k, key, id, p]) => { const n = result[k].length; return `<button type="button" class="whatif-chip whatif-chip-warn" data-left-out="${k}" data-whatif-more="${id} whatIfDetails" title="${esc(t('result.' + k + 'Note', { n, ...p }))}">${esc(plural(t, 'result.' + key, n, { n }))}</button>`; });
-    const chipsRow = leftOut.length || pricesChip ? [`<div class="whatif-chips mb-2">${leftOut.join('')}${pricesChip}</div>`] : [];
+    const under = answer.length ? [...leftOut, pricesChip].filter(Boolean) : [];
+    if (!answer.length) topChips.push(...leftOut, ...(pricesChip ? [pricesChip] : []));
+    const chipsRow = under.length ? [`<div class="whatif-chips mb-2">${under.join('')}</div>`] : [];
     L.splice(bestAt, 0, ...answer, ...chipsRow);
+    if (topChips.length) L.splice(topAt, 0, `<div class="mb-2 whatif-chips whatif-context">${topChips.join('')}</div>`);
     const hiddenRow = (s) => s.hiddenFood || s.hiddenAlt; // hiddenFood: a food row the search left out (one per player); hiddenAlt: another value of a setting a kept row already changes (one row per setting)
     const anySingles = (result.singles || []).some((s) => !hiddenRow(s));
     // Everything below is detail: it sits closed behind one "See details" toggle (each list still closed on its own under it).
@@ -4494,24 +4678,27 @@ function renderResult(result, t, now = Date.now(), names = null, running = false
     if (result.overPayback?.length) {
         // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
         const days = (a) => (Number.isFinite(a.paybackDays) ? num(a.paybackDays) : chip(esc(t('result.overPaybackNever'))));
-        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a) + pathAfter(a, t), true)}${td(days(a), true)}</tr>`), { days: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_1__.formatNumber)(result.options?.maxPaybackDays) }, t, [H.player, H.change, H.cost, H.payback]));
+        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a) + pathAfter(a, t), true)}${td(days(a), true)}</tr>`), { days: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(result.options?.maxPaybackDays) }, t, [H.player, H.change, H.cost, H.payback]));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
         // Two causes, two lists (one label each): a leader the pick check on the race's own reading seeds refused (`inRace`: it led a race at some point, no run of its own),
         // and a pick that was locked and then not confirmed on its own fresh runs (a greedy step, or the foods and drinks confirmation).
         const item = (a) => {
-            const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem';
+            const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem', why = endingChip(a, result, t);
             // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
             // HTML: the step's figure is num() markup, so the two plain strings are escaped here and the whole goes into the chip as it is.
             const at = a.kind === 'food' ? esc(t('result.notConfirmedAtFood')) : a.kind === 'drink' ? esc(t('result.notConfirmedAtDrink')) : t('result.notConfirmedAtStep', { step: num(a.step) });
             const buyer = Number.isFinite(f.buyerNet) && !goalExp ? figure(f.buyerNet, f.buyerNetSe, t, floor) : '—';
-            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(at, '', esc(t('result.' + key + 'Tip'))))}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
+            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(at, '', esc(t('result.' + key + 'Tip'))))}${td(why)}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
         };
-        const ncHead = [H.player, H.change, [t('progress.col.stage')], [t('col.partyGain'), true], [t('col.buyerGain'), true]];
-        const inRace = result.notConfirmed.filter((a) => a.inRace), confirmed = result.notConfirmed.filter((a) => !a.inRace);
+        const ncHead = [H.player, H.change, [t('progress.col.stage')], [t('result.endingCol')], [t('col.partyGain'), true], [t('col.buyerGain'), true]];
+        // A change its check could not tell (ending 'unsure') was not refuted: it is listed apart, never with the loss and too-small ones.
+        const told = result.notConfirmed.filter((a) => a.ending !== 'unsure'), unsure = result.notConfirmed.filter((a) => a.ending === 'unsure');
+        const inRace = told.filter((a) => a.inRace), confirmed = told.filter((a) => !a.inRace);
         if (inRace.length) D.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t, ncHead));
         if (confirmed.length) D.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t, ncHead));
+        if (unsure.length) D.push(closedList('unsure', 'whatIfUnsure', unsure.map(item), {}, t, ncHead));
     }
     // The swaps the search skipped (no better on any stat; only another style's bonuses) and the players the export levers skipped: one count line each.
     const swapRow = (a) => `<tr>${td(esc(a.player))}${td(shown(a))}</tr>`;
@@ -4584,18 +4771,29 @@ function diffLabel(field, names, t) {
     const level = /^([a-z]+)Level$/.exec(field);
     if (level) { const skill = names.get('skillNames', level[1]); return skill === null ? field : t('diff.level', { skill }); }
     if (/^[a-z_]+$/.test(field)) return names.get('equipmentTypeNames', field) ?? field;
+    // A trigger field as the result table words a trigger change's owner: "<owner name> trigger" (trigWords: the window's own word).
+    if (field.startsWith('triggers ')) return hridsToNames(field.slice(9), names) + ' ' + trigWords(names).trigger;
     return hridsToNames(field, names);
 }
 
-// The differences as one line each, for the warning. `names`: see namesFrom; the ids in the fields and values show as names.
+// A difference's value as the warning shows it (output only). A trigger list (the game's terms) is worded by the one wording of a trigger
+// (trigger-words.mjs listWords, as the result table words it): the page's language and the game's names, "always" for an empty list; with no
+// names, the English words and the ids. Any other value: its text, every hrid in it as its name ('—' for none).
+function diffValue(d, side, names = null) {
+    const v = d[side];
+    if (d.field.startsWith('triggers ') && Array.isArray(v)) return names ? (0,_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.listWords)(v.map(_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.termOf), trigWords(names), trigNames(names)) : (0,_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.listWords)(v.map(_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.termOf));
+    return names ? hridsToNames(fmtRaw(v), names) : fmtRaw(v);
+}
+// The warning: one line with the count of differences ("differs in N places"; diff.count / diff.countOne) and, at its right end, the page's
+// fold toggle (foldLine), which opens the list of them, one line each, closed by default (#whatIfDiffList). `names`: see namesFrom.
 function renderDiff(diff, t, names = null) {
     if (!diff.length) return '';
-    const value = (v) => (names ? hridsToNames(fmtRaw(v), names) : fmtRaw(v));
-    const shown = diff.slice(0, 8).map((d) => `<li>${esc(d.player)}, ${esc(diffLabel(d.field, names, t))}: ${esc(t('diff.page'))} ${esc(value(d.page))}, ${esc(t('diff.result'))} ${esc(value(d.result))}</li>`).join('');
-    const more = diff.length > 8 ? `<li>${esc(t('diff.more', { n: diff.length - 8 }))}</li>` : '';
-    return `<div class="whatif-warn">${esc(t('diff.title'))}<ul class="mb-0">${shown}${more}</ul></div>`;
+    const n = diff.length;
+    const rows = diff.map((d) => `<li>${esc(d.player)}, ${esc(diffLabel(d.field, names, t))}: ${esc(t('diff.page'))} ${esc(diffValue(d, 'page', names))}, ${esc(t('diff.result'))} ${esc(diffValue(d, 'result', names))}</li>`).join('');
+    const line = foldLine('whatIfDiffList', esc(plural(t, 'diff.count', n, { n })), '', t('result.dominatedShow'), t('result.dominatedHide'));
+    return `<div class="whatif-warn whatif-diff">${line}<ul class="mb-0 whatif-more" id="whatIfDiffList" hidden>${rows}</ul></div>`;
 }
-const fmtRaw = (v) => (v === null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+const fmtRaw = (v) => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
 
 /***/ }),
@@ -4645,6 +4843,132 @@ __webpack_require__.r(__webpack_exports__);
 // Windows: the one-file runner (tools/runner-zip/build-exe.ps1). Linux: the zip, run with the system's Node (tools/runner-zip/build-zip.ps1).
 const RUNNER_DOWNLOAD_URL = 'https://github.com/Ramlock/MWICombatSimulator/releases/latest/download/WhatIfRunner.exe';
 const RUNNER_ZIP_URL = 'https://github.com/Ramlock/MWICombatSimulator/releases/latest/download/WhatIfRunner.zip';
+
+
+/***/ }),
+
+/***/ "./src/whatif/tip.mjs":
+/*!****************************!*\
+  !*** ./src/whatif/tip.mjs ***!
+  \****************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   attachTips: () => (/* binding */ attachTips)
+/* harmony export */ });
+// The window's help marks (span.whatif-help, their sentence in data-tip) share one tooltip, div.whatif-tip, a child of the window's root (#whatIfModal)
+// drawn with position: fixed. A tooltip drawn inside the mark (a ::after) was cut by any box around it that hides its overflow (a stage list cell)
+// and could add a scrollbar near the window's edge; this one stands over everything in the window wherever the mark is.
+// It shows on the mark's hover or keyboard focus, under the mark, left-aligned with it, and stays inside the window (.modal-content, cut to the
+// screen): moved left when it would pass the right edge, put above the mark when there is no room below. While it shows, it follows the mark at
+// every frame (a scroll, a redraw that changed the mark's sentence) and hides once the mark has neither hover nor focus, or has left the page.
+function attachTips(root) {
+    const doc = root.ownerDocument, win = doc.defaultView;
+    const tip = doc.createElement('div');
+    tip.className = 'whatif-tip';
+    tip.setAttribute('role', 'tooltip');
+    tip.hidden = true;
+    root.appendChild(tip);
+    let anchor = null, frame = 0;
+    const hide = () => { anchor = null; tip.hidden = true; if (frame) win.cancelAnimationFrame(frame); frame = 0; };
+    const place = () => {
+        frame = 0;
+        if (!anchor) return;
+        if (!anchor.isConnected || !anchor.offsetParent || !(anchor.matches(':hover') || anchor === doc.activeElement)) { hide(); return; }
+        const text = anchor.dataset.tip || '';
+        if (tip.textContent !== text) tip.textContent = text;
+        const pad = 8, gap = 6, rem = parseFloat(win.getComputedStyle(doc.documentElement).fontSize) || 16;
+        const box = (root.querySelector('.modal-content') || root).getBoundingClientRect(), a = anchor.getBoundingClientRect();
+        const left = Math.max(box.left, 0) + pad, right = Math.min(box.right, win.innerWidth) - pad, top = Math.max(box.top, 0) + pad, bottom = Math.min(box.bottom, win.innerHeight) - pad;
+        tip.style.maxWidth = Math.max(0, Math.min(26 * rem, right - left)) + 'px';
+        const t = tip.getBoundingClientRect();
+        const x = Math.max(left, Math.min(a.left, right - t.width));
+        const below = a.bottom + gap, above = a.top - gap - t.height;
+        const y = below + t.height <= bottom || above < top ? Math.min(below, bottom - t.height) : above;
+        tip.style.left = x + 'px';
+        tip.style.top = Math.max(top, y) + 'px';
+        frame = win.requestAnimationFrame(place);
+    };
+    const show = (event) => {
+        const mark = event.target.closest?.('.whatif-help');
+        if (!mark || !mark.dataset.tip || mark === anchor) return;
+        anchor = mark;
+        tip.hidden = false;
+        if (frame) win.cancelAnimationFrame(frame);
+        place();
+    };
+    root.addEventListener('mouseover', show);
+    root.addEventListener('focusin', show);
+}
+
+
+/***/ }),
+
+/***/ "./src/whatif/trigger-words.mjs":
+/*!**************************************!*\
+  !*** ./src/whatif/trigger-words.mjs ***!
+  \**************************************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   EN: () => (/* binding */ EN),
+/* harmony export */   changeWords: () => (/* binding */ changeWords),
+/* harmony export */   listWords: () => (/* binding */ listWords),
+/* harmony export */   readChange: () => (/* binding */ readChange),
+/* harmony export */   readList: () => (/* binding */ readList),
+/* harmony export */   termOf: () => (/* binding */ termOf),
+/* harmony export */   termWords: () => (/* binding */ termWords)
+/* harmony export */ });
+// The one wording of a trigger change, for the runner and the window. The runner words a change with EN and no game names: that is the
+// change's text in a result (its desc, "<owner> trigger: <change>"), and the form the window reads back (readChange). The window words the
+// same change with its own strings (the page's language) and the game's official names (js/i18n.js, through namesFrom).
+// A term: { dep, cond, cmp, value? } (the last part of each game id: dependency, condition, comparator; value only for >= and <=).
+// A change: { kind: 'list', terms } (that list; empty: always) | { kind: 'default', terms } (the game's default list) | { kind: 'drop', term }
+// | { kind: 'add', term } | { kind: 'set', term, to: { cmp?, value } } (one term's value, and its comparator when it flips).
+// words: { trigger, always, and, then, gameDefault, drop, add }; the last three hold {x}, where the list or the term goes.
+const EN = { trigger: 'trigger', always: 'always', and: 'AND', then: 'then', gameDefault: 'game default ({x})', drop: 'drop {x}', add: 'add {x}' };
+const SIGN = { greater_than_equal: '>=', less_than_equal: '<=' };
+const SIGNED = { '>=': 'greater_than_equal', '<=': 'less_than_equal' };
+const noNames = () => null;
+const fill = (template, x) => String(template).replace('{x}', x);
+// names(kind, slug): the game's word for a dependency ('dep'), condition ('cond') or comparator ('cmp'), or null (the id is shown).
+const termWords = (t, names = noNames) => [names('dep', t.dep) ?? t.dep, names('cond', t.cond) ?? t.cond, SIGN[t.cmp] ?? names('cmp', t.cmp) ?? t.cmp, ...(t.value !== undefined ? [t.value] : [])].join(' ');
+const listWords = (ts, w = EN, names = noNames) => (ts.length ? ts.map((t) => termWords(t, names)).join(` ${w.and} `) : w.always);
+function changeWords(c, w = EN, names = noNames) {
+    if (c.kind === 'default') return fill(w.gameDefault, listWords(c.terms, w, names));
+    if (c.kind === 'drop') return fill(w.drop, termWords(c.term, names));
+    if (c.kind === 'add') return fill(w.add, termWords(c.term, names));
+    if (c.kind === 'set') return `${termWords(c.term, names)} -> ${c.to.cmp ? SIGN[c.to.cmp] + ' ' : ''}${c.to.value}`;
+    return listWords(c.terms, w, names);
+}
+// A game trigger term ({ dependencyHrid, conditionHrid, comparatorHrid, value }) as a term; `numeric`: its value counts (>= and <=).
+const slug = (hrid) => String(hrid).split('/').pop();
+const termOf = (t) => ({ dep: slug(t.dependencyHrid), cond: slug(t.conditionHrid), cmp: slug(t.comparatorHrid), ...(SIGN[slug(t.comparatorHrid)] ? { value: t.value } : {}) });
+
+// Reading the runner's text back (changeWords with EN): a change, or null when the text is not one (it is then shown as it is).
+const ID = /^[a-z][a-z0-9_]*$/;
+function readTerm(s) {
+    const p = String(s).trim().split(' ');
+    if (p.length < 3 || p.length > 4 || !ID.test(p[0]) || !ID.test(p[1])) return null;
+    const signed = SIGNED[p[2]];
+    if (signed) return p.length === 4 && p[3] !== '' && Number.isFinite(Number(p[3])) ? { dep: p[0], cond: p[1], cmp: signed, value: Number(p[3]) } : null;
+    return p.length === 3 && ID.test(p[2]) ? { dep: p[0], cond: p[1], cmp: p[2] } : null;
+}
+function readList(s) {
+    if (s === EN.always) return [];
+    const ts = String(s).split(` ${EN.and} `).map(readTerm);
+    return ts.every(Boolean) ? ts : null;
+}
+function readChange(s) {
+    let m;
+    if ((m = /^game default \((.*)\)$/.exec(s))) { const terms = readList(m[1]); return terms && { kind: 'default', terms }; }
+    if ((m = /^(drop|add) (.*)$/.exec(s))) { const term = readTerm(m[2]); return term && { kind: m[1], term }; }
+    if ((m = /^(.*) -> (?:(>=|<=) )?(-?[0-9.]+)$/.exec(s))) { const term = readTerm(m[1]); return term && { kind: 'set', term, to: { ...(m[2] ? { cmp: SIGNED[m[2]] } : {}), value: Number(m[3]) } }; }
+    const terms = readList(s);
+    return terms && { kind: 'list', terms };
+}
 
 
 /***/ }),
@@ -4724,13 +5048,34 @@ function frontier(points) {
 
 /***/ }),
 
+/***/ "./src/zones.mjs":
+/*!***********************!*\
+  !*** ./src/zones.mjs ***!
+  \***********************/
+/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   isPlanetZone: () => (/* binding */ isPlanetZone)
+/* harmony export */ });
+// A planet: an area's own group fight, a combat action that is not a dungeon and spawns more than one monster at a time.
+// The game has 11 (six named "Planet", plus five players count as planets). Every place that needs the test calls this.
+function isPlanetZone(action) {
+    return action.type == "/action_types/combat"
+        && action.category != "/action_categories/combat/dungeons"
+        && action.combatZoneInfo?.fightInfo?.randomSpawnInfo?.maxSpawnCount > 1;
+}
+
+
+/***/ }),
+
 /***/ "./patchNote.i18n.json":
 /*!*****************************!*\
   !*** ./patchNote.i18n.json ***!
   \*****************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）","pt":"Tradução automática por Ramlock"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]},"pt":{"title":"30/09/2026","notes":["Suporte a melhorias do Labirinto","Suporte a buffs de santuário"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]},"pt":{"title":"05/05/2026","notes":["Atualização dos dados de equipamento e dos nomes traduzidos"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]},"pt":{"title":"07/04/2026","notes":["Novos campos com as tentativas do Labirinto e a taxa de sucesso no Labirinto"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]},"pt":{"title":"05/03/2026","notes":["Otimização do desempenho da simulação relacionada à Fúria"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]},"pt":{"title":"03/03/2026","notes":["Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]},"pt":{"title":"24/02/2026","notes":["Atualização dos dados para o patch do Labirinto","Nova simulação do Labirinto, individual e em lote"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]},"pt":{"title":"01/02/2026","notes":["Corrigida a precisão do cálculo do nível de combate","Corrigido o intervalo antes de voltar ao combate depois de concluir ou falhar uma masmorra, por wangchyan","Corrigidas as durações de Maldição e Enfraquecer, por wangchyan","Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan","Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan","Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan","Corrigido Invencível não afetando direito a Tenacidade, por wangchyan","Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan","As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]},"pt":{"title":"11/01/2026","notes":["Corrigidos gatilhos que contavam por engano unidades já mortas, por wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]},"pt":{"title":"31/12/2025","notes":["Recurso experimental: gráficos de HP/MP, por wangchyan","Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan","Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan","Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]},"pt":{"title":"30/12/2025","notes":["As masmorras agora registram o tempo de conclusão mais rápido"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]},"pt":{"title":"24/12/2025","notes":["Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]},"pt":{"title":"18/12/2025","notes":["Suporte ao sistema de conquistas e seus buffs","O loot de monstros de masmorra não se aplicam mais"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]},"pt":{"title":"06/12/2025","notes":["Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]},"pt":{"title":"07/11/2025","notes":["Suporte à busca de preços pela API do site espelho chinês"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]},"pt":{"title":"14/10/2025","notes":["Corrigido o intervalo de ataque dos monstros que não escalava com o nível de Ataque"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]},"pt":{"title":"17/09/2025","notes":["Corrigida uma falha de ativação da Aura Crítica"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]},"pt":{"title":"09/09/2025","notes":["Reviver não limpa mais todos os buffs por engano","O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]},"pt":{"title":"21/08/2025","notes":["Nova simulação em lote de combate solo e as opções de monstro correspondentes","Novas opções de MooPass e de buffs comunitários, com seus efeitos","Melhoria dos atributos de equipamentos refinados","Redução dos atributos do Bispo Encantado","Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]},"pt":{"title":"20/08/2025","notes":["Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]},"pt":{"title":"19/08/2025","notes":["Incorporada a reformulação dos ramos Test e Temp","Atualização dos dados do jogo: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]},"pt":{"title":"18/08/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez","Corrigida a exibição do registro de derrota no modo escuro","Atualizada a fórmula do nível de combate","Ajustados os espinhos do Golem de Estalactite","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]},"pt":{"title":"16/08/2025","notes":["Novo botão Parar Simulação, por BKN46","Novos botões para reordenar técnicas, por BKN46","Novo registro de derrota, por TruthLight","Atualização dos atributos dos monstros","Reflexo Arcano renomeado para Retribuição","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]},"pt":{"title":"14/08/2025","notes":["Atualização dos atributos dos monstros","Ajuste dos atributos de equipamentos à distância e de magia","Ajuste do limite do dano de retaliação","Corrigidas técnicas conjuradas entre batalhas","Corrigida a lógica de decisão de conjuração de técnicas","Proporção de falta de mana mais precisa","15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]},"pt":{"title":"11/08/2025","notes":["Atualização dos atributos dos monstros","Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas","Ajuste dos valores de Golpe de Escudo e Golpe Atordoante","Ajuste do bônus de EXP de Defesa dos baluartes","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]},"pt":{"title":"08/08/2025","notes":["Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais","Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria","Ajuste dos valores da Aura Crítica","Exibição do nível de combate","Exibição da penalidade por diferença de nível","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]},"pt":{"title":"07/08/2025","notes":["Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]},"pt":{"title":"03/08/2025","notes":["A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito","Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json","Máximo de acúmulos da Fúria corrigido para 5","Ajuste de como Aparar é resolvido"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]},"pt":{"title":"31/07/2025","notes":["Atualização dos dados de itens e dos atributos dos monstros","Reformulação de Carapaça de Espinhos e Reflexo Arcano","Atualização dos valores de aprimoramento","Remoção de gatilhos quebrados","Reformulação do Enfraquecer do Baluarte de Grifo","O Aparar da Espada Régia agora se aplica aos colegas de equipe","Máximo de acúmulos do efeito Fúria corrigido para 6","O efeito Ondulante agora restaura 10 MP","A retaliação agora mostra sua taxa de acerto corretamente","Ajuste da mecânica de retaliação","Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]},"pt":{"title":"22/07/2025","notes":["A Aura Crítica agora escala com o nível de À Distância","Ajuste dos valores base das auras e de como escalam com o nível"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]},"pt":{"title":"17/07/2025","notes":["A simulação em lote permite escolher planetas","Divisão de EXP ajustada para 30% + 70%","Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente","Água, fogo e natureza agora usam a Aura Mística por padrão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]},"pt":{"title":"11/07/2025","notes":["Atualização das fórmulas de EXP dos monstros e de nível das técnicas","Atualização das fórmulas de evasão e de resistência","Poder substituído por Corpo a Corpo, com a compatibilidade correspondente","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]},"pt":{"title":"10/07/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]},"pt":{"title":"09/07/2025","notes":["Ajustes de loot e de taxas de loot","Ajustes de EXP","Ajuste de Tiro Pestilento e Perfuração","Remoção da regeneração automática dos monstros","Ajuste do gatilho do Tiro Pestilento","Uso da API oficial para buscar preços"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]},"pt":{"title":"07/07/2025","notes":["Escala dos atributos dos monstros e várias dificuldades de mapa","Ajustes das técnicas de magia; o atributo \'dano de técnica\' dos equipamentos agora faz efeito","O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração","Ajustes de itens","Precisão reformulada para usar o nível de Ataque","TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!","Reformulação da EXP e equipamento de amuleto"]}},"2026-11-14":{"from":"en","zh":{"title":"2026年11月14日","notes":["假设分析：全新外观。一个摘要栏，每个列表都是表格，搜索运行时设置表单会折叠，还有一个立即响应的“开始 / 停止”按钮。","假设分析：会提出公会神龛升级，并列出所需的公会代币和金币成本；物品可以放入空栏位。","假设分析：不再尝试与玩家战斗风格或元素不符的改动。","假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。","从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）。"]},"pt":{"title":"14/11/2026","notes":["E se: um novo visual. Uma barra de resumo, todas as listas em tabela, um formulário de configuração que se recolhe enquanto uma busca roda, e um único botão Iniciar / Parar que responde na hora.","E se: melhorias dos santuários da guilda são propostas, com o custo em Fichas de Guilda e Moedas; um item pode ir para um espaço vazio.","E se: alterações que não combinam com o estilo de combate ou o elemento de um jogador não são mais testadas.","E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite.","Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)."]}},"2026-11-13":{"from":"en","zh":{"title":"2026年11月13日","notes":["假设分析：食物和饮品现在是两个独立选项，可以只搜索其中一个","假设分析：运行次数太少的数值显示为短横线，而不是数字","假设分析：“采纳当前领先者”原样采用领先者；“跳过”立即结束该部分并保留已完成的运行","假设分析：搜索结束后会显示哪些部分已运行、哪些由你结束，以及途中排除了哪些改动","假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值","导入分组现在会在刷新页面后保留，包括名称","导入技能少于四个、或特殊技能栏为空的配置，不再失败","导入配置后，导入窗口现在会自动关闭","假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器","导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位","葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行","假设分析：窗口现在也列出 Linux 步骤（尚未测试）","战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐","假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）","运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面","假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）","假设分析：从游戏导入队伍时，现在也会填入你自己角色的物品和技能（MWI Combat Tracker 0.9.3）。","假设分析：“单项改动”默认折叠；价格行仅在市场数据达到一天或更旧时显示。","假设分析：进度列表中的阶段名称更清晰。","假设分析：各明细列表各占一行，收在一个“查看详情”链接下；食物或饮料没有变化的玩家不再显示行；每个已完成的阶段占一行。","假设分析：Windows 运行器现在是单个文件 WhatIfRunner.exe：保存后双击即可，无需解压。"]},"pt":{"title":"13/11/2026","notes":["E se: Comidas e Bebidas agora são duas opções separadas, para buscar uma sem a outra","E se: um valor de poucas execuções mostra um traço em vez de um número","E se: Aceitar o vencedor atual pega o líder como está; Pular encerra a parte na hora e mantém as execuções concluídas","E se: uma busca concluída mostra quais partes rodaram, quais você encerrou e quais alterações ficaram de fora pelo caminho","E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração","Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos","Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais","Depois de importar uma configuração, a janela de importação agora fecha sozinha","E se: o botão E se na página pública explica como obter o executor","Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos","Português: o botão e a janela de conjuntos de equipamento agora se chamam \\"Conjuntos\\", e os botões não quebram mais de linha","E se: a janela agora também lista os passos para Linux (ainda não testado)","Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números","E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)","Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página","E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)","E se: importar o grupo do jogo agora também preenche os itens e as habilidades do seu próprio personagem (MWI Combat Tracker 0.9.3).","E se: \\"Cada alteração sozinha\\" começa recolhida; a linha de preços só aparece quando os dados do mercado têm um dia ou mais.","E se: nomes de etapa mais claros na lista de progresso.","E se: as listas de detalhes ocupam uma linha cada, sob um único link \\"Ver detalhes\\"; um jogador cujas comidas ou bebidas não mudam não tem linha; cada etapa concluída ocupa uma linha.","E se: o executor para Windows agora é um arquivo só, WhatIfRunner.exe: salve e dê dois cliques, nada para extrair."]}},"2026-11-12":{"from":"en","zh":{"title":"2026年11月12日","notes":["假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮","假设分析：较弱的改动会在搜索过程中被淘汰，包括回本太慢的付费改动","假设分析：尚未分出高下的一组会显示大约还需要几轮","假设分析：搜索做出的每个选择都会用新的运行重新核对；你采纳的选择按原样采用"]},"pt":{"title":"12/11/2026","notes":["E se: botões Aceitar o vencedor atual e Pular na etapa em andamento","E se: alterações fracas saem conforme a busca avança, incluindo alterações pagas com retorno lento demais","E se: um grupo que ainda não se separou mostra cerca de quantas rodadas a mais precisa","E se: toda escolha da busca é conferida de novo em execuções novas; uma escolha que você aceita é tomada como está"]}},"2026-11-10":{"from":"en","zh":{"title":"2026年11月10日","notes":["全区域结果上方新增图表：每张地图是一个点，每小时经验对每日利润，点击圆点可跳到对应行","掉落、消耗品和宝箱的价格在所选一侧没有价格时，现在先用另一侧，再用商店价格","假设分析窗口：每项改动显示队伍收益和购买者自己的收益，以及成本和回本天数","假设分析窗口：适应屏幕宽度，没有横向滚动条","假设分析：先搜索食物和饮品，显示为“最佳食物”和“最佳饮品”；“应用”会先放入它们"]},"pt":{"title":"10/11/2026","notes":["Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, EXP por hora contra lucro por dia, clique em um ponto para ir às suas linhas","Preços de drops, consumíveis e baús agora usam o outro lado e depois o preço de vendedor quando o lado escolhido não tem preço","Janela E se: cada alteração mostra o ganho do grupo e o ganho do próprio comprador, com custo e dias de retorno","Janela E se: ocupa a largura da tela, sem barra de rolagem horizontal","E se: comidas e bebidas são buscadas primeiro e mostradas como Melhores comidas e Melhores bebidas; Aplicar coloca elas primeiro"]}},"2026-11-09":{"from":"en","zh":{"title":"2026年11月9日","notes":["本地假设分析运行器的假设分析窗口：设置预算和搜索内容，可停止搜索，一键应用建议的改动","结果：“法力值耗尽”下方的“触发条件等待”显示每个技能被什么拖住","结果：“法力值耗尽比例”始终显示，取代是/否一行","导入分组时也会勾选其中的玩家，并设置其指定的区域和难度"]},"pt":{"title":"09/11/2026","notes":["Janela E se para o executor local do E se: defina um orçamento e o que buscar, pare a busca e aplique uma alteração sugerida com um clique","Resultados: Retido por gatilho, abaixo de Ficou sem mana, mostra o que segurou cada técnica","Resultados: Proporção sem mana sempre aparece, no lugar da linha Sim/Não","Importar um grupo também marca seus jogadores e define a zona e o nível que ele indica"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字缩写显示，10,000 起使用 k、M、B 和 T","右上角新增 ISO 数字开关","页面默认以黑暗模式打开","模拟器现已支持葡萄牙语","模拟速度提升约五倍"]},"pt":{"title":"08/11/2026","notes":["Os números dos resultados aparecem abreviados, com k, M, B e T a partir de 10.000","Nova chave Números ISO no canto superior direito","A página abre no modo escuro por padrão","O simulador agora está disponível em português","As simulações rodam cerca de cinco vezes mais rápido"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在会计入已装备的饮品和你自己装备的光环"]},"pt":{"title":"07/11/2026","notes":["O painel de Atributos de Combate agora conta as bebidas equipadas e as suas próprias auras equipadas"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["公会增益可从两种导出格式读取","战斗属性面板显示模拟所用的属性，包括房屋、成就以及公会和社区增益","社区经验和战斗掉落增益默认开启，等级为20，可编辑"]},"pt":{"title":"04/11/2026","notes":["Os buffs de guilda são lidos dos dois formatos de exportação","O painel de Atributos de Combate mostra os atributos que a simulação usa, incluindo cômodos da casa, conquistas e buffs de guilda e da comunidade","Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"]}}}');
+module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）","pt":"Tradução automática por Ramlock"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]},"pt":{"title":"30/09/2026","notes":["Suporte a melhorias do Labirinto","Suporte a buffs de santuário"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]},"pt":{"title":"05/05/2026","notes":["Atualização dos dados de equipamento e dos nomes traduzidos"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]},"pt":{"title":"07/04/2026","notes":["Novos campos com as tentativas do Labirinto e a taxa de sucesso no Labirinto"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]},"pt":{"title":"05/03/2026","notes":["Otimização do desempenho da simulação relacionada à Fúria"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]},"pt":{"title":"03/03/2026","notes":["Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]},"pt":{"title":"24/02/2026","notes":["Atualização dos dados para o patch do Labirinto","Nova simulação do Labirinto, individual e em lote"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]},"pt":{"title":"01/02/2026","notes":["Corrigida a precisão do cálculo do nível de combate","Corrigido o intervalo antes de voltar ao combate depois de concluir ou falhar uma masmorra, por wangchyan","Corrigidas as durações de Maldição e Enfraquecer, por wangchyan","Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan","Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan","Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan","Corrigido Invencível não afetando direito a Tenacidade, por wangchyan","Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan","As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]},"pt":{"title":"11/01/2026","notes":["Corrigidos gatilhos que contavam por engano unidades já mortas, por wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]},"pt":{"title":"31/12/2025","notes":["Recurso experimental: gráficos de HP/MP, por wangchyan","Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan","Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan","Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]},"pt":{"title":"30/12/2025","notes":["As masmorras agora registram o tempo de conclusão mais rápido"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]},"pt":{"title":"24/12/2025","notes":["Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]},"pt":{"title":"18/12/2025","notes":["Suporte ao sistema de conquistas e seus buffs","O loot de monstros de masmorra não se aplicam mais"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]},"pt":{"title":"06/12/2025","notes":["Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]},"pt":{"title":"07/11/2025","notes":["Suporte à busca de preços pela API do site espelho chinês"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]},"pt":{"title":"14/10/2025","notes":["Corrigido o intervalo de ataque dos monstros que não escalava com o nível de Ataque"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]},"pt":{"title":"17/09/2025","notes":["Corrigida uma falha de ativação da Aura Crítica"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]},"pt":{"title":"09/09/2025","notes":["Reviver não limpa mais todos os buffs por engano","O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]},"pt":{"title":"21/08/2025","notes":["Nova simulação em lote de combate solo e as opções de monstro correspondentes","Novas opções de MooPass e de buffs comunitários, com seus efeitos","Melhoria dos atributos de equipamentos refinados","Redução dos atributos do Bispo Encantado","Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]},"pt":{"title":"20/08/2025","notes":["Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]},"pt":{"title":"19/08/2025","notes":["Incorporada a reformulação dos ramos Test e Temp","Atualização dos dados do jogo: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]},"pt":{"title":"18/08/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez","Corrigida a exibição do registro de derrota no modo escuro","Atualizada a fórmula do nível de combate","Ajustados os espinhos do Golem de Estalactite","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]},"pt":{"title":"16/08/2025","notes":["Novo botão Parar Simulação, por BKN46","Novos botões para reordenar técnicas, por BKN46","Novo registro de derrota, por TruthLight","Atualização dos atributos dos monstros","Reflexo Arcano renomeado para Retribuição","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]},"pt":{"title":"14/08/2025","notes":["Atualização dos atributos dos monstros","Ajuste dos atributos de equipamentos à distância e de magia","Ajuste do limite do dano de retaliação","Corrigidas técnicas conjuradas entre batalhas","Corrigida a lógica de decisão de conjuração de técnicas","Proporção de falta de mana mais precisa","15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]},"pt":{"title":"11/08/2025","notes":["Atualização dos atributos dos monstros","Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas","Ajuste dos valores de Golpe de Escudo e Golpe Atordoante","Ajuste do bônus de EXP de Defesa dos baluartes","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]},"pt":{"title":"08/08/2025","notes":["Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais","Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria","Ajuste dos valores da Aura Crítica","Exibição do nível de combate","Exibição da penalidade por diferença de nível","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]},"pt":{"title":"07/08/2025","notes":["Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]},"pt":{"title":"03/08/2025","notes":["A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito","Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json","Máximo de acúmulos da Fúria corrigido para 5","Ajuste de como Aparar é resolvido"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]},"pt":{"title":"31/07/2025","notes":["Atualização dos dados de itens e dos atributos dos monstros","Reformulação de Carapaça de Espinhos e Reflexo Arcano","Atualização dos valores de aprimoramento","Remoção de gatilhos quebrados","Reformulação do Enfraquecer do Baluarte de Grifo","O Aparar da Espada Régia agora se aplica aos colegas de equipe","Máximo de acúmulos do efeito Fúria corrigido para 6","O efeito Ondulante agora restaura 10 MP","A retaliação agora mostra sua taxa de acerto corretamente","Ajuste da mecânica de retaliação","Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]},"pt":{"title":"22/07/2025","notes":["A Aura Crítica agora escala com o nível de À Distância","Ajuste dos valores base das auras e de como escalam com o nível"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]},"pt":{"title":"17/07/2025","notes":["A simulação em lote permite escolher planetas","Divisão de EXP ajustada para 30% + 70%","Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente","Água, fogo e natureza agora usam a Aura Mística por padrão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]},"pt":{"title":"11/07/2025","notes":["Atualização das fórmulas de EXP dos monstros e de nível das técnicas","Atualização das fórmulas de evasão e de resistência","Poder substituído por Corpo a Corpo, com a compatibilidade correspondente","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]},"pt":{"title":"10/07/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]},"pt":{"title":"09/07/2025","notes":["Ajustes de loot e de taxas de loot","Ajustes de EXP","Ajuste de Tiro Pestilento e Perfuração","Remoção da regeneração automática dos monstros","Ajuste do gatilho do Tiro Pestilento","Uso da API oficial para buscar preços"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]},"pt":{"title":"07/07/2025","notes":["Escala dos atributos dos monstros e várias dificuldades de mapa","Ajustes das técnicas de magia; o atributo \'dano de técnica\' dos equipamentos agora faz efeito","O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração","Ajustes de itens","Precisão reformulada para usar o nível de Ataque","TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!","Reformulação da EXP e equipamento de amuleto"]}},"2026-11-15":{"from":"en","zh":{"title":"2026年11月15日","notes":["假设分析：有配置的玩家在打开窗口时默认勾选","假设分析：触发条件的改动完整显示为中文和葡萄牙语","假设分析：搜索停止时，采纳和跳过按钮暂不可用","假设分析：跳过和采纳响应更快","假设分析：强的改动不再被当作与弱得多的改动打平而被搁置，搜索不会再在仍有真正升级可选时以“无改动”结束","假设分析：装备会尝试市场上出售的每个强化等级，暂时不再用贤者之镜为等级定价","假设分析：当搜索无法区分多项各自明确有益的改动时，现在会把它们一起测试并作为一步采纳；该步列出每项改动，悬停提示显示各自的增益","区域选择器新增“仅显示星球”开关（默认开启），隐藏只对战一种怪物的战斗","假设分析：只剩少数改动时，领先者的核对一旦有了结论，搜索就不再每轮重复核对，这些轮次用时大幅减少","假设分析：鼠标停在阶段按钮上时，按钮不再闪烁","假设分析：帮助提示完整显示在最上层，不再被遮挡","假设分析：结果上方的标签排成一行，基础利润标签说明其含义，去掉成本未知标签","假设分析：新的搜索会清除窗口中之前的结果；配置差异警告为一行并显示差异数量，点击即可展开列表，触发条件以文字显示；以往的搜索也列出已停止的搜索，并标为已停止","假设分析：胜出的改动未通过核对时，仅被它淘汰的改动会重新参与竞争，搜索在没有它的情况下继续，次优改动不再丢失","假设分析：进度表每一行显示各自的核对（正在核对的改动及其运行次数）、进度条以及被核对排除的改动；恢复后已用时间继续累计，之前保留的运行会计入，列不再移动","假设分析：搜索进行时，目前看来有益的改动会列在已选改动下方，并标为尚未核对","假设分析：核对无法判定的改动会获得更多运行，每个被排除的改动都会说明原因（亏损、太小无关紧要或太小无法判断）并附上范围","假设分析：点击“采纳当前领先者”或“跳过此阶段”后，停止并继续时会保留该操作","从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）"]},"pt":{"title":"15/11/2026","notes":["E se: jogadores com configuração começam marcados ao abrir a janela","E se: mudanças de gatilho aparecem inteiras em português e chinês","E se: Aceitar e Pular aguardam enquanto a busca para","E se: Pular e Aceitar respondem mais rápido","E se: uma mudança forte não é mais deixada de lado como empatada com uma muito mais fraca, então a busca não termina mais sem mudança enquanto uma melhoria real ainda estava na disputa","E se: os equipamentos são testados em todos os níveis de aprimoramento vendidos no mercado, e o Espelho Filosofal não é mais usado para precificar níveis por enquanto","E se: quando a busca não consegue separar várias mudanças que são, cada uma, um ganho claro, agora ela as testa juntas e as aceita como um passo; o passo lista cada mudança, com o ganho próprio de cada uma numa dica","Os seletores de zona têm a opção \\"Só planetas\\", ligada por padrão, que oculta as lutas contra um só tipo de monstro","E se: quando restam poucas mudanças, a busca não reconfere mais os líderes a cada rodada depois que a conferência deles já tem resposta, então essas rodadas levam bem menos tempo","E se: os botões da etapa não piscam mais com o ponteiro parado sobre eles","E se: as dicas de ajuda aparecem inteiras e por cima, onde quer que esteja a marca","E se: as etiquetas acima do resultado ficam numa só linha, a do lucro-base diz o que é, e a de custo desconhecido saiu","E se: uma nova busca limpa o resultado anterior da janela; o aviso de setup é uma linha com o número de diferenças, a lista abre com um clique e um gatilho aparece em palavras; Buscas anteriores também lista buscas paradas, marcadas como paradas","E se: quando uma vencedora não passa na conferência, as mudanças que só ela tinha tirado voltam à disputa e a busca segue sem ela, então a próxima melhor mudança não se perde mais","E se: cada linha da tabela de progresso mostra a própria conferência (a mudança conferida e suas execuções), uma barra de progresso e a mudança que a conferência deixou de fora; o tempo decorrido continua após retomar, as execuções já guardadas são contadas e as colunas não se movem mais","E se: durante a busca, as mudanças que parecem positivas até agora aparecem sob as mudanças escolhidas, marcadas como ainda não conferidas","E se: uma mudança que a conferência não decide recebe mais execuções, e cada mudança deixada de fora diz por quê (uma perda, pequena demais para importar ou pequena demais para saber) com sua faixa","E se: um clique em Aceitar o vencedor atual ou Pular esta etapa é mantido ao Parar e Retomar","Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)"]}},"2026-11-14":{"from":"en","zh":{"title":"2026年11月14日","notes":["假设分析：全新外观。一个摘要栏，每个列表都是表格，搜索运行时设置表单会折叠，还有一个立即响应的“开始 / 停止”按钮。","假设分析：会提出公会神龛升级，并列出所需的公会代币和金币成本；物品可以放入空栏位。","假设分析：不再尝试与玩家战斗风格或元素不符的改动。","假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。"]},"pt":{"title":"14/11/2026","notes":["E se: um novo visual. Uma barra de resumo, todas as listas em tabela, um formulário de configuração que se recolhe enquanto uma busca roda, e um único botão Iniciar / Parar que responde na hora.","E se: melhorias dos santuários da guilda são propostas, com o custo em Fichas de Guilda e Moedas; um item pode ir para um espaço vazio.","E se: alterações que não combinam com o estilo de combate ou o elemento de um jogador não são mais testadas.","E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite."]}},"2026-11-13":{"from":"en","zh":{"title":"2026年11月13日","notes":["假设分析：食物和饮品现在是两个独立选项，可以只搜索其中一个","假设分析：运行次数太少的数值显示为短横线，而不是数字","假设分析：“采纳当前领先者”原样采用领先者；“跳过”立即结束该部分并保留已完成的运行","假设分析：搜索结束后会显示哪些部分已运行、哪些由你结束，以及途中排除了哪些改动","假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值","导入分组现在会在刷新页面后保留，包括名称","导入技能少于四个、或特殊技能栏为空的配置，不再失败","导入配置后，导入窗口现在会自动关闭","假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器","导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位","葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行","假设分析：窗口现在也列出 Linux 步骤（尚未测试）","战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐","假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）","运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面","假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）","假设分析：从游戏导入队伍时，现在也会填入你自己角色的物品和技能（MWI Combat Tracker 0.9.3）。","假设分析：“单项改动”默认折叠；价格行仅在市场数据达到一天或更旧时显示。","假设分析：进度列表中的阶段名称更清晰。","假设分析：各明细列表各占一行，收在一个“查看详情”链接下；食物或饮料没有变化的玩家不再显示行；每个已完成的阶段占一行。","假设分析：Windows 运行器现在是单个文件 WhatIfRunner.exe：保存后双击即可，无需解压。"]},"pt":{"title":"13/11/2026","notes":["E se: Comidas e Bebidas agora são duas opções separadas, para buscar uma sem a outra","E se: um valor de poucas execuções mostra um traço em vez de um número","E se: Aceitar o vencedor atual pega o líder como está; Pular encerra a parte na hora e mantém as execuções concluídas","E se: uma busca concluída mostra quais partes rodaram, quais você encerrou e quais alterações ficaram de fora pelo caminho","E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração","Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos","Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais","Depois de importar uma configuração, a janela de importação agora fecha sozinha","E se: o botão E se na página pública explica como obter o executor","Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos","Português: o botão e a janela de conjuntos de equipamento agora se chamam \\"Conjuntos\\", e os botões não quebram mais de linha","E se: a janela agora também lista os passos para Linux (ainda não testado)","Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números","E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)","Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página","E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)","E se: importar o grupo do jogo agora também preenche os itens e as habilidades do seu próprio personagem (MWI Combat Tracker 0.9.3).","E se: \\"Cada alteração sozinha\\" começa recolhida; a linha de preços só aparece quando os dados do mercado têm um dia ou mais.","E se: nomes de etapa mais claros na lista de progresso.","E se: as listas de detalhes ocupam uma linha cada, sob um único link \\"Ver detalhes\\"; um jogador cujas comidas ou bebidas não mudam não tem linha; cada etapa concluída ocupa uma linha.","E se: o executor para Windows agora é um arquivo só, WhatIfRunner.exe: salve e dê dois cliques, nada para extrair."]}},"2026-11-12":{"from":"en","zh":{"title":"2026年11月12日","notes":["假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮","假设分析：较弱的改动会在搜索过程中被淘汰，包括回本太慢的付费改动","假设分析：尚未分出高下的一组会显示大约还需要几轮","假设分析：搜索做出的每个选择都会用新的运行重新核对；你采纳的选择按原样采用"]},"pt":{"title":"12/11/2026","notes":["E se: botões Aceitar o vencedor atual e Pular na etapa em andamento","E se: alterações fracas saem conforme a busca avança, incluindo alterações pagas com retorno lento demais","E se: um grupo que ainda não se separou mostra cerca de quantas rodadas a mais precisa","E se: toda escolha da busca é conferida de novo em execuções novas; uma escolha que você aceita é tomada como está"]}},"2026-11-10":{"from":"en","zh":{"title":"2026年11月10日","notes":["全区域结果上方新增图表：每张地图是一个点，每小时经验对每日利润，点击圆点可跳到对应行","掉落、消耗品和宝箱的价格在所选一侧没有价格时，现在先用另一侧，再用商店价格","假设分析窗口：每项改动显示队伍收益和购买者自己的收益，以及成本和回本天数","假设分析窗口：适应屏幕宽度，没有横向滚动条","假设分析：先搜索食物和饮品，显示为“最佳食物”和“最佳饮品”；“应用”会先放入它们"]},"pt":{"title":"10/11/2026","notes":["Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, EXP por hora contra lucro por dia, clique em um ponto para ir às suas linhas","Preços de drops, consumíveis e baús agora usam o outro lado e depois o preço de vendedor quando o lado escolhido não tem preço","Janela E se: cada alteração mostra o ganho do grupo e o ganho do próprio comprador, com custo e dias de retorno","Janela E se: ocupa a largura da tela, sem barra de rolagem horizontal","E se: comidas e bebidas são buscadas primeiro e mostradas como Melhores comidas e Melhores bebidas; Aplicar coloca elas primeiro"]}},"2026-11-09":{"from":"en","zh":{"title":"2026年11月9日","notes":["本地假设分析运行器的假设分析窗口：设置预算和搜索内容，可停止搜索，一键应用建议的改动","结果：“法力值耗尽”下方的“触发条件等待”显示每个技能被什么拖住","结果：“法力值耗尽比例”始终显示，取代是/否一行","导入分组时也会勾选其中的玩家，并设置其指定的区域和难度"]},"pt":{"title":"09/11/2026","notes":["Janela E se para o executor local do E se: defina um orçamento e o que buscar, pare a busca e aplique uma alteração sugerida com um clique","Resultados: Retido por gatilho, abaixo de Ficou sem mana, mostra o que segurou cada técnica","Resultados: Proporção sem mana sempre aparece, no lugar da linha Sim/Não","Importar um grupo também marca seus jogadores e define a zona e o nível que ele indica"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字缩写显示，10,000 起使用 k、M、B 和 T","右上角新增 ISO 数字开关","页面默认以黑暗模式打开","模拟器现已支持葡萄牙语","模拟速度提升约五倍"]},"pt":{"title":"08/11/2026","notes":["Os números dos resultados aparecem abreviados, com k, M, B e T a partir de 10.000","Nova chave Números ISO no canto superior direito","A página abre no modo escuro por padrão","O simulador agora está disponível em português","As simulações rodam cerca de cinco vezes mais rápido"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在会计入已装备的饮品和你自己装备的光环"]},"pt":{"title":"07/11/2026","notes":["O painel de Atributos de Combate agora conta as bebidas equipadas e as suas próprias auras equipadas"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["公会增益可从两种导出格式读取","战斗属性面板显示模拟所用的属性，包括房屋、成就以及公会和社区增益","社区经验和战斗掉落增益默认开启，等级为20，可编辑"]},"pt":{"title":"04/11/2026","notes":["Os buffs de guilda são lidos dos dois formatos de exportação","O painel de Atributos de Combate mostra os atributos que a simulação usa, incluindo cômodos da casa, conquistas e buffs de guilda e da comunidade","Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"]}}}');
 
 /***/ }),
 
@@ -4740,7 +5085,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation b
   \************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"2026-11-14":{"fork":"Ramlock","notes":["What-if: a new look. One summary bar, every list a table, a setup form that folds while a search runs, and one Start / Stop button that answers at once.","What-if: guild shrine upgrades are proposed, with their cost in Guild Tokens and Coin; an item can go into an empty slot.","What-if: changes that do not fit a player\'s combat style or element are no longer tried.","What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit.","Talismans imported from the MWI Combat Tracker are shown with the player\'s equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)."]},"2026-11-13":{"fork":"Ramlock","notes":["What-if: Foods and Drinks are now two separate options, so you can search one without the other","What-if: a figure from too few runs shows a dash instead of a number","What-if: Accept current winner takes the leader as it is; Skip ends the part at once and keeps its finished runs","What-if: a finished search shows which parts ran, which you ended and which changes were left out along the way","What-if: Each change alone shows one row per setting instead of several values of one setting","Importing a group is now remembered when you reload the page, names included","Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails","After importing a setup, the import window now closes by itself","What-if: the What-if button on the public page explains how to get the runner","Importing a profile with an aura now selects the aura and puts the abilities in the right slots","Portuguese: the equipment sets button and window are now called \\"Conjuntos\\", so the buttons no longer wrap","What-if: the window now also lists Linux steps (not tested yet)","Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers","What-if: every ± margin is now written in the same unit as the figure beside it (rounded up)","Runner: the window no longer says the runner stopped when it is starting up, and starting it a second time just opens the page","What-if: the budget field now accepts spaces, commas and k, M, B, T (like 1.5M)","What-if: importing the party from the game now also fills your own character\'s items and abilities (MWI Combat Tracker 0.9.3).","What-if: \\"Each change alone\\" starts collapsed; the prices line shows only when the market data is a day old or more.","What-if: clearer stage names in the progress list.","What-if: the detail lists are one line each under one \\"See details\\" link; a player whose foods or drinks do not change has no row; each finished stage is one line.","What-if: the Windows runner is now one file, WhatIfRunner.exe: save it and double-click, nothing to unzip."]},"2026-11-12":{"fork":"Ramlock","notes":["What-if: Accept current winner and Skip buttons on the running stage","What-if: weak changes drop out as the search goes, including paid changes that pay back too slowly","What-if: a pool that has not separated yet shows about how many more rounds it needs","What-if: every pick the search makes is re-checked on fresh runs; a pick you accept is taken as is"]},"2026-11-10":{"fork":"Ramlock","notes":["A chart above the all-zones results: each map is a dot, XP per hour against profit per day, click a dot to jump to its rows","Drop, consumable and chest prices now fall back to the other side, then the vendor price, when your chosen side has none","What-if window: each change shows the party\'s gain and the buyer\'s own gain, with cost and payback days","What-if window: fits the screen width, no horizontal scrollbar","What-if: foods and drinks are searched first and shown as Best foods and Best drinks; Apply puts them in first"]},"2026-11-09":{"fork":"Ramlock","notes":["What-if window for the local What-if runner: set a budget and what to search, Stop the search, apply a suggested change in one click","Results: Held by trigger under Ran out of mana shows what held each skill back","Results: Mana Run Out Ratio always shows, replacing the Yes/No line","Importing a group also ticks its players and sets the zone and tier it names"]},"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show shortened, with k, M, B and T from 10,000 up","New ISO numbers toggle at the top right","The page opens in Dark Mode by default","The simulator is now available in Portuguese","Simulations run about five times faster"]},"2026-11-07":{"fork":"Ramlock","notes":["Combat Stats panel now counts slotted drinks and your own equipped auras"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are read from both export formats","Combat Stats panel shows the stats the simulation uses, including house rooms, achievements and guild and community buffs","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
+module.exports = /*#__PURE__*/JSON.parse('{"2026-11-15":{"fork":"Ramlock","notes":["What-if: players with a setup start ticked when the window opens","What-if: trigger changes read fully in Portuguese and Chinese","What-if: Accept and Skip wait while the search is stopping","What-if: Skip and Accept respond faster","What-if: a strong change is no longer set aside as tied with a much weaker one, so the search no longer ends with no change while a real upgrade was still in the running","What-if: equipment is tried at every enhancement level the market sells, and the Philosopher\'s Mirror is no longer used to price levels for now","What-if: when the search cannot tell apart several changes that are each a clear gain, it now tests them together and takes them as one step; the step lists each change, with its own gain in a tooltip","The zone pickers have a \\"Planets only\\" switch, on by default, that hides the single-monster fights","What-if: when only a few changes are left, a search no longer re-checks the leaders every round once their check has its answer, so those rounds take much less time","What-if: the stage buttons no longer flicker while the pointer rests on them","What-if: help tooltips show whole and on top, wherever the mark is","What-if: the chips above the result share one line, the base profit chip says what it is, and the unknown-cost chip is gone","What-if: a new search clears the earlier result from the window; the setup warning is one line with the number of differences, its list opens on a click, and a trigger reads as words; Earlier searches also lists stopped searches, marked as stopped","What-if: when a winner fails its check, the changes only it had put out return to the race and the search goes on without it, so the next best change is no longer lost","What-if: each row of the progress table shows its own check (the change being checked and its runs), a progress bar, and a change its check left out; elapsed time carries on after a resume, runs kept from before are counted, and the columns no longer move","What-if: while a search runs, changes that look positive so far are listed under the chosen changes, marked as not checked yet","What-if: a change the check cannot settle gets more runs, and every change left out now says why (a loss, too small to matter, or too small to tell) with its range","What-if: a press of Accept current winner or Skip this stage is kept through Stop and Resume","Talismans imported from the MWI Combat Tracker are shown with the player\'s equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)"]},"2026-11-14":{"fork":"Ramlock","notes":["What-if: a new look. One summary bar, every list a table, a setup form that folds while a search runs, and one Start / Stop button that answers at once.","What-if: guild shrine upgrades are proposed, with their cost in Guild Tokens and Coin; an item can go into an empty slot.","What-if: changes that do not fit a player\'s combat style or element are no longer tried.","What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit."]},"2026-11-13":{"fork":"Ramlock","notes":["What-if: Foods and Drinks are now two separate options, so you can search one without the other","What-if: a figure from too few runs shows a dash instead of a number","What-if: Accept current winner takes the leader as it is; Skip ends the part at once and keeps its finished runs","What-if: a finished search shows which parts ran, which you ended and which changes were left out along the way","What-if: Each change alone shows one row per setting instead of several values of one setting","Importing a group is now remembered when you reload the page, names included","Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails","After importing a setup, the import window now closes by itself","What-if: the What-if button on the public page explains how to get the runner","Importing a profile with an aura now selects the aura and puts the abilities in the right slots","Portuguese: the equipment sets button and window are now called \\"Conjuntos\\", so the buttons no longer wrap","What-if: the window now also lists Linux steps (not tested yet)","Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers","What-if: every ± margin is now written in the same unit as the figure beside it (rounded up)","Runner: the window no longer says the runner stopped when it is starting up, and starting it a second time just opens the page","What-if: the budget field now accepts spaces, commas and k, M, B, T (like 1.5M)","What-if: importing the party from the game now also fills your own character\'s items and abilities (MWI Combat Tracker 0.9.3).","What-if: \\"Each change alone\\" starts collapsed; the prices line shows only when the market data is a day old or more.","What-if: clearer stage names in the progress list.","What-if: the detail lists are one line each under one \\"See details\\" link; a player whose foods or drinks do not change has no row; each finished stage is one line.","What-if: the Windows runner is now one file, WhatIfRunner.exe: save it and double-click, nothing to unzip."]},"2026-11-12":{"fork":"Ramlock","notes":["What-if: Accept current winner and Skip buttons on the running stage","What-if: weak changes drop out as the search goes, including paid changes that pay back too slowly","What-if: a pool that has not separated yet shows about how many more rounds it needs","What-if: every pick the search makes is re-checked on fresh runs; a pick you accept is taken as is"]},"2026-11-10":{"fork":"Ramlock","notes":["A chart above the all-zones results: each map is a dot, XP per hour against profit per day, click a dot to jump to its rows","Drop, consumable and chest prices now fall back to the other side, then the vendor price, when your chosen side has none","What-if window: each change shows the party\'s gain and the buyer\'s own gain, with cost and payback days","What-if window: fits the screen width, no horizontal scrollbar","What-if: foods and drinks are searched first and shown as Best foods and Best drinks; Apply puts them in first"]},"2026-11-09":{"fork":"Ramlock","notes":["What-if window for the local What-if runner: set a budget and what to search, Stop the search, apply a suggested change in one click","Results: Held by trigger under Ran out of mana shows what held each skill back","Results: Mana Run Out Ratio always shows, replacing the Yes/No line","Importing a group also ticks its players and sets the zone and tier it names"]},"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show shortened, with k, M, B and T from 10,000 up","New ISO numbers toggle at the top right","The page opens in Dark Mode by default","The simulator is now available in Portuguese","Simulations run about five times faster"]},"2026-11-07":{"fork":"Ramlock","notes":["Combat Stats panel now counts slotted drinks and your own equipped auras"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are read from both export formats","Combat Stats panel shows the stats the simulation uses, including house rooms, achievements and guild and community buffs","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
 
 /***/ }),
 
@@ -5072,33 +5417,41 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatsimulator_guildBuff__WEBPACK_IMPORTED_MODULE_11__ = __webpack_require__(/*! ./combatsimulator/guildBuff */ "./src/combatsimulator/guildBuff.js");
 /* harmony import */ var _importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! ./importGuildBuffs.js */ "./src/importGuildBuffs.js");
 /* harmony import */ var _simSetup_js__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! ./simSetup.js */ "./src/simSetup.js");
-/* harmony import */ var _combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! ./combatStatsPanel.js */ "./src/combatStatsPanel.js");
-/* harmony import */ var _combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./combatsimulator/triggerHolds.js */ "./src/combatsimulator/triggerHolds.js");
-/* harmony import */ var _combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./combatsimulator/heldPopup.js */ "./src/combatsimulator/heldPopup.js");
-/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
-/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
-/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
-/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
-/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
-/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
-/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
-/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
-/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
-/* harmony import */ var _xpChart_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./xpChart.mjs */ "./src/xpChart.mjs");
-/* harmony import */ var _unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./unitPrice.mjs */ "./src/unitPrice.mjs");
-/* harmony import */ var _xpChartView_js__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ./xpChartView.js */ "./src/xpChartView.js");
-/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
-/* harmony import */ var _slotNames_mjs__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ./slotNames.mjs */ "./src/slotNames.mjs");
-/* harmony import */ var _savedGroup_mjs__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ./savedGroup.mjs */ "./src/savedGroup.mjs");
-/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
-/* harmony import */ var _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ./whatif/runnerDownload.mjs */ "./src/whatif/runnerDownload.mjs");
-/* harmony import */ var _talismanView_mjs__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ./talismanView.mjs */ "./src/talismanView.mjs");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_40__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _zones_mjs__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! ./zones.mjs */ "./src/zones.mjs");
+/* harmony import */ var _combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./combatStatsPanel.js */ "./src/combatStatsPanel.js");
+/* harmony import */ var _combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./combatsimulator/triggerHolds.js */ "./src/combatsimulator/triggerHolds.js");
+/* harmony import */ var _combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./combatsimulator/heldPopup.js */ "./src/combatsimulator/heldPopup.js");
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
+/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
+/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
+/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
+/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
+/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
+/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
+/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
+/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
+/* harmony import */ var _xpChart_mjs__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./xpChart.mjs */ "./src/xpChart.mjs");
+/* harmony import */ var _unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ./unitPrice.mjs */ "./src/unitPrice.mjs");
+/* harmony import */ var _xpChartView_js__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ./xpChartView.js */ "./src/xpChartView.js");
+/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
+/* harmony import */ var _slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ./slotNames.mjs */ "./src/slotNames.mjs");
+/* harmony import */ var _savedGroup_mjs__WEBPACK_IMPORTED_MODULE_36__ = __webpack_require__(/*! ./savedGroup.mjs */ "./src/savedGroup.mjs");
+/* harmony import */ var _whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ./whatif/minGain.mjs */ "./src/whatif/minGain.mjs");
+/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
+/* harmony import */ var _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ./whatif/runnerDownload.mjs */ "./src/whatif/runnerDownload.mjs");
+/* harmony import */ var _talismanView_mjs__WEBPACK_IMPORTED_MODULE_40__ = __webpack_require__(/*! ./talismanView.mjs */ "./src/talismanView.mjs");
+/* harmony import */ var _whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_41__ = __webpack_require__(/*! ./whatif/morph.mjs */ "./src/whatif/morph.mjs");
+/* harmony import */ var _whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_42__ = __webpack_require__(/*! ./whatif/tip.mjs */ "./src/whatif/tip.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_43__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_44__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
+
+
+
 
 
 
@@ -5153,8 +5506,8 @@ let simStartTime = 0;
 // The progress bar text, "37% (1.2s)", with the exact elapsed time on hover, both in the number mode in force when drawn.
 function setProgressText(percent) {
     const elapsed = (Date.now() - simStartTime) / 1000;
-    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.formatUnit)(elapsed, "s") + ")";
-    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.exactUnit)(elapsed, "s") + ")";
+    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatUnit)(elapsed, "s") + ")";
+    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.exactUnit)(elapsed, "s") + ")";
 }
 
 let worker = new Worker(new URL(/* worker import */ __webpack_require__.p + __webpack_require__.u(2), __webpack_require__.b));
@@ -5486,7 +5839,7 @@ function applyGuildBuffsToState(importMap) {
 }
 
 function refreshAchievementStatics() {
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_28__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
         const checks = document.querySelectorAll(`input[data-achievement-hrid][data-tier="${tier.sortIndex}"]`);
         const done = Array.from(checks).filter(cb => cb.checked).length;
@@ -5511,9 +5864,9 @@ function initAchievementsModal(){
     let newChildren = [];
     player.achievements = {};
 
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_27__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_28__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
-        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
+        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
         let detailMapCount = detailMap.length;
         if (detailMapCount <= 0) continue;
 
@@ -5532,8 +5885,8 @@ function initAchievementsModal(){
         bufDesc.appendChild(buffName);
         let buffValue = createElement("i", "");
         const buffPercent = parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100;
-        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)();
-        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentSign)();
+        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)();
+        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)();
         bufDesc.appendChild(buffValue);
         cardHeader.appendChild(bufDesc);
 
@@ -5748,10 +6101,10 @@ function updateCombatStatsUI() {
     let combatStyleElement = document.getElementById("combatStat_combatStyleHrid");
     let combatStyle = unit.combatDetails.combatStats.combatStyleHrid;
     combatStyleElement.setAttribute("data-i18n", "combatStyleNames." + combatStyle);
-    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[combatStyle].name;
+    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_26__[combatStyle].name;
 
     let damageTypeElement = document.getElementById("combatStat_damageType");
-    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[unit.combatDetails.combatStats.damageType];
+    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[unit.combatDetails.combatStats.damageType];
     damageTypeElement.setAttribute("data-i18n", "damageTypeNames." + damageType.hrid);
     damageTypeElement.innerHTML = damageType.name;
 
@@ -5769,7 +6122,7 @@ function updateCombatStatsUI() {
     }
     focusTrainingElement.innerHTML = focusTraining;
 
-    for (const [stat, value] of Object.entries((0,_combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_14__.getCombatStatsPanelValues)(unit.combatDetails))) {
+    for (const [stat, value] of Object.entries((0,_combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_15__.getCombatStatsPanelValues)(unit.combatDetails))) {
         document.getElementById("combatStat_" + stat).innerHTML = value;
     }
     alignNumbers();
@@ -5777,7 +6130,7 @@ function updateCombatStatsUI() {
 
 // Lines the numbers of every column up (one number of decimals per column, src/numberFormat.js); run after a table or list renders.
 function alignNumbers() {
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.alignNumberColumns)(document);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.alignNumberColumns)(document);
 }
 
 // #endregion
@@ -6000,9 +6353,9 @@ function updateAbilityUI() {
         let inputElement = document.getElementById("inputAbilityLevel_" + i);
         let triggerButton = document.getElementById("buttonAbilityTrigger_" + i);
 
-        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1];
-        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1];
-        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1] || !main_abilities[i];
+        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1];
+        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1];
+        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1] || !main_abilities[i];
         let moveUpButton = document.getElementById("selectAbilityMoveUp_" + i);
         moveUpButton.onclick = () => swapAbilityOrder(i, -1);
     }
@@ -6221,7 +6574,7 @@ function updateTriggerModal() {
 
         triggerComparatorSelect.value = modalTriggers[i].comparatorHrid;
 
-        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[modalTriggers[i].comparatorHrid].allowValue) {
+        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[modalTriggers[i].comparatorHrid].allowValue) {
             showElement(triggerValueInput);
             triggerValueInput.value = modalTriggers[i].value;
         } else {
@@ -6239,7 +6592,7 @@ function fillTriggerDependencySelect(element) {
     element.length = 0;
     element.add(new Option("", ""));
 
-    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__).sort(
+    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__).sort(
         (a, b) => a.sortIndex - b.sortIndex
     )) {
         let opt = new Option(dependency.name, dependency.hrid);
@@ -6249,13 +6602,13 @@ function fillTriggerDependencySelect(element) {
 }
 
 function fillTriggerConditionSelect(element, dependencyHrid) {
-    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__[dependencyHrid];
+    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[dependencyHrid];
 
     let conditions;
     if (dependency.isSingleTarget) {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__).filter((condition) => condition.isSingleTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__).filter((condition) => condition.isSingleTarget);
     } else {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__).filter((condition) => condition.isMultiTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__).filter((condition) => condition.isMultiTarget);
     }
 
     element.length = 0;
@@ -6269,9 +6622,9 @@ function fillTriggerConditionSelect(element, dependencyHrid) {
 }
 
 function fillTriggerComparatorSelect(element, conditionHrid) {
-    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[conditionHrid];
+    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[conditionHrid];
 
-    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[hrid]);
+    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[hrid]);
 
     element.length = 0;
     element.add(new Option("", ""));
@@ -6297,19 +6650,59 @@ function showElement(element) {
 
 // #region Zones
 
+// "Planets only": one setting, two checkboxes (the page's zone picker and the What-if window's), kept in the browser under one key.
+// On, a zone picker hides every option that is not a planet, except the selected one (picked with the toggle off, or set by a load
+// or an import), which stays until another is picked. Nothing here changes a selection.
+const PLANETS_ONLY_KEY = "zonesPlanetsOnly";
+const PLANETS_ONLY_TOGGLES = ["planetsOnlyToggle", "whatIfPlanetsOnlyToggle"];
+const PLANETS_ONLY_SELECTS = ["selectZone", "selectWhatIfZone"];
+
+function planetsOnlyStored() {
+    try { return localStorage.getItem(PLANETS_ONLY_KEY) !== "0"; } catch (e) { return true; }
+}
+
+function applyPlanetsOnly(select) {
+    const on = document.getElementById("planetsOnlyToggle").checked;
+    for (const option of select.options) option.hidden = on && option.dataset.planet !== "1" && option.value !== select.value;
+}
+
+function initPlanetsOnly() {
+    const on = planetsOnlyStored();
+    for (const id of PLANETS_ONLY_TOGGLES) {
+        const toggle = document.getElementById(id);
+        toggle.checked = on;
+        toggle.addEventListener("change", () => {
+            for (const other of PLANETS_ONLY_TOGGLES) document.getElementById(other).checked = toggle.checked;
+            try { localStorage.setItem(PLANETS_ONLY_KEY, toggle.checked ? "1" : "0"); } catch (e) { }
+            for (const s of PLANETS_ONLY_SELECTS) applyPlanetsOnly(document.getElementById(s));
+        });
+    }
+    // A load or an import sets the value without a change event, so the list is brought up to date again before it opens.
+    for (const id of PLANETS_ONLY_SELECTS) {
+        const select = document.getElementById(id);
+        for (const type of ["change", "focus", "mousedown", "keydown"]) select.addEventListener(type, () => applyPlanetsOnly(select));
+    }
+    // A fresh page starts on the first zone the picker lists (a load or an import sets its own afterwards).
+    const zoneSelect = document.getElementById("selectZone");
+    if (on) zoneSelect.value = [...zoneSelect.options].find((o) => o.dataset.planet === "1")?.value ?? zoneSelect.value;
+    applyPlanetsOnly(zoneSelect);
+}
+
 function initZones() {
     let zoneSelect = document.getElementById("selectZone");
 
     // TOOD dungeon wave spawns
-    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
     for (const zone of Object.values(gameZones)) {
         let opt = new Option(zone.name, zone.hrid);
         opt.setAttribute("data-i18n", "actionNames." + zone.hrid);
+        if ((0,_zones_mjs__WEBPACK_IMPORTED_MODULE_14__.isPlanetZone)(zone)) opt.dataset.planet = "1";
         zoneSelect.add(opt);
     }
+    initPlanetsOnly();
 
 
     let zoneCheckBox = document.getElementById("zoneCheckBox");
@@ -6326,8 +6719,8 @@ function initZones() {
         }
     });
 
-    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
-        .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount > 1)
+    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+        .filter((action) => (0,_zones_mjs__WEBPACK_IMPORTED_MODULE_14__.isPlanetZone)(action))
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
 
@@ -6369,7 +6762,7 @@ function initZones() {
         }
     });
 
-    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount == 1)
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -6401,7 +6794,7 @@ function initZones() {
 function initDungeons() {
     let dungeonSelect = document.getElementById("selectDungeon");
 
-    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
         .filter((action) => action.type == "/action_types/combat" && action.category == "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -6424,7 +6817,7 @@ let isLabyRinthSim = false;
 function initLabyrinth() {
     let labyrinthSelect = document.getElementById("selectLabyrinth");
 
-    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -6593,11 +6986,11 @@ function showSimulationResult(simResult) {
     showDamageTaken(simResult, playerToDisplay);
     renderWipeEvents(simResult);
     window.profit = window.revenue - window.expenses;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitSpan'), window.profit);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitPreview'), window.profit);
     window.noRngProfit = window.noRngRevenue - window.expenses;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     alignNumbers();
 
     // 显示战斗图表
@@ -6620,7 +7013,7 @@ function showAllSimulationResults(simResults) {
 
         for (let row = 1; row < rows.length; row++) {
             const cell = rows[row].cells[col];
-            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(cell);
+            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(cell);
             if (value >= 30) {
                 cell.style.backgroundColor = 'green';
                 cell.style.color = 'white';
@@ -6639,7 +7032,7 @@ function showAllSimulationResults(simResults) {
             // 找到最大值及其单元格
             for (let row = 1; row < rows.length; row++) {
                 const cell = rows[row].cells[col];
-                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(cell);
+                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(cell);
                 if (value > max) {
                     max = value;
                     maxCell = cell;
@@ -7031,7 +7424,7 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 "expenses": expenses,
                 "noRngProfit": noRngProfit,
                 // Chart only: the table loop skips it (see CHART_ONLY_KEYS). Profit scaled to one day, so the chart does not depend on the Duration input.
-                "ProfitPerDay": (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_30__.profitPerDay)(noRngProfit, hoursSimulated)
+                "ProfitPerDay": (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_31__.profitPerDay)(noRngProfit, hoursSimulated)
             };
             displaySimResults.push(displaySimRow);
         }
@@ -7063,8 +7456,8 @@ function calcDropMaps(simResult, playerToDisplay) {
     for (const monster of monsters) {
         const dropMap = new Map();
         const rareDropMap = new Map();
-        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].dropTable) {
-            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].dropTable) {
+        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].dropTable) {
+            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].dropTable) {
                 if (drop.minDifficultyTier > simResult.difficultyTier) {
                     continue;
                 }
@@ -7075,8 +7468,8 @@ function calcDropMaps(simResult, playerToDisplay) {
 
                 dropMap.set(drop.itemHrid, { "dropRate": Math.min(1.0, dropRate * dropRateMultiplier), "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
             }
-            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].rareDropTable)
-                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].rareDropTable) {
+            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].rareDropTable)
+                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].rareDropTable) {
                     if (drop.minDifficultyTier > simResult.difficultyTier) {
                         continue;
                     }
@@ -7142,7 +7535,7 @@ function getDropProfit(simResult, playerToDisplay) {
 
     let noRngTotal = 0;
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
         noRngTotal += price * dropAmount;
     }
 
@@ -7156,7 +7549,7 @@ function getDropProfit(simResult, playerToDisplay) {
 
     let expenses = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
         expenses += price * amount;
     }
 
@@ -7171,7 +7564,7 @@ const CHART_ONLY_KEYS = new Set(['ProfitPerDay']);
 let xpChartView = null;
 function getXpChartView() {
     if (!xpChartView) {
-        xpChartView = (0,_xpChartView_js__WEBPACK_IMPORTED_MODULE_32__.createXpChartView)({ t: (key) => i18next.t(key), format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.formatNumber)(v), Chart });
+        xpChartView = (0,_xpChartView_js__WEBPACK_IMPORTED_MODULE_33__.createXpChartView)({ t: (key) => i18next.t(key), format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatNumber)(v), Chart });
         i18next.on('languageChanged', () => xpChartView.refreshLabels());
     }
     return xpChartView;
@@ -7183,14 +7576,14 @@ function updateAllSimsModal(data) {
     data.forEach(item => {
         const row = document.createElement('tr');
         // The chart finds the rows of a map by these, never by cell text.
-        row.dataset.mapKey = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_30__.mapKey)(item.ZoneName, item.DifficultyTier);
+        row.dataset.mapKey = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_31__.mapKey)(item.ZoneName, item.DifficultyTier);
         row.dataset.player = item.Player;
 
         Object.keys(item).forEach(key => {
             if (CHART_ONLY_KEYS.has(key)) return;
             const cell = document.createElement('td');
             if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
-                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(cell, item[key]);
+                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(cell, item[key]);
                 cell.dataset.sortValue = item[key];
             } else {
                 cell.textContent = item[key];
@@ -7223,8 +7616,8 @@ function sortTable(tableId, columnIndex, direction) {
 
     const sortedRows = rows.sort((rowA, rowB) => {
         // The exact value the cell was built with (cellValue throws when a cell has none), never its display text.
-        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(rowA.children[columnIndex]);
-        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.cellValue)(rowB.children[columnIndex]);
+        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(rowA.children[columnIndex]);
+        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(rowB.children[columnIndex]);
 
         return direction === 'asc' ? valueA - valueB : valueB - valueA;
     });
@@ -7318,34 +7711,34 @@ function showKills(simResult, playerToDisplay) {
             failedDungeonsRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.dungeonsFailed");
             newChildren.push(failedDungeonsRow);
         }
-        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
-        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
+        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Average Time", averageTime]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.averageTime");
         if (simResult.minDungenonTime > 0) {
-            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
+            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
             let minimumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Minimum Time", minimumTime]);
             minimumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.minimumTime");
             newChildren.push(minimumTimeRow);
         }
         if (simResult.maxDungenonTime > 0) {
-            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
+            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
             let maximumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Maximum Time", maximumTime]);
             maximumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.maximumTime");
             newChildren.push(maximumTimeRow);
         }
     } else {
-        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.encounters / hoursSimulated);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.encounters / hoursSimulated);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Encounters", encountersPerHour]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.encounters");
     }
 
     if (simResult.labyAttemptCount > 0) {
-        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
+        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
         labyAttemptCountRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labyAttemptCount");
         newChildren.push(labyAttemptCountRow);
 
-        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
+        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
         labySuccessRateRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labySuccessRate");
         newChildren.push(labySuccessRateRow);
     }
@@ -7357,7 +7750,7 @@ function showKills(simResult, playerToDisplay) {
     }
 
     if (simResult.debuffOnLevelGap[playerToDisplay] != 0) {
-        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
+        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
         debuffOnLevelGapRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.debuffOnLevelGap");
         newChildren.push(debuffOnLevelGapRow);
     }
@@ -7368,10 +7761,10 @@ function showKills(simResult, playerToDisplay) {
         .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
         .sort()
         .forEach(monster => {
-            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
+            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
             let monsterRow = createRow(
                 ["col-md-6", "col-md-6 text-end"],
-                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[monster].name, killsPerHour]
+                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].name, killsPerHour]
             );
             monsterRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + monster);
             newChildren.push(monsterRow);
@@ -7384,7 +7777,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of totalDropMap.entries()) {
         let dropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount)]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount)]
         );
         dropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newDropChildren.push(dropRow);
@@ -7392,12 +7785,12 @@ function showKills(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + name.replace(/\s+/g, '') + '"><td data-i18n="itemNames.';
         tableRow += name;
         tableRow += '"></td><td contenteditable="true">';
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(price * dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
         total += price * dropAmount;
@@ -7410,7 +7803,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
         let noRngDropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount)]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount)]
         );
         noRngDropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newNoRngDropChildren.push(noRngDropRow);
@@ -7418,20 +7811,20 @@ function showKills(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + name.replace(/\s+/g, '') + '"><td data-i18n="itemNames.';
         tableRow += name;
         tableRow += '"></td><td contenteditable="true">';
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(price * dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
         noRngTotal += price * dropAmount;
     }
 
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('revenueSpan'), total);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('revenueSpan'), total);
     window.revenue = total;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
     window.noRngRevenue = noRngTotal;
 
     let resultAccordion = document.getElementById("noRngDropsAccordion");
@@ -7447,7 +7840,7 @@ function showDeaths(simResult, playerToDisplay) {
 
     let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
     let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(playerDeaths / hoursSimulated);
+    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(playerDeaths / hoursSimulated);
 
     let deathRow = createRow(["col-md-6", "col-md-6 text-end"], ["Player", deathsPerHour]);
     deathRow.firstElementChild.setAttribute("data-i18n", "common:player");
@@ -7464,7 +7857,7 @@ function showExperienceGained(simResult, playerToDisplay) {
     if (simResult.experienceGained[playerToDisplay]) {
         totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
     }
-    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalExperience / hoursSimulated);
+    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalExperience / hoursSimulated);
     let totalRow = createRow(["col-md-6", "col-md-6 text-end"], ["Total", totalExperiencePerHour]);
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -7474,7 +7867,7 @@ function showExperienceGained(simResult, playerToDisplay) {
         if (experience == 0) {
             return;
         }
-        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(experience / hoursSimulated);
+        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(experience / hoursSimulated);
         let experienceRow = createRow(["col-md-6", "col-md-6 text-end"], [skill, experiencePerHour]);
         experienceRow.firstElementChild.setAttribute("data-i18n", "leaderboardCategoryNames." + skill.toLowerCase());
         newChildren.push(experienceRow);
@@ -7493,7 +7886,7 @@ function showHpSpent(simResult, playerToDisplay) {
         let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
         let hpSpentSources = [];
         for (const source of Object.keys(simResult.hitpointsSpent[playerToDisplay])) {
-            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
+            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
             let hpSpentRow = createRow(["col-md-6", "col-md-6 text-end"], [_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[source].name, hpSpentPerHour]);
             hpSpentRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + source);
             hpSpentSources.push(hpSpentRow);
@@ -7521,7 +7914,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
     let expensesModalTable = document.querySelector("#expensesTable > tbody");
     let total = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount / hoursSimulated);
+        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount / hoursSimulated);
         let consumableRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
             [_combatsimulator_data_itemDetailMap_json__WEBPACK_IMPORTED_MODULE_3__[consumable].name, consumablesPerHour]
@@ -7532,18 +7925,18 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + consumable + '"><td data-i18n="itemNames.';
         tableRow += consumable;
         tableRow += '"></td><td contenteditable="true">';
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + amount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount);
         tableRow += '</td><td data-total="' + price * amount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(price * amount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(price * amount);
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
         total += price * amount;
     }
 
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('expensesSpan'), total);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('expensesSpan'), total);
     window.expenses = total;
 
     resultDiv.replaceChildren(...newChildren);
@@ -7565,8 +7958,8 @@ function showManaUsed(simResult, playerToDisplay) {
     for (let ability in playerManaUsed) {
         let manaUsed = playerManaUsed[ability];
         let manaPerHourValue = Math.round(manaUsed / hoursSimulated);
-        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(manaPerHourValue);
-        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
+        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(manaPerHourValue);
+        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
 
         let manaRow = createRow(
             ["col-md-6", "col-md-2", "col-md-4 text-end"],
@@ -7593,10 +7986,10 @@ function showHitpointsGained(simResult, playerToDisplay) {
     let hitpointsGained = Object.entries(simResult.hitpointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalHitpointsGained = hitpointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalHitpointsGained / secondsSimulated);
+    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalHitpointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(100)]
+        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -7631,8 +8024,8 @@ function showHitpointsGained(simResult, playerToDisplay) {
                 }
                 break;
         }
-        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * amount) / totalHitpointsGained);
+        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * amount) / totalHitpointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
@@ -7659,10 +8052,10 @@ function showManapointsGained(simResult, playerToDisplay) {
     let manapointsGained = Object.entries(simResult.manapointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalManapointsGained = manapointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalManapointsGained / secondsSimulated);
+    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalManapointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(100)]
+        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -7692,8 +8085,8 @@ function showManapointsGained(simResult, playerToDisplay) {
                 sourceFullHrid = "itemNames." + source;
                 break;
         }
-        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(amount / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * amount) / totalManapointsGained);
+        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * amount) / totalManapointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
@@ -7710,7 +8103,7 @@ function showManapointsGained(simResult, playerToDisplay) {
         ["col-md-8 text-nowrap", "col-md-4 text-end"],
         [
             "Run Out Ratio",
-            (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
+            (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
         ]
     );
     ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
@@ -7781,12 +8174,12 @@ function showDamageDone(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageDoneAccordionEnemy" + enemyIndex
         );
-        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[target].name;
+        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[target].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageDone\">Damage Done</span> (" + "<span data-i18n=\"monsterNames." + target + "\">" + targetName + "</span>" + ")</b>";
 
         if (simResult.bossSpawns.includes(target)) {
-            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
-            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
+            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
+            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
 
             let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "(" + percentSpentOnBoss + ")"]);
             bossRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + target);
@@ -7809,7 +8202,7 @@ function showDamageDone(simResult, playerToDisplay) {
                 continue;
             }
             let aliveSecondsSimulated = simResult.timeSpentAlive[idx].timeSpentAlive / ONE_SECOND / simResult.timeSpentAlive[idx].count;
-            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(aliveSecondsSimulated, "s")]);
+            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(aliveSecondsSimulated, "s")]);
             newChildren.push(bossRow);
         }
         if (newChildren.length > 0) {
@@ -7878,7 +8271,7 @@ function showDamageTaken(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageTakenAccordionEnemy" + enemyIndex
         );
-        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__[source].name;
+        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[source].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageTaken\">Damage Taken</span> (" + "<span data-i18n=\"monsterNames." + source + "\">" + sourceName + "</span>" + ")</b>";
 
         enemyIndex++;
@@ -7896,12 +8289,12 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     let totalCasts = sortedDamageDone.reduce((prev, cur) => prev + cur[1].casts, 0);
     let totalMisses = sortedDamageDone.reduce((prev, cur) => prev + cur[1].misses, 0);
     let totalDamage = sortedDamageDone.reduce((prev, cur) => prev + cur[1].damage, 0);
-    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
-    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(totalDamage / secondsSimulated);
+    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
+    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalDamage / secondsSimulated);
 
     let totalRow = createRow(
         ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)(100)]
+        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -7944,9 +8337,9 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
                 break;
         }
 
-        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
-        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(damageInfo.damage / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentHtml)((100 * damageInfo.damage) / totalDamage);
+        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
+        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(damageInfo.damage / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * damageInfo.damage) / totalDamage);
 
         let row = createRow(
             ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
@@ -7962,16 +8355,16 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
 // "Held by trigger": the panel keeps only a details button, shown when the summary has a hold; the pop-up body
 // (#heldByTriggerBody, in index.html) is built from the result object (summarizeTriggerHolds), never from the page.
 function triggerHoldRows(simResult, playerToDisplay) {
-    const holds = (0,_combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_15__.summarizeTriggerHolds)(simResult, playerToDisplay);
+    const holds = (0,_combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_16__.summarizeTriggerHolds)(simResult, playerToDisplay);
     const body = document.getElementById("heldByTriggerBody");
-    if (!(0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__.hasHold)(holds)) {
+    if (!(0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_17__.hasHold)(holds)) {
         body.replaceChildren();
         return [];
     }
-    body.innerHTML = (0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_16__.heldPopupHtml)(holds, {
+    body.innerHTML = (0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_17__.heldPopupHtml)(holds, {
         abilityName: (hrid) => `<span data-i18n="abilityNames.${hrid}">${_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[hrid]?.name ?? hrid}</span>`,
         conditionHtml: triggerConditionHtml,
-        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.percentFixedHtml,
+        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentFixedHtml,
     });
     const row = createRow(["col-md-12"], [`<button type="button" id="heldByTriggerButton" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#heldByTriggerModal" data-i18n="common:simulationResults.heldByTriggerDetails">Held by trigger: details</button>`]);
     return [row];
@@ -7980,10 +8373,10 @@ function triggerHoldRows(simResult, playerToDisplay) {
 // A trigger condition in the game's words ("My Current Mp >= 300"), each part localized by its game key.
 function triggerConditionHtml(c) {
     const part = (key, map, hrid) => `<span data-i18n="${key}.${hrid}">${map[hrid]?.name ?? hrid}</span>`;
-    let html = part("combatTriggerDependencyNames", _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_18__, c.dependencyHrid) + " "
-        + part("combatTriggerConditionNames", _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__, c.conditionHrid) + " "
-        + part("combatTriggerComparatorNames", _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__, c.comparatorHrid);
-    if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[c.comparatorHrid]?.allowValue) html += " " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(c.value);
+    let html = part("combatTriggerDependencyNames", _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__, c.dependencyHrid) + " "
+        + part("combatTriggerConditionNames", _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__, c.conditionHrid) + " "
+        + part("combatTriggerComparatorNames", _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__, c.comparatorHrid);
+    if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[c.comparatorHrid]?.allowValue) html += " " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(c.value);
     return html;
 }
 
@@ -8027,7 +8420,7 @@ function updatePlayerNames() {
 // (src/slotNames.mjs: a name two slots share, or none, leaves the tab's text). The What-if window and search read the same names.
 function applySlotNames() {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
-    const names = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_34__.uniqueSlotNames)(tabs.map((_, i) => playerDataMap[i + 1]));
+    const names = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__.uniqueSlotNames)(tabs.map((_, i) => playerDataMap[i + 1]));
     // A tab is written once per name: its own edit after that stays until the slot's name changes.
     tabs.forEach((tab, i) => { if (names[i] && tab.dataset.slotName !== names[i]) { tab.textContent = names[i]; tab.dataset.slotName = names[i]; } });
     updatePlayerNames();
@@ -8179,7 +8572,7 @@ function buildSimPlayerDTO() {
     }
 
     for (let i = 0; i < 5; i++) {
-        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_21__[i + 1]) {
+        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1]) {
             let abilityLevelInput = document.getElementById("inputAbilityLevel_" + i);
             let ability = new _combatsimulator_ability_js__WEBPACK_IMPORTED_MODULE_7__["default"](main_abilities[i], Number(abilityLevelInput.value), triggerMap[main_abilities[i]]);
             player.abilities[i] = ability;
@@ -8326,7 +8719,7 @@ function startSimulation(selectedPlayers) {
         worker.onmessage = onWorkerMessage;
         worker.postMessage(workerMessage);
     } else if (simAllLabyrinthsToggle.checked) {
-        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -8359,7 +8752,7 @@ function startSimulation(selectedPlayers) {
         let targetHrids = {};
 
         if (simAllZonesToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -8370,7 +8763,7 @@ function startSimulation(selectedPlayers) {
         }
 
         if (simAllSoloToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -8525,7 +8918,7 @@ document.getElementById("buttonUploadJSONSimulate").addEventListener("click", (e
                     let targetHrids = {};
 
                     if (simAllZonesToggle.checked) {
-                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_22__)
+                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
                             .filter(a =>
                                 a.type === "/action_types/combat" &&
                                 a.category !== "/action_categories/combat/dungeons" &&
@@ -9030,7 +9423,7 @@ function fixTriggerMap(triggerMap) {
             triggerMap[key] = [];
         }
         for (const trigger of triggerMap[key]) {
-            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[trigger.conditionHrid]) {
+            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[trigger.conditionHrid]) {
                 err = true;
                 break;
             }
@@ -9141,7 +9534,7 @@ function loadEquipmentSetIntoUI(equipmentSet) {
             player.achievements[achievement] = field.checked;
         }
     } else {
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -9176,7 +9569,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
+const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, resultLoaded: false, earlier: [], partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -9196,19 +9589,21 @@ function whatIfSlots(onlySelected) {
 // (its `name`), else the tab's own text. A name two slots share, or an empty one, falls back to the tab's text.
 function whatIfPlayerNames() {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
-    return (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_34__.shownNames)(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
+    return (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__.shownNames)(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
 }
 
-// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. Copied
-// from the page when the window opens (fromPage); otherwise (a language change) only the names are redrawn and the
-// window's own picks are kept. Nothing here writes to the page.
+// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. When the window
+// opens (fromPage) every player whose slot holds a character (slotHasData: an import or a setup made by hand) starts ticked and
+// every other unticked, whatever the page's own ticks (a reload does not keep them, and an import may set none); the zone and
+// tier are copied from the page. Otherwise (a language change) only the names are redrawn and the window's own picks are kept.
+// Nothing here writes to the page.
 function whatIfRenderChoices(fromPage) {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
     savePreviousPlayer(currentPlayerTabId);
     const shownNames = whatIfPlayerNames();
     const players = document.getElementById('whatIfPlayers');
     const ticked = new Set(fromPage
-        ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
+        ? tabs.map((_, i) => i + 1).filter((i) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.slotHasData)(playerDataMap[i])).map(String)
         : [...players.querySelectorAll('input:checked')].map((c) => c.value));
     players.replaceChildren();
     // One row of equal columns, one per player (a long name is cut with an ellipsis, its title holds the whole name).
@@ -9238,25 +9633,27 @@ function whatIfRenderChoices(fromPage) {
         select.replaceChildren(...[...document.getElementById(pageId).options].map((o) => {
             const copy = new Option(o.textContent, o.value);
             if (o.dataset.i18n) copy.dataset.i18n = o.dataset.i18n;
+            if (o.dataset.planet) copy.dataset.planet = o.dataset.planet;
             return copy;
         }));
         select.value = keep;
     };
     copySelect('selectWhatIfZone', 'selectZone');
+    applyPlanetsOnly(document.getElementById('selectWhatIfZone'));
     copySelect('selectWhatIfTier', 'selectDifficulty');
 }
 
 // The kept character export of a player (browser storage, one key per player name), or null.
 function whatIfKeptExport(name) {
-    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
+    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
 // Keeps one player's character export under the player's name (browser storage), then redraws the marks and the ticks that need it.
 // A party import ends here (whatIfKeepImportedExports). `data`: the export object; a valid one replaces the kept one, a bad one is not kept.
 function whatIfKeepExport(name, data) {
-    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.parseExport)(JSON.stringify(data));
+    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.parseExport)(JSON.stringify(data));
     if (parsed.ok) {
-        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.exportKey)(name), JSON.stringify(parsed.data)); } catch (e) { /* storage full or blocked: the mark below says none */ }
+        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportKey)(name), JSON.stringify(parsed.data)); } catch (e) { /* storage full or blocked: the mark below says none */ }
     }
     whatIfShowExportStatus();
     whatIfApplyExportLevers();
@@ -9265,7 +9662,7 @@ function whatIfKeepExport(name, data) {
 // Each player's mark under the budget: where the owned items and abilities come from (that player's kept export).
 function whatIfShowExportStatus() {
     for (const mark of document.querySelectorAll('#whatIfBudgets [data-export-status]')) {
-        mark.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.exportStatus)(whatIfKeptExport(mark.dataset.exportStatus), whatIfT);
+        mark.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportStatus)(whatIfKeptExport(mark.dataset.exportStatus), whatIfT);
         mark.title = mark.textContent;
     }
 }
@@ -9292,7 +9689,7 @@ function whatIfMessage(text) {
 // null when not readable (the field is then marked invalid).
 function whatIfBudgetValue(input) {
     if (input.value.trim() === '') return 0;
-    const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.parseNumber)(input.value);
+    const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.parseNumber)(input.value);
     return value === null || Number.isNaN(value) ? null : Math.round(value);
 }
 function whatIfMarkBudget(input) {
@@ -9330,10 +9727,10 @@ function whatIfRenderSetup() {
     whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
     // The boxes that needed the export and were off before this redraw (all of them on the first draw): they come back ticked once one is there.
-    const prevDisabled = new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.EXPORT_LEVERS.filter((id) => { const old = document.getElementById('whatIfLever_' + id); return !old || old.disabled; }));
-    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.LEVERS.filter((l) => l.def).map((l) => l.id));
+    const prevDisabled = new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.EXPORT_LEVERS.filter((id) => { const old = document.getElementById('whatIfLever_' + id); return !old || old.disabled; }));
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
-    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.LEVERS) {
+    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.LEVERS) {
         const row = document.createElement('div');
         row.className = 'form-check';
         const input = document.createElement('input');
@@ -9366,10 +9763,10 @@ function whatIfRenderSetup() {
 // given: read from the boxes as they are now).
 function whatIfApplyExportLevers(prevDisabled = null) {
     const hasExport = whatIfSlots(true).some((s) => whatIfKeptExport(s.name));
-    for (const id of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.EXPORT_LEVERS) {
+    for (const id of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.EXPORT_LEVERS) {
         const input = document.getElementById('whatIfLever_' + id);
         if (!input) continue;
-        const view = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.exportLeverView)({ hasExport, wasDisabled: prevDisabled ? prevDisabled.has(id) : input.disabled, wasChecked: input.checked }, whatIfT);
+        const view = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportLeverView)({ hasExport, wasDisabled: prevDisabled ? prevDisabled.has(id) : input.disabled, wasChecked: input.checked }, whatIfT);
         input.disabled = view.disabled;
         input.checked = view.checked;
         input.title = view.title;
@@ -9380,17 +9777,25 @@ function whatIfApplyExportLevers(prevDisabled = null) {
 // The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
 function whatIfNames() {
     const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
-    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty') });
+    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty'), trig: Object.fromEntries(['trigger', 'always', 'and', 'then', 'gameDefault', 'drop', 'add'].map((k) => [k, whatIfT('trig.' + k, { x: '{x}' })])) });
 }
 
 // `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
 // running mark. A lists the reader opened (the folds) stays open when one running report replaces another.
-function whatIfShowResult(result, running = false) {
+// `loaded`: the report was put on show from "Earlier searches" (whatIfLoadResult), not by the search the window watches.
+// The "so far" rows of a running report (panel soFarSteps): from the latest round record and the stage the progress names; none for a report put on show
+// from "Earlier searches", a stopped one or a finished one. The key tells a poll whether they changed (the report is redrawn only then).
+function whatIfSoFarOf(result, running) { return running === true && !whatIf.resultLoaded ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.soFarSteps)(whatIf.round, whatIf.status?.progress, result?.steps) : []; }
+function whatIfSoFarKey(rows) { return JSON.stringify(rows.map((r) => [r.desc, r.gainPerUser, r.sePerUser, r.buyerNet, r.buyerNetSe])); }
+function whatIfShowResult(result, running = false, loaded = false) {
     const box = document.getElementById('whatIfResult');
     const open = running && whatIf.resultRunning ? [...box.querySelectorAll('.whatif-more:not([hidden])')].map((e) => e.id) : [];
     whatIf.result = result;
     whatIf.resultRunning = running;
-    box.innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.renderResult)(result, whatIfT, Date.now(), whatIfNames(), running) : '';
+    whatIf.resultLoaded = loaded;
+    const soFar = whatIfSoFarOf(result, running);
+    whatIf.soFarKey = whatIfSoFarKey(soFar);
+    box.innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderResult)(result, whatIfT, Date.now(), whatIfNames(), running, soFar) : '';
     for (const id of open) {
         const body = document.getElementById(id);
         if (body) body.hidden = false;
@@ -9421,7 +9826,7 @@ function whatIfShowSetup() {
         // Goal and zone names come from the locale, not from the selects' text: on a language change this runs before the page relabels the selects.
         chip(whatIfT('goalLabel'), whatIfT('goal.' + document.getElementById('selectWhatIfGoal').value)),
         chip(whatIfT('zone'), i18next.t('actionNames.' + document.getElementById('selectWhatIfZone').value) + ' · ' + sel('selectWhatIfTier')),
-        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.formatNumber)(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
+        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatNumber)(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
         chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('budgetPlaceholder')),
         chip(whatIfT('levers'), [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => whatIfT('lever.' + i.value + '.name')).join(', ')));
 }
@@ -9437,22 +9842,29 @@ function whatIfShowDiff() {
     const box = document.getElementById('whatIfDiff');
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
-    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
-    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
+    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
+    // The list behind the warning's one line stays open when a redraw replaces it (each running report redraws the warning).
+    const open = document.getElementById('whatIfDiffList')?.hidden === false;
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
+    const list = document.getElementById('whatIfDiffList');
+    if (open && list) list.hidden = false;
+    whatIfSyncToggles(box);
 }
 
-// Redraws the progress box without replacing a stage button whose markup did not change: a button replaced under the pointer loses its hover until the
-// mouse moves (the flicker), so an unchanged button (same part, same mode, same markup) keeps its node. `whatIf.pressed` ({ key, mode }) is in the markup,
-// so a pressed button is drawn disabled by every redraw, not only by the click.
+// A new search clears the result on show, its setup warning and its search rounds, at the Start click once the settings are read (a start the
+// window refuses keeps them); the result stays reachable under "Earlier searches" when its search had finished.
+function whatIfClearResult() {
+    whatIf.round = null;
+    document.getElementById('whatIfRounds').innerHTML = '';
+    whatIfShowResult(null);
+}
+
+// Redraws the progress box in place (whatIfMorphInto, morph.mjs): a stage button, or any part of a row, whose markup did not change keeps its node in
+// the document, so the button under the pointer keeps its hover across polls (no flicker). `whatIf.pressed` ({ key, mode }) is in the markup, so a
+// pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
 function whatIfDrawProgress() {
-    const box = document.getElementById('whatIfProgress');
     if (!whatIf.status) return;
-    const next = document.createElement('div');
-    next.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.renderProgress)(whatIf.status, whatIfT, whatIf.pressed);
-    const buttonKey = (b) => b.dataset.whatifPart + '/' + b.dataset.whatifDone;
-    const old = new Map([...box.querySelectorAll('[data-whatif-done]')].map((b) => [buttonKey(b), b]));
-    for (const b of next.querySelectorAll('[data-whatif-done]')) { const o = old.get(buttonKey(b)); if (o && o.outerHTML === b.outerHTML) b.replaceWith(o); }
-    box.replaceChildren(...next.childNodes);
+    (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_41__.morphInto)(document.getElementById('whatIfProgress'), (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderProgress)(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping', whatIfNames()));
     alignNumbers();
 }
 
@@ -9466,20 +9878,21 @@ function whatIfSetState(key) {
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
-    whatIfDrawProgress();
     if (whatIf.pending === 'starting' || status.state !== 'running') whatIf.pending = null; // the press shows: the state the runner reports is drawn
+    whatIfDrawProgress();
     whatIfDrawSearchButton();
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
     else if (status.state === 'done' && status.result?.round) whatIf.round = status.result.round;
-    document.getElementById('whatIfRounds').innerHTML = whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : '';
+    (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_41__.morphInto)(document.getElementById('whatIfRounds'), whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : ''); // in place, as the progress box (a help mark keeps its hover)
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
-    else if (status.state === 'running' && whatIf.resultRunning === 'stopped') whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
+    else if (status.state === 'running' && whatIf.resultRunning === 'stopped' && !whatIf.resultLoaded) whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
+    else if (status.state === 'running' && whatIf.resultRunning === true && whatIf.result && whatIfSoFarKey(whatIfSoFarOf(whatIf.result, true)) !== whatIf.soFarKey) whatIfShowResult(whatIf.result, true); // the "so far" rows follow a new round or stage
     if (status.state !== 'running') whatIfStopWatching();
-    if (status.state === 'done') whatIfLoadList();
+    if (status.state === 'done' || status.state === 'stopped') whatIfLoadList(); // a stopped search is listed too
     whatIfShowSetup();
 }
 
@@ -9506,7 +9919,7 @@ function whatIfDrawSearchButton() {
 // The window's settings as a start would send them, without the prices (null when a start would refuse them).
 function whatIfSettingsKeyNow() {
     const read = whatIfReadSettings(false);
-    return read.params ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.settingsKey)(read.params) : null;
+    return read.params ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.settingsKey)(read.params) : null;
 }
 
 // A click on the one button does what it reads (whatIfDrawSearchButton decides it).
@@ -9549,7 +9962,7 @@ function whatIfSyncToggles(box) {
 function whatIfPollSoon() {
     const w = whatIf.watch;
     if (!w) return;
-    w.fastUntil = Date.now() + _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.FAST_FOR_MS;
+    w.fastUntil = Date.now() + _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.FAST_FOR_MS;
     if (w.busy) { w.again = true; return; }
     clearTimeout(w.timer);
     whatIfPoll(w);
@@ -9558,14 +9971,14 @@ function whatIfPollSoon() {
 async function whatIfPoll(w) {
     w.timer = null; w.busy = true;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.status(whatIf.searchId, whatIf.partialVersion));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.status(whatIf.searchId, whatIf.partialVersion));
         if (w !== whatIf.watch) return;
         if (ok) whatIfShowStatus(body); // a state other than running ends the watch
         else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
     } catch (err) { if (w === whatIf.watch) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); } }
     finally { w.busy = false; }
     if (w !== whatIf.watch) return;
-    const delay = w.again ? 0 : (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.pollDelay)(whatIf.status, whatIf.pressed, Date.now(), w.fastUntil);
+    const delay = w.again ? 0 : (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.pollDelay)(whatIf.status, whatIf.pressed, Date.now(), w.fastUntil);
     w.again = false;
     w.timer = setTimeout(() => whatIfPoll(w), delay);
 }
@@ -9594,6 +10007,9 @@ function whatIfReadSettings(mark) {
     if (badBudget) return { message: whatIfT('badBudget', { player: badBudget.dataset.player }) };
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
     if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfT('badMaxPayback') };
+    // The smallest gain worth showing (src/whatif/minGain.mjs: its unit and default): empty = the default.
+    const minGainPct = (0,_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__.parseMinGain)(document.getElementById('inputWhatIfMinGain').value);
+    if (minGainPct === null) return { message: whatIfT('badMinGain') };
     // The guild's shrine level: empty = the game's maximum, else a whole number of 0 or more (the search's --shrine-cap).
     const shrineCap = document.getElementById('inputWhatIfShrineCap').value.trim();
     if (shrineCap !== '' && !(Number.isInteger(Number(shrineCap)) && Number(shrineCap) >= 0)) return { message: whatIfT('badShrineCap') };
@@ -9603,7 +10019,7 @@ function whatIfReadSettings(mark) {
     for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) return { message: whatIfT('sameNames') };
-    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap,
+    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap, minGainPct,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value } };
 }
 
@@ -9611,17 +10027,18 @@ async function whatIfPostSearch() {
     whatIfMessage('');
     const read = whatIfReadSettings(true);
     if (read.message) { whatIfMessage(read.message); return; }
+    whatIfClearResult();
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
-    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.searchRequest)(read.params, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__.fetchMarketplace)());
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.searchRequest)(read.params, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__.fetchMarketplace)());
     if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
-        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         // whatIf.sentKey: the settings this search was started with, so a stop of it offers Resume while they stay the same.
-        if (ok) { whatIf.sentKey = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.settingsKey)(read.params); whatIfWatch(answer.id); }
+        if (ok) { whatIf.sentKey = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.settingsKey)(read.params); whatIfWatch(answer.id); }
         else if (answer.id) { whatIf.sentKey = null; whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
         else whatIfMessage(answer.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
@@ -9630,10 +10047,10 @@ async function whatIfPostSearch() {
 async function whatIfStopOrResume() {
     if (!whatIf.searchId || whatIf.pending) return;
     const resuming = whatIf.state === 'stopped';
-    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); // until the runner's state shows (whatIfShowStatus)
-    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfMessage(message); };
+    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); whatIfDrawProgress(); // until the runner's state shows (whatIfShowStatus); Stopping disables the stage buttons
+    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfDrawProgress(); whatIfMessage(message); };
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.stop(whatIf.searchId), { method: 'POST' });
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { failed(body.error || whatIfT('runnerError')); return; }
         if (body.state) { whatIfShowStatus(body); if (body.state === 'running') whatIfWatch(whatIf.searchId); return; }
         // The runner answers at once ({ stopping } or { resumed }); the change itself shows at the poll that sees it.
@@ -9644,33 +10061,48 @@ async function whatIfStopOrResume() {
     } catch (err) { failed(whatIfT('runnerGone')); }
 }
 
+// "Earlier searches": the runner's list (finished and stopped searches, one list), kept in whatIf.earlier so a language change redraws it.
 async function whatIfLoadList() {
-    const select = document.getElementById('selectWhatIfResult');
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.results);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.results);
         if (!ok || !Array.isArray(body)) return;
-        select.replaceChildren(...body.map((r) => {
-            const option = document.createElement('option');
-            option.value = r.id;
-            option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit')].filter(Boolean).join(' · ');
-            return option;
-        }));
+        whatIf.earlier = body;
+        whatIfDrawList();
     } catch (err) { /* the runner is gone; the Start button reports it */ }
+}
+// One entry per search: when, who, the goal, and "Stopped" (whatIf.state.stopped) for a search that was stopped before it finished.
+function whatIfDrawList() {
+    const select = document.getElementById('selectWhatIfResult');
+    const keep = select.value;
+    select.replaceChildren(...whatIf.earlier.map((r) => {
+        const option = document.createElement('option');
+        option.value = r.id;
+        option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit'), r.stopped ? whatIfT('state.stopped') : ''].filter(Boolean).join(' · ');
+        return option;
+    }));
+    if (whatIf.earlier.some((r) => r.id === keep)) select.value = keep;
 }
 
 async function whatIfLoadResult() {
     const id = document.getElementById('selectWhatIfResult').value;
     if (!id) return;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.result(id));
-        if (ok) { whatIfMessage(''); whatIfShowResult(body); }
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.result(id));
+        // A stopped search (the runner sends its partial.json) is put on show as the window shows it right after Stop: its report with the
+        // stopped mark and its last search round under it; a finished one as before, with its last round. The id's entry says which.
+        if (ok) {
+            whatIfMessage('');
+            whatIf.round = body.round ?? null;
+            document.getElementById('whatIfRounds').innerHTML = whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : '';
+            whatIfShowResult(body, whatIf.earlier.find((r) => r.id === id)?.stopped ? 'stopped' : false, true);
+        }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
 
 function whatIfApply(key) {
-    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.opsFor)(whatIf.result, key);
-    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.applyToSlots)(whatIfSlots(false), ops);
+    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.opsFor)(whatIf.result, key);
+    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.applyToSlots)(whatIfSlots(false), ops);
     if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
     for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
     updateNextPlayer(currentPlayerTabId);
@@ -9683,8 +10115,8 @@ function whatIfApply(key) {
 // No runner answers: the same button opens the same window in its "get the runner" state (the CSS in index.html shows
 // that pane and hides the search). Its strings are data-i18n like the rest of the page; the links are the two constants of runnerDownload.mjs.
 function whatIfShowGetRunner() {
-    document.getElementById('linkWhatIfRunner').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_37__.RUNNER_DOWNLOAD_URL;
-    document.getElementById('linkWhatIfRunnerLinux').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_37__.RUNNER_ZIP_URL;
+    document.getElementById('linkWhatIfRunner').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_39__.RUNNER_DOWNLOAD_URL;
+    document.getElementById('linkWhatIfRunnerLinux').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_39__.RUNNER_ZIP_URL;
     document.getElementById('whatIfModal').classList.add('whatif-norunner');
     whatIfShowButton();
 }
@@ -9702,11 +10134,13 @@ function whatIfShowButton() {
 
 async function initWhatIf() {
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.version);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.version);
         if (!ok || !body || body.runner === undefined) { whatIfShowGetRunner(); return; }
         whatIf.version = body;
     } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
     whatIfShowButton();
+    { const g = document.getElementById('inputWhatIfMinGain'); if (g.value === '') g.value = String(_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__.MIN_GAIN_PCT); } // the default lives in minGain.mjs only
+    (0,_whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_42__.attachTips)(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
     // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
@@ -9725,22 +10159,26 @@ async function initWhatIf() {
         const pressed = { key: button.dataset.whatifPart, mode: button.dataset.whatifDone };
         whatIf.pressed = pressed; whatIfDrawProgress(); // the press shows at once (both disabled), and stays in every redraw until the stage ends
         const failed = (message) => { if (whatIf.pressed === pressed) whatIf.pressed = null; whatIfMessage(message); whatIfDrawProgress(); };
-        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_36__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); else whatIfPollSoon(); }
+        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); else whatIfPollSoon(); }
         catch (err) { failed(whatIfT('runnerGone')); }
     });
+    // A fold toggle (data-whatif-more) in the result or in the setup warning opens or closes its bodies.
+    const fold = (event) => {
+        const more = event.target.closest('[data-whatif-more]');
+        if (!more) return;
+        // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
+        const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
+        const hide = !bodies[0].hidden;
+        for (const body of bodies) body.hidden = hide;
+        whatIfSyncToggles(event.currentTarget);
+    };
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);
-        const more = event.target.closest('[data-whatif-more]');
-        if (more) {
-            // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
-            const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
-            const hide = !bodies[0].hidden;
-            for (const body of bodies) body.hidden = hide;
-            whatIfSyncToggles(event.currentTarget);
-        }
+        fold(event);
     });
-    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
+    document.getElementById('whatIfDiff').addEventListener('click', fold);
+    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded); });
 }
 // #endregion
 
@@ -9929,9 +10367,9 @@ function doGroupImport() {
     const value = document.getElementById("inputSetGroupCombatAll")?.value || "";
     // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots in the all-players field; they are not players
     // (the per-player fields carry neither, so nothing is applied for them).
-    const { slots: importMap, selected, fight, exports } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_33__.splitGroupImport)(value.trim() ? JSON.parse(value) : groupFromPlayerBoxes());
+    const { slots: importMap, selected, fight, exports } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_34__.splitGroupImport)(value.trim() ? JSON.parse(value) : groupFromPlayerBoxes());
     importGroupSlots(importMap);
-    const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_33__.applyGroupSelection)(document, { selected, fight });
+    const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_34__.applyGroupSelection)(document, { selected, fight });
     if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
     return exports;
 }
@@ -9954,13 +10392,13 @@ function browserStorage() {
 // After an Import: the screen's player is saved into its slot, then every slot is kept, replacing the group kept before.
 function saveImportedGroup() {
     savePreviousPlayer(currentPlayerTabId);
-    (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_35__.keepGroup)(browserStorage(), playerDataMap);
+    (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_36__.keepGroup)(browserStorage(), playerDataMap);
 }
 
 // On page load: the kept group (when it is there and of the shape this page writes) goes through the same function as an
 // import. A value that is not usable is ignored and the page starts blank.
 function restoreImportedGroup() {
-    const slots = (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_35__.loadKeptGroup)(browserStorage());
+    const slots = (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_36__.loadKeptGroup)(browserStorage());
     if (!slots) return;
     const before = { ...playerDataMap };
     try {
@@ -10024,7 +10462,7 @@ function doSoloImport() {
     let importSet = document.getElementById("inputSetSolo").value;
     importSet = JSON.parse(importSet);
     // The character's name goes with the slot (the what-if window and search show it instead of "Player N").
-    playerDataMap[currentPlayerTabId] = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_34__.withSlotName)(playerDataMap[currentPlayerTabId], importSet.name);
+    playerDataMap[currentPlayerTabId] = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__.withSlotName)(playerDataMap[currentPlayerTabId], importSet.name);
     // A kind missing from the import is unknown, never empty: it leaves what the sim already holds for it
     // (docs/proposals/what-if.md 4.4 item 2; the MWICS Exporter leaves out each kind switched off).
     const importPlayer = importSet.player ?? {};
@@ -10159,7 +10597,7 @@ function setPlayerTalismans(talismans) {
     else delete player.talismans;
     const box = document.getElementById("talismanView");
     if (!box) return;
-    box.innerHTML = (0,_talismanView_mjs__WEBPACK_IMPORTED_MODULE_38__.talismanViewHtml)(player.talismans, (key) => i18next.t(key));
+    box.innerHTML = (0,_talismanView_mjs__WEBPACK_IMPORTED_MODULE_40__.talismanViewHtml)(player.talismans, (key) => i18next.t(key));
     box.hidden = !box.innerHTML;
 }
 
@@ -10315,7 +10753,7 @@ function updateNextPlayer(currentPlayerNumber) {
     applyGuildBuffsToState((0,_importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__["default"])(importSet));
 
     { // reset all achievements
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_28__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -10371,7 +10809,7 @@ window.prices;
 async function fetchPrices() {
     let pricesJson;
     try {
-        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_29__.fetchMarketplace)();
+        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__.fetchMarketplace)();
     } catch (error) {
         console.error(error);
         console.log('Error fetching prices');
@@ -10400,11 +10838,11 @@ async function fetchPrices() {
 
         for (const chest of ["/items/small_treasure_chest", "/items/medium_treasure_chest", "/items/large_treasure_chest"]) {
             // A chest's drops are priced by unitPrice, the one function every other drop goes through; a drop with no price at all is worth nothing.
-            const chestValue = (side) => _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__[chest].map((item) => Math.max(0, (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_31__.unitPrice)(window.prices, item.itemHrid, side)) * item.dropRate * (item.maxCount + item.minCount) / 2).reduce((a, b) => a + b, 0);
+            const chestValue = (side) => _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_27__[chest].map((item) => Math.max(0, (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, item.itemHrid, side)) * item.dropRate * (item.maxCount + item.minCount) / 2).reduce((a, b) => a + b, 0);
             window.prices[chest] = {
                 "ask": chestValue('ask'),
                 "bid": chestValue('bid'),
-                "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_26__[chest].map((item) => {
+                "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_27__[chest].map((item) => {
                     return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
                 }).reduce((a, b) => a + b, 0),
             };
@@ -10465,18 +10903,18 @@ document.addEventListener("input", (e) => {
         }
 
         window.expenses += expensesDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
         window.revenue += revenueDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
         window.noRngRevenue += noRngRevenueDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
 
         window.profit = window.revenue - window.expenses;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitPreview'), window.profit);
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitSpan'), window.profit);
         window.noRngProfit = window.noRngRevenue - window.expenses;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
         alignNumbers();
     }
 });
@@ -10499,7 +10937,7 @@ function updateTable(tableId, item, price) {
         priceTd.innerText = price;
     }
     // The total shows formatted (numberHtml: exact value on hover, ISO toggle refreshes it); the exact value stays in data-total.
-    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.numberHtml)(newTotal);
+    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(newTotal);
     totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;
@@ -10518,15 +10956,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_39__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_43__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_39__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_39__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_39__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_43__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_43__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_43__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_40__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_44__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -10537,7 +10975,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_40__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_44__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -10734,12 +11172,12 @@ darkModeToggle.addEventListener('change', () => {
 // ISO number display (1 234, 1.79 %): off by default, remembered like Dark Mode.
 const isoNumbersToggle = document.getElementById('isoNumbersToggle');
 isoNumbersToggle.checked = localStorage.getItem('isoNumbersEnabled') === 'true';
-(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
 
 isoNumbersToggle.addEventListener('change', () => {
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
     localStorage.setItem('isoNumbersEnabled', isoNumbersToggle.checked);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_17__.refreshFormattedNumbers)(document);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.refreshFormattedNumbers)(document);
 });
 
 function updateContent() {
@@ -10802,4 +11240,4 @@ restoreImportedGroup();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.cdc827cd.js.map
+//# sourceMappingURL=bundle.5f3437a1.js.map
