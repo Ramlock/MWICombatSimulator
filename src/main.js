@@ -12,6 +12,7 @@ import LabyrinthUpgrade from "./combatsimulator/labyrinthUpgrade";
 import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
+import { isPlanetZone } from "./zones.mjs";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
@@ -1195,6 +1196,44 @@ function showElement(element) {
 
 // #region Zones
 
+// "Planets only": one setting, two checkboxes (the page's zone picker and the What-if window's), kept in the browser under one key.
+// On, a zone picker hides every option that is not a planet, except the selected one (picked with the toggle off, or set by a load
+// or an import), which stays until another is picked. Nothing here changes a selection.
+const PLANETS_ONLY_KEY = "zonesPlanetsOnly";
+const PLANETS_ONLY_TOGGLES = ["planetsOnlyToggle", "whatIfPlanetsOnlyToggle"];
+const PLANETS_ONLY_SELECTS = ["selectZone", "selectWhatIfZone"];
+
+function planetsOnlyStored() {
+    try { return localStorage.getItem(PLANETS_ONLY_KEY) !== "0"; } catch (e) { return true; }
+}
+
+function applyPlanetsOnly(select) {
+    const on = document.getElementById("planetsOnlyToggle").checked;
+    for (const option of select.options) option.hidden = on && option.dataset.planet !== "1" && option.value !== select.value;
+}
+
+function initPlanetsOnly() {
+    const on = planetsOnlyStored();
+    for (const id of PLANETS_ONLY_TOGGLES) {
+        const toggle = document.getElementById(id);
+        toggle.checked = on;
+        toggle.addEventListener("change", () => {
+            for (const other of PLANETS_ONLY_TOGGLES) document.getElementById(other).checked = toggle.checked;
+            try { localStorage.setItem(PLANETS_ONLY_KEY, toggle.checked ? "1" : "0"); } catch (e) { }
+            for (const s of PLANETS_ONLY_SELECTS) applyPlanetsOnly(document.getElementById(s));
+        });
+    }
+    // A load or an import sets the value without a change event, so the list is brought up to date again before it opens.
+    for (const id of PLANETS_ONLY_SELECTS) {
+        const select = document.getElementById(id);
+        for (const type of ["change", "focus", "mousedown", "keydown"]) select.addEventListener(type, () => applyPlanetsOnly(select));
+    }
+    // A fresh page starts on the first zone the picker lists (a load or an import sets its own afterwards).
+    const zoneSelect = document.getElementById("selectZone");
+    if (on) zoneSelect.value = [...zoneSelect.options].find((o) => o.dataset.planet === "1")?.value ?? zoneSelect.value;
+    applyPlanetsOnly(zoneSelect);
+}
+
 function initZones() {
     let zoneSelect = document.getElementById("selectZone");
 
@@ -1206,8 +1245,10 @@ function initZones() {
     for (const zone of Object.values(gameZones)) {
         let opt = new Option(zone.name, zone.hrid);
         opt.setAttribute("data-i18n", "actionNames." + zone.hrid);
+        if (isPlanetZone(zone)) opt.dataset.planet = "1";
         zoneSelect.add(opt);
     }
+    initPlanetsOnly();
 
 
     let zoneCheckBox = document.getElementById("zoneCheckBox");
@@ -1225,7 +1266,7 @@ function initZones() {
     });
 
     let zoneHrids = Object.values(actionDetailMap)
-        .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount > 1)
+        .filter((action) => isPlanetZone(action))
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
 
@@ -4137,11 +4178,13 @@ function whatIfRenderChoices(fromPage) {
         select.replaceChildren(...[...document.getElementById(pageId).options].map((o) => {
             const copy = new Option(o.textContent, o.value);
             if (o.dataset.i18n) copy.dataset.i18n = o.dataset.i18n;
+            if (o.dataset.planet) copy.dataset.planet = o.dataset.planet;
             return copy;
         }));
         select.value = keep;
     };
     copySelect('selectWhatIfZone', 'selectZone');
+    applyPlanetsOnly(document.getElementById('selectWhatIfZone'));
     copySelect('selectWhatIfTier', 'selectDifficulty');
 }
 

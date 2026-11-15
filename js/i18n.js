@@ -855,6 +855,8 @@
         party: {
             noLoadout: "No Loadout",
             selectZone: "Select Zone",
+            planetsOnly: "Planets only",
+            planetsOnlyHint: "Hides the fights against one kind of monster. Turn off to list every zone.",
             fightTimesWithInputs: "Fight <inputs /> times",
             partyName: "{{name}}'s {{partyType}}",
             privateParty: "Private party",
@@ -7224,6 +7226,8 @@
         "party": {
             "noLoadout": "Sem loadout",
             "selectZone": "Selecionar zona",
+            "planetsOnly": "S\u00f3 planetas",
+            "planetsOnlyHint": "Oculta as lutas contra um s\u00f3 tipo de monstro. Desative para listar todas as zonas.",
             "fightTimesWithInputs": "Lutar <inputs /> vezes",
             "partyName": "{{partyType}} de {{name}}",
             "privateParty": "Grupo privado",
@@ -13645,6 +13649,8 @@
                     party: {
                         noLoadout: "\u65e0\u914d\u88c5",
                         selectZone: "\u9009\u62e9\u533a\u57df",
+                        planetsOnly: "\u4ec5\u663e\u793a\u661f\u7403",
+                        planetsOnlyHint: "\u9690\u85cf\u53ea\u5bf9\u6218\u4e00\u79cd\u602a\u7269\u7684\u6218\u6597\u3002\u5173\u95ed\u540e\u5217\u51fa\u6240\u6709\u533a\u57df\u3002",
                         fightTimesWithInputs: "\u6218\u6597 <inputs /> \u6b21",
                         partyName: "{{name}}\u7684{{partyType}}",
                         privateParty: "\u79c1\u4eba\u961f\u4f0d",

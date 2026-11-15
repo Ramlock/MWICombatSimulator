@@ -1584,6 +1584,12 @@
                                 <select id="selectZone" class="form-select">
                                 </select>
                             </div>
+                            <div class="col-md-auto d-flex align-items-center">
+                                <div class="form-check form-switch mb-0" data-i18n-title="party.planetsOnlyHint" title="Hides the fights against one kind of monster. Turn off to list every zone.">
+                                    <input class="form-check-input" type="checkbox" id="planetsOnlyToggle" checked>
+                                    <label class="form-check-label text-nowrap" for="planetsOnlyToggle" data-i18n="party.planetsOnly">Planets only</label>
+                                </div>
+                            </div>
                         </div>
                         <div class="row mb-1">
                             <label for="selectDungeon" class="col-md-3 col-form-label" data-i18n="shopCategoryNames./shop_categories/dungeon">Dungeon</label>
@@ -1916,7 +1922,7 @@
                                 <div id="whatIfPlayers"></div>
                             </div>
                             <div class="row gx-2">
-                                <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfZone" class="input-group-text" data-i18n="common:whatIf.zone">Zone</label><select id="selectWhatIfZone" class="form-select form-select-sm"></select></div></div>
+                                <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfZone" class="input-group-text" data-i18n="common:whatIf.zone">Zone</label><select id="selectWhatIfZone" class="form-select form-select-sm"></select><div class="input-group-text" data-i18n-title="party.planetsOnlyHint" title="Hides the fights against one kind of monster. Turn off to list every zone."><input class="form-check-input mt-0 me-1" type="checkbox" id="whatIfPlanetsOnlyToggle" checked><label class="form-check-label text-nowrap" for="whatIfPlanetsOnlyToggle" data-i18n="party.planetsOnly">Planets only</label></div></div></div>
                                 <div class="col-6"><div class="input-group input-group-sm"><label for="selectWhatIfTier" class="input-group-text" data-i18n="common:whatIf.tier">Tier</label><select id="selectWhatIfTier" class="form-select form-select-sm"></select></div></div>
                             </div>
                             <div class="input-group input-group-sm"><label for="inputWhatIfShrineCap" class="input-group-text" data-i18n="common:whatIf.shrineCap">Guild shrine level (the cap; empty = the game's maximum)</label><input id="inputWhatIfShrineCap" type="number" min="0" step="1" value="" class="form-control form-control-sm">
