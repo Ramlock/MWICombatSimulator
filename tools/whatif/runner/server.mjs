@@ -19,6 +19,7 @@
 //   POST /api/search/<id>/stop     stops it (exit code 3, run store kept); on a stopped search, resumes it
 //   GET  /api/results              earlier searches, finished and stopped, newest first: [{ id, finished, goal, players, stopped? }]
 //   GET  /api/results/<id>         one result.json, or a stopped search's partial.json
+//   GET  /api/results/<id>/rounds  the saved search's round records (rounds.jsonl as one array; the live status carries `rounds` the same way)
 // Requests come only from the runner's own page: a Host that is not the loopback address and port, or an Origin
 // that is not the runner's own, is refused with 403.
 import http from 'node:http';
@@ -169,7 +170,10 @@ export function createRunner(opts = {}) {
         const dir = dirOf(id), s = searches.get(id);
         const progress = s?.progress ?? (existsSync(path.join(dir, 'progress.json')) ? readJson(path.join(dir, 'progress.json')) : null);
         // The search rounds (`round`, the latest round record, `roundVersion`) are served the same way, on the same counter and the same `since`.
-        if (s?.state === 'running') return { state: 'running', progress, ...(s.partial && s.partialVersion > since ? { partial: s.partial, partialVersion: s.partialVersion } : {}), ...(s.round && s.roundVersion > since ? { round: s.round, roundVersion: s.roundVersion } : {}) };
+        // `rounds`: every finished round record newer than `since`, in order (the chart's history; a provisional first look is never kept). A poll that
+        // came late gets all the rounds it missed, not only the latest.
+        const newer = (s?.rounds ?? []).filter((x) => x.v > since).map((x) => x.r);
+        if (s?.state === 'running') return { state: 'running', progress, ...(s.partial && s.partialVersion > since ? { partial: s.partial, partialVersion: s.partialVersion } : {}), ...(s.round && s.roundVersion > since ? { round: s.round, roundVersion: s.roundVersion } : {}), ...(newer.length ? { rounds: newer } : {}) };
         if (existsSync(path.join(dir, 'result.json'))) return { state: 'done', progress, result: readJson(path.join(dir, 'result.json')) };
         if (s?.state === 'error') return { state: 'error', progress, error: s.error };
         if (existsSync(path.join(dir, 'request.json'))) return { state: 'stopped', progress };
@@ -191,7 +195,8 @@ export function createRunner(opts = {}) {
         s.handle = launch(args, dir);
         s.handle.onProgress = (p) => { s.progress = p; };
         s.handle.onPartial = (r) => { s.partial = r; s.partialVersion = ++partialSeq; };
-        s.handle.onRound = (r) => { s.round = r; s.roundVersion = ++partialSeq; };
+        s.rounds = []; // the finished round records of this run, each with its version: { v, r }
+        s.handle.onRound = (r) => { s.round = r; s.roundVersion = ++partialSeq; if (!r.provisional) s.rounds.push({ v: s.roundVersion, r }); };
         s.handle.onExit = (code, tail) => {
             running = null;
             if (code === 0 && existsSync(path.join(dir, 'result.json'))) s.state = 'done';
@@ -213,6 +218,14 @@ export function createRunner(opts = {}) {
         }
         return null;
     };
+    // A finished search's round records, from its rounds.jsonl (one JSON line per finished round, in the order the optimizer wrote them; a line that does not
+    // parse, such as one cut by a crash, is skipped). A resumed search's file holds the replayed rounds after the first run's: the reader of the history
+    // (src/whatif/history.mjs) keeps the last run of each stage.
+    function roundsOf(id) {
+        const f = path.join(dirOf(id), 'rounds.jsonl');
+        if (!existsSync(f)) return [];
+        return readFileSync(f, 'utf8').split(/\r?\n/).filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+    }
     function results() {
         if (!existsSync(resultsDir)) return [];
         return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d) && d !== running).map((d) => {
@@ -289,6 +302,7 @@ export function createRunner(opts = {}) {
                 const saved = savedReport(dirOf(m[1]));
                 return saved ? send(res, 200, readJson(saved.file)) : send(res, 404, { error: 'no such result' });
             }
+            if (req.method === 'GET' && (m = /^\/api\/results\/([^/]+)\/rounds$/.exec(p))) return savedReport(dirOf(m[1])) ? send(res, 200, roundsOf(m[1])) : send(res, 404, { error: 'no such result' });
             return send(res, 404, { error: 'no such endpoint' });
         } catch (e) {
             return send(res, e.status || 400, { error: e.message });

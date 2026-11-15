@@ -231,9 +231,26 @@ check(g1.json.state === 'running' && g1.json.progress.runsDone === 3 && g1.json.
     check(b.partialVersion > a.partialVersion && b.partial.steps.length === 1, 'live report: a newer snapshot goes out to a caller with the older version');
     check((await call(base, 'GET', `/api/search/${sid}?since=${b.partialVersion + 100}`)).json.partial === undefined && (await call(base, 'GET', `/api/search/${sid}?since=junk`)).json.partialVersion === b.partialVersion, 'live report: a version ahead of the runner gets none; a since that is not a number reads 0');
 }
+{   // The round history (the chart's data): every finished round newer than `since`, in order; a provisional first look is never kept.
+    const sid = s1.json.id, rr = (n, extra = {}) => ({ round: n, stage: 'foods', pools: [], ...extra });
+    check(!('rounds' in (await call(base, 'GET', '/api/search/' + sid)).json), 'round history: before the first finished round the status carries none');
+    fakes[0].onRound(rr(1, { provisional: true }));
+    check(!('rounds' in (await call(base, 'GET', '/api/search/' + sid)).json), 'round history: a provisional first look is served as the latest round and never kept in the history');
+    fakes[0].onRound(rr(1)); fakes[0].onRound(rr(2)); fakes[0].onRound(rr(3));
+    const all = (await call(base, 'GET', '/api/search/' + sid)).json;
+    check(all.rounds?.map((r) => r.round).join() === '1,2,3' && all.round.round === 3 && all.roundVersion > 0, 'round history: a poll that missed three rounds gets all three, in order, and the latest as before');
+    const from = (await call(base, 'GET', `/api/search/${sid}?since=${all.roundVersion}`)).json;
+    check(!('rounds' in from) && !('round' in from), 'round history: a poll with the current version gets none');
+    fakes[0].onRound(rr(4));
+    const one = (await call(base, 'GET', `/api/search/${sid}?since=${all.roundVersion}`)).json;
+    check(one.rounds?.map((r) => r.round).join() === '4', 'round history: a poll with an older version gets only the rounds after it');
+    fakes[0].onPartial({ goal: 'profit', steps: [] });
+    const afterPartial = (await call(base, 'GET', `/api/search/${sid}?since=${one.roundVersion}`)).json;
+    check(afterPartial.partial && !('rounds' in afterPartial), 'round history: a report snapshot (the shared version counter) does not repeat the rounds already sent');
+}
 const st = await call(base, 'POST', `/api/search/${s1.json.id}/stop`);
 await sleep(50);
-const g2 = await call(base, 'GET', '/api/search/' + s1.json.id);
+const g2 =await call(base, 'GET', '/api/search/' + s1.json.id);
 check(st.status === 200 && fakes[0].stopped && g2.json.state === 'stopped' && fake.running === null, 'stop: the search is told to stop and reads stopped');
 const s3 = await call(base, 'POST', '/api/search', body);
 check(s3.json.id === s1.json.id && fakes.length === 2 && fakes[1].dir === fakes[0].dir, 'resume: the same request again runs in the same folder (its run store)');
@@ -288,6 +305,14 @@ check((await call(base, 'GET', '/api/results/' + s1.json.id)).json.goal === 'pro
     resumed.onExit(0, '');
     const done = (await call(base, 'GET', '/api/results')).json.find((e) => e.id === m1.json.id);
     check(done && done.stopped === undefined && (await call(base, 'GET', '/api/results/' + m1.json.id)).json.incomplete === undefined, 'results: once it finishes its result.json is listed and served, with no stopped mark');
+}
+{   // The finished search's round history, from its rounds.jsonl.
+    const dir = path.join(resultsDir, s1.json.id);
+    check((await call(base, 'GET', `/api/results/${s1.json.id}/rounds`)).json?.length === 0, 'results/<id>/rounds: a finished search with no rounds file gives an empty list');
+    writeFileSync(path.join(dir, 'rounds.jsonl'), '{"round":1,"stage":"foods","pools":[]}\n{"round":2,"stage":"foods","pools":[]}\n{"round":3,"sta\n{"round":1,"stage":"drinks","pools":[]}\n');
+    const rj = await call(base, 'GET', `/api/results/${s1.json.id}/rounds`);
+    check(rj.status === 200 && rj.json.map((r) => r.stage + r.round).join() === 'foods1,foods2,drinks1', 'results/<id>/rounds: one array, in file order, a line cut by a crash skipped');
+    check((await call(base, 'GET', '/api/results/000000000000/rounds')).status === 404 && (await call(base, 'GET', '/api/results/..%2F..%2Frounds')).status === 404, 'results/<id>/rounds: an unknown or malformed id is 404');
 }
 check((await call(base, 'GET', '/api/search/zzz')).status === 404, 'search/<id>: a malformed id is 404');
 const idx = await call(base, 'GET', '/');

@@ -332,7 +332,23 @@
             "timeLeft": "{{time}} left",
             "done": "done",
             "secondsPerRunCap": "Seconds per run",
-            "elapsed": "elapsed"
+            "elapsed": "elapsed",
+            "inFlight": "{{n}} runs in flight",
+            "inFlightOne": "{{n}} run in flight"
+        },
+        "chart": {
+            "round": "Round",
+            "toBeat": "to beat",
+            "paybackUp": "{{col}} (shorter is up)",
+            "rounds": "{{n}} rounds",
+            "roundsOne": "{{n}} round",
+            "running": "running",
+            "firstLook": "First look: figures from the first runs, no lines yet.",
+            "noFigures": "No change has the {{n}} fresh runs a figure needs yet.",
+            "noRounds": "{{stage}}: ended before its first round finished, so there is no chart.",
+            "tipFigure": "{{value}} [{{low}}, {{high}}] · round {{round}}",
+            "tipFigureOne": "{{value}} · round {{round}}",
+            "groupsStage": "{{stage}}, budget groups"
         },
         "rounds": {
             "coverageK": "Coverage",

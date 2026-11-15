@@ -195,16 +195,21 @@ export async function main(settings, seams) {
         progress.etaSeconds = left <= 0 ? 0 : hours ? Math.round((wall / hours) * batch.hoursLeft / Math.min(jobs, left)) : null;
         progress.elapsedSeconds = elapsedBefore + Math.round((Date.now() - t0) / 1000);
         if (sure.planned) { progress.picksPlanned = sure.planned; progress.picksDone = sure.done; }
+        // The runs going at this moment (the lanes of ensure()): their count, and the candidates they belong to (ids, from the race's `owners`; a run no candidate owns, the base's, counts but has no id).
+        progress.inFlight = { runs: flightRuns, ids: [...new Set([...flightKeys.keys()].map((k) => flightOwners?.get(k)).filter((id) => id !== undefined))] };
         if (partsTracker) progress.parts = partsTracker.sync(progress);
         outSink.progress(progress);
     }
+    let flightRuns = 0, flightOwners = null; // runs in flight now; variant key -> candidate id of the batch that runs (ensure's `owners`)
+    const flightKeys = new Map(); // variant key -> the runs of it in flight
 
     // reqs: [{ops, seed, h, tag}], run in the order given (tasks of equal length keep it). `onRun`: called after each finished run (the first
     // look of round 1 listens: it only reads the cache and the sink, it never feeds a choice).
     // `skippable` (the race's own batches): a press of one of the window's two stage buttons (stopSignal.done, 'accept' or 'skip') ends the batch at
     // once: the lanes take no new run, and the runs in flight are ended (dropRuns, set here while the lanes run: stopSignal.press calls it, the pool's drop); an ended
     // run is not stored (its compute is lost). The call then returns BY_USER (not false, which ends the whole search) when runs were left or ended.
-    async function ensure(reqs, { onRun, skippable = false } = {}) {
+    // `owners` (the race's batches): variant key -> the candidate id the runs of that variant belong to, for progress.inFlight.ids.
+    async function ensure(reqs, { onRun, skippable = false, owners = null } = {}) {
         const tasks = [], need = new Map(); // id -> task, at the longest length asked for that run
         for (const r of reqs) {
             const key = keyOf(r.ops), id = key + '#' + r.seed;
@@ -232,7 +237,13 @@ export async function main(settings, seams) {
                 if (byUser()) return;
                 if (!(next < tasks.length && !stopSignal.requested && (Date.now() - t0) / 60000 < maxMinutes)) { if (next < tasks.length || stopSignal.requested) stoppedByTime = true; return; }
                 const t = tasks[next++];
-                const res = await runPool.run(t);
+                flightOwners = owners; flightRuns++; flightKeys.set(t.variant, (flightKeys.get(t.variant) || 0) + 1);
+                report();
+                let res;
+                try { res = await runPool.run(t); } finally {
+                    flightRuns--; if ((flightKeys.get(t.variant) || 0) <= 1) flightKeys.delete(t.variant); else flightKeys.set(t.variant, flightKeys.get(t.variant) - 1);
+                    if (!flightRuns) flightOwners = null;
+                }
                 if (res === null) { ended = true; return; } // the run was ended (a stop request killed the pool, or a stage button dropped the runs in flight): not stored
                 const rec = { key: res.variant, seed: res.seed, hours: t.h, tag: t.tag, wallSeconds: res.wallSeconds, checkpoints: res.checkpoints };
                 runStore.put(rec);
@@ -740,7 +751,10 @@ export async function main(settings, seams) {
         const has = !!r && r.net !== undefined, searchHours = seeds * unitH, readHours = readingSeeds * unitH;
         return { id: c.id, built, player: c.player, desc: c.desc, change: changeOf(base, c), cost: c.cost.cost, seeds, readingSeeds, searchHours, readHours, hours: searchHours + readHours, tooFew: !r, few, status: status !== 'refuted' && r && loses(r) ? 'loses' : status !== 'refuted' && r && zeroed(r) ? 'zero' : status, screen,
             reading: r ? r.figure : null, low: r ? r.low : null, high: r ? r.high : null,
-            buyerNet: has ? r.net : null, netLow: has ? r.netLow : null, netHigh: has ? r.netHigh : null, payback: r ? r.payback ?? null : null };
+            buyerNet: has ? r.net : null, netLow: has ? r.netLow : null, netHigh: has ? r.netHigh : null, payback: r ? r.payback ?? null : null,
+            // The payback's own range (days), for the window's chart: the cost over the buyer's gain at each end of its range. The short end is the cost over the high end of the gain
+            // (null when that is not above 0: no payback at all), the long end the cost over its low end (null when that is not above 0: the range has no upper end, it is open).
+            paybackLow: has ? paybackDays(c.cost.cost, r.netHigh) : null, paybackHigh: has ? paybackDays(c.cost.cost, r.netLow) : null };
     }
     // The order of a pool's table, by one column: a free pool by the buyer's gain (largest first), a paid pool by its payback (shortest first, none
     // last), a goal without a buyer's gain by the figure; a tie by the larger buyer's gain, then the id.
@@ -832,6 +846,7 @@ export async function main(settings, seams) {
         // candidates dropped, who never return) and the contention of the last finished round (in contention, paused: plain numbers, they
         // may fall and rise). report() adds them to every progress message of the stage (stageCtx), whichever batch is running.
         const widthPrev = new Map(); // pool key -> the top leader's range width of the last round (item: range width and the one before)
+        const placePrev = new Map(); // pool key -> { candidate id -> its place (1 = first) in the pool's table last round }: the leader rows' `prev`, for the window's chart
         let stageCont = { contending: cands.length, paused: 0, acceptable: 0 };
         let stageBack = 0; // the changes that came back into this race after a failed pick check (reopen), counted once per return
         stageCtx = () => ({ stageCandidates: cands.length, stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageBack, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
@@ -912,7 +927,8 @@ export async function main(settings, seams) {
                 look(doneSweeps > was);
             } : undefined;
             if (first) look(true);
-            const searched = replay(stageRound, 'search') ? BY_USER : await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun, skippable: true });
+            const owners = new Map(cands.map((c) => [keyOf([...base, ...c.ops]), c.id])); // the variant each candidate's runs are of: progress.inFlight.ids
+            const searched = replay(stageRound, 'search') ? BY_USER : await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun, skippable: true, owners });
             if (searched === BY_USER) return userEnd(stageRound, 'search');
             if (!searched) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
@@ -929,7 +945,7 @@ export async function main(settings, seams) {
                 // Each one asks for readStep more reading seeds than it has (readTaken: from here on they count, whether run now or already stored).
                 const reqs = reading.flatMap((c) => { const n = readCount(base, c, H) + readStep; readTaken.set(readKey(base, c, H), n); return sureSeeds(n).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]); });
                 report({ stage, round: stageRound, phase: 'reading', candidatesLeft: reading.length });
-                const read1 = replay(stageRound, 'reading') ? BY_USER : await ensure(reqs, { skippable: true });
+                const read1 = replay(stageRound, 'reading') ? BY_USER : await ensure(reqs, { skippable: true, owners });
                 if (read1 === BY_USER) return userEnd(stageRound, 'reading');
                 if (!read1) return null;
             }
@@ -964,6 +980,10 @@ export async function main(settings, seams) {
                 pools: cont.pools.map((p) => {
                     const lr = rows(p), order = sortRows(lr, p.key), t = lr[0], w = order.sortedBy !== null && t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
                     widthPrev.set(p.key, w);
+                    // `prev` on each leader row: its place in this pool's table the round before (null when it was not among the leaders then, or on the stage's first round).
+                    const placed = placePrev.get(p.key);
+                    for (const l of lr) l.prev = placed?.get(l.id) ?? null;
+                    placePrev.set(p.key, new Map(lr.map((l, i) => [l.id, i + 1])));
                     return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), ...order, leaders: lr };
                 }) };
             lastRound = rec;
