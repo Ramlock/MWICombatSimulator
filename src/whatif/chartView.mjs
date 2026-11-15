@@ -8,6 +8,13 @@ import { FIGURE_MIN_SEEDS } from './figure.mjs';
 const SLIDE_MS = 350, PULSE_MS = 1300, CHART_HEIGHT = 280;
 
 // The two reference levels (0 and the round's to-beat level), drawn under the lines, each with a small label on its left; and the separator before the right-edge column.
+// A level's label baseline (text drawn upward from it, 11 px font): over its line, or under it when that would overlap a label already drawn (within 13 px) or leave the area.
+export const LABEL_H = 13;
+export function levelLabelY(py, taken, area) {
+    const clear = (ly) => ly - LABEL_H + 2 >= area.top && ly <= area.bottom && taken.every((t) => Math.abs(t - ly) >= LABEL_H);
+    const above = py - 2, below = py + LABEL_H;
+    return clear(above) ? above : clear(below) ? below : taken.length ? Math.max(...taken) + LABEL_H : above;
+}
 const levelsPlugin = {
     id: 'whatifLevels',
     beforeDatasetsDraw(chart) {
@@ -16,11 +23,14 @@ const levelsPlugin = {
         const ctx = chart.ctx;
         ctx.save(); ctx.beginPath(); ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top); ctx.clip();
         ctx.font = '11px sans-serif'; ctx.textBaseline = 'bottom';
+        const labels = []; // the baselines of the labels drawn so far: a label that would sit on another (two close levels) goes under its own line instead
         for (const lv of v.levels) {
             const py = y.getPixelForValue(lv.value);
             if (!(py >= area.top && py <= area.bottom)) continue;
             ctx.strokeStyle = lv.color; ctx.lineWidth = 1; ctx.setLineDash(lv.dash); ctx.beginPath(); ctx.moveTo(area.left, py); ctx.lineTo(area.right, py); ctx.stroke();
-            ctx.setLineDash([]); ctx.fillStyle = lv.color; ctx.fillText(lv.text, area.left + 4, py - 2);
+            const ly = levelLabelY(py, labels, area);
+            labels.push(ly);
+            ctx.setLineDash([]); ctx.fillStyle = lv.color; ctx.fillText(lv.text, area.left + 4, ly);
         }
         if (Number.isFinite(v.sepX)) {
             const px = x.getPixelForValue(v.sepX);

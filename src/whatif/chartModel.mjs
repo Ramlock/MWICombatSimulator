@@ -75,7 +75,8 @@ export function poolModel(pool, opts = {}) {
         return {
             id: l.id, label: l.desc, player: l.player, data: pts.map((p) => ({ x: p.round, y: p.value })), color: out ? GREY : rankColor(l.rank, total), width: isHover ? 3 : l.rank !== null && l.rank <= BAND_TOP ? 1.8 : 1.2,
             dim: hover !== null && !isHover, out, dashTo: pts.map((p, i) => i > 0 && (p.aside || pts[i - 1].aside || p.round - pts[i - 1].round > 1)),
-            band: band ? pts.map((p) => (Number.isFinite(p.low) && Number.isFinite(p.high) ? { low: p.low, high: p.high } : null)) : null,
+            // an open payback range (openHigh: no upper end) runs off the chart's worse edge (high Infinity), faded there as the bars are
+            band: band ? pts.map((p) => (Number.isFinite(p.low) && (Number.isFinite(p.high) || p.openHigh) ? { low: p.low, high: Number.isFinite(p.high) ? p.high : Infinity } : null)) : null,
         };
     }) : [];
     return { ...base, mode: lines ? 'lines' : 'bars', datasets };

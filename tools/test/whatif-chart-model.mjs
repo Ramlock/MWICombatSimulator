@@ -99,6 +99,8 @@ const poolOf = (recs, opts) => buildHistory(recs, opts).stages[0].pools[0];
     check('a paid pool: the axis is reversed (shorter payback at the top: up is better) and the column keeps the open upper end flagged', m.reverse === true && m.better === 'lower' && m.col === 'payback' && m.mode === 'lines' && m.column.every((c) => c.openHigh === false));
     const open = poolModel(poolOf([recs[0]]));
     check('an open payback range is flagged on the column bar (the view runs it off the edge)', open.column.find((c) => c.id === 'q').openHigh === true);
+    const qBand = (m.lines || m.datasets || []).find((l) => l.id === 'q')?.band;
+    check('an open payback range has a band too: its open end is Infinity (drawn to the edge and faded), the closed round a plain range', qBand?.[0]?.high === Infinity && Number.isFinite(qBand?.[0]?.low) && Number.isFinite(qBand?.[1]?.high), JSON.stringify(qBand));
 }
 
 console.log(failed ? `${failed} FAILED` : 'all ok');

@@ -43,9 +43,11 @@ export function barGeometry({ x, y, low, high }, scaleY, area, cap = 4) {
 // Each run is { upper: [{x, y}], lower: [{x, y}] } in pixels, cut to the area (a band's cut is a flat edge at the area's edge). `points`: [{ x, low, high }|null].
 export function bandRuns(points, scaleY, area) {
     const runs = []; let run = null;
-    const clampY = (v) => Math.min(Math.max(scaleY(v), area.top), area.bottom);
+    // An open end (±Infinity: a range with no end on that side) is drawn to the chart's edge on its side (and faded there by the plugin).
+    const clampY = (v) => Math.min(Math.max(scaleY(Number.isFinite(v) ? v : Math.sign(v) * 1e300), area.top), area.bottom);
+    const isEnd = (v) => typeof v === 'number' && !Number.isNaN(v);
     for (const p of points) {
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.low) || !Number.isFinite(p.high)) { run = null; continue; }
+        if (!p || !Number.isFinite(p.x) || !isEnd(p.low) || !isEnd(p.high)) { run = null; continue; }
         if (!run) { run = { upper: [], lower: [] }; runs.push(run); }
         run.upper.push({ x: p.x, y: clampY(Math.max(p.low, p.high)) });
         run.lower.push({ x: p.x, y: clampY(Math.min(p.low, p.high)) });
@@ -69,7 +71,11 @@ export const errorBarsPlugin = {
             const meta = chart.getDatasetMeta(i);
             const pts = ds.errorBand.map((b, k) => (b && meta.data[k] && !meta.data[k].skip ? { x: meta.data[k].x, low: b.low, high: b.high } : null));
             ctx.save(); ctx.beginPath(); ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top); ctx.clip();
-            ctx.fillStyle = ds.errorBandColor || 'rgba(255, 255, 255, 0.12)';
+            // A band that reaches the chart's top or bottom edge fades out over the last 14 px there, as a cut bar does: it runs off the chart, never ends flat.
+            const bandColor = ds.errorBandColor || 'rgba(255, 255, 255, 0.12)', h = Math.max(area.bottom - area.top, 1), edge = Math.min(14 / h, 0.5);
+            const grad = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+            grad.addColorStop(0, scaleAlpha(bandColor, 0.1)); grad.addColorStop(edge, bandColor); grad.addColorStop(1 - edge, bandColor); grad.addColorStop(1, scaleAlpha(bandColor, 0.1));
+            ctx.fillStyle = grad;
             for (const run of bandRuns(pts, scaleY, area)) {
                 ctx.beginPath();
                 run.upper.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
@@ -112,6 +118,11 @@ export const errorBarsPlugin = {
 };
 
 // The colour with an alpha, for a '#rrggbb', 'rgb(...)' or 'rgba(...)' string (anything else is returned as it is).
+// The same colour with its alpha times k: 'rgba(r, g, b, a)' or '#rrggbb' (alpha 1).
+export function scaleAlpha(color, k) {
+    const m = /^rgba\(\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([\d.]+)\s*\)$/.exec(color);
+    return m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${Number(m[4]) * k})` : withAlpha(color, k);
+}
 export function withAlpha(color, alpha) {
     const hex = /^#([0-9a-f]{6})$/i.exec(color);
     if (hex) { const n = parseInt(hex[1], 16); return `rgba(${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255}, ${alpha})`; }

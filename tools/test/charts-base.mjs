@@ -1,7 +1,7 @@
 // Test: the shared chart base (src/charts/base.mjs): the ± bar geometry (what is drawn where, what runs off the edge), the band runs, the dark axis and the
 // plugin's canvas calls on a fake chart (no browser). Pure; synthetic numbers only.
 // Usage: node tools/test/charts-base.mjs        Exit code 0 on pass, 1 on fail.
-import { THEME, darkAxis, clipRange, barGeometry, bandRuns, errorBarsPlugin, withAlpha } from '../../src/charts/base.mjs';
+import { THEME, darkAxis, clipRange, barGeometry, bandRuns, errorBarsPlugin, withAlpha, scaleAlpha } from '../../src/charts/base.mjs';
 
 let failed = 0;
 const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL ') + name + (cond ? '' : ' ' + extra)); if (!cond) failed++; };
@@ -43,6 +43,16 @@ check('clipRange: the ends are given in either order', clipRange(250, 150, area)
     check('bandRuns: upper is the high end (smaller pixel row), lower the low end, in order', runs[0].upper[0].y === 250 && runs[0].lower[0].y === 290 && runs[0].upper[1].x === 20);
     const c = bandRuns([{ x: 1, low: -500, high: 900 }, { x: 2, low: -500, high: 900 }], scaleY, area);
     check('bandRuns: a band beyond the area is cut flat at its edges', c[0].upper[0].y === 100 && c[0].lower[0].y === 300);
+    const o = bandRuns([{ x: 1, low: 10, high: Infinity }, { x: 2, low: 20, high: 60 }], scaleY, area);
+    check('bandRuns: an open end (Infinity) runs to the edge on its side, never breaks the band', o.length === 1 && o[0].upper[0].y === 100 && Number.isFinite(o[0].lower[0].y), JSON.stringify(o));
+    check('scaleAlpha: an rgba colour keeps its hue and has its alpha scaled (the fade at the edge)', scaleAlpha('rgba(10, 20, 30, 0.1)', 0.5) === 'rgba(10, 20, 30, 0.05)' && scaleAlpha('#ff0000', 0.1) === withAlpha('#ff0000', 0.1));
+    const src = (await import('node:fs')).readFileSync(new URL('../../src/charts/base.mjs', import.meta.url), 'utf8');
+    check('band plugin: the band fills with a gradient that fades over the last 14 px at the top and bottom edge', /createLinearGradient\(0, area\.top, 0, area\.bottom\)[^]*?scaleAlpha\(bandColor, 0\.1\)[^]*?ctx\.fillStyle = grad/.test(src));
+    const { levelLabelY, LABEL_H } = await import('../../src/whatif/chartView.mjs');
+    const ar = { top: 0, bottom: 280 };
+    const first = levelLabelY(200, [], ar), second = levelLabelY(205, [first], ar);
+    check('level labels: two close levels (0 and to beat) never overlap: the second goes under its line', first === 198 && Math.abs(second - first) >= LABEL_H && second === 205 + LABEL_H, `${first} ${second}`);
+    check('level labels: a lone level keeps its label over its line', levelLabelY(100, [], ar) === 98);
 }
 
 // ---- darkAxis and colours ----
