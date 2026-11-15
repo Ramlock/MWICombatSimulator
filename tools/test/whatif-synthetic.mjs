@@ -302,12 +302,13 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     const halt = (rec, stop) => { if (rec.stage === 'screen' && ++seenRound === 1) stop.requested = true; };
     try {
         const r1 = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: halt, poolWrap: ticking });
-        const before = r1.lastProgress?.elapsedSeconds ?? 0, kept = [];
-        const r2 = await runSynthetic(scenario, { 'max-steps': 0 }, { records: r1.records, aux: r1.aux, poolWrap: ticking, onProgress: (p) => { if (p.runsKept) kept.push(p.runsKept); } });
+        const before = r1.lastProgress?.elapsedSeconds ?? 0, kept = [], replayed = [];
+        const r2 = await runSynthetic(scenario, { 'max-steps': 0 }, { records: r1.records, aux: r1.aux, poolWrap: ticking, onProgress: (p) => { if (p.runsKept) kept.push(p.runsKept); if (p.runsKept && p.round !== undefined && p.runsKept.stage === p.stage) replayed.push({ runs: p.stageRuns, hours: p.stageSimHours, stage: p.stage, round: p.round }); } });
         const first2 = r2.aux.get('progress.json');
         check('resume: the first run stopped with elapsed time on its progress', r1.outcome !== 'done' && before > 0, `${r1.outcome} ${before}`);
         check('resume: elapsed goes on from the stop (the resumed search ends above what the stopped one had, by its own time)', r2.lastProgress.elapsedSeconds > before && first2.elapsedSeconds === r2.lastProgress.elapsedSeconds, `${before} -> ${r2.lastProgress.elapsedSeconds}`);
         check('resume: a round of the resumed search says how many of its runs the record kept (some, not more than it asks for), with its stage and round', kept.length > 0 && kept.every((k) => k.kept > 0 && k.kept <= k.total && typeof k.stage === 'string'), JSON.stringify(kept.slice(0, 3)));
+        check('resume: a replayed round counts the runs it took from the record in its stage Runs and Sim. hours (never a blank row)', replayed.length > 0 && replayed.every((x) => x.runs > 0 && x.hours > 0), JSON.stringify(replayed.slice(0, 3)));
         const fresh = []; await runSynthetic(scenario, { 'max-steps': 0 }, { onProgress: (p) => { if (p.runsKept) fresh.push(p); } });
         check('resume: a fresh search keeps none (no runsKept)', fresh.length === 0, String(fresh.length));
     } finally { Date.now = realNow; }

@@ -170,6 +170,9 @@ export async function main(settings, seams) {
     const allHours = [...new Set([...stages.map((s) => s.h), fin.h])].sort((a, b) => a - b);
     let stoppedByTime = false;
     const wallLog = []; // per run actually made in this invocation
+    // Per run the record held at the start (fromRecord) that a batch took instead of making it, counted the first time it is asked for (and again for more hours):
+    // a resumed stage's Runs and Sim. hours count these with the runs it makes, so a replayed row shows what the search had at that point (stageCtx).
+    const takenLog = [], takenHours = new Map();
 
     // ---- Progress (delivery design section 3): the stage, candidates left, runs of the current batch, seconds per run
     // measured, and the batch's time left from the measured core-seconds per sim hour. The batch is one stage (the
@@ -213,7 +216,7 @@ export async function main(settings, seams) {
         const tasks = [], need = new Map(); // id -> task, at the longest length asked for that run
         for (const r of reqs) {
             const key = keyOf(r.ops), id = key + '#' + r.seed;
-            if (cache.get(id)?.byHours[r.h]) continue;
+            if (cache.get(id)?.byHours[r.h]) { if (fromRecord.has(id) && r.h > (takenHours.get(id) || 0)) { takenLog.push({ h: r.h - (takenHours.get(id) || 0) }); takenHours.set(id, r.h); } continue; }
             const t = need.get(id);
             if (t) { t.h = Math.max(t.h, r.h); continue; }
             need.set(id, { variant: key, ops: r.ops, seed: r.seed, options, setupsDir, tag: r.tag, h: r.h });
@@ -840,7 +843,9 @@ export async function main(settings, seams) {
         const lockedBy = new Map(); // player (or '*') -> candidate
         stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
         for (const k of STAGE_END) delete progress[k]; // the stage before this one has its row done already (its key is not this one)
-        const sinceStart = roundNo, hours0 = wallLog.reduce((a, r) => a + r.h, 0), runs0 = wallLog.length;
+        // The stage's runs and sim. hours: those it made and those it took from the record (takenLog), so a resumed stage's row is never blank.
+        const stageLogs = () => [...wallLog, ...takenLog];
+        const sinceStart = roundNo, hours0 = stageLogs().reduce((a, r) => a + r.h, 0), runs0 = wallLog.length + takenLog.length;
         // A race stage has no total known in advance, so its progress part shows no bar: only counters that never go down (the round being run,
         // the runs finished in the stage and the simulated hours spent in it, both cumulative over every batch of every round, and the
         // candidates dropped, who never return) and the contention of the last finished round (in contention, paused: plain numbers, they
@@ -849,7 +854,7 @@ export async function main(settings, seams) {
         const placePrev = new Map(); // pool key -> { candidate id -> its place (1 = first) in the pool's table last round }: the leader rows' `prev`, for the window's chart
         let stageCont = { contending: cands.length, paused: 0, acceptable: 0 };
         let stageBack = 0; // the changes that came back into this race after a failed pick check (reopen), counted once per return
-        stageCtx = () => ({ stageCandidates: cands.length, stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageBack, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
+        stageCtx = () => ({ stageCandidates: cands.length, stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageBack, stageRuns: wallLog.length + takenLog.length - runs0, stageSimHours: stageLogs().reduce((a, r) => a + r.h, 0) - hours0 });
         // The stage's end (the one path): its last figures and its end go to the progress record at once (stageEnded names the stage), so the row stops
         // reading "running" and drops the buttons however long the pick checks take. A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
         let prevLive = [], prevTakes = new Map(); // the leaders of the last finished round and what its Accept would take (what a press before the next round finishes returns)
