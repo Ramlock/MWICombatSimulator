@@ -78,10 +78,9 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readParty } from './variants.mjs';
-import { DEFAULT_PRICES, root, measureNeed, runParty, buildDtos } from './engine.mjs'; // registers the loader hooks: the core is imported after it
+import { DEFAULT_PRICES, root, measureNeed, probeRun, buildDtos } from './engine.mjs'; // registers the loader hooks: the core is imported after it
 import { parseFlags, makeArg } from './options.mjs';
 import { loadNodeData, createNodeStore, createNodePool, createCountingPool, createNodeSink, sha1 } from './node-shell.mjs';
-const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
 const { main } = await import('./core.mjs');
 import { loadScenario, createSyntheticPool, syntheticSim } from './synthetic.mjs';
 
@@ -111,7 +110,7 @@ const seams = {
     store: createNodeStore(OUT, arg('cache-from', null)),
     pool, stop, hash: sha1,
     sink: createNodeSink(OUT),
-    sim: scenario ? syntheticSim({ runParty, measureNeed, buildDtos, Trigger }, scenario) : { runParty, measureNeed, buildDtos, Trigger },
+    sim: scenario ? syntheticSim({ probeRun, measureNeed, buildDtos }, scenario) : { probeRun, measureNeed, buildDtos },
 };
 const outcome = await main(settings, seams);
 console.log(pool.summary());

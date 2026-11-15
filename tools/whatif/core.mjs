@@ -6,12 +6,14 @@
 //             its name inside the run keys, the setups folder name (opaque, passed to the run processes)
 //   seams     { data, store, pool, sink, stop, hash, sim }:
 //     data   { setups, market, pricesTimestamp, exportData, userTrig }: the party, the price snapshot, the exporter JSON, the user's trigger candidates
-//     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json, probe.json and presses.json
+//     store  load() yields every saved run record (a sync or an async iterable); put(record) saves one; readAux(name) / writeAux(name, value) keep need.json, probe.json and presses.json;
+//            each may answer a value or a promise of it: the core awaits every call (the Node store is synchronous, the page's IndexedDB store is not)
 //     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once drop() (the runs in flight) or kill() (the pool) ended it
 //     sink   progress(p), partial(snapshot), round(r), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
 //     stop   { requested, done }: requested is true once the user asked to stop; done is 'accept' or 'skip' once he pressed one of the two stage buttons (the race stage running now ends at once, its runs in flight ended: Accept with its pick taken as it is; Skip with a pool that has no lock left unchanged); press(mode) is the core's (set by main()): the shell calls it on a press, never sets done itself
 //     hash   sha1 hex of a text (the run keys)
-//     sim    { runParty, measureNeed, buildDtos, Trigger }: the engine's own functions and Trigger class
+//     sim    { probeRun, measureNeed, buildDtos }: the engine's own functions (probeRun: the trigger counter's run, tools/whatif/probe.mjs; it answers only
+//            plain numbers, so a page worker can run it); the core awaits every call
 // Resolves with { stopped } (stopped: the search ended early, every finished run is in the store, the same call resumes).
 import { applyOps } from '../../src/whatif/applyOps.mjs';
 import { makePricer, TAX_LABEL, upgradeLevels, swapLevelsOf } from './prices.mjs';
@@ -21,7 +23,7 @@ import { hideSettingAlternatives } from './alternatives.mjs';
 import { drinkFillCands } from './drinkfill.mjs';
 import { dropChainStates } from './pools.mjs';
 import { tMult, dfOf, contention, eliminate, releaseTied, reopen, nearestSeparation, bounds, poolKey, poolSorter, acceptTakes, togetherOf, setKey, budgetGroups, rankedOf } from './rounds.mjs';
-import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
+import { mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
 import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
@@ -46,7 +48,7 @@ import combatStyleDetailMap from '../../src/combatsimulator/data/combatStyleDeta
 
 export async function main(settings, seams) {
     const { data, store: runStore, pool: runPool, sink: outSink, stop: stopSignal, hash, sim } = seams;
-    const { runParty, measureNeed, buildDtos, Trigger } = sim;
+    const { probeRun, measureNeed, buildDtos } = sim;
     const arg = makeArg(settings.flags);
     // A press of a stage button (the shell calls stop.press(mode) on the runner's { done } message): stop.done takes the mode, and a race batch that
     // runs now has its runs in flight ended at once (dropRuns, set by ensure() while such a batch runs: the pool's drop()).
@@ -56,7 +58,7 @@ export async function main(settings, seams) {
     // { mode: 'accept' | 'skip', stage, race (the race's number in the search, from 1: a stage that races again after a failed pick check is a new race),
     // round (the stage's round), phase: 'search' | 'reading' (it ended that phase's runs in flight) | 'end' (read once the round was in) }. A resume (the same
     // search's folder) replays each one at the same point through stop.press, the live press's own path; a new search has its own folder and reads none.
-    const presses = runStore.readAux?.('presses.json') ?? [];
+    const presses = (await runStore.readAux?.('presses.json')) ?? [];
 
     const goal = arg('goal', 'profit');
     const errorRule = arg('error', 'unpaired'); // design revision 6 (main c2ed824), his pick 23:27 BRT
@@ -144,11 +146,11 @@ export async function main(settings, seams) {
     const cache = new Map(); // key#seed -> { wallSeconds, hours, byHours: {h: metricsCheckpoint} }
     // --cache-from a.jsonl,b.jsonl: earlier runs.jsonl files read as well (never written), so a new search reuses
     // another search's runs of the same setups without copying them.
-    for (const r of runStore.load()) put(r);
+    for await (const r of runStore.load()) put(r);
     // The runs the record held when this process started (a resume's runs kept from before the stop): ensure() counts the ones a batch asks for (progress.runsKept).
     const fromRecord = new Set(cache.keys());
     // A resumed search's elapsed time goes on from where it stopped: the time the search's folder recorded (its last progress.json) plus this process's own.
-    const elapsedBefore = Number(runStore.readAux?.('progress.json')?.elapsedSeconds) || 0;
+    const elapsedBefore = Number((await runStore.readAux?.('progress.json'))?.elapsedSeconds) || 0;
     function put(r) {
         const id = r.key + '#' + r.seed;
         const prev = cache.get(id);
@@ -235,7 +237,7 @@ export async function main(settings, seams) {
                 const res = await runPool.run(t);
                 if (res === null) { ended = true; return; } // the run was ended (a stop request killed the pool, or a stage button dropped the runs in flight): not stored
                 const rec = { key: res.variant, seed: res.seed, hours: t.h, tag: t.tag, wallSeconds: res.wallSeconds, checkpoints: res.checkpoints };
-                runStore.put(rec);
+                await runStore.put(rec);
                 put(rec);
                 wallLog.push({ tag: t.tag, h: t.h, wallSeconds: res.wallSeconds });
                 batch.hoursLeft -= t.h; batch.wall += res.wallSeconds; batch.done++;
@@ -460,28 +462,28 @@ export async function main(settings, seams) {
     const FOODS = Object.values(itemDetailMap).filter((it) => it.categoryHrid === '/item_categories/food' && combatUse(it) && hasAsk(it.hrid)).map((it) => it.hrid);
     const DRINKS = Object.values(itemDetailMap).filter((it) => it.categoryHrid === '/item_categories/drink' && combatUse(it) && hasAsk(it.hrid)).map((it) => it.hrid);
     // Open food and drink slots, as setupDto.mjs gates them (the pouch): fill every slot and count what the DTO keeps.
-    function consumableSlots(setups, p) {
+    async function consumableSlots(setups, p) {
         const t = structuredClone(setups), i = t.findIndex((x) => x.name === p);
         t[i].food = { '/action_types/combat': FOODS.slice(0, 3).map((h) => ({ itemHrid: h })) };
         t[i].drinks = { '/action_types/combat': DRINKS.slice(0, 3).map((h) => ({ itemHrid: h })) };
-        const d = buildDtos(t)[i];
+        const d = (await buildDtos(t))[i];
         return { food: d.food.filter(Boolean).length, drink: d.drinks.filter(Boolean).length };
     }
     // Foods and drinks are decided before the rest of the search (Stage F, Stage D in main()), each as whole fillings of every open
     // slot of a player: foods from the party's measured need (foodfill.mjs), drinks from the pruned drink pool (drinkfill.mjs). The
     // rest of the search has no food or drink candidates. `setups` are the setups the filling is built on (the baseline so far).
     const typeOf = (h) => consumableType(itemDetailMap[h]);
-    const slotList = (setups, p, kind) => {
-        const s = setups.find((x) => x.name === p), n = consumableSlots(setups, p)[kind === 'food' ? 'food' : 'drink'];
+    const slotList = async (setups, p, kind) => {
+        const s = setups.find((x) => x.name === p), n = (await consumableSlots(setups, p))[kind === 'food' ? 'food' : 'drink'];
         return { s, list: Array.from({ length: n }, (_, i) => s[kind === 'food' ? 'food' : 'drinks']['/action_types/combat']?.[i]?.itemHrid || null) };
     };
-    function foodStageCands(setups, p) {
-        const { s, list } = slotList(setups, p, 'food');
+    async function foodStageCands(setups, p) {
+        const { s, list } = await slotList(setups, p, 'food');
         return foodCands(s, p, list);
     }
     const drinkStats = {}; // player -> pruning counts of Stage D (result.drinkPruning)
-    function drinkStageCands(setups, p) {
-        const { s, list } = slotList(setups, p, 'drink');
+    async function drinkStageCands(setups, p) {
+        const { s, list } = await slotList(setups, p, 'drink');
         const { cands, stats } = drinkFillCands(p, { items: itemDetailMap, market, baseline: list, setup: s, goal });
         const r = stats.byRule;
         console.log(`${p} drinks: ${stats.style} style, ${stats.table} drinks with an ask; dropped by main stat ${r.a}, basic attack ${r.b}, profit/exp ${r.c}, dominance ${r.d}; ${stats.kept.length} kept of ${stats.types} types; ${stats.fillings} fillings`);
@@ -501,12 +503,12 @@ export async function main(settings, seams) {
     // this base and these seeds, like probe.json.
     const NEED_SEEDS = seedsFor(3), NEED_HOURS = 20;
     async function needBase() {
-        const key = keyOf([]), n0 = runStore.readAux('need.json');
+        const key = keyOf([]), n0 = await runStore.readAux('need.json');
         if (n0) { const n = n0; if (n.key === key && n.hours === NEED_HOURS && JSON.stringify(n.seeds) === JSON.stringify(NEED_SEEDS)) return n; }
         const t1 = Date.now(), m = await measureNeed({ ...options, setups: setups0, seeds: NEED_SEEDS, hours: NEED_HOURS });
         console.log(`need: ${NEED_SEEDS.length} seeds x ${NEED_HOURS} h, ${((Date.now() - t1) / 1000).toFixed(0)} s`);
         const n = { key, ...m };
-        runStore.writeAux('need.json', n);
+        await runStore.writeAux('need.json', n);
         return n;
     }
     // Swaps to an item in the exporter's inventory: no gold cost; selling it instead is its only price (after tax).
@@ -585,20 +587,19 @@ export async function main(settings, seams) {
     // for this baseline. Each probe run must equal the plain run of the same seed (the probe only observes): it is checked
     // against the cached plain run when there is one (tools/test/whatif-triggers.mjs checks it on a generic party).
     async function probeBase(baseOps) {
-        const key = keyOf(baseOps), setupsB = applyOps(setups0, baseOps), p0 = runStore.readAux('probe.json');
+        const key = keyOf(baseOps), setupsB = applyOps(setups0, baseOps), p0 = await runStore.readAux('probe.json');
         if (p0) { const p = p0; if (p.key === key && p.k === probeK && p.h === probeH) return p.store; }
         const stores = [];
         for (const seed of seedsFor(probeK)) {
-            let st;
             const t1 = Date.now();
-            const res = await runParty({ ...options, setups: setupsB, seed, checkpoints: [probeH], onPlayers: (pls, names) => { st = installProbe(pls, names, players, Trigger); } });
+            const res = await probeRun({ ...options, setups: setupsB, seed, checkpoints: [probeH], players });
             const cached = cache.get(key + '#' + seed)?.byHours[probeH];
             if (cached && JSON.stringify(cached) !== JSON.stringify(res.checkpoints[0])) throw new Error(`probe changed the run of seed ${seed}: the counter must only observe`);
             console.log(`probe seed ${seed} ${probeH} h: ${((Date.now() - t1) / 1000).toFixed(0)} s, ${cached ? 'equal to the cached plain run' : 'no cached plain run to compare'}`);
-            stores.push(summarize(st));
+            stores.push(res.probe);
         }
         const store = mergeProbes(stores);
-        runStore.writeAux('probe.json', { key, k: probeK, h: probeH, store });
+        await runStore.writeAux('probe.json', { key, k: probeK, h: probeH, store });
         return store;
     }
     const openSlots = onlySlots || COMBAT_SLOTS;
@@ -821,7 +822,7 @@ export async function main(settings, seams) {
         // the same code ends the stage); took() stores a press the moment it takes effect (once: a replayed press is already stored).
         const pressAt = (stageRound, phase) => presses.find((p) => p.race === raceAt && p.stage === stage && p.round === stageRound && p.phase === phase);
         const replay = (stageRound, phase) => { const p = pressAt(stageRound, phase); if (p) stopSignal.press(p.mode); return !!p; };
-        const took = (stageRound, phase, mode) => { if (!pressAt(stageRound, phase)) { presses.push({ mode, stage, race: raceAt, round: stageRound, phase }); runStore.writeAux?.('presses.json', presses); } };
+        const took = async (stageRound, phase, mode) => { if (!pressAt(stageRound, phase)) { presses.push({ mode, stage, race: raceAt, round: stageRound, phase }); await runStore.writeAux?.('presses.json', presses); } };
         for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; c.out = undefined; }
         const lockedBy = new Map(); // player (or '*') -> candidate
         stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
@@ -869,10 +870,10 @@ export async function main(settings, seams) {
         // (prevTakes: the window offers Accept from the last finished round's figures).
         // A replayed press of this kind (phase 'search' or 'reading') skips the batch: the runs it had ended were never stored, and the ones it asked for
         // may since be in the store from a later stage, which would let the batch finish and move the end.
-        const userEnd = (stageRound, phase) => {
+        const userEnd = async (stageRound, phase) => {
             const mode = stopSignal.done;
             stopSignal.done = false;
-            took(stageRound, phase, mode);
+            await took(stageRound, phase, mode);
             endedByUser[stage] = stageRound - 1;
             if (mode === 'skip') endedBySkip[stage] = true;
             const accepted = mode === 'accept' ? prevTakes : new Map();
@@ -1012,7 +1013,7 @@ export async function main(settings, seams) {
             // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).
             replay(stageRound, 'end');
             const mode = stopSignal.done, byUser = !!mode;
-            if (byUser) { stopSignal.done = false; took(stageRound, 'end', mode); }
+            if (byUser) { stopSignal.done = false; await took(stageRound, 'end', mode); }
             if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart; // a Skip that lands at the end of a round is still a Skip (the round in flight is the next one)
             if (byUser && !settled && mode === 'skip') endedBySkip[stage] = true;
             const accepted = mode === 'accept' && !together && !groupsOut ? takes : new Map();
@@ -1102,7 +1103,8 @@ export async function main(settings, seams) {
             for (const kind of kinds) {
                 if (kind === 'foods') { report({ stage: 'need' }); needStore = await needBase(); } // the foods are built from the party's measured need
                 const setupsNow = applyOps(setups0, baseOps);
-                const fc = players.flatMap((p) => (kind === 'foods' ? foodStageCands(setupsNow, p) : drinkStageCands(setupsNow, p)));
+                const fc = [];
+                for (const p of players) fc.push(...(kind === 'foods' ? await foodStageCands(setupsNow, p) : await drinkStageCands(setupsNow, p)));
                 const flag = kind === 'foods' ? 'food' : 'drink';
                 const refute = (c, p) => { // a leader that failed the pick check on its reading seeds leaves the race (as a failed pick does today)
                     result.notConfirmed.push({ ...row(c), step: null, kind: flag, fresh: p.fresh, ...checkOf(p.fresh, p.ending), inRace: true }); // inRace: left out by the pick check on the race's reading seeds (no run of its own), not by a confirmation

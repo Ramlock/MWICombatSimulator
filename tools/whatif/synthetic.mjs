@@ -1,8 +1,8 @@
 // Synthetic simulation for the what-if search (test tooling; the core's code path stays one). A scenario file (tools/test/synthetic/*.json) holds a small
 // generic party, a generic price snapshot and, for the changes the core will build from them, each one's known true gain, cost and noise. The core gets
-// the real seams everywhere (data, store, sink, hash, buildDtos, Trigger) except two, which this file fakes:
+// the real seams everywhere (data, store, sink, hash, buildDtos) except two, which this file fakes:
 //   pool  createSyntheticPool(scenario): run(task) answers { variant, seed, wallSeconds, checkpoints } computed from the scenario instead of an engine run
-//   sim   syntheticSim(realSim, scenario): measureNeed answers the scenario's food need; runParty throws (only the trigger probe calls it, and the trigger lever is off)
+//   sim   syntheticSim(realSim, scenario): measureNeed answers the scenario's food need; probeRun throws (the trigger lever is off)
 // The core does not know it is fake. Nothing here imports the core, the engine or any file API but readFileSync (loadScenario).
 //
 // Scenario:
@@ -72,14 +72,14 @@ export function createSyntheticPool(scenario, { confirmOffset = 10000 } = {}) {
     };
 }
 
-// The sim seam: the real buildDtos and Trigger, the scenario's food need, no engine run.
+// The sim seam: the real buildDtos, the scenario's food need, no engine run.
 export function syntheticSim(realSim, scenario) {
     return {
         ...realSim,
         async measureNeed({ seeds, hours = 20 }) {
             return { hours, seeds, perSeed: [], mean: structuredClone(scenario.model.need), sources: { hp: [], mp: [] } };
         },
-        async runParty() { throw new Error('synthetic scenario: runParty is not available (the trigger lever must be off)'); },
+        async probeRun() { throw new Error('synthetic scenario: probeRun is not available (the trigger lever must be off)'); },
     };
 }
 
@@ -109,7 +109,6 @@ export function flagsFromRequest(req, extra = {}) {
 // `records` primes the store with earlier runs (a run that reaches the pool is a store miss, counted in `runs`). `aux` primes the small files (need.json, probe.json, progress.json) with an earlier run's. Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, records, aux, stop, seen }.
 export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, records: prior = [], aux: priorAux = null, poolWrap = (p) => p } = {}) {
     const E = await import('./engine.mjs'); // registers the loader hooks: the core is imported after it
-    const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
     const { main } = await import('./core.mjs');
     const flags = flagsFromRequest(scenario.request, { budgets: Object.entries(scenario.budgets).map(([p, v]) => `${p}=${v}`).join(','), jobs: 8, players: scenario.players.map((p) => p.name), ...extra });
     const records = [...prior], aux = new Map(priorAux ?? []), rounds = [], partials = [];
@@ -135,7 +134,7 @@ export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, 
             stopped(s) { result = s; },
             final(s, md) { result = s; markdown = md; return 'memory'; },
         },
-        sim: syntheticSim({ runParty: E.runParty, measureNeed: E.measureNeed, buildDtos: E.buildDtos, Trigger }, scenario),
+        sim: syntheticSim({ probeRun: E.probeRun, measureNeed: E.measureNeed, buildDtos: E.buildDtos }, scenario),
     };
     const settings = { flags, argsText: 'synthetic', jobs: Number(flags.jobs), pricesFile: 'synthetic', pricesKey: 'synthetic', setupsDir: 'synthetic' };
     const outcome = await main(settings, seams);

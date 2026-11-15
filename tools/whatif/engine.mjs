@@ -30,6 +30,10 @@ export function runParty(opts) {
     return pure.runParty({ ...opts, priceTable: loadPrices(opts.prices || DEFAULT_PRICES) });
 }
 
+// The trigger counter's run (probe.mjs, the same function a page worker calls): opts as runParty's plus `players`; resolves { checkpoints, probe }.
+const { probeRun: probeRunWith } = await import('./probe.mjs');
+export const probeRun = (opts) => probeRunWith(runParty, opts);
+
 // opts: engine-pure.mjs measureNeed's, with `prices` a file path as above.
 export function measureNeed(opts) {
     return pure.measureNeed({ ...opts, priceTable: loadPrices(opts.prices || DEFAULT_PRICES) });
