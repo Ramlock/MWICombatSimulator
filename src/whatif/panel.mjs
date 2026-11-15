@@ -699,7 +699,7 @@ export function bestBlock(result, t, names = null, running = false, floor = null
         // A group with an entry still so far (its stage is running) carries the same "so far" mark as the steps heading.
         const endedRound = result.endedByUser?.[kind];
         // A stage the user has ended no longer reads "so far": it says "ended by you after round N" alone (its pick check shows on its progress row).
-        const soFar = (endedRound === undefined && who.some((p) => per[p].soFar) ? chip(esc(t('result.soFar')), 'whatif-st-running', esc(t('result.running'))) : '')
+        const soFar = (endedRound === undefined && who.some((p) => per[p].soFar) ? chip(esc(t('result.soFar')), 'whatif-st-running', esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running'))) : '')
             + (endedRound !== undefined ? `<span data-ended="${kind}">${chip(esc(t('progress.st.ended')))}${help(esc(endedText(t, endedRound, result.endedBySkip?.[kind])))}</span>` : '');
         if (!who.length) return `<div class="whatif-h whatif-chips" data-best="${kind}" data-best-none><span>${esc(label)}</span>${chip(esc(t('result.noChange')))}${soFar}</div>`;
         const head = `<th>${esc(t('col.player'))}</th>` + Array.from({ length: slots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') + colHead(t) + '<th></th>';

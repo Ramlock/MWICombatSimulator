@@ -502,6 +502,29 @@ try {
             const ref = JSON.stringify(seen[0].cols), moved = seen.filter((x) => JSON.stringify(x.cols) !== ref || x.scroll);
             check(`columns at ${w}x${h}: every header's left edge and width are the same across ${states.length} states of a row in en, pt and zh, and no horizontal scroll`, seen.length === states.length * 3 && seen[0].cols.length === 12 && moved.length === 0, JSON.stringify(moved.slice(0, 2).map((x) => [x.l, x.name, x.cols, x.scroll])) + ' ref ' + ref);
         }
+        // The mark (check, arrow, circle) is its row's first cell, centred on the row like every other cell (TODO row 140): its glyph's vertical centre is the
+        // State chip's, within 2 px, in a one-line row, in the running row with its stage buttons and in a row whose stage name takes two lines; en, pt and zh.
+        {
+            await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+            await new Promise((r) => setTimeout(r, 300));
+            const rows = [['one line', { kind: 'foods', index: 0, state: 'done', runs: 1200, simHours: 3400 }, 'running', false],
+                ['running with its stage buttons', { ...race, state: 'running', phase: 'search' }, 'running', false],
+                ['stage name on two lines', { kind: 'steps', index: 0, state: 'waiting' }, 'running', true]];
+            const off = [];
+            for (const l of ['en', 'pt', 'zh']) for (const [name, row, searchState, wrap] of rows) {
+                const html = panelM.renderParts({ state: searchState, progress: { elapsedSeconds: 123456, secondsPerRun: 12.34, parts: [row] } }, tOf(l));
+                const m = await js(`(() => { const box = document.getElementById('whatIfProgress'); let t = document.getElementById('__markTest'); if (!t) { t = document.createElement('div'); t.id = '__markTest'; box.after(t); } t.innerHTML = ${JSON.stringify(html)};
+                    const tr = t.querySelector('tr.whatif-part'), lab = tr.querySelector('.whatif-part-label'), cells = [...tr.children];
+                    const b0 = lab.querySelector('b'); if (${wrap} && new Set([...b0.getClientRects()].map((x) => Math.round(x.top))).size < 2) { b0.style.display = 'inline-block'; b0.style.width = '2em'; b0.style.whiteSpace = 'normal'; } // a name the table drew on one line is made to take two
+                    const mid = (n) => { const r = document.createRange(); r.selectNodeContents(n); const b = r.getBoundingClientRect(); return (b.top + b.bottom) / 2; };
+                    const chip = cells[2].firstElementChild || cells[2], cb = chip.getBoundingClientRect(), lb = lab.querySelector('b').getClientRects();
+                    return { mark: mid(cells[0]), chip: (cb.top + cb.bottom) / 2, lines: Math.max(new Set([...lb].map((x) => Math.round(x.top))).size, Math.round(b0.getBoundingClientRect().height / (parseFloat(getComputedStyle(b0).fontSize) * 1.2))), buttons: tr.querySelectorAll('[data-whatif-done]').length, display: getComputedStyle(cells[0]).display }; })()`);
+                const bad = !(Math.abs(m.mark - m.chip) <= 2 && m.display === 'table-cell' && (!wrap || m.lines >= 2) && (name !== 'running with its stage buttons' || m.buttons > 0));
+                if (bad) off.push({ l, name, ...m });
+            }
+            await js(`document.getElementById('__markTest')?.remove()`);
+            check('stage marks: the mark cell is a table cell and its glyph is centred on the State chip (2 px at most) in a one-line row, the running row with its stage buttons and a two-line stage name, in en, pt and zh', off.length === 0, JSON.stringify(off));
+        }
     }
     // The pointer rests on "Accept current winner" while the window polls: the redraw keeps the button in the document, so it keeps its node and its
     // hover look at every poll (a node replaced, or taken out of the page and put back, drops its hover and fades back in: the flicker). A real

@@ -221,7 +221,7 @@ const html = panel.renderProgress({ state: 'running', progress: { stage: 'halvin
 ] } }, t);
 const rows = partRows(html).map((r) => r.cls);
 check('panel: one row per part with its state class', rows.join(' ') === 'done running waiting waiting waiting', rows.join(' '));
-const plain = html.replace(/<span class="whatif-part-mark">[^<]*<\/span>/g, (m) => m).replace(/<[^>]+>/g, '');
+const plain = html.replace(/<[^>]+>/g, '');
 // The state word is in the window's state chip (whatif-window.mjs); the part count is the head's Stage figure.
 check('panel: the head says Stage 2 / 5', plain.startsWith('Search progressStage 2 / 5'), plain);
 const pr0 = partRows(html);

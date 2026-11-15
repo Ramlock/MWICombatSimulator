@@ -557,11 +557,9 @@ else {
     console.log('-- runner version: the build stamp');
     const inRepo = mkdtempSync(path.join(root, '.tmp-stamp-'));
     try {
-        writeFileSync(path.join(inRepo, 'VERSION.txt'), 'node v24.15.0; commit abc1234
-');
+        writeFileSync(path.join(inRepo, 'VERSION.txt'), 'node v24.15.0; commit abc1234\n');
         check(R.buildCommit(inRepo) === 'abc1234', 'a build inside a repository names its VERSION.txt commit, not the HEAD around it');
-        writeFileSync(path.join(inRepo, 'VERSION.txt'), 'node v24.15.0
-');
+        writeFileSync(path.join(inRepo, 'VERSION.txt'), 'node v24.15.0\n');
         check(R.buildCommit(inRepo) === null, 'a stamp that names no commit names none (never the HEAD around it)');
     } finally { rmSync(inRepo, { recursive: true, force: true }); }
     const head = (await import('node:child_process')).execFileSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
