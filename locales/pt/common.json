@@ -312,7 +312,7 @@
             "checkingWinnerOf": "conferindo o vencedor em execuções novas · jogador {{n}} de {{of}} · {{runs}}",
             "stageSkipTip": "Encerra esta etapa agora; as execuções já em andamento são paradas e o trabalho delas se perde. Um grupo travado mantém a sua escolha; os demais ficam inalterados.",
             "skippedNoPick": "Não executada: nenhuma mudança foi escolhida.",
-            "keptRuns": "{{kept}} de {{total}} execuções mantidas de antes da parada", "keptRunsOne": "{{kept}} de {{total}} execução mantida de antes da parada", "leftOutGoesOn": "Deixada de fora pela conferência, a busca continua:", "leftOutEnded": "Deixada de fora pela conferência:", "leftOutTip": "{{change}}: deixada de fora pela conferência em execuções novas ({{seeds}} por lado). Ganho do loot compartilhado por usuário {{gain}}; ganho do comprador {{buyer}}.",
+            "keptRuns": "{{kept}} de {{total}} execuções mantidas de antes da parada", "keptRunsOne": "{{kept}} de {{total}} execução mantida de antes da parada", "leftOutGoesOn": "Deixada de fora pela conferência, a busca continua:", "leftOutEnded": "Deixada de fora pela conferência:", "backInRace": "{{n}} candidatas voltaram à disputa", "backInRaceOne": "{{n}} candidata voltou à disputa", "leftOutTip": "{{change}}: deixada de fora pela conferência em execuções novas ({{seeds}} por lado). Ganho do loot compartilhado por usuário {{gain}}; ganho do comprador {{buyer}}.",
             "skippedNoStep": "Não executada: nenhum passo foi aceito.",
             "phaseSearch": "buscando entre as candidatas ainda na disputa",
             "phaseReading": "conferindo os líderes em execuções novas",

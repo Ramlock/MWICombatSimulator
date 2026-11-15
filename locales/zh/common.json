@@ -313,7 +313,7 @@
             "checkingWinnerOf": "正在用新的运行核对胜出者 · 第 {{n}} 位玩家，共 {{of}} 位 · {{runs}}",
             "stageSkipTip": "立即结束本阶段；已在进行的运行会被停止，其计算作废。已锁定的组保留其选择，其余保持不变。",
             "skippedNoPick": "未运行：没有选出任何更改。",
-            "keptRuns": "本轮 {{total}} 次运行中有 {{kept}} 次沿用停止前的结果", "keptRunsOne": "本轮 {{total}} 次运行中有 {{kept}} 次沿用停止前的结果", "leftOutGoesOn": "核对未通过，已剔除，搜索继续：", "leftOutEnded": "核对未通过，已剔除：", "leftOutTip": "{{change}}：在新的运行上核对未通过，已剔除（每侧 {{seeds}} 次）。每位用户的共享战利品收益 {{gain}}；买家收益 {{buyer}}。",
+            "keptRuns": "本轮 {{total}} 次运行中有 {{kept}} 次沿用停止前的结果", "keptRunsOne": "本轮 {{total}} 次运行中有 {{kept}} 次沿用停止前的结果", "leftOutGoesOn": "核对未通过，已剔除，搜索继续：", "leftOutEnded": "核对未通过，已剔除：", "backInRace": "{{n}} 个候选重新参与竞争", "backInRaceOne": "{{n}} 个候选重新参与竞争", "leftOutTip": "{{change}}：在新的运行上核对未通过，已剔除（每侧 {{seeds}} 次）。每位用户的共享战利品收益 {{gain}}；买家收益 {{buyer}}。",
             "skippedNoStep": "未运行：没有接受任何步骤。",
             "phaseSearch": "搜索仍在竞争的候选",
             "phaseReading": "用新运行核对领先者",

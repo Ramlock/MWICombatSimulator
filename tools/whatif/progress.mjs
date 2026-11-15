@@ -12,7 +12,7 @@
 // own three halvings run as one part; the runner reports stage 'foods' / 'drinks' and the part shows the current batch).
 // A row whose winner is under its pick check carries checking, checkWhat ({ player, desc }), checkWho (foods and drinks: { index, of }), checkDone / checkPlanned;
 // a row whose winner a check left out carries failed ([{ stage, player, desc, seeds, gainPerUser, sePerUser, buyerNet?, buyerNetSe? }], in order); a race row carries
-// candidates (all of the stage's candidates, the bar's total) and, while a resumed round runs, kept ({ kept, total }: its runs the record held).
+// candidates (all of the stage's candidates, the bar's total), back (progress.stageBack: the changes a winner left out by its check brought back into the race) and, while a resumed round runs, kept ({ kept, total }: its runs the record held).
 // A part: { kind: 'foods'|'drinks'|'screen'|'halving'|'steps'|'step'|'moreSteps'|'confirmation', index, state: 'waiting'|'running'|
 // 'done'|'skipped' (a finished search: the part never started and will not), runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
 // stepsLeft ('moreSteps'), and on a part of a race stage: round, phase ('search' | 'reading'), contending, paused, dropped, simHours
@@ -95,7 +95,7 @@ export function createParts(plan) {
                 if (rk && parse(rk.stage) && sameRow(row, parse(rk.stage)) && (rk.round ?? null) === (progress.round ?? null)) row.kept = { kept: rk.kept, total: rk.total };
                 else if (row.kept && (progress.round ?? null) !== row.keptRound) delete row.kept;
                 if (row.kept) row.keptRound = progress.round ?? null;
-                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, candidates: progress.stageCandidates ?? null, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, acceptable: progress.stageAcceptable ?? 0, separate: progress.stageSeparate ?? null, runs: progress.stageRuns, simHours: progress.stageSimHours });
+                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, candidates: progress.stageCandidates ?? null, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, back: progress.stageBack ?? 0, acceptable: progress.stageAcceptable ?? 0, separate: progress.stageSeparate ?? null, runs: progress.stageRuns, simHours: progress.stageSimHours });
             }
             // 'stopped', 'probe' and 'start' change no row.
             for (const r of rows) if (r.state === 'done') { r.runsDone = r.runsPlanned; r.etaSeconds = 0; }

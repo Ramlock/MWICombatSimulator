@@ -145,12 +145,13 @@ check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, 
     check('check on its row: the window reads "Checking the winner", running, names the change and "10 / 32 runs" in Details', pr.st === 'Checking the winner' && pr.state === 'running' && pr.html.includes('Weapon') && txt(pr.html).includes('10 / 32 runs'), pr.html);
     const fail = { stage: 'greedy step 1', ...what, seeds: 16, gainPerUser: -3, sePerUser: 2 };
     q = tp.sync({ stage: 'confirming picks', checking: 'step 2', checkingStage: 'greedy step 1', checkingWhat: what, picksPlanned: 32, picksDone: 32, checkFailed: fail });
-    q = tp.sync(race('greedy step 1', { round: 3, checkFailed: fail }));
+    q = tp.sync(race('greedy step 1', { round: 3, checkFailed: fail, stageBack: 3 }));
     const back = q.find((r) => r.kind === 'step' && r.index === 1), prB = partRows(panel.renderParts({ state: 'running', progress: { parts: q } }, t)).find((r) => r.kind === 'step');
     check('failed winner: the row keeps it (once) and goes back to Searching, its Details say it was left out and the search goes on', back.state === 'running' && !back.checking && back.failed.length === 1 && prB.st === 'Searching' && txt(prB.html).includes('Left out by its check, the search goes on:') && prB.html.includes('Weapon'), prB.html);
+    check('failed winner: the row carries the changes that came back into its race (stageBack) and Details say so ("3 candidates returned to the race")', back.back === 3 && txt(prB.html).includes('3 candidates returned to the race'), prB.html);
     q = tp.sync({ stage: 'done' });
     const prD = partRows(panel.renderParts({ state: 'done', progress: { parts: q } }, t)).find((r) => r.kind === 'step');
-    check('failed winner, row done: "Left out by its check:", no candidate in the running nor set aside, the bar at 100 %', prD.cls === 'done' && txt(prD.html).includes('Left out by its check:') && prD.cont === '' && prD.paused === '' && prD.html.includes('width: 100%'), prD.html);
+    check('failed winner, row done: "Left out by its check:", no candidate in the running nor set aside, the bar at 100 %', prD.cls === 'done' && txt(prD.html).includes('Left out by its check:') && prD.cont === '' && prD.paused === '' && prD.html.includes('width: 100%') && !txt(prD.html).includes('returned to the race'), prD.html);
     const next = tp.sync({ ...race('greedy step 2'), checkFailed: undefined });
     check('check on its row: a check of a later row starts its runs from 0', tp.sync({ stage: 'confirming picks', checkingStage: 'greedy step 2', checkingWhat: what, picksPlanned: 48, picksDone: 36 }).find((r) => r.kind === 'step' && r.index === 2).checkDone === 4 && next.length > 0);
 }

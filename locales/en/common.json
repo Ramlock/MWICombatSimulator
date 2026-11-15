@@ -314,7 +314,7 @@
             "checkingWinnerOf": "checking the winner on fresh runs · player {{n}} of {{of}} · {{runs}}",
             "stageSkipTip": "Ends this stage now; the runs already going are stopped and their work is lost. A locked pool keeps its pick; the others stay unchanged.",
             "skippedNoPick": "Not run: no change was picked.",
-            "keptRuns": "{{kept}} of {{total}} runs kept from before the stop", "keptRunsOne": "{{kept}} of {{total}} run kept from before the stop", "leftOutGoesOn": "Left out by its check, the search goes on:", "leftOutEnded": "Left out by its check:", "leftOutTip": "{{change}}: left out by its check on fresh runs ({{seeds}} per side). Shared loot gain per user {{gain}}; buyer's gain {{buyer}}.",
+            "keptRuns": "{{kept}} of {{total}} runs kept from before the stop", "keptRunsOne": "{{kept}} of {{total}} run kept from before the stop", "leftOutGoesOn": "Left out by its check, the search goes on:", "leftOutEnded": "Left out by its check:", "backInRace": "{{n}} candidates returned to the race", "backInRaceOne": "{{n}} candidate returned to the race", "leftOutTip": "{{change}}: left out by its check on fresh runs ({{seeds}} per side). Shared loot gain per user {{gain}}; buyer's gain {{buyer}}.",
             "skippedNoStep": "Not run: no step was accepted.",
             "phaseSearch": "searching the candidates still in the running",
             "phaseReading": "checking the leaders on fresh runs",
