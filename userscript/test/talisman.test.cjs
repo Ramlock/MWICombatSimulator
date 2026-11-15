@@ -179,16 +179,16 @@ test('the test tab keeps its party state and snapshot under suffixed keys; the l
     assert.ok('mwicsGroupState' in store && 'mwicsGroupState.test' in store);
 });
 
-test('the status toast names the test server; the version is 0.11.0 in the header and the constant', () => {
+test('the status toast names the test server; the version is 0.12.0 in the header and the constant', () => {
     const store = {};
     const test = boot(store, 'test.milkywayidle.com', { charId: 9 });
     test.commands.Status();
-    assert.ok(test.toasts.some((x) => /v0.11.0 \(test server\)/.test(x)));
+    assert.ok(test.toasts.some((x) => /v0.12.0 \(test server\)/.test(x)));
     const live = boot(store, 'www.milkywayidle.com');
     live.commands.Status();
-    assert.ok(live.toasts.some((x) => /v0.11.0:/.test(x) && !/test server/.test(x)));
-    assert.match(SRC, /@version\s+0.11.0/);
-    assert.ok(SRC.includes("const VERSION = '0.11.0'"));
+    assert.ok(live.toasts.some((x) => /v0.12.0:/.test(x) && !/test server/.test(x)));
+    assert.match(SRC, /@version\s+0.12.0/);
+    assert.ok(SRC.includes("const VERSION = '0.12.0'"));
 });
 
 // ---------- talismans ----------

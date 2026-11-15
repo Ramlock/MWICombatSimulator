@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.11.0
+// @version      0.12.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -205,6 +205,16 @@
         }));
     }
 
+    // When the current fight began (ms): the battle start's combatStartTime, the start of the combat action (the same in every battle of it).
+    // Null when it does not parse. The game writes nanoseconds; the fraction is cut to milliseconds before parsing.
+    function fightStartOf(msg) {
+        const s = msg && typeof msg.combatStartTime === 'string' ? msg.combatStartTime.replace(/(\.\d{3})\d+/, '$1') : '';
+        const t = s ? Date.parse(s) : NaN;
+        return Number.isFinite(t) ? t : null;
+    }
+    // The abilities as a comparable key (ability and level, order ignored).
+    const abilityKey = (list) => (Array.isArray(list) ? list : []).filter((a) => a && a.abilityHrid).map((a) => a.abilityHrid + ':' + (a.level || 1)).sort().join('|');
+
     // A shared profile (the game's profile_shared message) cut down to what the group export needs; null when it names nobody.
     function trimProfile(msg) {
         const p = (msg && msg.profile) || null;
@@ -232,10 +242,14 @@
     }
 
     // ctx: { characterObj (init_character_data), clientObj, toggles, members (trimBattle result), profiles (trimProfile results),
-    // ownExport }. ownExport (the snapshot for the simulator page only, never the clipboard copy): the user's own slot also carries
+    // ownExport, fightStart }. fightStart (ms, fightStartOf of the last battle start): a member's profile seen before it is old.
+    // ownExport (the snapshot for the simulator page only, never the clipboard copy): the user's own slot also carries
     // the inventory and the learned abilities, as the character export writes them (the page keeps them for the What-if searches
     // and never puts them in a sim slot). Coin is never in it, and no other member has either.
-    // Returns { group, slots: [{ slot, name, self, have[], missing[] }] }, or null when no slot has any data.
+    // Returns { group, slots: [{ slot, name, self, have[], missing[], seen?, old? }] }, or null when no slot has any data. A member slot
+    // whose profile was opened carries seen (the profile's time, ms) and, in the export, profileSeen (the same time, ISO; the simulator's import
+    // keeps it as an inert key of that slot). old lists why that profile is out of date: 'beforeFight' (seen before fightStart) and
+    // 'abilities' (its abilities differ from the battle start's); absent when it is not.
     function buildGroupExport(ctx) {
         const base = { ...defaultToggles(), ...(ctx.toggles || {}) };
         const on = { ...base, learnedAbilities: ctx.ownExport ? !!base.learnedAbilities : false, inventory: ctx.ownExport ? !!base.inventory : false, coin: false };
@@ -252,7 +266,7 @@
         const add = (slot, r) => {
             const isSelf = !!co && selfId != null && r.id === selfId;
             const prof = isSelf ? null : find(r);
-            let out, guild; const have = [];
+            let out, guild, seen = null; const have = [], old = [];
             if (isSelf) {
                 out = buildExport(co, client, on, ctx.tal);
                 if (on.skillLevels) have.push('skillLevels');
@@ -290,11 +304,17 @@
                 // Guild buffs: the teammate's own levels, when their profile was opened (a profile cached before 0.7.0 has none).
                 if (on.guildBuffs && prof?.guildBuffLevelMap) { out.guildCombatBuffLevels = profileGuildLevels(prof.guildBuffLevelMap, client); have.push('guildBuffs'); guild = 'profile'; }
                 if (r.name || prof?.name) out.name = r.name || prof.name;
+                if (prof && Number.isFinite(prof.t)) {
+                    seen = prof.t;
+                    out.profileSeen = new Date(seen).toISOString();
+                    if (Number.isFinite(ctx.fightStart) && seen < ctx.fightStart) old.push('beforeFight');
+                }
+                if (prof && Array.isArray(prof.abilities) && r.unit && abilityKey(prof.abilities) !== abilityKey(r.unit.abilities)) old.push('abilities');
             }
             if (!have.length) return;
             const wanted = SLOT_KINDS.filter((k) => (k === 'triggers' ? (on.equippedAbilities || on.consumables) : on[k]));
             group[String(slot)] = out;
-            slots.push({ slot, name: out.name || '', self: isSelf, have, missing: wanted.filter((k) => !have.includes(k)), ...(guild ? { guild } : {}) });
+            slots.push({ slot, name: out.name || '', self: isSelf, have, missing: wanted.filter((k) => !have.includes(k)), ...(guild ? { guild } : {}), ...(seen != null ? { seen } : {}), ...(old.length ? { old } : {}) });
         };
         if (!roster.length && co && selfId != null) roster.push({ id: selfId, name: co.character?.name || '', unit: null });
         roster.forEach((r, i) => { if (r) add(i + 1, r); });
@@ -525,7 +545,7 @@
     // ================= Combat recorder (read-only) =================
     // Spec: docs/codebase/toolasha-loot-tracker.md ("Recorder spec"). Pure state machine: handle(message, nowMs) per game message,
     // exportData(selfOnly) for the file, no DOM and no network. The likelihood split, shares and closed-form checks are NOT here.
-    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000, MAX_TRACE: 1500 };
+    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000, MAX_TRACE: 1500, MAX_GROUPS: 8 };
     const REC_TYPES = ['new_battle', 'battle_updated', 'action_completed', 'quests_updated', 'init_character_data', 'talismans_updated', 'character_stats_updated'];
     // Which game server a tab is on: the test server (test.milkywayidle.com) is told from the live one by host name. Everything the tab records,
     // stores or sends is tagged with it (a record carries `server`), and the test server's storage keys and sink keys carry a suffix or prefix.
@@ -636,6 +656,15 @@
     }
 
     // Views of a row for the file and for the helper: the window without its internal key, and the party cut to the self slot.
+    // The group export a window record carries (recorder.setGroup): { t, export (the paste-box text as an object), slots (seen, old, missing) }.
+    // Cut to the self slot when only the own rows go.
+    function selfGroup(g) {
+        const keep = (g.slots || []).filter((s) => s.self).map((s) => String(s.slot));
+        const ex = {};
+        for (const [k, v] of Object.entries(g.export || {})) if (keep.includes(k)) ex[k] = v; else if (k === 'fight') ex[k] = v;
+        if (Array.isArray((g.export || {}).selected)) ex.selected = keep.map(Number);
+        return { ...g, export: ex, slots: (g.slots || []).filter((s) => s.self) };
+    }
     const plainWin = (w) => ({ ...w, key: undefined });
     const pickSelfWin = (w) => ({ ...w, key: undefined, players: w.players.filter((p) => p.self) });
     const selfTrace = (tr, slots) => ({ ...tr, rows: tr.rows.filter((r) => r[2] === 1 || slots.includes(r[3])) });
@@ -650,7 +679,17 @@
         const S = {
             server, tal: { list: [], power: null, slots: null, belt: null }, selfId: null, zone: null, cur: null, prev: null, win: null, windows: [], encounters: [], quests: [], lastT: 0,
             dot: [], series: [], carry: [], idx: 0, stats: { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 },
+            groups: new Map(), lastGroup: null,
         };
+        // The group export of each recent window, by its start (in memory only, never in the saved record: it is about 64 KB a window).
+        // setGroup(g) gives the current one; a new window takes the last one given, and the browser part gives it again after the battle start.
+        function groupFor(startedAt, g) {
+            if (!g) return;
+            S.groups.delete(startedAt);
+            S.groups.set(startedAt, g);
+            while (S.groups.size > REC.MAX_GROUPS) S.groups.delete(S.groups.keys().next().value);
+        }
+        function setGroup(g) { S.lastGroup = g || null; if (S.win && S.win.open) groupFor(S.win.startedAt, S.lastGroup); }
         let gd = gameData(getClient());
 
         // ---- messages ----
@@ -754,6 +793,7 @@
                 buffEvents: [], monsterStats: {}, tasksAtStart: S.quests.length ? S.quests[S.quests.length - 1].tasks : null,
             };
             monstersSeen(nw, monsters);
+            groupFor(nw.startedAt, S.lastGroup);
             S.windows.push(nw);
             if (S.windows.length > REC.MAX_WINDOWS) S.windows.shift();
             S.win = nw;
@@ -1018,9 +1058,9 @@
 
         function persistable() { return { windows: S.windows, encounters: S.encounters, quests: S.quests, stats: S.stats }; }
         function restore(d) { if (!d) return; S.windows = d.windows || []; S.encounters = d.encounters || []; S.quests = d.quests || []; Object.assign(S.stats, d.stats || {}); if (S.windows.length) { S.win = null; for (const w of S.windows) delete w.open; } }
-        function clear() { S.windows = []; S.encounters = []; S.quests = []; S.win = null; S.cur = null; S.prev = null; S.dot = []; S.series = []; S.carry = []; S.stats = { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 }; }
+        function clear() { S.windows = []; S.encounters = []; S.quests = []; S.win = null; S.cur = null; S.prev = null; S.dot = []; S.series = []; S.carry = []; S.stats = { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 }; S.groups = new Map(); }
 
-        return { handle, exportData, persistable, restore, clear, state: S };
+        return { handle, setGroup, exportData, persistable, restore, clear, state: S };
     }
 
     // ---- Helper sink ----
@@ -1075,7 +1115,10 @@
                     if (last !== undefined && deps.now() - last < SINK.WINDOW_MS) continue;
                 }
                 st.lastWin.set(w.startedAt, deps.now());
-                add(key, 'window', selfOnly ? pickSelfWin(w) : plainWin(w));
+                const data = selfOnly ? pickSelfWin(w) : plainWin(w);
+                const g = S.groups && S.groups.get(w.startedAt);
+                if (g) data.group = selfOnly ? selfGroup(g) : g; // the setup of that very window (recorder.setGroup)
+                add(key, 'window', data);
             }
             for (const q of S.quests) add(pre + 'task:' + q.t, 'task', q);
         }
@@ -1181,13 +1224,37 @@
     const PROFILE_KINDS = ['skillLevels', 'gear', 'equippedAbilities', 'triggers', 'houseRooms', 'achievements', 'guildBuffs'];
     const GUILD_NOTE = { profile: ' (guild buffs from their profile)' };
     const listText = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
-    function groupNotice(what, slots, again) {
-        const lines = slots.map((s) => 'slot ' + s.slot + (s.self ? ' (you)' : '') + (s.missing.length ? ': missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : ': complete') + (GUILD_NOTE[s.guild] || ''));
-        const gaps = slots.some((s) => s.missing.length);
+    // A member's profile age, and why an old one is old (buildGroupExport's seen and old). English only, as every notice of the Tracker.
+    const OLD_LABEL = { beforeFight: 'before this fight began', abilities: 'abilities differ from this fight' };
+    function ageText(ms) {
+        const m = Math.floor(Math.max(0, ms) / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return m + ' min ago';
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + ' h ago';
+        const d = Math.floor(h / 24);
+        return d + (d === 1 ? ' day ago' : ' days ago');
+    }
+    const isOld = (s) => Array.isArray(s.old) && s.old.length > 0;
+    // One slot's line: 'complete' only for a slot with nothing missing and a profile that is not old; an old one reads 'OLD profile'.
+    function slotLine(s, now) {
+        const age = Number.isFinite(s.seen) && Number.isFinite(now) ? ageText(now - s.seen) : null;
+        const missing = s.missing.length ? 'missing ' + s.missing.map((k) => KIND_LABEL[k]).join(', ') : '';
+        let body;
+        if (isOld(s)) body = ['OLD profile' + (age ? ', opened ' + age : ''), listText(s.old.map((k) => OLD_LABEL[k] || k)), missing].filter(Boolean).join(', ');
+        else body = [missing || 'complete', age ? 'profile opened ' + age : ''].filter(Boolean).join(', ');
+        return 'slot ' + s.slot + (s.self ? ' (you)' : '') + ': ' + body + (GUILD_NOTE[s.guild] || '');
+    }
+    // now (ms): the time the ages are counted to; without it the lines carry no age.
+    function groupNotice(what, slots, again, now) {
+        const lines = slots.map((s) => slotLine(s, now));
+        const oldSlots = slots.filter((s) => !s.self && isOld(s));
+        const gaps = slots.some((s) => s.missing.length) || oldSlots.length > 0;
         const fromProfile = PROFILE_KINDS.filter((k) => slots.some((s) => !s.self && s.missing.includes(k)));
         const hints = [];
+        if (oldSlots.length) hints.push('Open the profile of ' + listText(oldSlots.map((s) => (s.name ? s.name + ' (slot ' + s.slot + ')' : 'slot ' + s.slot))) + ' in the game' + again);
         if (fromProfile.length) hints.push('Open each member\'s profile in the game for ' + listText(fromProfile.map((k) => KIND_LABEL[k])) + again);
-        const tail = gaps ? 'What is missing keeps its value in the simulator.' : '';
+        const tail = slots.some((s) => s.missing.length) ? 'What is missing keeps its value in the simulator.' : '';
         return { lines, gaps, text: ('MWI Combat Tracker: ' + what + ' (' + slots.length + ' players). ' + lines.join('; ') + '. ' + hints.map((h) => h + '. ').join('') + tail).trim() };
     }
 
@@ -1269,7 +1336,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1288,7 +1355,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData(), server: SERVER });
-    const VERSION = '0.11.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.12.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = serverKey('mwicsSinkSent', SERVER), DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1408,13 +1475,23 @@
         else if (type === 'actions_updated') liveActions = applyActionsUpdate(liveActions, obj && obj.endCharacterActions);
         publishSnapshot();
     }
-    function noteBattle(obj) { const m = trimBattle(obj); if (m.length) { grp.members = m; saveGroup(); publishSnapshot(); } }
+    function noteBattle(obj) { const m = trimBattle(obj); if (m.length) { grp.members = m; grp.fightStart = fightStartOf(obj); saveGroup(); publishSnapshot(); } }
     function noteProfile(obj) {
         const p = trimProfile(obj);
         if (!p) return;
         grp.profiles = [p, ...grp.profiles.filter((q) => !((q.id != null && q.id === p.id) || (q.name && q.name === p.name)))].slice(0, PROFILE_MAX);
         saveGroup();
         publishSnapshot();
+        recordGroup();
+    }
+    // The recorder's window takes the group export as it stands now (the clipboard copy's, with the profile ages), so its record names the setup of that fight.
+    function recordGroup() {
+        if (!recToggles.recorder) return;
+        try {
+            const r = buildGroup();
+            const t = Date.now();
+            recorder.setGroup(r ? { t, export: groupWithSelection(r, liveFight(t)), slots: r.slots } : null);
+        } catch (err) { console.error('[MWI Combat Tracker] could not keep the party with the recorded window', err); }
     }
     // The latest group export for the simulator page (same build as the clipboard copy), rewritten when the party, a profile,
     // the character data or the toggles change.
@@ -1432,7 +1509,7 @@
     }
     function buildGroup(ownExport) {
         if (!latest) return null;
-        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles, ownExport: !!ownExport, tal: recToggles.recorder ? recorder.state.tal : null });
+        return buildGroupExport({ characterObj: latest.characterObj, clientObj: clientData(), toggles: loadToggles(), members: grp.members, profiles: grp.profiles, fightStart: grp.fightStart, ownExport: !!ownExport, tal: recToggles.recorder ? recorder.state.tal : null });
     }
     function liveFight(now) { return currentFight({ actions: liveActions, partyInfo: livePartyInfo, clientObj: clientData(), now }); }
     function publishSnapshot() {
@@ -1469,7 +1546,7 @@
                     const type = m ? m[1] : null;
                     if (type === 'init_character_data' || message.includes('"init_character_data"')) {
                         const obj = JSON.parse(message);
-                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; liveActions = Array.isArray(obj.characterActions) ? obj.characterActions.slice() : null; livePartyInfo = obj.partyInfo || null; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); sink.notify(); } }
+                        if (obj.type === 'init_character_data') { latest = { characterObj: obj, receivedAt: new Date() }; liveActions = Array.isArray(obj.characterActions) ? obj.characterActions.slice() : null; livePartyInfo = obj.partyInfo || null; publishSnapshot(); if (recToggles.recorder) { recorder.handle(obj, Date.now()); recordGroup(); sink.notify(); } }
                     } else if (type === 'profile_shared') {
                         noteProfile(JSON.parse(message));
                     } else if (type === 'party_updated' || type === 'actions_updated') {
@@ -1480,6 +1557,7 @@
                         if (type === 'action_completed') noteAction(obj);
                         if (recToggles.recorder) {
                             recorder.handle(obj, Date.now());
+                            if (type === 'new_battle') recordGroup(); // after the recorder picked the window this battle belongs to
                             if (recorder.state.dirty >= 20) saveRecorded();
                             sink.notify();
                         }
@@ -1527,7 +1605,7 @@
         reportGroup('group copied', r.slots, ', then copy again');
     }
     function reportGroup(what, slots, again) {
-        const n = groupNotice(what, slots, again);
+        const n = groupNotice(what, slots, again, Date.now());
         console.info('[MWI Combat Tracker] ' + what + '. ' + n.lines.join('; '));
         toast(n.text, n.gaps ? 12000 : 3500);
     }

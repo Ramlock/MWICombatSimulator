@@ -139,7 +139,7 @@ await test('with a token the finished encounters go to the helper once, in the w
     assert.ok(!r.data.includes('Hidden'), 'no character name in what is sent');
     // page hidden: the rest goes too, and the sent keys are stored
     b.commands.Status();
-    assert.ok(b.toasts.some((t) => /v0.11.0/.test(t)));
+    assert.ok(b.toasts.some((t) => /v0.12.0/.test(t)));
     assert.ok(store.mwicsSinkSent);
     const sentKeys = JSON.parse(store.mwicsSinkSent);
     const b2 = boot(store, { prompt: 'secret-token' });
@@ -283,8 +283,8 @@ await test('simulator page: the import button is in the page language (en, pt, z
 });
 
 await test('the version in the header, the settings title and the status agree', () => {
-    assert.match(SRC, /@version\s+0.11.0/);
-    assert.ok(SRC.includes("const VERSION = '0.11.0'"));
+    assert.match(SRC, /@version\s+0.12.0/);
+    assert.ok(SRC.includes("const VERSION = '0.12.0'"));
     assert.match(SRC, /@name\s+MWI Combat Tracker\r?\n/);
     assert.match(SRC, /@namespace\s+https:\/\/github.com\/Ramlock\/MWICombatSimulator\r?\n/);
 });
@@ -320,6 +320,40 @@ const ON = { mwicsRecorderToggles: JSON.stringify({ recorder: true, sendToHelper
 const WARN = 'MWI Combat Tracker: no helper token, so nothing is sent to the helper. The recording stays in this browser.';
 const TOK = 'fetched-token-0123456789abcdef';
 const ok = (token) => () => ({ status: 200, responseText: JSON.stringify({ token }) });
+
+await test('0.12.0: the copy notice gives each member\'s profile age and marks an old one; the export and the recorded window carry it; only the helper is ever called', async () => {
+    const hour = 3600000, now = Date.now();
+    const iso = (t) => new Date(t).toISOString().replace('Z', '987654Z'); // the game writes nanoseconds
+    const mk = (id, name, ab, lvl) => unit({ isPlayer: true, name, character: { id, name }, combatAbilities: [{ abilityHrid: ab, level: lvl }], combatConsumables: [] });
+    const NAME = 'Copy group export (party, for Group Combat import)';
+    const run = async (fightStart, profileLevel) => {
+        const store = { ...ON, mwicsHelperToken: 'tok' };
+        const b = boot(store);
+        b.send({ type: 'init_character_data', character: { id: 1, name: 'ExampleSelf' }, characterSkills: [], characterItems: [] });
+        b.send({ type: 'profile_shared', profile: { sharableCharacter: { id: 2, name: 'ExampleAnn' }, characterSkills: [{ characterID: 2, skillHrid: '/skills/attack', level: 33 }], wearableItemMap: {}, abilityCombatTriggersMap: {}, consumableCombatTriggersMap: {}, characterHouseRoomMap: {}, characterAchievements: [], guildBuffLevelMap: {}, equippedAbilities: [{ abilityHrid: '/abilities/a1', level: profileLevel }] } });
+        for (let id = 1; id <= 6; id++) b.send({ type: 'new_battle', battleId: id, combatStartTime: iso(fightStart), players: [mk(2, 'ExampleAnn', '/abilities/a1', 9), mk(1, 'ExampleSelf', '/abilities/a2', 9)], monsters: [{ ...unit({}), hrid: '/monsters/m' }] });
+        b.commands[NAME]();
+        await tick(); await tick();
+        const wins = b.reqs.flatMap((q) => JSON.parse(q.data).records).filter((x) => x.type === 'window');
+        for (const q of b.reqs) assert.ok(q.url.startsWith('http://127.0.0.1:47631/'), 'only the local helper is called: ' + q.url);
+        return { b, g: JSON.parse(b.clip[0]), toast: b.toasts.find((t) => /group copied/.test(t)), win: wins[wins.length - 1] };
+    };
+    const fresh = await run(now - 5 * hour, 9);
+    assert.match(fresh.toast, /slot 1: complete, profile opened just now/);
+    assert.ok(!/OLD/.test(fresh.toast));
+    assert.ok(Date.parse(fresh.g['1'].profileSeen) <= Date.now() && Date.parse(fresh.g['1'].profileSeen) >= now - 60000, 'the export carries when the profile was seen');
+    assert.equal(fresh.g['2'].profileSeen, undefined, 'the own slot carries none');
+    assert.ok(fresh.win && fresh.win.data.group, 'the recorded window carries the group export');
+    assert.equal(fresh.win.data.group.export['1'].profileSeen, fresh.g['1'].profileSeen);
+    assert.equal(fresh.win.data.group.slots[0].old, undefined);
+    const before = await run(now + hour, 9); // the fight began after the profile was opened
+    assert.match(before.toast, /slot 1: OLD profile, opened just now, before this fight began/);
+    assert.match(before.toast, /Open the profile of ExampleAnn \(slot 1\) in the game, then copy again\./);
+    assert.deepEqual(before.win.data.group.slots[0].old, ['beforeFight']);
+    const abil = await run(now - 5 * hour, 8); // the profile shows another ability level than the fight
+    assert.match(abil.toast, /slot 1: OLD profile, opened just now, abilities differ from this fight/);
+    assert.deepEqual(abil.win.data.group.slots[0].old, ['abilities']);
+});
 
 await test('no token, recorder on: the script asks the helper (GET /token, no token header) and, when refused, warns once per page load', async () => {
     const store = { ...ON };
