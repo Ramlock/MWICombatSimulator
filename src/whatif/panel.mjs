@@ -291,7 +291,8 @@ const arrowed = (html) => { const parts = html.split(', '); return parts.length 
 function stageButtons(t, acceptable, key, pressed, stopping = false) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
     const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done || stopping ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
-    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
+    // With no winner to accept, a hidden slot of the same size stands in for Accept, so its coming and going never changes the row's height.
+    return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') : '<span class="btn btn-sm py-0 whatif-btn-slot" aria-hidden="true">&nbsp;</span>') + ' ' + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
 // The Search progress table's column widths (a fixed layout: no state, badge, count, bar or text of a row moves a column; the Details column takes the rest
 // of the width and cuts a long text, its whole text in its tooltip). One per column of `cols` below, in order; null = the rest.

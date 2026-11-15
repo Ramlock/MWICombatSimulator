@@ -160,8 +160,7 @@
         .whatif-parts-table tr.whatif-part-waiting, .whatif-parts-table tr.whatif-part-skipped { opacity: .5; }
         .whatif-parts-table td.whatif-part-btns { white-space: normal; }
         .whatif-parts-table td.whatif-part-btns .btn { display: block; margin: .1rem 0; }
-        /* A running race row keeps room for both stage buttons, so Accept coming and going never changes the row height. */
-        .whatif-parts-table tr.whatif-part-running.whatif-part-race td.whatif-part-btns { height: 3.6em; }
+        .whatif-parts-table td.whatif-part-btns .whatif-btn-slot { visibility: hidden; }
         .whatif-pending::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-right: .4em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: whatif-spin .8s linear infinite; vertical-align: -.05em; }
         .whatif-stage-done.whatif-pending:disabled { opacity: 1; color: #f0c060; border-color: #b07800; }
         body.dark-mode #whatIfModal .whatif-table > thead th { background: #2b3035; }
