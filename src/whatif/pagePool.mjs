@@ -5,6 +5,9 @@
 // One worker per core (navigator.hardwareConcurrency), no core limit, started on demand. The party's setups and the market table go to each worker once,
 // in an init message; a task carries only its ops, seed, checkpoints and options. A run asked while every worker is busy waits for one.
 // A worker that errors rejects the run it was doing (the Node pool does the same when a run process exits by itself).
+// call(fn, opts) runs one of the sim seam's engine calls in a worker the same way ('probeRun' or 'measureNeed', searchWorker.mjs), so the page's sim
+// seam does no simulation on the main thread. drop() leaves calls alone (a stage button ends race runs only); kill() rejects a call in flight with an
+// Error whose name is 'stopped' (the core has no null answer for a call).
 //   init  { setups, market }
 //   opts  { size (default hardwareConcurrency), makeWorker (default: the real worker; a test passes a fake) }
 export function createPagePool(init, { size = (globalThis.navigator && navigator.hardwareConcurrency) || 4, makeWorker = () => new Worker(new URL('./searchWorker.mjs', import.meta.url)) } = {}) {
@@ -26,7 +29,7 @@ export function createPagePool(init, { size = (globalThis.navigator && navigator
         };
         w.onerror = (e) => { w.onmessage = w.onerror = null; all.delete(w); w.terminate(); if (killed) job.resolve(null); else job.reject(new Error('worker error: ' + (e && e.message))); next(); };
         job.worker = w;
-        w.postMessage({ type: 'task', id, task: job.task });
+        w.postMessage({ ...job.msg, id });
     }
     function next() {
         while (!killed && waiting.length) {
@@ -43,20 +46,22 @@ export function createPagePool(init, { size = (globalThis.navigator && navigator
             if (w) { w.onmessage = w.onerror = null; all.delete(w); w.terminate(); }
             const i = waiting.indexOf(job);
             if (i >= 0) waiting.splice(i, 1);
-            job.resolve(null);
+            if (job.call) job.reject(Object.assign(new Error('the search was stopped'), { name: 'stopped' })); else job.resolve(null);
         }
     }
+    function ask(msg, call) {
+        if (killed) return call ? Promise.reject(Object.assign(new Error('the search was stopped'), { name: 'stopped' })) : Promise.resolve(null);
+        return new Promise((resolve, reject) => {
+            const job = { msg, call, resolve: (r) => { running.delete(job); resolve(r); }, reject: (e) => { running.delete(job); reject(e); } };
+            running.add(job);
+            waiting.push(job);
+            next();
+        });
+    }
     return {
-        run(task) {
-            if (killed) return Promise.resolve(null);
-            return new Promise((resolve, reject) => {
-                const job = { task, resolve: (r) => { running.delete(job); resolve(r); }, reject: (e) => { running.delete(job); reject(e); } };
-                running.add(job);
-                waiting.push(job);
-                next();
-            });
-        },
-        drop() { end([...running]); },
+        run: (task) => ask({ type: 'task', task }, false),
+        call: (fn, opts) => ask({ type: 'call', fn, opts }, true),
+        drop() { end([...running].filter((j) => !j.call)); },
         kill() {
             killed = true;
             end([...running]);

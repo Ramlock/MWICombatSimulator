@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, createWriteStream, createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isMarketplace } from '../../../src/marketplace.mjs';
+import { searchIdWith, checkRequest, budgetArgs, flagArgs } from '../../../src/whatif/request.mjs';
 import { loadScenario, applyScenarioToRequest } from '../synthetic.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -39,19 +40,8 @@ export const RUNNER_VERSION = '0.1.0';
 export const MARKETPLACE_FILE = 'marketplace.json';
 export const DEFAULT_RESULTS = path.join(os.homedir(), 'MWI-WhatIf', 'results');
 
-// The optimizer's flags a request may set (camelCase or dashed). --out, --setups, --export and --prices are set by
-// the runner itself; --cache-from is not offered (it reads arbitrary files).
-// The rounds options (unit-hours ... confirm-seeds, confirm-hours) are the search's named options; `stages` and `keep` are still accepted and ignored by the search.
-const PASS = ['unit-hours', 'first-seeds', 'round-seeds', 'leaders', 'pause-mult', 'coverage', 'reading-step', 'reading-min', 'lock-rule', 'max-rounds', 'confirm-seeds', 'confirm-hours', 'players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'max-payback', 'min-gain-pct', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'shrine-cap', 'shrine-steps', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
-const dashed = (k) => k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
-const RESERVED = new Set(['synthetic', 'setups', 'options', 'budgets', 'export', 'prices', 'marketplace', 'triggerCands', 'trigger-cands']);
-const SAFE_NAME = /^[^\\/:*?"<>|\r\n]+$/;
-
-const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
-// A search's folder (its runs and result) is named by this id. The foods and drinks levers used to be one lever, `consumables`: a request that
-// ticks both hashes in that old form, so a rerun with both ticked finds the old search's folder, runs and result. Foods alone or drinks alone is its own search.
-const oldLevers = (levers) => { const i = levers.indexOf('foods'); return i < 0 || !levers.includes('drinks') ? levers : levers.flatMap((l, j) => (j === i ? ['consumables'] : l === 'drinks' ? [] : [l])); };
-export const searchId = (body) => createHash('sha1').update(JSON.stringify(canonical(Array.isArray(body?.levers) ? { ...body, levers: oldLevers(body.levers) } : body))).digest('hex').slice(0, 12);
+// The request read as flags, its checks and its id: src/whatif/request.mjs (the page's own search reads it the same way).
+export const searchId = (body) => searchIdWith((t) => createHash('sha1').update(t).digest('hex'), body);
 
 // A price snapshot by file name, from tools/calibration only (default: the optimizer's own default).
 export function pricesPath(name) {
@@ -69,15 +59,13 @@ export function pricesPath(name) {
 // price snapshot and is used in place (the run keys hold the price file's path relative to the checkout, so saved runs hit only
 // when that path is the one they were made with).
 export function buildArgs(body, outDir, demo = {}) {
-    if (!body || typeof body !== 'object') throw new Error('body must be a JSON object');
+    checkRequest(body);
     const setups = body.setups;
-    if (!Array.isArray(setups) || !setups.length || setups.some((s) => !s || typeof s.name !== 'string' || !SAFE_NAME.test(s.name) || !s.player)) throw new Error('setups: a list of setups, each with a name and a player');
     const setupsDir = path.join(outDir, 'setups');
     mkdirSync(setupsDir, { recursive: true });
     for (const s of setups) writeFileSync(path.join(setupsDir, s.name + '.json'), JSON.stringify(s));
     writeFileSync(path.join(setupsDir, 'party.txt'), setups.map((s) => s.name).join('\n') + '\n');
     const args = ['--out', outDir, '--setups', setupsDir, '--low-priority'];
-    const flags = { ...(body.options || {}), ...body };
     const market = body.options?.marketplace;
     if (demo.runs) args.push('--cache-from', demo.runs);
     if (demo.prices) args.push('--prices', demo.prices);
@@ -90,27 +78,12 @@ export function buildArgs(body, outDir, demo = {}) {
         if (!existsSync(f)) writeFileSync(f, JSON.stringify(market));
         args.push('--prices', f);
     } else if (body.options?.prices != null) args.push('--prices', pricesPath(body.options.prices));
-    if (body.budgets != null) {
-        if (typeof body.budgets !== 'object') throw new Error('budgets: { "<player>": <coin> }');
-        const list = Object.entries(body.budgets).map(([p, v]) => { if (!SAFE_NAME.test(p) || p.includes(',') || p.includes('=') || !(Number(v) >= 0)) throw new Error(`budgets: bad entry ${p}`); return `${p}=${Number(v)}`; });
-        if (list.length) args.push('--budgets', list.join(','));
-    }
-    // export: the old single character export (an object with its `name`) or a map { "<player name>": that player's export }; written as it comes.
-    if (body.export != null && (typeof body.export !== 'object' || Array.isArray(body.export))) throw new Error('export: a character export object, or { "<player name>": <export> }');
+    args.push(...budgetArgs(body));
+    // export: written as it comes.
     if (body.export != null) { const f = path.join(outDir, 'export.json'); writeFileSync(f, JSON.stringify(body.export)); args.push('--export', f); }
     const tc = body.triggerCands ?? body['trigger-cands'];
     if (tc != null) { const f = path.join(outDir, 'trigger-cands.json'); writeFileSync(f, JSON.stringify(tc)); args.push('--trigger-cands', f); }
-    if (body.players == null) args.push('--players', setups.map((s) => s.name).join(','));
-    for (const [k, v] of Object.entries(flags)) {
-        if (RESERVED.has(k) || v == null) continue;
-        const name = dashed(k);
-        if (!PASS.includes(name)) throw new Error(`unknown option ${k}`);
-        if (v === false) { args.push('--no-' + name); continue; }
-        if (v === true) { args.push('--' + name); continue; }
-        const text = Array.isArray(v) ? v.join(',') : String(v);
-        if (text.startsWith('--') || /[\r\n]/.test(text)) throw new Error(`option ${k}: bad value`);
-        args.push('--' + name, text);
-    }
+    args.push(...flagArgs(body));
     return args;
 }
 
