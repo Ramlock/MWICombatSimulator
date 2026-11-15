@@ -82,7 +82,7 @@ const { res: runF, log: logF } = await quiet(() => runSynthetic(foods, { 'max-st
 const nc = runF.result.notConfirmed.filter((x) => x.player === 'Alice' && x.kind === 'food');
 check('foods: the cake fillings fail their check and are listed as not confirmed, each with what came back after it (back)', nc.length > 0 && nc.every((x) => Array.isArray(x.back)) && nc.some((x) => x.back.length > 0), JSON.stringify(nc.map((x) => [x.desc, x.back])));
 check('foods: a gummy filling the cake had put out comes back and passes: Alice gets it', !alice(runF).unchanged && items(alice(runF)).includes('/items/orange_gummy') && !items(alice(runF)).includes('/items/strawberry_cake'), JSON.stringify(alice(runF)));
-check('foods: the log names what came back and after which failed check', /foods: Alice food: .*strawberry_cake.* failed its pick check; back in the race: Alice food: /.test(logF), logF.split('\n').filter((l) => /pick check/.test(l)).slice(0, 4).join(' | '));
+check('foods: the log names what came back and after which failed check', /foods: Alice food: .*strawberry_cake.* left out by its pick check; back in the race: Alice food: /.test(logF), logF.split('\n').filter((l) => /pick check/.test(l)).slice(0, 4).join(' | '));
 // A stop in the middle (the first round after a failed check, with candidates back in the race; the stopped result holds only the race's live best, soFar),
 // then a resume from the recorded runs: the same result.
 let stopped = false;
