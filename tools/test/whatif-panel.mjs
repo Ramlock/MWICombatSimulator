@@ -1036,5 +1036,37 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('lists: a pays-back-too-slowly row names its price path in its Cost cell, before the payback days', op.includes('AlphaRing nine90000 (buy, sell old)612'), op.slice(0, 300));
     check('tables: the chosen row\'s How it is bought cell is the same text', bodyRows(tablesOf(h)[0])[0].some((c) => c === 'buy, sell old'), JSON.stringify(bodyRows(tablesOf(h)[0])[0]));
 }
+// The "so far" rows (TODO item 6): while a Change is searched, every candidate of the latest round record whose gain so far is above 0 is a row of the
+// chosen changes, marked "so far", below the confirmed rows, with no Apply button; it goes when it stops being positive, appears when it becomes positive,
+// and is not repeated once its check passed (a confirmed row). One row code for both (stepRow).
+{
+    const lead = (id, player, desc, reading, extra = {}) => ({ id, player, desc, cost: 5e5, seeds: 8, readingSeeds: 8, status: 'contending', tooFew: false, reading, low: reading - 100, high: reading + 100, buyerNet: reading * 2, netLow: reading * 2 - 300, netHigh: reading * 2 + 300, payback: 50, ...extra });
+    const round = (stage, leaders) => ({ round: 3, stage, pools: [{ key: 'Alpha:paid', leaders: leaders.filter((l) => l.player === 'Alpha') }, { key: 'Beta:paid', leaders: leaders.filter((l) => l.player === 'Beta') }] });
+    const ls = [lead('x', 'Alpha', 'Alpha Necklace +2 → +3', 800), lead('y', 'Beta', 'Beta Cape +1 → +2', 1200), lead('z', 'Beta', 'Beta Belt +0 → +1', -40), lead('r', 'Alpha', 'Alpha Earrings +1 → +2', 900, { status: 'refuted' }), lead('f', 'Alpha', 'Alpha Pouch +1 → +2', 700, { tooFew: true, readingSeeds: 0 }), lead('s', 'Alpha', 'Alpha Gym 0 → 1', 600, { readingSeeds: 1 })];
+    const pr = { stage: 'greedy step 2' };
+    const rows = panel.soFarSteps(round('greedy step 2', ls), pr, result.steps);
+    check('so far: the candidates of the running Change with a gain so far above 0, largest first (ruled out, no figure yet, too few runs for a figure and not positive are not)', JSON.stringify(rows.map((r) => r.desc)) === JSON.stringify(['Beta Cape +1 → +2', 'Alpha Necklace +2 → +3']) && rows.every((r) => r.soFar === true), JSON.stringify(rows.map((r) => r.desc)));
+    check('so far: the round record\'s figure is the row\'s (gain 1200, its range\'s half as the error; the buyer\'s gain too)', rows[0].gainPerUser === 1200 && rows[0].sePerUser === 100 && rows[0].buyerNet === 2400 && rows[0].buyerNetSe === 300 && rows[0].cost === 5e5, JSON.stringify(rows[0]));
+    check('so far: also while that Change\'s winner is checked; none once another stage runs (the record is of an earlier Change), none for a foods or drinks race, none with no record', panel.soFarSteps(round('greedy step 2', ls), { stage: 'confirming picks', checkingStage: 'greedy step 2' }).length === 2 && panel.soFarSteps(round('greedy step 2', ls), { stage: 'greedy step 3' }).length === 0 && panel.soFarSteps(round('foods', ls), { stage: 'foods' }).length === 0 && panel.soFarSteps(null, pr).length === 0);
+    check('so far: the screen (Change 1) shows them too', panel.soFarSteps(round('screen', ls), { stage: 'screen' }).length === 2);
+    const passed = [...result.steps, { id: 'y', player: 'Beta', desc: 'Beta Cape +1 → +2', gainPerUser: 1100, sePerUser: 200, cost: 5e5, accepted: true }];
+    check('so far: a row whose check passed is a confirmed row and no longer a "so far" one', JSON.stringify(panel.soFarSteps(round('greedy step 2', ls), { stage: 'confirming picks', checkingStage: 'greedy step 2' }, passed).map((r) => r.desc)) === JSON.stringify(['Alpha Necklace +2 → +3']));
+    const next = panel.soFarSteps(round('greedy step 2', [lead('x', 'Alpha', 'Alpha Necklace +2 → +3', -5), lead('z', 'Beta', 'Beta Belt +0 → +1', 300), lead('y', 'Beta', 'Beta Cape +1 → +2', 1300)]), pr, result.steps);
+    check('so far: a row that stops being positive goes away, one that becomes positive appears', JSON.stringify(next.map((r) => r.desc)) === JSON.stringify(['Beta Cape +1 → +2', 'Beta Belt +0 → +1']), JSON.stringify(next.map((r) => r.desc)));
+    const h = panel.renderResult({ ...result, confirmation: undefined }, t, Date.now(), null, true, rows);
+    const trs = [...h.matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => /data-so-far|data-whatif-apply="steps:/.test(m[0]));
+    const kinds = trs.map((m) => (/data-so-far/.test(m[1]) ? 'S' : 'C')).join('');
+    check('so far: drawn under "Chosen changes, in order", below the 3 confirmed rows, one per candidate', kinds === 'CCCSS' && h.indexOf(locales.en.result.steps) < h.indexOf('data-so-far'), kinds);
+    const soRows = trs.filter((m) => /data-so-far/.test(m[1]));
+    check('so far: a "so far" row has no Apply button and no number, its mark reads "so far" with a tooltip saying it cannot be applied, and shows its figure (1,200 ± 100)', soRows.every((m) => !/data-whatif-apply/.test(m[2]) && /<td><\/td>/.test(m[2].slice(0, 12)) && m[2].includes('>' + locales.en.result.soFar + '<') && m[2].includes(locales.en.result.soFarRowTip.slice(0, 20))) && soRows[0][2].includes('data-num="1200"') && soRows[0][2].includes('data-num="100"'), soRows[0]?.[2]);
+    check('so far: with no confirmed change yet, the heading and the "so far" rows show', (() => { const x = panel.renderResult({ ...result, steps: [], confirmation: undefined }, t, Date.now(), null, true, rows); return x.includes(locales.en.result.steps) && (x.match(/data-so-far/g) || []).length === 2 && !x.includes('data-no-steps'); })());
+    check('so far: none drawn without the rows (a finished report, a stopped one)', !panel.renderResult(result, t).includes('data-so-far'));
+    for (const [l, tl] of [['pt', (key, p = {}) => lookup(locales.pt, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(p[k]))], ['zh', (key, p = {}) => lookup(locales.zh, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(p[k]))]]) {
+        const x = panel.renderResult({ ...result, confirmation: undefined }, tl, Date.now(), null, true, rows);
+        check('so far: the mark and its tooltip in ' + l, x.includes('>' + locales[l].result.soFar + '<') && typeof locales[l].result.soFarRowTip === 'string' && x.includes(locales[l].result.soFarRowTip.slice(0, 8)));
+    }
+    const main = read('src/main.js');
+    check('so far: main.js draws them from the latest round record and the progress, redraws the report when they change, and none for a report from Earlier searches', /whatIfSoFarSteps\(whatIf\.round, whatIf\.status\?\.progress, result\?\.steps\)/.test(main) && /running === true && !whatIf\.resultLoaded/.test(main) && /whatIfSoFarKey\(whatIfSoFarOf\(whatIf\.result, true\)\) !== whatIf\.soFarKey\) whatIfShowResult\(whatIf\.result, true\)/.test(main) && /whatIfRenderResult\(result, whatIfT, Date\.now\(\), whatIfNames\(\), running, soFar\)/.test(main));
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

@@ -392,6 +392,22 @@ try {
     check('rounds: a newer round replaces the counter, the counts and the range', await until(`document.querySelector('#whatIfRounds [data-rounds="round"]')?.textContent === '4'`) && await js(`(() => { const e = document.getElementById('whatIfRounds'); return e.querySelector('[data-rounds="contending"]').textContent === '25' && e.textContent.includes('1,000 ± 50') && !e.textContent.includes('1,000 ± 100'); })()`), (await roundsText()).slice(0, 500));
     check('rounds: dark mode (no white table), no scroll axis of its own, one table per pool', await js(`(() => { const e = document.getElementById('whatIfRounds'); const lum = (c) => c.match(/[0-9]+/g).slice(0, 3).reduce((a, x) => a + Number(x), 0); const cs = getComputedStyle(e.querySelector('table')); const ov = [e, ...e.querySelectorAll('*')].every((x) => { const o = getComputedStyle(x); return !/(auto|scroll)/.test(o.overflowX + o.overflowY); }); return ov && lum(getComputedStyle(e.querySelector('table td')).color) > 300 && e.querySelectorAll('table').length === 1 && cs.backgroundColor !== 'rgb(255, 255, 255)'; })()`));
     await shot('whatIfModal', 'whatif-rounds.png');
+    // The "so far" rows (TODO item 6), in the page (after the rounds checks, which expect no round before theirs): a round record of the Change being searched (the progress says 'screen') with a candidate whose gain so
+    // far is above 0 adds a "so far" row under the chosen changes at the next poll, with no new report; it goes when a later record has it at or below 0.
+    {
+        const was = rounds, lead = (desc, reading) => ({ id: desc, player: 'Player 2', desc, cost: 5e5, seeds: 8, readingSeeds: 8, status: 'contending', tooFew: false, reading, low: reading - 100, high: reading + 100, buyerNet: reading, netLow: reading - 100, netHigh: reading + 100, payback: 40 });
+        rounds = { round: { round: 2, stage: 'screen', simHours: 100, candidates: { contending: 2, paused: 0 }, pools: [{ key: 'Player 2:paid', size: 2, contending: 2, paused: 0, leaders: [lead('Player 2 Cape +1 -> +2', 900), lead('Player 2 Belt +0 -> +1', -30)] }] }, version: 4.3 };
+        const soFarRows = `[...document.querySelectorAll('#whatIfResult tr[data-so-far]')].map((r) => ({ text: r.textContent, apply: !!r.querySelector('[data-whatif-apply]'), after: !!r.previousElementSibling?.querySelector('[data-whatif-apply]') || !!r.previousElementSibling?.matches('[data-so-far]') }))`;
+        const seen = await until(`document.querySelectorAll('#whatIfResult tr[data-so-far]').length === 1`, 8000), r1 = await js(soFarRows);
+        check('so far, in the page: the candidate of the running Change with a gain so far above 0 shows under the chosen changes, after the confirmed row, marked so far, no Apply; the one below 0 does not', seen && r1.length === 1 && r1[0].text.includes('Cape') && r1[0].text.includes('so far') && !r1[0].apply && r1[0].after && !r1[0].text.includes('Belt'), JSON.stringify(r1));
+        const ax = await js(`(() => { const b = document.querySelector('#whatIfModal .modal-body'); return { x: b.scrollWidth <= b.clientWidth + 1, dark: document.body.classList.contains('dark-mode') }; })()`);
+        check('so far, in the page: one scroll axis (no horizontal scroll), dark mode', ax.x && ax.dark, JSON.stringify(ax));
+        await shot('whatIfModal', 'whatif-so-far.png');
+        rounds = { round: { ...rounds.round, round: 3, pools: [{ ...rounds.round.pools[0], leaders: [lead('Player 2 Cape +1 -> +2', -10), lead('Player 2 Belt +0 -> +1', 400)] }] }, version: 4.6 };
+        const swapped = await until(`(() => { const r = [...document.querySelectorAll('#whatIfResult tr[data-so-far]')]; return r.length === 1 && r[0].textContent.includes('Belt'); })()`, 8000);
+        check('so far, in the page: a row that stops being positive goes away and one that becomes positive appears, at the next round record', swapped, JSON.stringify(await js(soFarRows)));
+        rounds = { round: was.round, version: 4.9 }; // round 4 back on show, as the checks after this one had it
+    }
     // A race stage's progress row has no bar: its label and counters use the whole row, wrap, are never cut and never widen the window.
     raceProgress = true;
     for (const [w, h] of [[1920, 1080], [1600, 900], [1366, 768]]) {

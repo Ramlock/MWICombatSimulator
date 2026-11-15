@@ -384,7 +384,7 @@
             "singlesNotShown": "mais {{n}} buscadas, não confirmadas, não mostradas",
             "confirmedPartyRow": "Grupo (o loot compartilhado, por usuário)",
             "stoppedMark": "Parado: foi até aqui que a busca chegou.",
-            "soFar": "até agora",
+            "soFar": "até agora", "soFarRowTip": "Ainda não conferida: o ganho dela até agora nesta busca está acima de 0. A linha some se isso deixar de valer e passa para as mudanças escolhidas quando passar na conferência. Não pode ser aplicada.",
             "notConfirmedAtStep": "no passo {{step}}",
             "notConfirmedAtFood": "nas comidas",
             "notConfirmedAtDrink": "nas bebidas",

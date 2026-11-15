@@ -36,7 +36,7 @@ import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
 import { attachTips as whatIfAttachTips } from "./whatif/tip.mjs";
@@ -4330,13 +4330,19 @@ function whatIfNames() {
 // `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
 // running mark. A lists the reader opened (the folds) stays open when one running report replaces another.
 // `loaded`: the report was put on show from "Earlier searches" (whatIfLoadResult), not by the search the window watches.
+// The "so far" rows of a running report (panel soFarSteps): from the latest round record and the stage the progress names; none for a report put on show
+// from "Earlier searches", a stopped one or a finished one. The key tells a poll whether they changed (the report is redrawn only then).
+function whatIfSoFarOf(result, running) { return running === true && !whatIf.resultLoaded ? whatIfSoFarSteps(whatIf.round, whatIf.status?.progress, result?.steps) : []; }
+function whatIfSoFarKey(rows) { return JSON.stringify(rows.map((r) => [r.desc, r.gainPerUser, r.sePerUser, r.buyerNet, r.buyerNetSe])); }
 function whatIfShowResult(result, running = false, loaded = false) {
     const box = document.getElementById('whatIfResult');
     const open = running && whatIf.resultRunning ? [...box.querySelectorAll('.whatif-more:not([hidden])')].map((e) => e.id) : [];
     whatIf.result = result;
     whatIf.resultRunning = running;
     whatIf.resultLoaded = loaded;
-    box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
+    const soFar = whatIfSoFarOf(result, running);
+    whatIf.soFarKey = whatIfSoFarKey(soFar);
+    box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running, soFar) : '';
     for (const id of open) {
         const body = document.getElementById(id);
         if (body) body.hidden = false;
@@ -4431,6 +4437,7 @@ function whatIfShowStatus(status) {
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
     else if (status.state === 'running' && whatIf.resultRunning === 'stopped' && !whatIf.resultLoaded) whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
+    else if (status.state === 'running' && whatIf.resultRunning === true && whatIf.result && whatIfSoFarKey(whatIfSoFarOf(whatIf.result, true)) !== whatIf.soFarKey) whatIfShowResult(whatIf.result, true); // the "so far" rows follow a new round or stage
     if (status.state !== 'running') whatIfStopWatching();
     if (status.state === 'done' || status.state === 'stopped') whatIfLoadList(); // a stopped search is listed too
     whatIfShowSetup();

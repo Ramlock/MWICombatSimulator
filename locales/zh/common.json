@@ -385,7 +385,7 @@
             "singlesNotShown": "另有 {{n}} 个已搜索但未确认，不显示",
             "confirmedPartyRow": "队伍（共享战利品，每位用户）",
             "stoppedMark": "已停止：搜索进行到了这里。",
-            "soFar": "目前为止",
+            "soFar": "目前为止", "soFarRowTip": "尚未核对：它在本次搜索中目前为止的收益高于 0。若不再高于 0，此行会消失；核对通过后会加入已选改动。无法应用。",
             "notConfirmedAtStep": "第 {{step}} 步",
             "notConfirmedAtFood": "食物阶段",
             "notConfirmedAtDrink": "饮品阶段",

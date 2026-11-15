@@ -386,7 +386,7 @@
             "singlesNotShown": "{{n}} more searched, not confirmed, not shown",
             "confirmedPartyRow": "Party (the shared loot, per user)",
             "stoppedMark": "Stopped: this is where the search got to.",
-            "soFar": "so far",
+            "soFar": "so far", "soFarRowTip": "Not checked yet: its gain so far in this search is above 0. The row goes away if that stops, and joins the chosen changes when its check passes. It cannot be applied.",
             "notConfirmedAtStep": "at step {{step}}",
             "notConfirmedAtFood": "in the foods",
             "notConfirmedAtDrink": "in the drinks",

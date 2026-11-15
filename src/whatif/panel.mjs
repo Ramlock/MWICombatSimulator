@@ -727,7 +727,22 @@ function gainTh(t, key, cls = '') { return `<th class="num${cls}">${esc(t('col.'
 // `running`: true, or 'stopped' for the last report of a search that stopped or failed: the result is the report so far of a search that is still going (a snapshot of the optimizer, the runner's `partial`): the
 // same report with a "running" mark; what only the end has (the totals) is not there to draw, "so far" follows the steps heading, and
 // the messages that say there is nothing ("no steps", "no change") are not shown, since the rows may simply not have come yet.
-export function renderResult(result, t, now = Date.now(), names = null, running = false) {
+// The "so far" rows of the Change being searched: from the latest round record (the one the Search rounds table draws), every candidate whose gain so far
+// (its figure in that table, shown there too) is above 0, shaped as a chosen change and drawn by the same row code, marked "so far", with no Apply button.
+// Only while that record's stage (the screen or a greedy step) is the stage running now, its pick check included; a candidate already among the chosen
+// changes is not repeated (its check passed: it is a confirmed row now). A round record lists each pool's leaders, so those are the candidates that can show.
+// Largest gain so far first.
+export function soFarSteps(round, progress, steps = []) {
+    const now = progress?.stage === 'confirming picks' ? progress.checkingStage : progress?.stage;
+    if (!round || !Array.isArray(round.pools) || !/^(screen|greedy step \d+)$/.test(String(round.stage)) || round.stage !== now) return [];
+    const taken = new Set((steps || []).flatMap((s) => (Array.isArray(s.members) && s.members.length ? s.members : [s]).map((m) => m.desc)));
+    return round.pools.flatMap((p) => p.leaders || [])
+        .filter((l) => l.status !== 'refuted' && !l.tooFew && figureSeeds(l) >= FIGURE_MIN_SEEDS && Number(l.reading) > 0 && !taken.has(l.desc))
+        .sort((a, b) => b.reading - a.reading)
+        .map((l) => ({ player: l.player, desc: l.desc, gainPerUser: l.reading, sePerUser: halfOf(l.low, l.high), buyerNet: l.buyerNet, buyerNetSe: halfOf(l.netLow, l.netHigh), cost: l.cost, payback: l.payback, soFar: true }));
+}
+// soFar: the "so far" rows (soFarSteps), drawn under the chosen changes while the search runs.
+export function renderResult(result, t, now = Date.now(), names = null, running = false, soFar = []) {
     if (!result) return '';
     const L = [];
     // The top line: the running (or stopped) mark and the base profit share one row of chips, which wraps only when the width runs out; with no
@@ -751,26 +766,33 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (bestHtml) L.push(bestHtml);
     // The screen and the greedy steps the user ended with "done with this stage": one line each, under the steps heading.
     const endedStages = Object.entries(result.endedByUser || {}).filter(([k]) => k !== 'foods' && k !== 'drinks');
-    if (!running || result.steps?.length) L.push(`<div class="whatif-h">${esc(t('result.steps'))}${result.best ? help(esc(t('result.bestBaseline'))) : ''}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
+    if (!running || result.steps?.length || soFar.length) L.push(`<div class="whatif-h">${esc(t('result.steps'))}${result.best ? help(esc(t('result.bestBaseline'))) : ''}${running ? ' <span class="text-secondary fw-normal small">· ' + esc(t('result.soFar')) + '</span>' : ''}</div>`);
     for (const [stage, n] of endedStages) {
         const m = /^greedy step (\d+)$/.exec(stage), name = m ? stepLabel(t, Number(m[1])) : stage === 'screen' ? t('progress.partScreen') : stage;
         L.push(`<div class="small text-secondary" data-ended="${esc(stage)}">${esc(name)} · ${esc(endedText(t, n, result.endedBySkip?.[stage]))}</div>`);
     }
-    if (!result.steps?.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
+    if (!result.steps?.length && !soFar.length) { if (!running) L.push(`<div class="text-secondary" data-no-steps="${noStepsWhy(result)}">${noStepsText(result, t)}</div>`); }
     else {
         L.push('<table class="table table-sm whatif-table"><thead><tr>' +
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
-        result.steps.forEach((s, i) => {
+        // One row of the chosen changes: a confirmed step (its number, its fresh reading, its Apply button) or a "so far" row (no number, its figure so far,
+        // the "so far" mark where the Apply button stands: it can never be applied or read as final).
+        const stepRow = (s, i) => {
             // A step that holds a set accepted together: its members joined, each worded alone, the players joined, and each member's own gain (its marginal) in the tooltip.
             const set = Array.isArray(s.members) && s.members.length > 1;
             const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${plainNum(m.marginal.gainPerUser)} ± ${plainNum(m.marginal.sePerUser)}` : '—'}`),
                 ...(s.buyers && Object.keys(s.buyers).length > 1 ? Object.entries(s.buyers).map(([p, b]) => t('result.setBuyer', { who: p, net: plainNum(b.buyerNet), days: Number.isFinite(b.payback) ? b.payback.toFixed(1) : '—' })) : [])].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
             const who = set ? [...new Set(s.members.map((m) => m.player))].join(', ') : s.player, what = set ? s.members.map((m) => shown(m)).join(' + ') : shown(s);
-            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
-                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
-                `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
-        });
+            const cls = s.soFar ? ' class="whatif-so-far" data-so-far' : s.accepted === false ? ' class="whatif-weak"' : '';
+            const end = s.soFar ? `<td>${chip(esc(t('result.soFar')), 'whatif-st-running', esc(t('result.soFarRowTip')))}</td>`
+                : `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td>`;
+            return `<tr${cls}><td>${s.soFar ? '' : i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
+                gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + (s.soFar && !s.costPath ? '<td></td>' : pathCell(s, t)) + end + '</tr>';
+        };
+        (result.steps || []).forEach((s, i) => L.push(stepRow(s, i)));
+        // Below the confirmed rows, the "so far" rows of the Change being searched.
+        soFar.forEach((s, i) => L.push(stepRow(s, i)));
         L.push('</tbody></table>');
     }
     const confAt = L.length;
