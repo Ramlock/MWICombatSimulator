@@ -139,8 +139,12 @@ export function forkOptimizer(args, outDir) {
 function engineVersion(dist) {
     try { return /bundle\.([0-9a-f]+)\.js/.exec(readFileSync(path.join(dist, 'index.html'), 'utf8'))?.[1] ?? 'unknown'; } catch { return 'unknown'; }
 }
-function gitVersion() {
-    try { return execFileSync('git', ['-C', ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
+// The runner's commit: the build's own stamp (VERSION.txt at the root of an unpacked build or zip: "node v<version>; commit <short sha>"); git
+// is asked only when there is no stamp (a checkout), so an unpacked build inside some other repository never names that repository's commit.
+export function buildCommit(root = ROOT) {
+    try { const m = /commit ([0-9a-f]{4,40})/.exec(readFileSync(path.join(root, 'VERSION.txt'), 'utf8')); if (m) return m[1]; } catch { /* no stamp */ }
+    if (existsSync(path.join(root, 'VERSION.txt'))) return null; // a stamp that names no commit: never fall back to the surrounding repository
+    try { return execFileSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim() || null; } catch { return null; }
 }
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.map': 'application/json; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.webp': 'image/webp', '.gif': 'image/gif' };
@@ -156,7 +160,8 @@ export function createRunner(opts = {}) {
     // The web server itself runs one step above the searches (below normal), so the window's requests are answered while every core is busy; the
     // optimizer it forks is set to the lowest at once (forkOptimizer), and its run processes take the optimizer's.
     if (opts.lowPriority !== false) os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL);
-    const version = { runner: RUNNER_VERSION + (gitVersion() ? '+' + gitVersion() : ''), engine: engineVersion(distDir) };
+    const commit = buildCommit();
+    const version = { runner: RUNNER_VERSION + (commit ? '+' + commit : ''), engine: engineVersion(distDir) };
     const searches = new Map(); // id -> { state, progress, error, handle }
     let running = null;
     let port = null;

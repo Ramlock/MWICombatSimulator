@@ -1106,5 +1106,19 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const html = read('index.html'), main = read('src/main.js'), server = read('tools/whatif/runner/server.mjs');
     check('setting: the window has the field with its label and help mark, main.js fills the default from minGain.mjs and refuses a bad value, the runner passes --min-gain-pct', /<input id="inputWhatIfMinGain" type="text" inputmode="decimal" value=""/.test(html) && html.includes('data-i18n="common:whatIf.minGainPct"') && html.includes('data-whatif-tip="minGainPctTip"') && /g\.value = String\(WHATIF_MIN_GAIN_PCT\)/.test(main) && /parseMinGain\(document\.getElementById\('inputWhatIfMinGain'\)\.value\)/.test(main) && main.includes("whatIfT('badMinGain')") && /'max-payback', 'min-gain-pct',/.test(server));
 }
+// Window fixes of the twelfth release: a set's price chip in the page's language, no lone "so far" line, live stage buttons that look live.
+{
+    const tOf2 = (l) => (key, params = {}) => { const v = lookup(locales[l], key); return typeof v === 'string' ? v.replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k])) : '#' + key; };
+    const set = { costPath: 'buy, sell old + buy, sell old + market', note: '' };
+    check('set price path: each member path in the shown language, joined by +', panel.pricePath(set, t) === 'buy, sell old + buy, sell old + buy' && ['pt', 'zh'].every((l) => { const x = panel.pricePath(set, tOf2(l)), one = panel.pricePath({ costPath: 'buy, sell old' }, tOf2(l)); return x === `${one} + ${one} + ${panel.pricePath({ costPath: 'market' }, tOf2(l))}`; }), panel.pricePath(set, tOf2('zh')));
+    const lone = panel.renderResult({ goal: 'profit', best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, unclear: true, readingSeeds: 2 } }, drinks: {} }, rounds: { readingMin: 8 } }, t, undefined, null, true);
+    check('running with nothing for the top line but its mark: no lone "so far" line', !lone.includes('whatif-context') && lone.includes(locales.en.result.soFar), lone.slice(0, 400));
+    check('the heading "so far" carries the running sentence as its tooltip', lone.includes(`title="${locales.en.result.running}"`));
+    const stoppedLone = panel.renderResult({ goal: 'profit', best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, unclear: true, readingSeeds: 2 } }, drinks: {} }, rounds: { readingMin: 8 } }, t, undefined, null, 'stopped');
+    check('a stopped report keeps its stopped mark line', /whatif-context[^]*whatif-st-halted/.test(stoppedLone));
+    const btns = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 2, phase: 'search', contending: 9, paused: 1, dropped: 0, runs: 12, simHours: 80, acceptable: 1 }] } }, t);
+    check('stage buttons: live ones drawn as live (btn-outline-light, not the grey of a disabled look), disabled ones dim in the CSS', (btns.match(/btn-outline-light[^"]*whatif-stage-done/g) || []).length === 2 && !/btn-outline-secondary[^"]*whatif-stage-done/.test(btns) && /\.whatif-stage-done:disabled\s*\{\s*opacity:\s*\.35/.test(read('index.html')));
+    check('language switch: the window redraws its badge, button, progress table and rounds on languageChanged', /on\('languageChanged', \(\) => \{[^]*?whatIfDrawSearchButton\(\);[^]*?whatIfDrawProgress\(\);[^]*?whatIfRenderRounds/.test(read('src/main.js')));
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

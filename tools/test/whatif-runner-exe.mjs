@@ -100,6 +100,8 @@ try {
     check(page.status === 200 && (await page.text()).includes('bundle.'), '1: the page is served');
     const version = await (await fetch(`http://127.0.0.1:${port}/api/version`)).json();
     check(typeof version.runner === 'string' && typeof version.engine === 'string', '1: /api/version answers', JSON.stringify(version));
+    const stamped = /commit ([0-9a-f]+)/.exec(versionTxt)?.[1];
+    check(stamped && version.runner.endsWith('+' + stamped), '1: /api/version names the build stamp commit (VERSION.txt), never the git HEAD of a repository around it', `${JSON.stringify(version)} vs ${versionTxt}`);
     save('one-file-first-start.txt', o1);
 
     // (2) Second start on the same port.

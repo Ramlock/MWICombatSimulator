@@ -4780,7 +4780,13 @@ async function initWhatIf() {
         fold(event);
     });
     document.getElementById('whatIfDiff').addEventListener('click', fold);
-    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded); whatIfDrawCharts(); });
+    // Every part of the window is drawn again in the new language: the state badge and the Start / Stop button, the progress table, the rounds, the result, the charts.
+    i18next.on('languageChanged', () => {
+        whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); whatIfDrawSearchButton(); whatIfDrawProgress();
+        if (whatIf.round) whatIfMorphInto(document.getElementById('whatIfRounds'), whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()));
+        if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded);
+        whatIfDrawCharts();
+    });
 }
 // #endregion
 

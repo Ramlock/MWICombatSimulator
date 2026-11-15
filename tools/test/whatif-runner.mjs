@@ -551,6 +551,23 @@ else {
     silent.unref(); closer.unref();
 }
 
+// The runner's version names the build's own commit: VERSION.txt of an unpacked build wins over the git HEAD of a repository around it
+// (an unpacked exe inside some repository named that repository's commit); git is asked only when there is no stamp.
+{
+    console.log('-- runner version: the build stamp');
+    const inRepo = mkdtempSync(path.join(root, '.tmp-stamp-'));
+    try {
+        writeFileSync(path.join(inRepo, 'VERSION.txt'), 'node v24.15.0; commit abc1234
+');
+        check(R.buildCommit(inRepo) === 'abc1234', 'a build inside a repository names its VERSION.txt commit, not the HEAD around it');
+        writeFileSync(path.join(inRepo, 'VERSION.txt'), 'node v24.15.0
+');
+        check(R.buildCommit(inRepo) === null, 'a stamp that names no commit names none (never the HEAD around it)');
+    } finally { rmSync(inRepo, { recursive: true, force: true }); }
+    const head = (await import('node:child_process')).execFileSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+    check(R.buildCommit(root) === head, 'a checkout with no stamp names its git HEAD');
+}
+
 // Chrome lets go of its profile some seconds after it is killed.
 for (let i = 0; ; i++) { try { rmSync(tmp, { recursive: true, force: true }); break; } catch (e) { if (i === 30) { console.log(`warning: could not remove ${tmp}: ${e.code}`); break; } await sleep(1000); } }
 console.log(fails ? `${fails} FAILED` : 'all passed');

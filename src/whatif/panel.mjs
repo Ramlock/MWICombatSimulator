@@ -303,7 +303,7 @@ const ARROW = /-&gt;|→/g;
 const arrowed = (html) => { const parts = html.split(', '); return parts.length > 1 && parts.every((x) => (x.match(ARROW) || []).length === 1) ? parts.map(arrowOne).join(', ') : arrowOne(html); };
 function stageButtons(t, acceptable, key, pressed, stopping = false) {
     const done = pressed && pressed.key === key ? pressed.mode : null;
-    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done || stopping ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
+    const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-light btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done || stopping ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
     // With no winner to accept, a hidden slot of the same size stands in for Accept, so its coming and going never changes the row's height.
     return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') : '<span class="btn btn-sm py-0 whatif-btn-slot" aria-hidden="true">&nbsp;</span>') + ' ' + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
@@ -576,7 +576,7 @@ const NOTE_KEYS = { 'old item has no buyer, kept, not counted': 'noteNoBuyer' };
 function priceHow(s, t) {
     const path = String(s?.costPath || '');
     if (/^time\b/.test(path)) return t('price.time');
-    return PATH_KEYS[path] ? t('price.' + PATH_KEYS[path]) : path;
+    return path.split(' + ').map((p) => (PATH_KEYS[p] ? t('price.' + PATH_KEYS[p]) : p)).join(' + '); // a set's path: its members' paths joined by " + " (core.mjs)
 }
 const priceNotes = (s, t) => String(s?.note || '').split('; ').filter((x) => x && !/^upper bound/.test(x)).map((x) => (NOTE_KEYS[x] ? t('price.' + NOTE_KEYS[x]) : x)).join('; ');
 export function pricePath(s, t) {
@@ -698,7 +698,7 @@ export function bestBlock(result, t, names = null, running = false, floor = null
         // A group with an entry still so far (its stage is running) carries the same "so far" mark as the steps heading.
         const endedRound = result.endedByUser?.[kind];
         // A stage the user has ended no longer reads "so far": it says "ended by you after round N" alone (its pick check shows on its progress row).
-        const soFar = (endedRound === undefined && who.some((p) => per[p].soFar) ? chip(esc(t('result.soFar')), 'whatif-st-running') : '')
+        const soFar = (endedRound === undefined && who.some((p) => per[p].soFar) ? chip(esc(t('result.soFar')), 'whatif-st-running', esc(t('result.running'))) : '')
             + (endedRound !== undefined ? `<span data-ended="${kind}">${chip(esc(t('progress.st.ended')))}${help(esc(endedText(t, endedRound, result.endedBySkip?.[kind])))}</span>` : '');
         if (!who.length) return `<div class="whatif-h whatif-chips" data-best="${kind}" data-best-none><span>${esc(label)}</span>${chip(esc(t('result.noChange')))}${soFar}</div>`;
         const head = `<th>${esc(t('col.player'))}</th>` + Array.from({ length: slots }, (_, i) => `<th>${esc(t('result.slot', { n: i + 1 }))}</th>`).join('') + colHead(t) + '<th></th>';
@@ -857,7 +857,9 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (!answer.length) topChips.push(...leftOut, ...(pricesChip ? [pricesChip] : []));
     const chipsRow = under.length ? [`<div class="whatif-chips mb-2">${under.join('')}</div>`] : [];
     L.splice(bestAt, 0, ...answer, ...chipsRow);
-    if (topChips.length) L.splice(topAt, 0, `<div class="mb-2 whatif-chips whatif-context">${topChips.join('')}</div>`);
+    // The running mark alone (no base profit yet, nothing left out) is no line of its own when a Best foods or drinks heading already carries "so far" (with the same tooltip).
+    const markOnly = running === true && topChips.length === 1 && L.some((x) => x.includes('whatif-h whatif-chips') && x.includes('whatif-st-running'));
+    if (topChips.length && !markOnly) L.splice(topAt, 0, `<div class="mb-2 whatif-chips whatif-context">${topChips.join('')}</div>`);
     const hiddenRow = (s) => s.hiddenFood || s.hiddenAlt; // hiddenFood: a food row the search left out (one per player); hiddenAlt: another value of a setting a kept row already changes (one row per setting)
     const anySingles = (result.singles || []).some((s) => !hiddenRow(s));
     // Everything below is detail: it sits closed behind one "See details" toggle (each list still closed on its own under it).

@@ -169,6 +169,7 @@
         .whatif-parts-table td.whatif-part-btns .btn { display: block; margin: .1rem 0; }
         .whatif-parts-table td.whatif-part-btns .whatif-btn-slot { visibility: hidden; }
         .whatif-pending::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-right: .4em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: whatif-spin .8s linear infinite; vertical-align: -.05em; }
+        .whatif-stage-done:disabled { opacity: .35; } /* live: a light outline; disabled: dim (a live one never reads as disabled) */
         .whatif-stage-done.whatif-pending:disabled { opacity: 1; color: #f0c060; border-color: #b07800; }
         body.dark-mode #whatIfModal .whatif-table > thead th { background: #2b3035; }
         body.dark-mode #whatIfModal .whatif-table > tbody > tr:nth-child(even) > td { background-color: rgba(255, 255, 255, .03); }
