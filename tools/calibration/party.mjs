@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { defaultPlayer as firstPlayer } from './default-player.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const SETUPS_DIR = path.resolve(here, '..', '..', 'docs', 'ground-truth', 'setups');
@@ -14,8 +15,5 @@ export function partyNames(dir = SETUPS_DIR) {
     return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort();
 }
 
-// The default player of every tool: the party's first name (party.txt's first line, else the first setup by name).
-export function defaultPlayer(names = partyNames()) {
-    if (!names.length) throw new Error('no party: copy the setups into docs/ground-truth/setups (party.txt lists the names), or name the player');
-    return names[0];
-}
+// The default player of every tool (default-player.mjs), from the setups folder's names unless given.
+export const defaultPlayer = (names = partyNames()) => firstPlayer(names);

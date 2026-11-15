@@ -27,7 +27,7 @@ const S = await import(toUrl(path.join(root, 'tools/whatif/node-shell.mjs')));
 const { pageSettings } = await import(toUrl(path.join(root, 'src/whatif/pageSearch.mjs')));
 const { main } = await import(toUrl(path.join(root, 'tools/whatif/core.mjs')));
 
-// The short search: the first player's head +1, his food fillings and one food's trigger (so the sim calls run in a worker), 1 sim hour per run.
+// The short search: the first player's head +1, that player's food fillings and one food's trigger (so the sim calls run in a worker), 1 sim hour per run.
 const p0 = setups[0], food0 = (p0.food?.['/action_types/combat'] || []).find((f) => f && f.itemHrid)?.itemHrid;
 const marketplace = JSON.parse(fs.readFileSync(E.DEFAULT_PRICES, 'utf8'));
 const body = {
@@ -57,10 +57,11 @@ const nodeRuns = runIds(fs.readFileSync(path.join(out, 'runs.jsonl'), 'utf8'));
 const sameRuns = (m) => m.size === nodeRuns.size && [...m].every(([id, h]) => nodeRuns.get(id) === h);
 // The paths where two results differ, timing fields aside.
 const IGNORE = /timing|elapsed|seconds|wall/i;
-function diff(a, b, p = '', acc = []) {
-    if (acc.length > 10) return acc;
+// skip: paths also set aside (a resumed search's per-call figures: round.simHours counts the sim hours run in this call, core.mjs wallLog, in Node too).
+function diff(a, b, skip = [], p = '', acc = []) {
+    if (acc.length > 10 || skip.includes(p)) return acc;
     if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) { if (JSON.stringify(a) !== JSON.stringify(b)) acc.push(p || '/'); return acc; }
-    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (!IGNORE.test(k)) diff(a[k], b[k], p + '.' + k, acc);
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (!IGNORE.test(k)) diff(a[k], b[k], skip, p + '.' + k, acc);
     return acc;
 }
 
@@ -129,8 +130,8 @@ try {
     const after = await js(`countRuns('b', ${JSON.stringify(started.id)})`);
     const runB = await js('({ result: run.result })');
     check('Start resumes it from the store: it ends done with every run stored once', endB.state === 'done' && after === nodeRuns.size, `before ${before}, after ${after}, Node ${nodeRuns.size}`);
-    const dB = runB.result ? diff(nodeResult, runB.result) : ['no result'];
-    check('the resumed search\'s result equals Node\'s', dB.length === 0, dB.join(', '));
+    const dB = runB.result ? diff(nodeResult, runB.result, ['.round.simHours']) : ['no result'];
+    check('the resumed search\'s result equals Node\'s (timing fields and this call\'s round.simHours aside)', dB.length === 0, dB.join(', '));
     console.log(`figure: reload: ${before} runs stored before the reload, ${after} after the resumed search (${after - before} made after it)`);
 } finally {
     await chrome.close();

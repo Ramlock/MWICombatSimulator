@@ -29,7 +29,7 @@ import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs
 import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay, NO_LIMIT_TEXT } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
-import { defaultPlayer } from '../calibration/party.mjs';
+import { defaultPlayer } from '../calibration/default-player.mjs';
 import { playerFit, misfit, abilityMisfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
 import { MIN_GAIN_PCT } from '../../src/whatif/minGain.mjs';
