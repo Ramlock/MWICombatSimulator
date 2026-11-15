@@ -31,8 +31,9 @@ export function runParty(opts) {
 }
 
 // The trigger counter's run (probe.mjs, the same function a page worker calls): opts as runParty's plus `players`; resolves { checkpoints, probe }.
-const { probeRun: probeRunWith } = await import('./probe.mjs');
-export const probeRun = (opts) => probeRunWith(runParty, opts);
+// Loaded at its first call, not with this file: probe.mjs brings triggers.mjs, whose JSON import (with { type: 'json' }) is a second instance of the
+// item map, and a test that adds items to the engine's map must reach the engine's own (whatif-dominated).
+export const probeRun = async (opts) => (await import('./probe.mjs')).probeRun(runParty, opts);
 
 // opts: engine-pure.mjs measureNeed's, with `prices` a file path as above.
 export function measureNeed(opts) {

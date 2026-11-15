@@ -914,7 +914,7 @@ export async function main(settings, seams) {
             } : undefined;
             if (first) look(true);
             const searched = replay(stageRound, 'search') ? BY_USER : await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun, skippable: true });
-            if (searched === BY_USER) return userEnd(stageRound, 'search');
+            if (searched === BY_USER) return await userEnd(stageRound, 'search'); // awaited inside the try: its finally clears stageCtx, which endStage reads after userEnd's first await
             if (!searched) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
             // The elimination rule (rounds.mjs eliminate): per pool, the changes and the current setup; who is out leaves the race for good (c.out).
@@ -931,7 +931,7 @@ export async function main(settings, seams) {
                 const reqs = reading.flatMap((c) => { const n = readCount(base, c, H) + readStep; readTaken.set(readKey(base, c, H), n); return sureSeeds(n).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]); });
                 report({ stage, round: stageRound, phase: 'reading', candidatesLeft: reading.length });
                 const read1 = replay(stageRound, 'reading') ? BY_USER : await ensure(reqs, { skippable: true });
-                if (read1 === BY_USER) return userEnd(stageRound, 'reading');
+                if (read1 === BY_USER) return await userEnd(stageRound, 'reading'); // awaited inside the try: its finally clears stageCtx, which endStage reads after userEnd's first await
                 if (!read1) return null;
             }
             // Readings, the pick check on them, the refuted, the locks.
