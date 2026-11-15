@@ -117,6 +117,8 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 - The party chat is kept too: live party lines, deletions and the party history handed over on connect go to the helper, which writes them to their own file beside the guild one (`party-YYYY-MM.jsonl`). Every other channel, whispers included, still never leaves the page.
 - Every line now says its channel. A helper from before this version gets guild lines only, as before; party lines start once the helper is updated.
+- Fix: lines were skipped with no gap note when another tab (the test server, or another character) had sent a newer line. Every line now says its server and character, so the helper can keep only the ones it records; and when the last recorded line is not in the history the game hands over, the whole history is sent and the helper drops what it already has.
+- The Status message says "MWICS Chat Export", like the other messages.
 
 ### 0.1.1 (2026-11-13)
 

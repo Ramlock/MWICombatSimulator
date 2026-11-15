@@ -46,6 +46,10 @@ const live = (m) => ({ type: 'chat_message_received', message: m });
 const msgs = (sent) => sent.filter((l) => l.type === 'msg');
 const types = (sent) => sent.map((l) => l.type);
 const settle = () => new Promise((r) => setImmediate(r));
+const PARTY = '/chat_channel_types/party';
+const pmsg = (id, t, extra = {}) => ({ ...msg(id, t), chan: PARTY, ...extra });
+const init2 = (guildChatHistory, partyChatHistory, id = 1) => ({ type: 'init_character_data', character: { id }, guildChatHistory, partyChatHistory });
+const ofChan = (sent, chan) => sent.filter((l) => l.chan === chan);
 
 let n = 0;
 async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
@@ -113,11 +117,40 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         assert.ok(h.sent.indexOf(gap) < h.sent.indexOf(msgs(h.sent)[0]));
     });
 
-    await test('cursor id missing from the history but its time inside it: falls back to time, no gap', async () => {
+    await test('never skip: cursor id missing from the history but its time inside it: the whole history is sent, no gap', async () => {
         const h = harness({ cursor: { id: 'gone', t: T(3) } });
         await h.rec.push(init([1, 2, 4, 5].map((i) => msg(i, T(i)))));
-        assert.deepEqual(msgs(h.sent).map((l) => l.id), ['4', '5']);
+        assert.deepEqual(msgs(h.sent).map((l) => l.id), ['1', '2', '4', '5']);
         assert.ok(!types(h.sent).includes('gap'));
+    });
+
+    await test('never skip: the 2026-11-13 case replayed (made-up ids): a marker moved by another tab to a later time sends the whole history of both channels', async () => {
+        // The marker points at a line of another tab, newer than everything this tab has: before 0.2.0 the time fall-back skipped lines 7-10.
+        const h = harness2({ guild: { id: 'other-77', t: T(30) }, party: { id: 'other-78', t: T(31) } });
+        await h.rec.push(init2([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => msg(i, T(i))), [1, 2, 3].map((i) => pmsg(i, T(i)))));
+        assert.deepEqual(msgs(ofChan(h.sent, 'guild')).map((l) => l.id), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+        assert.deepEqual(msgs(ofChan(h.sent, 'party')).map((l) => l.id), ['1', '2', '3']);
+        assert.ok(!types(h.sent).includes('gap'), 'the history reaches back past the marker: nothing can be missing');
+    });
+
+    await test('never skip: a marker older than the whole history still gets its gap line, and the whole history follows', async () => {
+        const h = harness2({ guild: { id: 'gone', t: T(1) }, party: { id: 'gone-too', t: T(2) } });
+        await h.rec.push(init2([10, 11].map((i) => msg(i, T(i))), [12].map((i) => pmsg(i, T(i)))));
+        const gaps = h.sent.filter((l) => l.type === 'gap');
+        assert.deepEqual(gaps.map((l) => l.chan + ':' + l.from + '>' + l.to), ['guild:' + T(1) + '>' + T(10), 'party:' + T(2) + '>' + T(12)]);
+        assert.deepEqual(msgs(h.sent).map((l) => l.chan + ':' + l.id), ['guild:10', 'guild:11', 'party:12']);
+    });
+
+    await test('server and character: every line says the server of its socket and the character id (as a string)', async () => {
+        const h = harness2();
+        await h.rec.push(init2([msg(1, T(1))], [pmsg(2, T(2))], 4242), 'test');
+        await h.rec.push(live(msg(3, T(3))), 'test');
+        await h.rec.endSession();
+        assert.ok(h.sent.length >= 6);
+        assert.ok(h.sent.every((l) => l.server === 'test' && l.character === '4242'), JSON.stringify(h.sent.map((l) => [l.type, l.server, l.character])));
+        const m = harness2();
+        await m.rec.push(init2([msg(1, T(1))], [], 4243));
+        assert.ok(m.sent.every((l) => l.server === 'live' && l.character === '4243'), 'no server given is the main server');
     });
 
     await test('the first run (no cursor) writes the history and marks a gap from nothing', async () => {
@@ -327,10 +360,6 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         };
         return { rec: createRecorder(deps), sent, logs, setFailures: (k) => { failures = k; } };
     }
-    const PARTY = '/chat_channel_types/party';
-    const pmsg = (id, t, extra = {}) => ({ ...msg(id, t), chan: PARTY, ...extra });
-    const init2 = (guildChatHistory, partyChatHistory, id = 1) => ({ type: 'init_character_data', character: { id }, guildChatHistory, partyChatHistory });
-    const ofChan = (sent, chan) => sent.filter((l) => l.chan === chan);
 
     await test('party: the kept channels are data, guild and party, nothing else', () => {
         assert.deepEqual(plain(KEPT_CHANNELS).map((k) => k.hrid), [GUILD, PARTY]);
@@ -359,7 +388,7 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         await h.rec.push(init2([], [], 901));
         await h.rec.push(live(msg(4, T(4), { cId: 901 })));
         const [a] = msgs(h.sent);
-        assert.deepEqual(Object.keys(a), ['v', 'type', 'chan', 'id', 't', 'sName', 'cId', 'm', 'o', 'system', 'mod', 'own', 'links', 'seen', 'src']);
+        assert.deepEqual(Object.keys(a), ['v', 'type', 'chan', 'id', 't', 'sName', 'cId', 'm', 'o', 'system', 'mod', 'own', 'links', 'seen', 'src', 'server', 'character']);
         assert.equal(a.chan, 'guild');
         assert.equal(a.own, true);
     });

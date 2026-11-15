@@ -93,7 +93,7 @@
     function keyOf(chan, id) { return chan + ':' + String(id); }
 
     // Pure: which lines of one channel's history array still need sending, given that channel's helper cursor ({id, t} or null) and what
-    // this page has sent. 'connect' also decides the gap line; a 'refresh' (guild_chat_history_updated) only skips what is already known.
+    // this page has sent. A cursor found in the history sends what follows it; a cursor not found sends the whole history (never skip). 'connect' also decides the gap line; a 'refresh' (guild_chat_history_updated) only skips what is already known.
     function planHistory(history, cursor, known, mode, chan = 'guild') {
         const hrid = HRID_BY_CHAN.get(chan);
         const list = Array.isArray(history) ? history.filter((m) => m && m.chan === hrid && m.id !== undefined && m.id !== null) : [];
@@ -103,9 +103,10 @@
             const at = list.findIndex((m) => String(m.id) === String(cursor.id));
             if (at >= 0) start = at + 1;
             else {
+                // Never skip (2026-11-15): the marker is not in this history, so the whole history is sent and the helper drops the lines it
+                // already has. The gap line still says lines may be missing when the oldest line here is newer than the marker.
+                start = 0;
                 const ct = Date.parse(cursor.t);
-                start = list.findIndex((m) => Date.parse(m.t) > ct);
-                if (start < 0) start = list.length;
                 if (list.length && Date.parse(list[0].t) > ct) out.gap = { from: cursor.t, to: list[0].t };
             }
         } else if (mode === 'connect' && list.length) {
@@ -132,6 +133,7 @@
     function createRecorder(deps) {
         const state = {
             ownId: null,
+            server: 'live', // 'live' or 'test': the game server of the socket the init came from
             known: new Map(), // keyOf(chan, id) -> isDeleted, lines this page has queued or sent
             queue: [],
             dropped: new Map(), // chan -> {from, to} of lines dropped because the helper was unreachable too long
@@ -184,8 +186,15 @@
             }
         }
 
+        // Every line says the server and the character it was read on, so the helper can keep only the ones it records.
+        function tag(line) {
+            line.server = state.server;
+            line.character = state.ownId === null ? null : String(state.ownId);
+            return line;
+        }
+
         function enqueue(line) {
-            state.queue.push(line);
+            state.queue.push(tag(line));
             state.stats.queued++;
             trim();
         }
@@ -199,7 +208,7 @@
             let bytes = 2;
             for (const [chan, d] of state.dropped) {
                 if (!sendable(chan)) continue;
-                lines.push({ v: FORMAT_VERSION, type: 'gap', chan, from: d.from, to: d.to, seen: stamp() });
+                lines.push(tag({ v: FORMAT_VERSION, type: 'gap', chan, from: d.from, to: d.to, seen: stamp() }));
                 gaps.push(chan);
                 bytes += 170;
             }
@@ -266,7 +275,7 @@
             if (!state.sessionOpen) return Promise.resolve();
             state.sessionOpen = false;
             const seen = stamp();
-            for (const k of KEPT_CHANNELS) state.queue.push({ v: FORMAT_VERSION, type: 'session', chan: k.chan, event: 'end', seen });
+            for (const k of KEPT_CHANNELS) state.queue.push(tag({ v: FORMAT_VERSION, type: 'session', chan: k.chan, event: 'end', seen }));
             return flush();
         }
 
@@ -314,7 +323,7 @@
                     const cursors = readCursors(reply);
                     for (const k of KEPT_CHANNELS) {
                         const lines = planLines(obj[k.history] || [], cursors.get(k.chan) || null, 'connect', k.chan);
-                        state.queue.splice(state.holdAt, 0, ...lines);
+                        state.queue.splice(state.holdAt, 0, ...lines.map(tag));
                         state.holdAt += lines.length;
                         state.stats.queued += lines.length;
                     }
@@ -328,7 +337,7 @@
         }
 
         // Synchronous: a message is stamped and queued when it is read; the send is started, never waited for.
-        function handle(obj) {
+        function handle(obj, server) {
             if (!obj || typeof obj !== 'object') return;
             const refresh = REFRESH_BY_TYPE.get(obj.type);
             if (refresh) {
@@ -339,6 +348,7 @@
             switch (obj.type) {
                 case 'init_character_data': {
                     state.ownId = obj.character && obj.character.id !== undefined ? obj.character.id : null;
+                    state.server = server === 'test' ? 'test' : 'live';
                     startSession();
                     syncConnect(obj);
                     return;
@@ -378,8 +388,9 @@
         }
 
         // Handles the message at once; the returned promise is for callers that want to wait until it is sent (tests). The page does not wait.
-        function push(obj) {
-            try { handle(obj); } catch (e) { deps.log('handler error ' + (e && e.message)); }
+        // server: 'live' or 'test', the game server of the socket the message came from (default 'live').
+        function push(obj, server) {
+            try { handle(obj, server); } catch (e) { deps.log('handler error ' + (e && e.message)); }
             return idle();
         }
 
@@ -480,7 +491,7 @@
                 if (!seenEvents.has(this) && typeof message === 'string' && socket && GAME_SOCKET_HOSTS.some((h) => String(socket.url || '').includes(h))) {
                     seenEvents.add(this);
                     const obj = parseFrame(message);
-                    if (obj) recorder.push(obj);
+                    if (obj) recorder.push(obj, String(socket.url || '').includes('api-test.') ? 'test' : 'live');
                 }
             } catch (e) {
                 console.error('[MWICS Guild Chat] read failed', e);
@@ -502,6 +513,6 @@
     });
     GM_registerMenuCommand('Status', () => {
         const s = recorder.state;
-        toast('MWICS Guild Chat: live ' + s.stats.received + ', sent ' + s.stats.sent + ', queued ' + s.queue.length + ', dropped ' + s.stats.dropped + ', failed sends ' + s.stats.failed + ', refused by the helper ' + s.stats.refused);
+        toast('MWICS Chat Export: live ' + s.stats.received + ', sent ' + s.stats.sent + ', queued ' + s.queue.length + ', dropped ' + s.stats.dropped + ', failed sends ' + s.stats.failed + ', refused by the helper ' + s.stats.refused);
     });
 })();

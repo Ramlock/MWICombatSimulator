@@ -197,7 +197,19 @@ The same script and the same helper also keep the party channel. Built on the ow
 - A line is written to the file of its channel: `party-YYYY-MM.jsonl` beside `guild-YYYY-MM.jsonl`, same folder, same line format. `chan` is not written into the file line (the file name is the channel).
 - The cursor, the duplicate check (last 1,000 ids), the deletion dedupe and the late flag are per channel. The guild cursor keeps its state file `cursor.json`; the party cursor is `cursor-party.json` (same temp, flush, swap, `.bak`). On start each channel's state is rebuilt from its own state file, else its `.bak`, else its own file tail.
 - The log line of a post adds per-channel counts (`written=3 guild=2 party=1`); still no text and no name.
-- The marker is the guild's rule, per channel. Its open question (a line from a second tab or server can move it, and lines are then skipped silently) is unchanged and applies to the party marker too.
+- The marker is per channel. A line from a second tab or server no longer moves it, and a marker missing from the history no longer skips lines: see "Main server, one character, never skip" below.
+
+### Main server, one character, never skip (2026-11-15)
+
+The fault (seen once, 2026-11-13): the helper keeps one marker per channel (its cursor, the newest line by time). A line from another tab (the test server, or another character in another guild) moved it; on the next connect of the main tab the marker was not in that tab's history, the script fell back to the marker's time, and lines older than that time were skipped with no gap line.
+
+- **Never skip.** A departure from the design in sections 3 and 5 (which fell back to the marker's time), approved by the owner on 2026-11-15. When a channel's marker is not in the history the game hands over, the script sends that whole history and the helper drops the lines it already has (its last 1,000 ids per channel). The gap line stays truthful: when the history's oldest line is newer than the marker, a `gap` line from the marker's time to that line still says lines may be missing. A marker found in the history works as before (only what follows it is sent).
+- **Every line says where it was read:** `server` (`"live"` or `"test"`, from the game socket's host) and `character` (the character id from `init_character_data`, as a string). Both are taken off before the line is written; the file line format is unchanged.
+- **The helper records chat from the main server only:** a line with `server: "test"` is refused for every channel (counted as `refused`), written nowhere, and moves no marker.
+- **One character only, when configured:** the helper reads `<folder>\.helper\record-only.json`, `{"characterId":"<id>"}`. With it, a chat line of any other character, or one that names none (a script before 0.2.0), is refused and moves no marker. Without the file every character is recorded, as before, so the public script needs no setting. A file that cannot be read or names no id fails closed: every chat line is refused, and the start log says `recordOnly=invalid` (else `yes` or `no`). The id lives only in that private file, never in the script.
+- The `POST /v1/lines` reply adds `refused`; its log line adds `refused=<n>` (no id, no text).
+- A script before 0.2.0 against this helper: with no `record-only.json` it works as before; with one, its lines are refused, so the script must be updated together with the helper. Lines refused meanwhile are not lost: the marker did not move, so the next connect of 0.2.0 sends them from the history (as far back as the history reaches).
+- Tests: script `never skip: ...` (three) and `server and character: ...`; helper `only: ...` (seven), among them the 2026-11-13 case replayed with made-up ids.
 
 ### Party system lines (sourced)
 
@@ -228,6 +240,6 @@ Stored as received: the key in `m`, the parameters (`systemMetadata`) in `meta.s
 
 ### Install (party)
 
-1. The new helper is landed and the running one switched (the owner's private repo; the Manager does it).
+1. The new helper is landed, its `record-only.json` placed (optional), and the running one switched.
 2. Update `mwics-guildchat.user.js` to 0.2.0 in the script manager (open the raw file); same `@name` and `@namespace`, so the token stays.
 3. Reload the game tab. The party file `party-YYYY-MM.jsonl` appears beside the guild one with a `session` line and the party history; the helper log shows `party=<n>` on the first post.
