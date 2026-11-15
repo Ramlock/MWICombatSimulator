@@ -145,7 +145,7 @@ export function acceptTakes(live, gainOf, { byPlayer, players, locked, cmp }) {
 //  - (profit goal, a paid candidate) its cost over the upper end of the buyer's gain goes over the payback limit (`payLimit`, days; 0 = none):
 //    even its best case cannot pay back in time. A free candidate is never cut this way.
 // `out` is kept on the candidate ('beaten' | 'bar' | 'payback' | 'tied'), who never returns inside the race (the caller clears it when a new race starts) but for
-// a 'tied' one, who returns when its A goes out (releaseTied); the
+// a 'tied' one, who returns when its A goes out (releaseTied), and a 'beaten' or 'tied' one of a pool whose winner fails its pick check (reopen below); the
 // current setup is worked out again every round. A refuted candidate (it failed the pick check) and a time-only lever (never picked) take no
 // part. Returns one entry per pool, in the pool order: { key, player, changes: the changes still standing, noChange: the current setup is
 // standing, size }. A pool with one change and no current setup has its last candidate standing; one with the current setup alone ends as
@@ -240,6 +240,27 @@ export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(
         pools.push({ key, player: byPlayer ? list[0].player : null, changes: list.filter((c) => !c.out), noChange: !beatenBy(CURRENT), size: list.length });
     }
     return pools;
+}
+
+// ---- A failed pick check (the owner, 2026-11-15: "When a winner fails its check, every combination that only the winner had put out comes back, and
+// the race goes on without it, until one passes or none is left." "Combinations cut for being worse than the current setup stay out." "Same rule for every
+// stage") ----
+// `failed` has just failed its pick check (in the race, or after its lock) and is refuted by the caller. Every change of its pool (poolKey) cut as 'beaten'
+// or 'tied' has its cut lifted and the pool is judged again by eliminate() on the estimates as they stand, without `failed`: what only `failed` had put
+// out stands again; what another change, or the current setup, still beats goes back out ('beaten'); a cut by the bar or the payback limit is never
+// lifted. Recursive by itself: the next winner that fails brings back what only it had put out. A change that comes back has its contention status cleared
+// (it is in contention until the next contention test says otherwise). `opts` are eliminate()'s, with the caller's own bars. Pure: estimates only, so a
+// replay of the stored runs takes the same decision. Returns the changes that came back, in the pool's order.
+export function reopen(cands, failed, opts) {
+    const key = poolKey(failed, opts.byPlayer);
+    const pool = cands.filter((c) => c !== failed && !c.refuted && !c.timeOnly && poolKey(c, opts.byPlayer) === key);
+    const lifted = pool.filter((c) => c.out === 'beaten' || c.out === 'tied');
+    if (!lifted.length) return [];
+    for (const c of lifted) { c.out = undefined; c.tiedTo = undefined; }
+    eliminate(pool, opts);
+    const back = lifted.filter((c) => !c.out);
+    for (const c of back) c.status = undefined;
+    return back;
 }
 
 // ---- Accept together (design: the private repo's docs/proposals/what-if-accept-together.md, approved 2026-11-14) ----
