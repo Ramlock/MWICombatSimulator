@@ -16,8 +16,8 @@
 import { overPaybackLimit } from '../../src/whatif/payback.mjs';
 
 export const SURE_BLOCK = 16, SURE_MAX = 64;
-// The default smallest gain worth showing, in % of the buyer's own profit per day (the search's --min-gain-pct, the window's field).
-export const MIN_GAIN_PCT = 0.12;
+// The default smallest gain worth showing, in % of the buyer's own profit per day (the search's --min-gain-pct, the window's field): src/whatif/minGain.mjs.
+export { MIN_GAIN_PCT } from '../../src/whatif/minGain.mjs';
 // The endings a check that left a change out can have (checkPick's `ending`, the result's and the progress record's `ending`); 'slow' is a
 // confirmed change that pays back past the payback limit (result.overPayback, not a left-out ending of the check).
 export const LEFT_OUT_ENDINGS = ['loss', 'small', 'unsure'];

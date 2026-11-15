@@ -18,6 +18,7 @@
 
         body.dark-mode input[type="number"],
         body.dark-mode #whatIfBudgets input.form-control,
+        body.dark-mode #inputWhatIfMinGain,
         body.dark-mode .form-select,
         body.dark-mode .input-group-text,
         body.dark-mode .accordion-button,
@@ -1947,6 +1948,10 @@
                                 <div class="row g-1">
                                     <label for="inputWhatIfMaxPayback" class="col-7 col-form-label col-form-label-sm" data-i18n="common:whatIf.maxPayback">Payback limit (days, 0 = no limit)</label>
                                     <div class="col-5"><input id="inputWhatIfMaxPayback" type="number" min="0" step="1" value="0" class="form-control form-control-sm"></div>
+                                </div>
+                                <div class="row g-1">
+                                    <label for="inputWhatIfMinGain" class="col-7 col-form-label col-form-label-sm"><span data-i18n="common:whatIf.minGainPct">Smallest gain worth showing (% of the buyer's own profit per day)</span><span class="whatif-help" tabindex="0" data-whatif-tip="minGainPctTip">?</span></label>
+                                    <div class="col-5"><input id="inputWhatIfMinGain" type="text" inputmode="decimal" value="" class="form-control form-control-sm"></div>
                                 </div>
                             </div>
                             <div class="whatif-sec">

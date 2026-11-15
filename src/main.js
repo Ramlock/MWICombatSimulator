@@ -36,6 +36,7 @@ import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
+import { parseMinGain, MIN_GAIN_PCT as WHATIF_MIN_GAIN_PCT } from './whatif/minGain.mjs';
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
@@ -4554,6 +4555,9 @@ function whatIfReadSettings(mark) {
     if (badBudget) return { message: whatIfT('badBudget', { player: badBudget.dataset.player }) };
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
     if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfT('badMaxPayback') };
+    // The smallest gain worth showing (src/whatif/minGain.mjs: its unit and default): empty = the default.
+    const minGainPct = parseMinGain(document.getElementById('inputWhatIfMinGain').value);
+    if (minGainPct === null) return { message: whatIfT('badMinGain') };
     // The guild's shrine level: empty = the game's maximum, else a whole number of 0 or more (the search's --shrine-cap).
     const shrineCap = document.getElementById('inputWhatIfShrineCap').value.trim();
     if (shrineCap !== '' && !(Number.isInteger(Number(shrineCap)) && Number(shrineCap) >= 0)) return { message: whatIfT('badShrineCap') };
@@ -4563,7 +4567,7 @@ function whatIfReadSettings(mark) {
     for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) return { message: whatIfT('sameNames') };
-    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap,
+    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap, minGainPct,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value } };
 }
 
@@ -4683,6 +4687,7 @@ async function initWhatIf() {
         whatIf.version = body;
     } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
     whatIfShowButton();
+    { const g = document.getElementById('inputWhatIfMinGain'); if (g.value === '') g.value = String(WHATIF_MIN_GAIN_PCT); } // the default lives in minGain.mjs only
     whatIfAttachTips(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
     // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {

@@ -155,6 +155,38 @@ check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, 
     const next = tp.sync({ ...race('greedy step 2'), checkFailed: undefined });
     check('check on its row: a check of a later row starts its runs from 0', tp.sync({ stage: 'confirming picks', checkingStage: 'greedy step 2', checkingWhat: what, picksPlanned: 48, picksDone: 36 }).find((r) => r.kind === 'step' && r.index === 2).checkDone === 4 && next.length > 0);
 }
+// The check's four endings on the row (progress.checkFailed carries ending, range and goal: core.mjs leftOutByCheck): a change too small to tell is
+// never worded as left out by a failed check; each left-out change's tip says which ending it was, with its range.
+{
+    const tp = createParts(plan);
+    const race = (stage, extra = {}) => ({ stage, round: 2, phase: 'search', runsDone: 1, runsPlanned: 9, candidatesLeft: 5, stageCandidates: 20, stageContending: 5, stagePaused: 1, stageDropped: 14, stageRuns: 40, stageSimHours: 100, ...extra });
+    tp.sync(race('screen', { stageEnded: 'screen' }));
+    const what = { player: 'Player 2', desc: 'Weapon +5 -> +7' };
+    const loss = { stage: 'greedy step 1', ...what, seeds: 16, gainPerUser: -9, sePerUser: 2, ending: 'loss', range: { low: -13, high: -5, floor: 40 }, goal: 'profit' };
+    const unsure = { stage: 'greedy step 1', player: 'Player 2', desc: 'Ring +1 -> +2', seeds: 64, gainPerUser: 20, sePerUser: 15, ending: 'unsure', range: { low: -10, high: 50, floor: 40 }, goal: 'profit' };
+    tp.sync(race('greedy step 1'));
+    let q = tp.sync(race('greedy step 1', { round: 3, checkFailed: loss }));
+    let pr = partRows(panel.renderParts({ state: 'running', progress: { parts: q } }, t)).find((r) => r.kind === 'step');
+    check('endings: a loss heads the row as left out by its check, its tip says "a loss" with its range', txt(pr.html).includes('Left out by its check, the search goes on:') && pr.html.includes('data-ending="loss"') && pr.html.includes('+7: a loss: -13 to -5, on fresh runs (16 per side)'), pr.html);
+    q = tp.sync(race('greedy step 1', { round: 4, checkFailed: unsure }));
+    pr = partRows(panel.renderParts({ state: 'running', progress: { parts: q } }, t)).find((r) => r.kind === 'step');
+    check('endings: too small to tell heads the row apart ("Too small to tell, the search goes on:"), never as failed; both tips stay, each with its ending', txt(pr.html).includes('Too small to tell, the search goes on:') && !txt(pr.html).includes('Left out by its check') && pr.html.includes('data-ending="unsure"') && pr.html.includes('+2: too small to tell: -10 to 50, on fresh runs (64 per side)') && pr.html.includes('a loss: -13 to -5'), pr.html);
+    q = tp.sync({ stage: 'done' });
+    pr = partRows(panel.renderParts({ state: 'done', progress: { parts: q } }, t)).find((r) => r.kind === 'step');
+    check('endings: a done row whose last winner was too small to tell reads "Too small to tell:"', txt(pr.html).includes('Too small to tell:'), pr.html);
+    const tp2 = createParts(plan);
+    tp2.sync(race('screen', { stageEnded: 'screen' }));
+    const small = { ...loss, ending: 'small', range: { low: -20, high: 30, floor: 40 } };
+    tp2.sync(race('greedy step 1'));
+    const q2 = tp2.sync(race('greedy step 1', { round: 3, checkFailed: small })), pr2 = partRows(panel.renderParts({ state: 'running', progress: { parts: q2 } }, t)).find((r) => r.kind === 'step');
+    check('endings: too small to matter says "under X a day for sure" with its range', pr2.html.includes('too small to matter: under 40 a day for sure (-20 to 30)'), pr2.html);
+    const old = { stage: 'greedy step 1', ...what, seeds: 16, gainPerUser: -3, sePerUser: 2 };
+    const tp3 = createParts(plan); tp3.sync(race('screen', { stageEnded: 'screen' })); tp3.sync(race('greedy step 1'));
+    const pr3 = partRows(panel.renderParts({ state: 'running', progress: { parts: tp3.sync(race('greedy step 1', { round: 3, checkFailed: old })) } }, t)).find((r) => r.kind === 'step');
+    check('endings: a record from before the endings (no ending) reads as before', txt(pr3.html).includes('Left out by its check, the search goes on:') && pr3.html.includes('+7: left out by its check, on fresh runs (16 per side)'), pr3.html);
+    const core = fs.readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
+    check('endings: core reports the ending, its range and the goal on checkFailed (one path, leftOutByCheck), from every check', /checkFailed: \{ stage: at, \.\.\.whatOf\(list\), \.\.\.checkOf\(fresh, ending\), goal,/.test(core) && (core.match(/leftOutByCheck\(at, \[c\], got\.fresh, got\.ending\)|leftOutByCheck\(stage, \[c\], peek\.get\(c\)\.fresh, e\)|leftOutByCheck\(at, got\.set, got\.fresh, got\.ending\)/g) || []).length === 3);
+}
 // The bar: candidates ruled out over all candidates of the row, a %; not time.
 {
     const bar = (row) => partRows(panel.renderParts({ state: 'running', progress: { parts: [row] } }, t))[0];

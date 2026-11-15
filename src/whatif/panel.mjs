@@ -3,6 +3,7 @@
 // progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
+import { MIN_GAIN_PCT } from './minGain.mjs';
 import { EN as TRIG_EN, readChange, readList, changeWords, listWords, termOf } from './trigger-words.mjs';
 import { applyOps } from './applyOps.mjs';
 import { numberHtml, formatNumber, unitOf } from '../numberFormat.js';
@@ -126,7 +127,7 @@ export function slotHasData(json) {
 
 // The request body of POST /api/search (delivery design, section 10). budgets: { "<player>": coin }.
 // marketplace: the market snapshot fetched when the search starts ({ marketData, timestamp }), sent as it came.
-export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap }) {
+export function searchBody({ slots, goal, budgets, levers, zone, tier, marketplace, exports, maxPayback, shrineCap, minGainPct }) {
     const setups = pageSetups(slots);
     const options = {};
     if (zone) options.zone = zone;
@@ -137,6 +138,9 @@ export function searchBody({ slots, goal, budgets, levers, zone, tier, marketpla
     if (exports && Object.keys(exports).length) body.export = exports;
     // The payback limit in days (0 = no limit): the runner passes it to the search as --max-payback.
     if (maxPayback !== undefined && maxPayback !== null && maxPayback !== '') body.maxPayback = Number(maxPayback);
+    // The smallest gain worth showing, in % of the buyer's own profit per day (src/whatif/minGain.mjs): sent as --min-gain-pct only when it is not the
+    // default, so a runner from before the setting still takes a search left at the default.
+    if (Number.isFinite(minGainPct) && minGainPct !== MIN_GAIN_PCT) body.minGainPct = minGainPct;
     // The guild's shrine level (one for every buff), only with Shrines ticked; empty = the game's maximum (sent as nothing): --shrine-cap.
     if (shrineCap !== undefined && shrineCap !== null && shrineCap !== '' && (levers || []).includes('shrines')) body.shrineCap = Number(shrineCap);
     return body;
@@ -363,10 +367,10 @@ export function renderParts(status, t, pressed = null, stopping = false, names =
         const lastFail = failed[failed.length - 1];
         const bits = r.checking ? [`<span class="whatif-part-what">${whatHtml(r.checkWhat)}</span>`, `<span class="whatif-part-runs">${checkRuns}</span>`]
             : [...(r.kept && r.state !== 'waiting' ? [`<span class="whatif-part-kept">${plural(t, 'progress.keptRuns', r.kept.total, { kept: num(r.kept.kept), total: num(r.kept.total) })}</span>`] : []),
-                ...(lastFail ? [`<span class="whatif-part-what" data-left-out="${failed.length}">${esc(t(over ? 'progress.leftOutEnded' : 'progress.leftOutGoesOn'))} ${whatHtml(lastFail)}</span>`] : []),
+                ...(lastFail ? [`<span class="whatif-part-what" data-left-out="${failed.length}" data-ending="${esc(lastFail.ending ?? '')}">${esc(t(lastFail.ending === 'unsure' ? (over ? 'progress.unsureEnded' : 'progress.unsureGoesOn') : over ? 'progress.leftOutEnded' : 'progress.leftOutGoesOn'))} ${whatHtml(lastFail)}</span>`] : []),
                 // The changes that winner had put out and that came back into the race (progress.stageBack), while the race goes on.
                 ...(lastFail && !over && Number(r.back) > 0 ? [`<span class="whatif-part-runs whatif-part-back">${plural(t, 'progress.backInRace', r.back, { n: num(r.back) })}</span>`] : [])];
-        const failTip = failed.map((f) => plainOf(t('progress.leftOutTip', { change: whatHtml(f), gain: pm(f.gainPerUser, f.sePerUser), buyer: pm(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) }))).join('\n');
+        const failTip = failed.map((f) => plainOf(t('progress.leftOutTip', { change: whatHtml(f), ending: f.ending ? endingText(f, t, f.goal) : esc(t('progress.leftOutPlain')), gain: pm(f.gainPerUser, f.sePerUser), buyer: pm(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) }))).join('\n');
         const detail = bits.length ? `<td class="whatif-part-detail"><div class="whatif-part-detail-in" title="${esc(bits.map(plainOf).join(' · '))}">${bits.join('')}</div>${help(esc(failTip))}</td>` : '<td class="whatif-part-detail"></td>';
         return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(over ? null : rounded ? r.contending : left)}${cell(over ? null : r.paused)}${cell(r.dropped)}${pctCell}${detail}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed, stopping) : ''}</td></tr>`;
     }).join('');
@@ -402,6 +406,8 @@ export function renderRounds(round, t, names = null) {
             fig(t('rounds.contending'), `<span data-rounds="contending">${num(c.contending)}</span>`),
             fig(t('rounds.paused'), `<span data-rounds="paused">${num(c.paused)}</span>`) + help(esc(t('rounds.pausedTip'))),
             ...(c.refuted ? [fig(t('rounds.refuted'), num(c.refuted))] : []),
+            // The leaders this race's check left out, by ending (round.candidates.leftOut), each count only when above 0.
+            ...[['loss', 'outLoss'], ['small', 'outSmall'], ['unsure', 'outUnsure']].filter(([e]) => c.leftOut?.[e] > 0).map(([e, k]) => `<span data-rounds="out-${e}">${fig(t('rounds.' + k), num(c.leftOut[e]))}</span>` + help(esc(t('rounds.outTip')))),
             fig(t('rounds.coverageK'), `${Math.round((round.coverage ?? 0) * 100)}%`),
         ]),
     ].join('');
@@ -701,6 +707,19 @@ function foldLine(id, heading, note, show, hide, n = null) {
     const toggle = id ? `<button type="button" class="btn btn-link btn-sm p-0 whatif-fold" data-whatif-more="${id}" data-show="${esc(show)}" data-hide="${esc(hide)}">${esc(show)}</button>` : '';
     return `<div class="whatif-fold-line"><span class="fw-bold">${heading}</span>${n !== null ? chip(num(n), 'whatif-chip-n') : ''}${help(note)}${toggle}</div>`;
 }
+// A change a check left out (a result.notConfirmed entry or a progress record's checkFailed): its ending in words with its range (`range`: sure.mjs
+// rangeOf, the buyer's gain per day on the profit goal, per user on another), as HTML. One function for the result's lists and the progress row's tip.
+function endingText(a, t, goal) {
+    const r = a.range || {}, nums = { low: num(r.low), high: num(r.high), floor: num(r.floor) };
+    if (a.ending === 'small') return t(goal === 'exp' ? 'result.ending.smallExp' : 'result.ending.small', nums);
+    return a.ending === 'loss' || a.ending === 'unsure' ? t('result.ending.' + a.ending, nums) : a.ending === 'slow' ? esc(t('result.ending.slow')) : '—';
+}
+// The same as a chip with its tooltip (the result's "Why" column); an older result with no ending shows a dash.
+function endingChip(a, result, t) {
+    if (!a.ending) return '—';
+    const tip = t('result.ending.' + a.ending + 'Tip', { z: num(result.z), pct: num(result.pickCheck?.minGainPct), seeds: num(a.fresh?.seeds) });
+    return `<span data-ending="${esc(a.ending)}">${chip(endingText(a, t, result.goal), '', esc(plainOf(tip)))}</span>`;
+}
 // A closed list: its fold line and the items (html of <li>s) hidden behind it. The over-budget, pays-back-too-slowly, left-out, not-confirmed and
 // unknown-cost lists are this one renderer; `key` names their locale keys: <key>, <key>Note, <key>Show, <key>Hide.
 function closedList(key, id, rows, note, t, head) {
@@ -882,17 +901,20 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         // Two causes, two lists (one label each): a leader the pick check on the race's own reading seeds refused (`inRace`: it led a race at some point, no run of its own),
         // and a pick that was locked and then not confirmed on its own fresh runs (a greedy step, or the foods and drinks confirmation).
         const item = (a) => {
-            const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem';
+            const f = a.fresh || {}, key = a.inRace ? 'leftOutItem' : 'notConfirmedItem', why = endingChip(a, result, t);
             // Where it was left out: a greedy step, or the foods or the drinks stage (the optimizer's `kind`).
             // HTML: the step's figure is num() markup, so the two plain strings are escaped here and the whole goes into the chip as it is.
             const at = a.kind === 'food' ? esc(t('result.notConfirmedAtFood')) : a.kind === 'drink' ? esc(t('result.notConfirmedAtDrink')) : t('result.notConfirmedAtStep', { step: num(a.step) });
             const buyer = Number.isFinite(f.buyerNet) && !goalExp ? figure(f.buyerNet, f.buyerNetSe, t, floor) : '—';
-            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(at, '', esc(t('result.' + key + 'Tip'))))}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
+            return `<tr>${td(esc(a.player))}${td(shown(a))}${td(chip(at, '', esc(t('result.' + key + 'Tip'))))}${td(why)}${td(figure(f.gainPerUser, f.sePerUser, t, floor), true)}${td(buyer, true)}</tr>`;
         };
-        const ncHead = [H.player, H.change, [t('progress.col.stage')], [t('col.partyGain'), true], [t('col.buyerGain'), true]];
-        const inRace = result.notConfirmed.filter((a) => a.inRace), confirmed = result.notConfirmed.filter((a) => !a.inRace);
+        const ncHead = [H.player, H.change, [t('progress.col.stage')], [t('result.endingCol')], [t('col.partyGain'), true], [t('col.buyerGain'), true]];
+        // A change its check could not tell (ending 'unsure') was not refuted: it is listed apart, never with the loss and too-small ones.
+        const told = result.notConfirmed.filter((a) => a.ending !== 'unsure'), unsure = result.notConfirmed.filter((a) => a.ending === 'unsure');
+        const inRace = told.filter((a) => a.inRace), confirmed = told.filter((a) => !a.inRace);
         if (inRace.length) D.push(closedList('leftOut', 'whatIfLeftOut', inRace.map(item), {}, t, ncHead));
         if (confirmed.length) D.push(closedList('notConfirmed', 'whatIfNotConfirmed', confirmed.map(item), {}, t, ncHead));
+        if (unsure.length) D.push(closedList('unsure', 'whatIfUnsure', unsure.map(item), {}, t, ncHead));
     }
     // The swaps the search skipped (no better on any stat; only another style's bonuses) and the players the export levers skipped: one count line each.
     const swapRow = (a) => `<tr>${td(esc(a.player))}${td(shown(a))}</tr>`;

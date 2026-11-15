@@ -30,7 +30,8 @@ import { isDominatedSwap } from './dominated.mjs';
 import { defaultPlayer } from '../calibration/party.mjs';
 import { playerFit, misfit, abilityMisfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
-import { SURE_BLOCK, SURE_MAX, MIN_GAIN_PCT, verdict, rangeOf, checkPick, firstConfirmed, confirmFillings, checkSet } from './sure.mjs';
+import { MIN_GAIN_PCT } from '../../src/whatif/minGain.mjs';
+import { SURE_BLOCK, SURE_MAX, verdict, rangeOf, checkPick, firstConfirmed, confirmFillings, checkSet } from './sure.mjs';
 import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
 import { hasFigure, showsFigure } from '../../src/whatif/figure.mjs';
 // A count with its noun, singular for 1 ("1 run", "2 runs").
@@ -333,7 +334,7 @@ export async function main(settings, seams) {
     // A row's winner that its check left out (the one path, a lone pick's or a set's): the progress record names the row's stage (checkFailed.stage), the
     // change and the check's two figures, so the row says which winner was left out while its search goes on (progress.mjs keeps every one per row).
     function leftOutByCheck(at, list, fresh, ending) {
-        report({ checkFailed: { stage: at, ...whatOf(list), ...checkOf(fresh, ending), seeds: fresh?.seeds ?? null, gainPerUser: fresh?.gainPerUser ?? null, sePerUser: fresh?.sePerUser ?? null, ...(Number.isFinite(fresh?.buyerNet) ? { buyerNet: fresh.buyerNet, buyerNetSe: fresh.buyerNetSe } : {}) } });
+        report({ checkFailed: { stage: at, ...whatOf(list), ...checkOf(fresh, ending), goal, seeds: fresh?.seeds ?? null, gainPerUser: fresh?.gainPerUser ?? null, sePerUser: fresh?.sePerUser ?? null, ...(Number.isFinite(fresh?.buyerNet) ? { buyerNet: fresh.buyerNet, buyerNetSe: fresh.buyerNetSe } : {}) } });
     }
     // `at`: the race stage whose row the check is drawn on (progress.checkingStage): 'foods', 'drinks', 'screen' or 'greedy step n'.
     async function confirmPick(baseOps, c, fin, label, who, at = label) {
