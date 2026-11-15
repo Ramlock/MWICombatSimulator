@@ -3,6 +3,8 @@
 // Checks: only the guild channel is ever recorded; cursor dedupe and gap lines on connect; refresh and live dedupe; deletion becomes an
 // update line; queue, retry and overflow gap; batch caps; strict arrival order; a slow send never holds back the next lines (they are
 // stamped when read and batched); nothing is sent while a connect reads the cursor; and a grep that the source is read-only toward the game.
+// Party (0.2.0): party lines kept and tagged, guild unchanged, other channels dropped, both histories on connect with per-channel cursors,
+// per-channel dedupe and gaps, nothing of the party sent to a helper older than 0.2.0, and party lines held until the helper says it takes them.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -12,7 +14,7 @@ const SRC = path.join(__dirname, '..', 'mwics-guildchat.user.js');
 const source = fs.readFileSync(SRC, 'utf8');
 const mod = { exports: {} };
 vm.runInNewContext(source, { module: mod, console });
-const { createRecorder, planHistory, frameType, parseFrame, GUILD_CHAN, MAX_QUEUE, MAX_BATCH_LINES, guardRequest, REQUEST_WATCHDOG_MS } = mod.exports;
+const { createRecorder, planHistory, frameType, parseFrame, GUILD_CHAN, KEPT_CHANNELS, MAX_QUEUE, MAX_BATCH_LINES, guardRequest, REQUEST_WATCHDOG_MS } = mod.exports;
 const plain = (x) => JSON.parse(JSON.stringify(x)); // the script runs in its own realm
 
 const GUILD = GUILD_CHAN;
@@ -183,7 +185,7 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         await h.rec.push(init([]));
         for (let i = 1; i <= MAX_QUEUE + 5; i++) await h.rec.push(live(msg(i, T(1))));
         assert.equal(h.rec.state.queue.length, MAX_QUEUE);
-        assert.equal(h.rec.state.stats.dropped, 6);
+        assert.equal(h.rec.state.stats.dropped, 7); // the two session lines (guild, party) and the five oldest guild lines
         h.setFailures(0);
         h.timers.shift().fn();
         await settle();
@@ -300,6 +302,151 @@ async function test(name, fn) { await fn(); n++; console.log('ok - ' + name); }
         late({ ok: true, status: 200 });
         assert.equal(r.ok, false);
         assert.equal(r.timedOut, true, 'a late callback is ignored');
+    });
+
+    // ---- Party channel (0.2.0) ----
+    // A 0.2.0 helper: its cursor reply carries chans (per channel), its post reply lists the channels it takes.
+    function harness2({ guild = null, party = null, helper = 'new', cursorFails = false } = {}) {
+        const sent = [];
+        const logs = [];
+        let failures = 0;
+        const deps = {
+            post: async (lines) => {
+                if (failures > 0) { failures--; return { ok: false, status: 0 }; }
+                sent.push(...plain(lines));
+                return helper === 'new' ? { ok: true, status: 200, chans: ['guild', 'party'] } : { ok: true, status: 200, chans: null };
+            },
+            getCursor: async () => {
+                if (cursorFails) return null;
+                if (helper === 'new') return { ...(guild || {}), chans: { guild: guild || {}, party: party || {} } };
+                return guild || {};
+            },
+            now: () => Date.UTC(2030, 0, 1, 13, 0, 0),
+            setTimer: () => {},
+            log: (t) => logs.push(t),
+        };
+        return { rec: createRecorder(deps), sent, logs, setFailures: (k) => { failures = k; } };
+    }
+    const PARTY = '/chat_channel_types/party';
+    const pmsg = (id, t, extra = {}) => ({ ...msg(id, t), chan: PARTY, ...extra });
+    const init2 = (guildChatHistory, partyChatHistory, id = 1) => ({ type: 'init_character_data', character: { id }, guildChatHistory, partyChatHistory });
+    const ofChan = (sent, chan) => sent.filter((l) => l.chan === chan);
+
+    await test('party: the kept channels are data, guild and party, nothing else', () => {
+        assert.deepEqual(plain(KEPT_CHANNELS).map((k) => k.hrid), [GUILD, PARTY]);
+        assert.deepEqual(plain(KEPT_CHANNELS).map((k) => k.chan), ['guild', 'party']);
+        assert.equal(KEPT_CHANNELS.find((k) => k.chan === 'party').history, 'partyChatHistory');
+    });
+
+    await test('party: live party lines are kept and tagged party, guild lines tagged guild, every other channel dropped in the page', async () => {
+        const h = harness2();
+        await h.rec.push(init2([], []));
+        for (const chan of ['/chat_channel_types/general', '/chat_channel_types/whisper', '/chat_channel_types/trade', '/chat_channel_types/moderator', '/chat_channel_types/recruit', '/chat_channel_types/english']) {
+            await h.rec.push(live({ ...msg(1, T(1)), chan }));
+        }
+        assert.equal(msgs(h.sent).length, 0);
+        await h.rec.push(live(pmsg(2, T(2))));
+        await h.rec.push(live(msg(3, T(3))));
+        assert.deepEqual(msgs(h.sent).map((l) => l.chan + ':' + l.id), ['party:2', 'guild:3']);
+        assert.ok(h.sent.every((l) => l.chan === 'guild' || l.chan === 'party'), 'every line carries its channel');
+        assert.deepEqual(h.sent.filter((l) => l.type === 'session').map((l) => l.chan), ['guild', 'party']);
+        const whisperRaw = JSON.stringify(h.sent);
+        assert.ok(!whisperRaw.includes('whisper') && !whisperRaw.includes('general'));
+    });
+
+    await test('party: a guild line keeps exactly its 0.1.1 shape plus chan', async () => {
+        const h = harness2();
+        await h.rec.push(init2([], [], 901));
+        await h.rec.push(live(msg(4, T(4), { cId: 901 })));
+        const [a] = msgs(h.sent);
+        assert.deepEqual(Object.keys(a), ['v', 'type', 'chan', 'id', 't', 'sName', 'cId', 'm', 'o', 'system', 'mod', 'own', 'links', 'seen', 'src']);
+        assert.equal(a.chan, 'guild');
+        assert.equal(a.own, true);
+    });
+
+    await test('party: a party system line is stored as received (the key in m, the parameters in meta)', async () => {
+        const h = harness2();
+        await h.rec.push(init2([], []));
+        await h.rec.push(live(pmsg(5, T(5), { isSystemMessage: true, sName: null, cId: null, m: 'systemChatMessage.partyMemberReady', systemMetadata: '{"name":"Example"}' })));
+        await h.rec.push(live(pmsg(6, T(6), { isSystemMessage: true, m: 'systemChatMessage.partyBattleStarted', systemMetadata: '{"actionHrid":"/actions/combat/example"}' })));
+        const [a, b] = msgs(h.sent);
+        assert.equal(a.chan, 'party');
+        assert.equal(a.system, true);
+        assert.equal(a.m, 'systemChatMessage.partyMemberReady');
+        assert.equal(a.meta.system, '{"name":"Example"}');
+        assert.equal(b.m, 'systemChatMessage.partyBattleStarted');
+    });
+
+    await test('party: on connect both histories are sent, each against its own channel cursor, each gap tagged with its channel', async () => {
+        const h = harness2({ guild: { id: '2', t: T(2) }, party: { id: '1', t: T(1) } });
+        await h.rec.push(init2([1, 2, 3].map((i) => msg(i, T(i))), [10, 11].map((i) => pmsg(i, T(i)))));
+        assert.deepEqual(msgs(ofChan(h.sent, 'guild')).map((l) => l.id + ':' + l.src), ['3:history']);
+        assert.deepEqual(msgs(ofChan(h.sent, 'party')).map((l) => l.id + ':' + l.src), ['10:history', '11:history']);
+        const gaps = h.sent.filter((l) => l.type === 'gap');
+        assert.deepEqual(gaps.map((l) => l.chan + ':' + l.from + '>' + l.to), ['party:' + T(1) + '>' + T(10)]);
+        const h2 = harness2();
+        await h2.rec.push(init2([msg(1, T(1))], [pmsg(1, T(1)), { ...pmsg(2, T(2)), chan: '/chat_channel_types/whisper' }]));
+        assert.deepEqual(msgs(h2.sent).map((l) => l.chan + ':' + l.id), ['guild:1', 'party:1'], 'the same id in two channels is two lines; a whisper in the party history is dropped');
+        assert.deepEqual(h2.sent.filter((l) => l.type === 'gap').map((l) => l.chan + ':' + l.from), ['guild:null', 'party:null']);
+    });
+
+    await test('party: repeats are dropped per channel, deletions become one update tagged party', async () => {
+        const h = harness2();
+        const ph = [1, 2].map((i) => pmsg(i, T(i)));
+        await h.rec.push(init2([], ph));
+        await h.rec.push(live(pmsg(2, T(2))));
+        await h.rec.push(init2([], ph));
+        await h.rec.push(live(msg(2, T(2)))); // same id, guild channel: its own line
+        assert.deepEqual(msgs(h.sent).map((l) => l.chan + ':' + l.id), ['party:1', 'party:2', 'guild:2']);
+        await h.rec.push({ type: 'chat_message_updated', message: { ...pmsg(1, T(1)), isDeleted: true, deleteReason: '/delete_reasons/spam' } });
+        await h.rec.push({ type: 'chat_message_updated', message: { ...pmsg(1, T(1)), isDeleted: true, deleteReason: '/delete_reasons/spam' } });
+        const ups = h.sent.filter((l) => l.type === 'update');
+        assert.deepEqual(ups.map((l) => l.chan + ':' + l.id), ['party:1']);
+    });
+
+    await test('party: the guild refresh touches only the guild channel', async () => {
+        const h = harness2();
+        await h.rec.push(init2([], []));
+        await h.rec.push({ type: 'guild_chat_history_updated', guildChatHistory: [msg(1, T(1)), pmsg(2, T(2))] });
+        assert.deepEqual(msgs(h.sent).map((l) => l.chan + ':' + l.id), ['guild:1']);
+    });
+
+    await test('party: against a helper older than 0.2.0 no party line is ever sent (it would land in the guild file); guild unchanged', async () => {
+        const h = harness2({ helper: 'old', guild: { id: '1', t: T(1) } });
+        await h.rec.push(init2([1, 2].map((i) => msg(i, T(i))), [pmsg(5, T(5))]));
+        await h.rec.push(live(pmsg(6, T(6))));
+        await h.rec.push(live(msg(3, T(3))));
+        await h.rec.endSession();
+        assert.ok(h.sent.every((l) => l.chan === 'guild'));
+        assert.deepEqual(msgs(h.sent).map((l) => l.id), ['2', '3']);
+        assert.ok(h.rec.state.stats.refused >= 2, 'the party session line and history are refused');
+    });
+
+    await test('party: while the helper has not yet said what it takes, party lines wait; its first reply that lists party sends them', async () => {
+        const h = harness2({ cursorFails: true });
+        h.setFailures(1000);
+        await h.rec.push(init2([], [pmsg(1, T(1))]));
+        await h.rec.push(live(pmsg(2, T(2))));
+        assert.equal(h.sent.length, 0);
+        assert.ok(h.rec.state.queue.some((l) => l.chan === 'party'), 'party lines are held, not dropped');
+        h.setFailures(0);
+        await h.rec.flush();
+        await h.rec.flush();
+        assert.deepEqual(msgs(h.sent).map((l) => l.chan + ':' + l.id), ['party:1', 'party:2']);
+        assert.equal(h.sent[0].chan, 'guild', 'the guild session line goes first and its reply opens the party channel');
+        assert.equal(h.rec.state.queue.length, 0);
+    });
+
+    await test('party: past the queue cap each channel that lost lines gets its own gap line', async () => {
+        const h = harness2();
+        await h.rec.push(init2([], []));
+        h.setFailures(1000000);
+        for (let i = 1; i <= MAX_QUEUE / 2 + 3; i++) { await h.rec.push(live(msg(i, T(1)))); await h.rec.push(live(pmsg(i, T(2)))); }
+        h.setFailures(0);
+        await h.rec.flush();
+        while (h.rec.state.queue.length) await h.rec.flush();
+        const gaps = h.sent.filter((l) => l.type === 'gap');
+        assert.deepEqual(gaps.map((l) => l.chan).sort(), ['guild', 'party']);
     });
 
     await test('planHistory is pure: same input, same plan, input untouched', () => {

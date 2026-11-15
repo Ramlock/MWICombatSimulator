@@ -113,6 +113,11 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## Guild Chat Export (`mwics-guildchat.user.js`)
 
+### 0.2.0 (2026-11-15)
+
+- The party chat is kept too: live party lines, deletions and the party history handed over on connect go to the helper, which writes them to their own file beside the guild one (`party-YYYY-MM.jsonl`). Every other channel, whispers included, still never leaves the page.
+- Every line now says its channel. A helper from before this version gets guild lines only, as before; party lines start once the helper is updated.
+
 ### 0.1.1 (2026-11-13)
 
 - Fix: in a background tab the chat record fell hours behind and could stop. The script sent one line at a time and read the next line only after the helper had answered, so when the browser held the tab back each line waited for the next moment the tab was allowed to run. Now every line is taken the moment it arrives and everything waiting goes to the helper together in one send.

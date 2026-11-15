@@ -41,7 +41,7 @@ The client never asks for older history: the only chat request types in the bund
 | `gm`, `specIcon`, `icon`, `color` | display only (game mode, name icon, colour) | `main` chat row render |
 | `tr`, `o` | translation map and original text when chat translation is on; with translation on, `m` may be the translated text and `o` the original | `main@222100` region |
 
-Channels (`main@220344`): `/chat_channel_types/` + `general`, `english`, `chinese`, `japanese`, `korean`, `french`, `german`, `spanish`, `portuguese`, `russian`, `vietnamese`, `ironcow`, `trade`, `recruit`, `beginner`, `help`, **`guild`**, `party`, `moderator`, `whisper`. All arrive through the same `chat_message_received` type, so the guild filter is `message.chan === '/chat_channel_types/guild'` (Toolasha filters the party channel the same way: `toolasha-combat.js:2193`).
+Channels (`main@220344`): `/chat_channel_types/` + `general`, `english`, `chinese`, `japanese`, `korean`, `french`, `german`, `spanish`, `portuguese`, `russian`, `vietnamese`, `ironcow`, `trade`, `recruit`, `beginner`, `help`, **`guild`**, `party`, `moderator`, `whisper`. All arrive through the same `chat_message_received` type, so the guild filter is `message.chan === '/chat_channel_types/guild'` (0.2.0 keeps the party channel the same way, section 6) (Toolasha filters the party channel the same way: `toolasha-combat.js:2193`).
 
 ### What shares the guild channel and must be handled
 
@@ -175,3 +175,59 @@ Where the build differs from or fixes the proposal above:
 3. In the game tab: Tampermonkey menu, MWICS Guild Chat Export, Set helper token, paste it.
 4. Reload the game tab.
 5. Done: lines appear in the helper's folder as `guild-YYYY-MM.jsonl`; the menu's Status entry shows live, sent and queued counts.
+
+## 6. Party channel (script 0.2.0, 2026-11-15)
+
+The same script and the same helper also keep the party channel. Built on the owner's go (2026-11-15). Only the channel is new: the line format, the cursor rule, the queue, the retry and the read-only guarantees are those of section 5.
+
+### Script (`mwics-guildchat.user.js` 0.2.0)
+
+- The kept channels are one table, `KEPT_CHANNELS`: `guild` (`/chat_channel_types/guild`, history `guildChatHistory`, refresh `guild_chat_history_updated`) and `party` (`/chat_channel_types/party`, history `partyChatHistory`, no refresh: the client has no party refresh message, the party history comes only with `init_character_data`, `main@1860005`). Every kept channel goes through the same code: live lines, deletions, the history on connect, the overflow gap. Every other channel, whispers above all, is still dropped in the page.
+- Every line the script sends carries `chan` (`"guild"` or `"party"`): `msg`, `update`, `gap` and `session` alike. A page session writes one `session` line per channel. The page's known-id map is keyed per channel, so the same id in two channels is two lines.
+- On connect each channel's history is planned against its own cursor, with its own gap line. The history is whatever the server hands over; the client keeps the newest 100 per channel when it appends live lines (`MAX_CHAT_MESSAGE_COUNT`, section 1).
+- An older helper writes every line it gets to the guild file. So a line of a channel other than guild is sent only once the helper has said it takes that channel (the `chans` of its cursor or post reply). Against a helper from before 0.2.0 the script sends guild only, as 0.1.1 did, and drops party lines in the page (counted as "refused by the helper" in the Status entry); before the helper's first reply party lines wait in the queue. Tests: `party: against a helper older than 0.2.0 ...`, `party: while the helper has not yet said what it takes ...`.
+
+### Wire change (backward compatible)
+
+- `POST /v1/lines`: a line may carry `chan`, `"guild"` or `"party"`. No `chan` (or `null`) is guild, so script 0.1.1 works unchanged against the new helper. Any other value, or a non-string, refuses that line (counted in `rejected`). The reply adds `chans: ["guild","party"]`.
+- `GET /v1/cursor`: `{"id","t","chans":{"guild":{"id","t"}|{},"party":{"id","t"}|{}}}`. `id` and `t` stay the guild cursor (absent when none), which is all a 0.1.1 script reads.
+
+### Helper (owner's private repo)
+
+- A line is written to the file of its channel: `party-YYYY-MM.jsonl` beside `guild-YYYY-MM.jsonl`, same folder, same line format. `chan` is not written into the file line (the file name is the channel).
+- The cursor, the duplicate check (last 1,000 ids), the deletion dedupe and the late flag are per channel. The guild cursor keeps its state file `cursor.json`; the party cursor is `cursor-party.json` (same temp, flush, swap, `.bak`). On start each channel's state is rebuilt from its own state file, else its `.bak`, else its own file tail.
+- The log line of a post adds per-channel counts (`written=3 guild=2 party=1`); still no text and no name.
+- The marker is the guild's rule, per channel. Its open question (a line from a second tab or server can move it, and lines are then skipped silently) is unchanged and applies to the party marker too.
+
+### Party system lines (sourced)
+
+Stored as received: the key in `m`, the parameters (`systemMetadata`) in `meta.system`, `system: true`. The keys under `systemChatMessage` in the client bundle (`main.8add56c3.chunk.js`, the same file as section 1, fetched read-only again 2026-11-15) whose names are the party's:
+
+| Key | Client text | Position |
+| --- | --- | --- |
+| `systemChatMessage.partyMemberJoined` | `{{name}} has joined the party.` | `main@444784` |
+| `systemChatMessage.partyMemberLeft` | `{{name}} has left the party.` | `main@444835` |
+| `systemChatMessage.partyMemberKicked` | `{{name}} has been kicked from the party.` | `main@444882` |
+| `systemChatMessage.partyMemberReady` | `{{name}} is ready.` | `main@444943` |
+| `systemChatMessage.partyMemberNotReady` | `{{name}} is not ready.` | `main@444981` |
+| `systemChatMessage.partyBattleStarted` | `Battle started: $t(actionNames.{{actionHrid}})` | `main@445026` |
+| `systemChatMessage.partyBattleEnded` | `Battle ended: $t(actionNames.{{actionHrid}})` | `main@445094` |
+| `systemChatMessage.partyKeyCount` | `Key counts: {{keyCountString}}` | `main@445158` |
+| `systemChatMessage.partyWaveFailed` | `Party failed on wave {{wave}}.` | `main@445205` |
+
+- That they arrive on the party channel is verified for ready, not ready, battle started and battle ended by the owner's own party log (2026-11-15), and for battle started and key counts by Toolasha's party-only reader (`toolasha-combat.js:2193`, `:2212`, `:2224`). For joined, left, kicked and wave failed it is inferred from the name only.
+- Toolasha checks for `systemChatMessage.partyFailed` (`toolasha-combat.js:2218`); that key is not in this bundle (the bundle has `partyWaveFailed`).
+- The bundle's text does not say which parameter names `systemMetadata` carries beyond the placeholders above (`name`, `actionHrid`, `keyCountString`, `wave`).
+
+### Still unverified until the first real party record
+
+- The depth of `partyChatHistory` on connect, and whether it comes again on a reconnect.
+- The party channel's system keys beyond the four seen in the owner's log, and the exact `systemMetadata` of each.
+- Whether party lines carry `o` / translation like guild lines.
+- That the script manager delivers the new cursor reply as expected (tested against the helper and with fakes, not yet in a real tab).
+
+### Install (party)
+
+1. The new helper is landed and the running one switched (the owner's private repo; the Manager does it).
+2. Update `mwics-guildchat.user.js` to 0.2.0 in the script manager (open the raw file); same `@name` and `@namespace`, so the token stays.
+3. Reload the game tab. The party file `party-YYYY-MM.jsonl` appears beside the guild one with a `session` line and the party history; the helper log shows `party=<n>` on the first post.
