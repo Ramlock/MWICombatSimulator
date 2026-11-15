@@ -1,4 +1,30 @@
 {
+    "2026-11-15":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "What-if: players with a setup start ticked when the window opens",
+            "What-if: trigger changes read fully in Portuguese and Chinese",
+            "What-if: Accept and Skip wait while the search is stopping",
+            "What-if: Skip and Accept respond faster",
+            "What-if: a strong change is no longer set aside as tied with a much weaker one, so the search no longer ends with no change while a real upgrade was still in the running",
+            "What-if: equipment is tried at every enhancement level the market sells, and the Philosopher's Mirror is no longer used to price levels for now",
+            "What-if: when the search cannot tell apart several changes that are each a clear gain, it now tests them together and takes them as one step; the step lists each change, with its own gain in a tooltip",
+            "The zone pickers have a \"Planets only\" switch, on by default, that hides the single-monster fights",
+            "What-if: when only a few changes are left, a search no longer re-checks the leaders every round once their check has its answer, so those rounds take much less time",
+            "What-if: the stage buttons no longer flicker while the pointer rests on them",
+            "What-if: help tooltips show whole and on top, wherever the mark is",
+            "What-if: the chips above the result share one line, the base profit chip says what it is, and the unknown-cost chip is gone",
+            "What-if: a new search clears the earlier result from the window; the setup warning is one line with the number of differences, its list opens on a click, and a trigger reads as words; Earlier searches also lists stopped searches, marked as stopped",
+            "What-if: when a winner fails its check, the changes only it had put out return to the race and the search goes on without it, so the next best change is no longer lost",
+            "What-if: each row of the progress table shows its own check (the change being checked and its runs), a progress bar, and a change its check left out; elapsed time carries on after a resume, runs kept from before are counted, and the columns no longer move",
+            "What-if: while a search runs, changes that look positive so far are listed under the chosen changes, marked as not checked yet",
+            "What-if: a change the check cannot settle gets more runs, and every change left out now says why (a loss, too small to matter, or too small to tell) with its range",
+            "What-if: a press of Accept current winner or Skip this stage is kept through Stop and Resume",
+            "Talismans imported from the MWI Combat Tracker are shown with the player's equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)"
+        ]
+    },
     "2026-11-14":
     {
         "fork": "Ramlock",
@@ -7,8 +33,7 @@
             "What-if: a new look. One summary bar, every list a table, a setup form that folds while a search runs, and one Start / Stop button that answers at once.",
             "What-if: guild shrine upgrades are proposed, with their cost in Guild Tokens and Coin; an item can go into an empty slot.",
             "What-if: changes that do not fit a player's combat style or element are no longer tried.",
-            "What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit.",
-            "Talismans imported from the MWI Combat Tracker are shown with the player's equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)."
+            "What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit."
         ]
     },
     "2026-11-13":

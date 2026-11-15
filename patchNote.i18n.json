@@ -672,6 +672,57 @@
             ]
         }
     },
+    "2026-11-15": {
+        "from": "en",
+        "zh": {
+            "title": "2026年11月15日",
+            "notes": [
+                "假设分析：有配置的玩家在打开窗口时默认勾选",
+                "假设分析：触发条件的改动完整显示为中文和葡萄牙语",
+                "假设分析：搜索停止时，采纳和跳过按钮暂不可用",
+                "假设分析：跳过和采纳响应更快",
+                "假设分析：强的改动不再被当作与弱得多的改动打平而被搁置，搜索不会再在仍有真正升级可选时以“无改动”结束",
+                "假设分析：装备会尝试市场上出售的每个强化等级，暂时不再用贤者之镜为等级定价",
+                "假设分析：当搜索无法区分多项各自明确有益的改动时，现在会把它们一起测试并作为一步采纳；该步列出每项改动，悬停提示显示各自的增益",
+                "区域选择器新增“仅显示星球”开关（默认开启），隐藏只对战一种怪物的战斗",
+                "假设分析：只剩少数改动时，领先者的核对一旦有了结论，搜索就不再每轮重复核对，这些轮次用时大幅减少",
+                "假设分析：鼠标停在阶段按钮上时，按钮不再闪烁",
+                "假设分析：帮助提示完整显示在最上层，不再被遮挡",
+                "假设分析：结果上方的标签排成一行，基础利润标签说明其含义，去掉成本未知标签",
+                "假设分析：新的搜索会清除窗口中之前的结果；配置差异警告为一行并显示差异数量，点击即可展开列表，触发条件以文字显示；以往的搜索也列出已停止的搜索，并标为已停止",
+                "假设分析：胜出的改动未通过核对时，仅被它淘汰的改动会重新参与竞争，搜索在没有它的情况下继续，次优改动不再丢失",
+                "假设分析：进度表每一行显示各自的核对（正在核对的改动及其运行次数）、进度条以及被核对排除的改动；恢复后已用时间继续累计，之前保留的运行会计入，列不再移动",
+                "假设分析：搜索进行时，目前看来有益的改动会列在已选改动下方，并标为尚未核对",
+                "假设分析：核对无法判定的改动会获得更多运行，每个被排除的改动都会说明原因（亏损、太小无关紧要或太小无法判断）并附上范围",
+                "假设分析：点击“采纳当前领先者”或“跳过此阶段”后，停止并继续时会保留该操作",
+                "从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）"
+            ]
+        },
+        "pt": {
+            "title": "15/11/2026",
+            "notes": [
+                "E se: jogadores com configuração começam marcados ao abrir a janela",
+                "E se: mudanças de gatilho aparecem inteiras em português e chinês",
+                "E se: Aceitar e Pular aguardam enquanto a busca para",
+                "E se: Pular e Aceitar respondem mais rápido",
+                "E se: uma mudança forte não é mais deixada de lado como empatada com uma muito mais fraca, então a busca não termina mais sem mudança enquanto uma melhoria real ainda estava na disputa",
+                "E se: os equipamentos são testados em todos os níveis de aprimoramento vendidos no mercado, e o Espelho Filosofal não é mais usado para precificar níveis por enquanto",
+                "E se: quando a busca não consegue separar várias mudanças que são, cada uma, um ganho claro, agora ela as testa juntas e as aceita como um passo; o passo lista cada mudança, com o ganho próprio de cada uma numa dica",
+                "Os seletores de zona têm a opção \"Só planetas\", ligada por padrão, que oculta as lutas contra um só tipo de monstro",
+                "E se: quando restam poucas mudanças, a busca não reconfere mais os líderes a cada rodada depois que a conferência deles já tem resposta, então essas rodadas levam bem menos tempo",
+                "E se: os botões da etapa não piscam mais com o ponteiro parado sobre eles",
+                "E se: as dicas de ajuda aparecem inteiras e por cima, onde quer que esteja a marca",
+                "E se: as etiquetas acima do resultado ficam numa só linha, a do lucro-base diz o que é, e a de custo desconhecido saiu",
+                "E se: uma nova busca limpa o resultado anterior da janela; o aviso de setup é uma linha com o número de diferenças, a lista abre com um clique e um gatilho aparece em palavras; Buscas anteriores também lista buscas paradas, marcadas como paradas",
+                "E se: quando uma vencedora não passa na conferência, as mudanças que só ela tinha tirado voltam à disputa e a busca segue sem ela, então a próxima melhor mudança não se perde mais",
+                "E se: cada linha da tabela de progresso mostra a própria conferência (a mudança conferida e suas execuções), uma barra de progresso e a mudança que a conferência deixou de fora; o tempo decorrido continua após retomar, as execuções já guardadas são contadas e as colunas não se movem mais",
+                "E se: durante a busca, as mudanças que parecem positivas até agora aparecem sob as mudanças escolhidas, marcadas como ainda não conferidas",
+                "E se: uma mudança que a conferência não decide recebe mais execuções, e cada mudança deixada de fora diz por quê (uma perda, pequena demais para importar ou pequena demais para saber) com sua faixa",
+                "E se: um clique em Aceitar o vencedor atual ou Pular esta etapa é mantido ao Parar e Retomar",
+                "Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)"
+            ]
+        }
+    },
     "2026-11-14": {
         "from": "en",
         "zh": {
@@ -680,8 +731,7 @@
                 "假设分析：全新外观。一个摘要栏，每个列表都是表格，搜索运行时设置表单会折叠，还有一个立即响应的“开始 / 停止”按钮。",
                 "假设分析：会提出公会神龛升级，并列出所需的公会代币和金币成本；物品可以放入空栏位。",
                 "假设分析：不再尝试与玩家战斗风格或元素不符的改动。",
-                "假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。",
-                "从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）。"
+                "假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。"
             ]
         },
         "pt": {
@@ -690,8 +740,7 @@
                 "E se: um novo visual. Uma barra de resumo, todas as listas em tabela, um formulário de configuração que se recolhe enquanto uma busca roda, e um único botão Iniciar / Parar que responde na hora.",
                 "E se: melhorias dos santuários da guilda são propostas, com o custo em Fichas de Guilda e Moedas; um item pode ir para um espaço vazio.",
                 "E se: alterações que não combinam com o estilo de combate ou o elemento de um jogador não são mais testadas.",
-                "E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite.",
-                "Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)."
+                "E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite."
             ]
         }
     },
