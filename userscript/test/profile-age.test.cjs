@@ -42,7 +42,7 @@ test('ageText: just now, minutes, hours, days', () => {
 });
 
 test('fightStartOf: the battle start\'s combatStartTime (nanoseconds cut), null when it does not parse', () => {
-    assert.equal(fightStartOf({ combatStartTime: '2026-11-02T19:49:58.01687973Z' }), Date.parse('2026-11-02T19:49:58.016Z'));
+    assert.equal(fightStartOf({ combatStartTime: '2026-10-21T07:14:33.52918406Z' }), Date.parse('2026-10-21T07:14:33.529Z'));
     assert.equal(fightStartOf(battle), FIGHT + 0, 'the made-up battle start');
     assert.equal(fightStartOf({ combatStartTime: 'x' }), null);
     assert.equal(fightStartOf({}), null);

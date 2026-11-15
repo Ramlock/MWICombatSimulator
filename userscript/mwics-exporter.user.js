@@ -1336,7 +1336,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, abilityKey, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
