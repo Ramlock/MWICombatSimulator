@@ -91,7 +91,7 @@ function makePage(map, { screenSave } = {}) {
         houseRoomDetailMap: { a: { hrid: '/house_rooms/dojo' }, b: { hrid: '/house_rooms/gym' } },
         achievementDetailMap: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, { hrid: '/achievements/a' + n }])),
         triggerMap: {}, playerDataMap: { ...map }, currentPlayerTabId: '1', saved: [], guildSeen: undefined,
-        fixTriggerMap: () => {}, applyLabyrinthUpgradesToState: () => {}, refreshAchievementStatics: () => {}, applyGuildBuffsToState: () => {},
+        fixTriggerMap: () => {}, setPlayerTalismans: () => {}, applyLabyrinthUpgradesToState: () => {}, refreshAchievementStatics: () => {}, applyGuildBuffsToState: () => {},
         JSON, Object, Array, String, Boolean, console,
         // src/groupSelection.mjs is covered by tools/test/group-selection.mjs; here the pasted object has slots only.
         splitGroupImport: (m) => ({ slots: m, selected: null, fight: null }), applyGroupSelection: () => ({ skipped: [] }),
@@ -217,4 +217,21 @@ for (const path_ of ['boxes', 'all']) {
     checks++;
 }
 
-console.log(`PASS: ${checks} checks (party import src/main.js mergePlayerImport/doGroupImport/updateNextPlayer: ${toggles.length} kinds off, both paths; single skill levels; empty slot; powerLevel; screen save; absent slot)`);
+// 8. Combat Tracker 0.12.0: a member slot carries profileSeen (when its profile was opened). Both paths import every kind exactly as the same
+// export without it (JSON and screen); the page keeps it as an inert key of that slot's JSON and nothing else changes.
+for (const path_ of ['boxes', 'all']) {
+    const plainPage = runParty(path_, priors(), { 1: exportOf(3), 2: exportOf(4, 'gear') });
+    const aged = (seed, ...off) => ({ ...exportOf(seed, ...off), profileSeen: '2026-11-12T09:30:00.000Z' });
+    const page = runParty(path_, priors(), { 1: aged(3), 2: aged(4, 'gear') });
+    expectSlot(page, '1', 1, [], 3, `${path_} with profileSeen`);
+    expectSlot(page, '2', 2, ['gear'], 4, `${path_} with profileSeen`);
+    for (const slot of ['1', '2']) {
+        const j = slotJson(page, slot);
+        assert.equal(j.profileSeen, '2026-11-12T09:30:00.000Z', `${path_}: slot ${slot} keeps profileSeen as is`);
+        delete j.profileSeen;
+        assert.deepEqual(j, slotJson(plainPage, slot), `${path_}: slot ${slot} otherwise identical to the import without profileSeen`);
+    }
+    checks++;
+}
+
+console.log(`PASS: ${checks} checks (party import src/main.js mergePlayerImport/doGroupImport/updateNextPlayer: ${toggles.length} kinds off, both paths; single skill levels; empty slot; powerLevel; screen save; absent slot; profileSeen ignored)`);

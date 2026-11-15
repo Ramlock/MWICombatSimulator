@@ -4,6 +4,12 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.12.0 (2026-11-15)
+
+- The party copy says how old each member's profile is: "slot 2: complete, profile opened 3 h ago". A profile opened before the current fight began, or whose abilities differ from the fight's, is marked "OLD profile" (never "complete"), and the notice asks you to open that member's profile in the game, then copy again. Levels, gear, triggers, house rooms, achievements and guild buffs of other members come only from their profile as you last opened it; abilities, food and drinks are always taken from the fight. The same notice shows on the simulator page's "Import party from game".
+- The copied party carries, per member, when that profile was opened (`profileSeen`). The simulator ignores it: the import is unchanged.
+- With the recorder sending to the helper, each recorded window also carries the party copy as it stood for that window (with the profile ages), so a later comparison reads the setup of that very fight. With "Only my own data" on, only your own slot is kept.
+
 ### 0.11.0 (2026-11-14)
 
 - Your equipped talismans reach the simulator: "Copy character export" and your own slot of the party for the simulator page ("Import party from game") carry your talisman lines and talisman power, with the equipped gear (the same switch). The simulator shows them with that player's equipment and counts them, in its own runs and in What-if searches. Other party members' talismans cannot be seen, so their slots carry none. A character with no talismans carries nothing new.
