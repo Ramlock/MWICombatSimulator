@@ -1,5 +1,7 @@
-// The page's run pool: the search core's `pool` seam (tools/whatif/core.mjs: run(task) resolves with the run's result, or null once kill() ended it;
-// kill()) on Web Workers (searchWorker.mjs), as tools/whatif/node-shell.mjs createNodePool is on forked processes.
+// The page's run pool: the search core's `pool` seam (tools/whatif/core.mjs: run(task) resolves with the run's result, or null once drop() or kill()
+// ended it; drop(); kill()) on Web Workers (searchWorker.mjs), as tools/whatif/node-shell.mjs createNodePool is on forked processes.
+// drop() ends every run asked so far (a worker running one is terminated, a run still waiting is not started), at once; later runs start new workers.
+// kill() ends the pool: every worker, and every later run() resolves null. Both go through end(), the one way a run is ended.
 // One worker per core (navigator.hardwareConcurrency), no core limit, started on demand. The party's setups and the market table go to each worker once,
 // in an init message; a task carries only its ops, seed, checkpoints and options. A run asked while every worker is busy waits for one.
 // A worker that errors rejects the run it was doing (the Node pool does the same when a run process exits by itself).
@@ -34,6 +36,16 @@ export function createPagePool(init, { size = (globalThis.navigator && navigator
         }
     }
     const running = new Set();
+    // Ends these runs at once: each resolves null; a worker running one is terminated (a new one is started for a later run), a waiting one is dropped.
+    function end(jobs) {
+        for (const job of jobs) {
+            const w = job.worker;
+            if (w) { w.onmessage = w.onerror = null; all.delete(w); w.terminate(); }
+            const i = waiting.indexOf(job);
+            if (i >= 0) waiting.splice(i, 1);
+            job.resolve(null);
+        }
+    }
     return {
         run(task) {
             if (killed) return Promise.resolve(null);
@@ -44,11 +56,12 @@ export function createPagePool(init, { size = (globalThis.navigator && navigator
                 next();
             });
         },
+        drop() { end([...running]); },
         kill() {
             killed = true;
+            end([...running]);
             for (const w of all) { w.onmessage = w.onerror = null; w.terminate(); }
-            all.clear(); idle.length = 0; waiting.length = 0;
-            for (const job of [...running]) job.resolve(null);
+            all.clear(); idle.length = 0;
         },
         size: () => all.size,
     };

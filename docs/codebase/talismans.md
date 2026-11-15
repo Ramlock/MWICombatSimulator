@@ -26,13 +26,13 @@ The Tracker's character export and the self slot of its party export write this 
 Call sites (nothing else computes a talisman stat):
 
 1. `src/simSetup.js` `createSimPlayer`: the page's worker (`src/worker.js`) and every caller of `createSimPlayer`.
-2. `tools/whatif/engine.mjs` `runParty`: the what-if search and batch runs; `buildDtos` copies `setup.talismans` onto the DTO.
+2. `tools/whatif/engine-pure.mjs` `runParty` (called through `tools/whatif/engine.mjs` in Node): the what-if search and batch runs; `buildDtos` copies `setup.talismans` onto the DTO.
 
 The calibration and attribution tools build players from setups that carry no talisman field, so they do not call it.
 
 ## Packing
 
-`tools/whatif/engine.mjs` loads `src/simSetup.js`, so `tools/runner-zip/build-zip.ps1` archives it; `tools/test/runner-zip-files.mjs` follows the engine's `src('...')` loads and fails when one is missing.
+`tools/whatif/engine-pure.mjs` imports `src/simSetup.js`, so `tools/runner-zip/build-zip.ps1` archives it; `tools/test/runner-zip-files.mjs` follows the runner's imports and fails when one is missing.
 
 ## Tests
 

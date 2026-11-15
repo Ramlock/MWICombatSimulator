@@ -1,6 +1,6 @@
 // Test: the page's run pool (src/whatif/pagePool.mjs) in our own headless Chrome gives the same results as the Node pool (node-shell.mjs createNodePool, forked
-// batch.mjs --child) on the same task list, through the core's `pool` seam (run(task) -> result, kill()). Part 1 checks the pool's own logic with fake workers
-// (queueing, kill, a failing worker). Part 2 bundles the page entry with the repo's webpack config into a scratch folder (never dist/), serves it on loopback and
+// batch.mjs --child) on the same task list, through the core's `pool` seam (run(task) -> result, drop(), kill()). Part 1 checks the pool's own logic with fake workers
+// (queueing, drop, kill, a failing worker). Part 2 bundles the page entry with the repo's webpack config into a scratch folder (never dist/), serves it on loopback and
 // runs the same tasks in real Web Workers. The party is read at run time from docs/ground-truth/setups (gitignored; the harness copies it in): with no setups
 // the test prints SKIP and exits 0 after part 1. The page's sha1 is also compared with node:crypto in the page.
 // Usage: node tools/test/whatif-page-pool.mjs        Exit code 0 on pass, 1 on fail.
@@ -45,6 +45,14 @@ const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL 
     check('fake: a failing worker rejects its run', failing === 'boom');
     const again = await pool.run({ n: 100 });
     check('fake: the pool still runs after a failed run', again.echo === 100);
+    const dropped = [pool.run({ n: 3 }), pool.run({ n: 4 }), pool.run({ n: 5 }), pool.run({ n: 6 })]; // 3 running, 1 waiting
+    pool.drop();
+    check('fake: drop resolves every run asked so far with null, the waiting one too', (await Promise.all(dropped)).every((r) => r === null));
+    check('fake: drop terminates the workers that were running', pool.size() === 0);
+    const madeBefore = made;
+    await new Promise((r) => setTimeout(r, 40));
+    const afterDrop = await pool.run({ n: 7 });
+    check('fake: the pool runs again after drop, on a new worker', afterDrop.echo === 7 && made === madeBefore + 1, `made ${made - madeBefore}`);
     const slow = pool.run({ n: 1 });
     pool.kill();
     check('fake: kill resolves the run in flight with null', (await slow) === null);
