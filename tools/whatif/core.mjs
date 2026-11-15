@@ -6,7 +6,7 @@
 //             its name inside the run keys, the setups folder name (opaque, passed to the run processes)
 //   seams     { data, store, pool, sink, stop, hash, sim }:
 //     data   { setups, market, pricesTimestamp, exportData, userTrig }: the party, the price snapshot, the exporter JSON, the user's trigger candidates
-//     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json and probe.json
+//     store  load() yields every saved run record; put(record) saves one; readAux(name) / writeAux(name, value) keep need.json, probe.json and presses.json
 //     pool   run(task) resolves with the run's result { variant, seed, wallSeconds, checkpoints }, or null once drop() (the runs in flight) or kill() (the pool) ended it
 //     sink   progress(p), partial(snapshot), round(r), stopped(snapshot), final(snapshot, markdown) -> where the markdown went
 //     stop   { requested, done }: requested is true once the user asked to stop; done is 'accept' or 'skip' once he pressed one of the two stage buttons (the race stage running now ends at once, its runs in flight ended: Accept with its pick taken as it is; Skip with a pool that has no lock left unchanged); press(mode) is the core's (set by main()): the shell calls it on a press, never sets done itself
@@ -52,6 +52,11 @@ export async function main(settings, seams) {
     // runs now has its runs in flight ended at once (dropRuns, set by ensure() while such a batch runs: the pool's drop()).
     let dropRuns = null;
     stopSignal.press = (mode) => { stopSignal.done = mode; dropRuns?.(); };
+    // The stage-button presses this search took (presses.json in its own folder, beside its runs): one entry per press at the point it took effect,
+    // { mode: 'accept' | 'skip', stage, race (the race's number in the search, from 1: a stage that races again after a failed pick check is a new race),
+    // round (the stage's round), phase: 'search' | 'reading' (it ended that phase's runs in flight) | 'end' (read once the round was in) }. A resume (the same
+    // search's folder) replays each one at the same point through stop.press, the live press's own path; a new search has its own folder and reads none.
+    const presses = runStore.readAux?.('presses.json') ?? [];
 
     const goal = arg('goal', 'profit');
     const errorRule = arg('error', 'unpaired'); // design revision 6 (main c2ed824), his pick 23:27 BRT
@@ -657,7 +662,7 @@ export async function main(settings, seams) {
     // bound above 0), or at --max-rounds; a stop or the time limit returns null. `byPlayer`: Stage F / D, one race per player inside
     // the same rounds, each player ends when his own leader locks. Returns { locked, leaders }: locked is a Map player -> candidate
     // (byPlayer) or the candidate / null. A leader that fails the pick check on its reading seeds leaves the race (onRefute).
-    let roundNo = 0, liveCands = null, lastRound = null, lastBase = [];
+    let roundNo = 0, raceNo = 0, liveCands = null, lastRound = null, lastBase = [];
     const endedByUser = {}; // stage -> the rounds the stage finished when the user ended it (result.endedByUser)
     const endedByCap = {}; // stage -> { rounds, left }: the stage ended on --max-rounds with `left` candidates still in the running (no lock, not ended by the user): result.endedByCap
     const endedBySkip = {}; // stage -> true when the end was a Skip (during round endedByUser + 1, its finished runs kept), absent for an Accept (result.endedBySkip)
@@ -810,8 +815,13 @@ export async function main(settings, seams) {
         return it ? { item: it.itemHrid, level: it.enhancementLevel + o.delta } : null;
     };
     async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd, onBack, reopenFor = [], failedSets = new Set(), left = null }) {
-        const H = unitH, bk = keyOf(base), n = setups0.length;
+        const H = unitH, bk = keyOf(base), n = setups0.length, raceAt = ++raceNo;
         liveCands = cands; lastBase = base;
+        // presses.json (main): the press this search took at this point of this race before a stop, if any; replay() presses it again (stop.press, so
+        // the same code ends the stage); took() stores a press the moment it takes effect (once: a replayed press is already stored).
+        const pressAt = (stageRound, phase) => presses.find((p) => p.race === raceAt && p.stage === stage && p.round === stageRound && p.phase === phase);
+        const replay = (stageRound, phase) => { const p = pressAt(stageRound, phase); if (p) stopSignal.press(p.mode); return !!p; };
+        const took = (stageRound, phase, mode) => { if (!pressAt(stageRound, phase)) { presses.push({ mode, stage, race: raceAt, round: stageRound, phase }); runStore.writeAux?.('presses.json', presses); } };
         for (const c of cands) if (c.raceBase !== bk) { c.raceBase = bk; c.k = 0; c.status = undefined; c.refuted = false; c.out = undefined; }
         const lockedBy = new Map(); // player (or '*') -> candidate
         stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
@@ -857,9 +867,12 @@ export async function main(settings, seams) {
         // locks it already has, the leaders of the last finished round, read from stored runs (none in round 1), and the number of rounds it finished (0:
         // ended before the first round finished). Skip leaves a pool with no lock as it is; Accept also locks what that round offered to accept
         // (prevTakes: the window offers Accept from the last finished round's figures).
-        const userEnd = (stageRound) => {
+        // A replayed press of this kind (phase 'search' or 'reading') skips the batch: the runs it had ended were never stored, and the ones it asked for
+        // may since be in the store from a later stage, which would let the batch finish and move the end.
+        const userEnd = (stageRound, phase) => {
             const mode = stopSignal.done;
             stopSignal.done = false;
+            took(stageRound, phase, mode);
             endedByUser[stage] = stageRound - 1;
             if (mode === 'skip') endedBySkip[stage] = true;
             const accepted = mode === 'accept' ? prevTakes : new Map();
@@ -899,8 +912,8 @@ export async function main(settings, seams) {
                 look(doneSweeps > was);
             } : undefined;
             if (first) look(true);
-            const searched = await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun, skippable: true });
-            if (searched === BY_USER) return userEnd(stageRound);
+            const searched = replay(stageRound, 'search') ? BY_USER : await ensure([baseReqs[0], ...sweeps.flat(), ...baseReqs.slice(1)].filter(Boolean), { onRun, skippable: true });
+            if (searched === BY_USER) return userEnd(stageRound, 'search');
             if (!searched) return null;
             for (const c of todo) { c.est = estimate(base, c, { k: c.k, h: H }, c.k * baseMult); c.history = [c.est]; }
             // The elimination rule (rounds.mjs eliminate): per pool, the changes and the current setup; who is out leaves the race for good (c.out).
@@ -916,8 +929,8 @@ export async function main(settings, seams) {
                 // Each one asks for readStep more reading seeds than it has (readTaken: from here on they count, whether run now or already stored).
                 const reqs = reading.flatMap((c) => { const n = readCount(base, c, H) + readStep; readTaken.set(readKey(base, c, H), n); return sureSeeds(n).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]); });
                 report({ stage, round: stageRound, phase: 'reading', candidatesLeft: reading.length });
-                const read1 = await ensure(reqs, { skippable: true });
-                if (read1 === BY_USER) return userEnd(stageRound);
+                const read1 = replay(stageRound, 'reading') ? BY_USER : await ensure(reqs, { skippable: true });
+                if (read1 === BY_USER) return userEnd(stageRound, 'reading');
                 if (!read1) return null;
             }
             // Readings, the pick check on them, the refuted, the locks.
@@ -997,8 +1010,9 @@ export async function main(settings, seams) {
             // The window's two buttons (stop.done is 'accept' or 'skip') pressed once the round's runs were all in (a press during them ends the stage at
             // once, userEnd above): the race ends here, after the round just published, with the leaders as --max-rounds returns them. 'skip' leaves a pool that has no lock unchanged; 'accept' first locks the best positive leader of every pool
             // that has no lock (takes, above). A stage that ends this way without the search's own lock is marked in the report (result.endedByUser).
+            replay(stageRound, 'end');
             const mode = stopSignal.done, byUser = !!mode;
-            if (byUser) stopSignal.done = false;
+            if (byUser) { stopSignal.done = false; took(stageRound, 'end', mode); }
             if (byUser && !settled) endedByUser[stage] = roundNo - sinceStart; // a Skip that lands at the end of a round is still a Skip (the round in flight is the next one)
             if (byUser && !settled && mode === 'skip') endedBySkip[stage] = true;
             const accepted = mode === 'accept' && !together && !groupsOut ? takes : new Map();
