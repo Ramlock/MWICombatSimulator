@@ -13,3 +13,9 @@ export function partyNames(dir = SETUPS_DIR) {
     if (existsSync(order)) return readFileSync(order, 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort();
 }
+
+// The default player of every tool: the party's first name (party.txt's first line, else the first setup by name).
+export function defaultPlayer(names = partyNames()) {
+    if (!names.length) throw new Error('no party: copy the setups into docs/ground-truth/setups (party.txt lists the names), or name the player');
+    return names[0];
+}
