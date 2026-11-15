@@ -687,7 +687,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('diff names: the fixture holds every kind of id (slot, skill level, food, drink, ability, room, trigger)', ['ring', 'magicLevel', 'food 1', 'drink 1', 'ability 1', '/house_rooms/dojo', 'triggers /abilities/heal'].every((f) => fields.includes(f)), fields.join());
     check('diff names: an item with its enhancement, a slot, a skill level, a food and an ability with its level show names (en)',
         dEn.includes(`Alpha, ${en.equipmentTypeNames['/equipment_types/ring']}: here ${en.itemNames['/items/ring_of_rare_find']} +7, in the search ${en.itemNames['/items/ring_of_rare_find']} +5`) &&
-        dEn.includes(`${en.skillNames['/skills/magic']} level: here 70, in the search 60`) && dEn.includes(`food 1: here ${en.itemNames['/items/donut']}, in the search ${en.itemNames['/items/apple']}`) &&
+        dEn.includes(`${en.skillNames['/skills/magic']} level: here 70, in the search 60`) && dEn.includes(`${en.itemCategoryNames['/item_categories/food']} 1: here ${en.itemNames['/items/donut']}, in the search ${en.itemNames['/items/apple']}`) &&
         dEn.includes(`ability 1: here ${en.abilityNames['/abilities/heal']} 25, in the search ${en.abilityNames['/abilities/heal']} 20`), dEn);
     check('diff names: a room and a trigger field show names, the trigger terms\' dependency, condition and comparator too',
         dEn.includes(`${en.houseRoomNames['/house_rooms/dojo']}: here 4, in the search 3`) && dEn.includes(`${en.abilityNames['/abilities/heal']} trigger: here`) &&
@@ -696,7 +696,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('diff names: the same in pt, with the page\'s language and the locale string for the level',
         dPt.includes(pt.itemNames['/items/ring_of_rare_find']) && dPt.includes(pt.equipmentTypeNames['/equipment_types/ring']) && dPt.includes(`nível de ${pt.skillNames['/skills/magic']}: `) && dPt.includes(pt.houseRoomNames['/house_rooms/dojo']) &&
         dPt.includes(pt.abilityNames['/abilities/heal']) && pt.itemNames['/items/ring_of_rare_find'] !== en.itemNames['/items/ring_of_rare_find']);
-    check('diff names: an id with no name stays as it is (the hrid, the level suffix kept)', dEn.includes(`drink 1: here /items/not_a_real_drink_x, in the search /items/coffee`), dEn);
+    check('diff names: an id with no name stays as it is (the hrid, the level suffix kept)', dEn.includes(`${en.itemCategoryNames['/item_categories/drink']} 1: here /items/not_a_real_drink_x, in the search /items/coffee`), dEn);
     check('diff names: the difference and its data stay raw; without names the warning shows them as they came',
         diffRaw.find((d) => d.field === 'ring').page === '/items/ring_of_rare_find +7' && panel.renderDiff(diffRaw, t).includes('magicLevel: here 70') && panel.renderDiff(diffRaw, t).includes('/items/ring_of_rare_find +7') && panel.diffLabel('feet', null, t) === 'feet');
     check('diff names: the player-missing difference and a dash stay', panel.renderDiff(panel.diffSetups([], result.setups), t, N.en).includes('player: here absent, in the search present') && panel.renderDiff([{ player: 'A', field: 'food 2', page: null, result: '/items/donut' }], t, N.en).includes(`here —, in the search ${en.itemNames['/items/donut']}`));
@@ -1115,6 +1115,13 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('running with nothing for the top line but its mark: no lone "so far" line', !lone.includes('whatif-context') && lone.includes(locales.en.result.soFar), lone.slice(0, 400));
     check('the heading "so far" carries the running sentence as its tooltip', lone.includes(`title="${locales.en.result.running}"`));
     const stoppedLone = panel.renderResult({ goal: 'profit', best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, unclear: true, readingSeeds: 2 } }, drinks: {} }, rounds: { readingMin: 8 } }, t, undefined, null, 'stopped');
+    {   // The setup warning's food, drink and ability slots in the game's own words (the real bundles of js/i18n.js).
+        const cx = { document: { addEventListener() {} } };
+        vm.runInNewContext(read('js/i18n.js') + '\n;globalThis.__b = { en: Wa.en.translation, pt: Pa, zh: Wa.zh.translation };', cx);
+        const ok = ['en', 'pt', 'zh'].every((l) => { const b = cx.__b[l], n = panel.namesFrom(b, cx.__b.en, { ability: b.abilitySlot?.ability });
+            return panel.diffLabel('food 1', n, t) === b.itemCategoryNames['/item_categories/food'] + ' 1' && panel.diffLabel('drink 2', n, t) === b.itemCategoryNames['/item_categories/drink'] + ' 2' && panel.diffLabel('ability 3', n, t) === b.abilitySlot.ability + ' 3'; });
+        check('setup warning: food, drink and ability slots in the game words of en, pt and zh', ok && panel.diffLabel('food 1', panel.namesFrom(cx.__b.zh, cx.__b.en, { ability: cx.__b.zh.abilitySlot.ability }), t) !== 'food 1');
+    }
     check('a stopped report keeps its stopped mark line', /whatif-context[^]*whatif-st-halted/.test(stoppedLone));
     const btns = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 2, phase: 'search', contending: 9, paused: 1, dropped: 0, runs: 12, simHours: 80, acceptable: 1 }] } }, t);
     check('stage buttons: live ones drawn as live (btn-outline-light, not the grey of a disabled look), disabled ones dim in the CSS', (btns.match(/btn-outline-light[^"]*whatif-stage-done/g) || []).length === 2 && !/btn-outline-secondary[^"]*whatif-stage-done/.test(btns) && /\.whatif-stage-done:disabled\s*\{\s*opacity:\s*\.35/.test(read('index.html')));

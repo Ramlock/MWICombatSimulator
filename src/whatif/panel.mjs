@@ -479,6 +479,7 @@ export function duration(s) {
 // combatTriggerConditionNames; a house room is written as its English name and is looked up by that name in
 // houseRoomNames. A refined item has its own itemNames entry (with the page's "★"), so it needs no rule here.
 const NAME_TABLES = {
+    itemCategoryNames: '/item_categories/', // a food or drink slot of the setup warning: "Food 1"
     itemNames: '/items/',
     abilityNames: '/abilities/',
     skillNames: '/skills/',
@@ -998,6 +999,9 @@ export function diffLabel(field, names, t) {
     if (!names) return field;
     const level = /^([a-z]+)Level$/.exec(field);
     if (level) { const skill = names.get('skillNames', level[1]); return skill === null ? field : t('diff.level', { skill }); }
+    // A food, drink or ability slot ("food 1"): the game's own word for it (its item category; an ability slot: words.ability, the game's abilitySlot word) and its number.
+    const slot = /^(food|drink|ability) (\d+)$/.exec(field);
+    if (slot) { const w = slot[1] === 'ability' ? names.words?.ability : names.get('itemCategoryNames', slot[1]); return w ? `${w} ${slot[2]}` : field; }
     if (/^[a-z_]+$/.test(field)) return names.get('equipmentTypeNames', field) ?? field;
     // A trigger field as the result table words a trigger change's owner: "<owner name> trigger" (trigWords: the window's own word).
     if (field.startsWith('triggers ')) return hridsToNames(field.slice(9), names) + ' ' + trigWords(names).trigger;
