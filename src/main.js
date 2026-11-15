@@ -12,6 +12,7 @@ import LabyrinthUpgrade from "./combatsimulator/labyrinthUpgrade";
 import GuildBuff from "./combatsimulator/guildBuff";
 import getImportedGuildBuffs from "./importGuildBuffs.js";
 import { getTimeZeroPlayer } from "./simSetup.js";
+import { isPlanetZone } from "./zones.mjs";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
@@ -35,9 +36,12 @@ import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
-import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS } from "./whatif/panel.mjs";
+import { parseMinGain, MIN_GAIN_PCT as WHATIF_MIN_GAIN_PCT } from './whatif/minGain.mjs';
+import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import { talismanViewHtml } from "./talismanView.mjs";
+import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
+import { attachTips as whatIfAttachTips } from "./whatif/tip.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -1196,6 +1200,44 @@ function showElement(element) {
 
 // #region Zones
 
+// "Planets only": one setting, two checkboxes (the page's zone picker and the What-if window's), kept in the browser under one key.
+// On, a zone picker hides every option that is not a planet, except the selected one (picked with the toggle off, or set by a load
+// or an import), which stays until another is picked. Nothing here changes a selection.
+const PLANETS_ONLY_KEY = "zonesPlanetsOnly";
+const PLANETS_ONLY_TOGGLES = ["planetsOnlyToggle", "whatIfPlanetsOnlyToggle"];
+const PLANETS_ONLY_SELECTS = ["selectZone", "selectWhatIfZone"];
+
+function planetsOnlyStored() {
+    try { return localStorage.getItem(PLANETS_ONLY_KEY) !== "0"; } catch (e) { return true; }
+}
+
+function applyPlanetsOnly(select) {
+    const on = document.getElementById("planetsOnlyToggle").checked;
+    for (const option of select.options) option.hidden = on && option.dataset.planet !== "1" && option.value !== select.value;
+}
+
+function initPlanetsOnly() {
+    const on = planetsOnlyStored();
+    for (const id of PLANETS_ONLY_TOGGLES) {
+        const toggle = document.getElementById(id);
+        toggle.checked = on;
+        toggle.addEventListener("change", () => {
+            for (const other of PLANETS_ONLY_TOGGLES) document.getElementById(other).checked = toggle.checked;
+            try { localStorage.setItem(PLANETS_ONLY_KEY, toggle.checked ? "1" : "0"); } catch (e) { }
+            for (const s of PLANETS_ONLY_SELECTS) applyPlanetsOnly(document.getElementById(s));
+        });
+    }
+    // A load or an import sets the value without a change event, so the list is brought up to date again before it opens.
+    for (const id of PLANETS_ONLY_SELECTS) {
+        const select = document.getElementById(id);
+        for (const type of ["change", "focus", "mousedown", "keydown"]) select.addEventListener(type, () => applyPlanetsOnly(select));
+    }
+    // A fresh page starts on the first zone the picker lists (a load or an import sets its own afterwards).
+    const zoneSelect = document.getElementById("selectZone");
+    if (on) zoneSelect.value = [...zoneSelect.options].find((o) => o.dataset.planet === "1")?.value ?? zoneSelect.value;
+    applyPlanetsOnly(zoneSelect);
+}
+
 function initZones() {
     let zoneSelect = document.getElementById("selectZone");
 
@@ -1207,8 +1249,10 @@ function initZones() {
     for (const zone of Object.values(gameZones)) {
         let opt = new Option(zone.name, zone.hrid);
         opt.setAttribute("data-i18n", "actionNames." + zone.hrid);
+        if (isPlanetZone(zone)) opt.dataset.planet = "1";
         zoneSelect.add(opt);
     }
+    initPlanetsOnly();
 
 
     let zoneCheckBox = document.getElementById("zoneCheckBox");
@@ -1226,7 +1270,7 @@ function initZones() {
     });
 
     let zoneHrids = Object.values(actionDetailMap)
-        .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount > 1)
+        .filter((action) => isPlanetZone(action))
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
 
@@ -4075,7 +4119,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
+const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, resultLoaded: false, earlier: [], partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4098,16 +4142,18 @@ function whatIfPlayerNames() {
     return shownNames(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
 }
 
-// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. Copied
-// from the page when the window opens (fromPage); otherwise (a language change) only the names are redrawn and the
-// window's own picks are kept. Nothing here writes to the page.
+// The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. When the window
+// opens (fromPage) every player whose slot holds a character (slotHasData: an import or a setup made by hand) starts ticked and
+// every other unticked, whatever the page's own ticks (a reload does not keep them, and an import may set none); the zone and
+// tier are copied from the page. Otherwise (a language change) only the names are redrawn and the window's own picks are kept.
+// Nothing here writes to the page.
 function whatIfRenderChoices(fromPage) {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
     savePreviousPlayer(currentPlayerTabId);
     const shownNames = whatIfPlayerNames();
     const players = document.getElementById('whatIfPlayers');
     const ticked = new Set(fromPage
-        ? tabs.map((_, i) => i + 1).filter((i) => document.getElementById('player' + i)?.checked).map(String)
+        ? tabs.map((_, i) => i + 1).filter((i) => whatIfSlotHasData(playerDataMap[i])).map(String)
         : [...players.querySelectorAll('input:checked')].map((c) => c.value));
     players.replaceChildren();
     // One row of equal columns, one per player (a long name is cut with an ellipsis, its title holds the whole name).
@@ -4137,11 +4183,13 @@ function whatIfRenderChoices(fromPage) {
         select.replaceChildren(...[...document.getElementById(pageId).options].map((o) => {
             const copy = new Option(o.textContent, o.value);
             if (o.dataset.i18n) copy.dataset.i18n = o.dataset.i18n;
+            if (o.dataset.planet) copy.dataset.planet = o.dataset.planet;
             return copy;
         }));
         select.value = keep;
     };
     copySelect('selectWhatIfZone', 'selectZone');
+    applyPlanetsOnly(document.getElementById('selectWhatIfZone'));
     copySelect('selectWhatIfTier', 'selectDifficulty');
 }
 
@@ -4279,17 +4327,25 @@ function whatIfApplyExportLevers(prevDisabled = null) {
 // The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
 function whatIfNames() {
     const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
-    return whatIfNamesFrom(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty') });
+    return whatIfNamesFrom(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty'), trig: Object.fromEntries(['trigger', 'always', 'and', 'then', 'gameDefault', 'drop', 'add'].map((k) => [k, whatIfT('trig.' + k, { x: '{x}' })])) });
 }
 
 // `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
 // running mark. A lists the reader opened (the folds) stays open when one running report replaces another.
-function whatIfShowResult(result, running = false) {
+// `loaded`: the report was put on show from "Earlier searches" (whatIfLoadResult), not by the search the window watches.
+// The "so far" rows of a running report (panel soFarSteps): from the latest round record and the stage the progress names; none for a report put on show
+// from "Earlier searches", a stopped one or a finished one. The key tells a poll whether they changed (the report is redrawn only then).
+function whatIfSoFarOf(result, running) { return running === true && !whatIf.resultLoaded ? whatIfSoFarSteps(whatIf.round, whatIf.status?.progress, result?.steps) : []; }
+function whatIfSoFarKey(rows) { return JSON.stringify(rows.map((r) => [r.desc, r.gainPerUser, r.sePerUser, r.buyerNet, r.buyerNetSe])); }
+function whatIfShowResult(result, running = false, loaded = false) {
     const box = document.getElementById('whatIfResult');
     const open = running && whatIf.resultRunning ? [...box.querySelectorAll('.whatif-more:not([hidden])')].map((e) => e.id) : [];
     whatIf.result = result;
     whatIf.resultRunning = running;
-    box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
+    whatIf.resultLoaded = loaded;
+    const soFar = whatIfSoFarOf(result, running);
+    whatIf.soFarKey = whatIfSoFarKey(soFar);
+    box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running, soFar) : '';
     for (const id of open) {
         const body = document.getElementById(id);
         if (body) body.hidden = false;
@@ -4337,21 +4393,28 @@ function whatIfShowDiff() {
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
     const page = whatIfPageSetups(whatIfSlots(false).filter((s) => names.has(s.name)));
+    // The list behind the warning's one line stays open when a redraw replaces it (each running report redraws the warning).
+    const open = document.getElementById('whatIfDiffList')?.hidden === false;
     box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT, whatIfNames());
+    const list = document.getElementById('whatIfDiffList');
+    if (open && list) list.hidden = false;
+    whatIfSyncToggles(box);
 }
 
-// Redraws the progress box without replacing a stage button whose markup did not change: a button replaced under the pointer loses its hover until the
-// mouse moves (the flicker), so an unchanged button (same part, same mode, same markup) keeps its node. `whatIf.pressed` ({ key, mode }) is in the markup,
-// so a pressed button is drawn disabled by every redraw, not only by the click.
+// A new search clears the result on show, its setup warning and its search rounds, at the Start click once the settings are read (a start the
+// window refuses keeps them); the result stays reachable under "Earlier searches" when its search had finished.
+function whatIfClearResult() {
+    whatIf.round = null;
+    document.getElementById('whatIfRounds').innerHTML = '';
+    whatIfShowResult(null);
+}
+
+// Redraws the progress box in place (whatIfMorphInto, morph.mjs): a stage button, or any part of a row, whose markup did not change keeps its node in
+// the document, so the button under the pointer keeps its hover across polls (no flicker). `whatIf.pressed` ({ key, mode }) is in the markup, so a
+// pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
 function whatIfDrawProgress() {
-    const box = document.getElementById('whatIfProgress');
     if (!whatIf.status) return;
-    const next = document.createElement('div');
-    next.innerHTML = whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed);
-    const buttonKey = (b) => b.dataset.whatifPart + '/' + b.dataset.whatifDone;
-    const old = new Map([...box.querySelectorAll('[data-whatif-done]')].map((b) => [buttonKey(b), b]));
-    for (const b of next.querySelectorAll('[data-whatif-done]')) { const o = old.get(buttonKey(b)); if (o && o.outerHTML === b.outerHTML) b.replaceWith(o); }
-    box.replaceChildren(...next.childNodes);
+    whatIfMorphInto(document.getElementById('whatIfProgress'), whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping', whatIfNames()));
     alignNumbers();
 }
 
@@ -4365,20 +4428,21 @@ function whatIfSetState(key) {
 function whatIfShowStatus(status) {
     whatIf.state = status.state;
     whatIf.status = status;
-    whatIfDrawProgress();
     if (whatIf.pending === 'starting' || status.state !== 'running') whatIf.pending = null; // the press shows: the state the runner reports is drawn
+    whatIfDrawProgress();
     whatIfDrawSearchButton();
     // The search rounds: the runner sends the latest round record only when newer than `since` (one counter with the live report); the
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
     else if (status.state === 'done' && status.result?.round) whatIf.round = status.result.round;
-    document.getElementById('whatIfRounds').innerHTML = whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : '';
+    whatIfMorphInto(document.getElementById('whatIfRounds'), whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : ''); // in place, as the progress box (a help mark keeps its hover)
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
-    else if (status.state === 'running' && whatIf.resultRunning === 'stopped') whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
+    else if (status.state === 'running' && whatIf.resultRunning === 'stopped' && !whatIf.resultLoaded) whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
+    else if (status.state === 'running' && whatIf.resultRunning === true && whatIf.result && whatIfSoFarKey(whatIfSoFarOf(whatIf.result, true)) !== whatIf.soFarKey) whatIfShowResult(whatIf.result, true); // the "so far" rows follow a new round or stage
     if (status.state !== 'running') whatIfStopWatching();
-    if (status.state === 'done') whatIfLoadList();
+    if (status.state === 'done' || status.state === 'stopped') whatIfLoadList(); // a stopped search is listed too
     whatIfShowSetup();
 }
 
@@ -4493,6 +4557,9 @@ function whatIfReadSettings(mark) {
     if (badBudget) return { message: whatIfT('badBudget', { player: badBudget.dataset.player }) };
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
     if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfT('badMaxPayback') };
+    // The smallest gain worth showing (src/whatif/minGain.mjs: its unit and default): empty = the default.
+    const minGainPct = parseMinGain(document.getElementById('inputWhatIfMinGain').value);
+    if (minGainPct === null) return { message: whatIfT('badMinGain') };
     // The guild's shrine level: empty = the game's maximum, else a whole number of 0 or more (the search's --shrine-cap).
     const shrineCap = document.getElementById('inputWhatIfShrineCap').value.trim();
     if (shrineCap !== '' && !(Number.isInteger(Number(shrineCap)) && Number(shrineCap) >= 0)) return { message: whatIfT('badShrineCap') };
@@ -4502,7 +4569,7 @@ function whatIfReadSettings(mark) {
     for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
     if (new Set(names).size !== names.length) return { message: whatIfT('sameNames') };
-    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap,
+    return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap, minGainPct,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value } };
 }
 
@@ -4510,6 +4577,7 @@ async function whatIfPostSearch() {
     whatIfMessage('');
     const read = whatIfReadSettings(true);
     if (read.message) { whatIfMessage(read.message); return; }
+    whatIfClearResult();
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
@@ -4529,8 +4597,8 @@ async function whatIfPostSearch() {
 async function whatIfStopOrResume() {
     if (!whatIf.searchId || whatIf.pending) return;
     const resuming = whatIf.state === 'stopped';
-    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); // until the runner's state shows (whatIfShowStatus)
-    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfMessage(message); };
+    whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); whatIfDrawProgress(); // until the runner's state shows (whatIfShowStatus); Stopping disables the stage buttons
+    const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfDrawProgress(); whatIfMessage(message); };
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { failed(body.error || whatIfT('runnerError')); return; }
@@ -4543,18 +4611,26 @@ async function whatIfStopOrResume() {
     } catch (err) { failed(whatIfT('runnerGone')); }
 }
 
+// "Earlier searches": the runner's list (finished and stopped searches, one list), kept in whatIf.earlier so a language change redraws it.
 async function whatIfLoadList() {
-    const select = document.getElementById('selectWhatIfResult');
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.results);
         if (!ok || !Array.isArray(body)) return;
-        select.replaceChildren(...body.map((r) => {
-            const option = document.createElement('option');
-            option.value = r.id;
-            option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit')].filter(Boolean).join(' · ');
-            return option;
-        }));
+        whatIf.earlier = body;
+        whatIfDrawList();
     } catch (err) { /* the runner is gone; the Start button reports it */ }
+}
+// One entry per search: when, who, the goal, and "Stopped" (whatIf.state.stopped) for a search that was stopped before it finished.
+function whatIfDrawList() {
+    const select = document.getElementById('selectWhatIfResult');
+    const keep = select.value;
+    select.replaceChildren(...whatIf.earlier.map((r) => {
+        const option = document.createElement('option');
+        option.value = r.id;
+        option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit'), r.stopped ? whatIfT('state.stopped') : ''].filter(Boolean).join(' · ');
+        return option;
+    }));
+    if (whatIf.earlier.some((r) => r.id === keep)) select.value = keep;
 }
 
 async function whatIfLoadResult() {
@@ -4562,7 +4638,14 @@ async function whatIfLoadResult() {
     if (!id) return;
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.result(id));
-        if (ok) { whatIfMessage(''); whatIfShowResult(body); }
+        // A stopped search (the runner sends its partial.json) is put on show as the window shows it right after Stop: its report with the
+        // stopped mark and its last search round under it; a finished one as before, with its last round. The id's entry says which.
+        if (ok) {
+            whatIfMessage('');
+            whatIf.round = body.round ?? null;
+            document.getElementById('whatIfRounds').innerHTML = whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : '';
+            whatIfShowResult(body, whatIf.earlier.find((r) => r.id === id)?.stopped ? 'stopped' : false, true);
+        }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
@@ -4606,6 +4689,8 @@ async function initWhatIf() {
         whatIf.version = body;
     } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
     whatIfShowButton();
+    { const g = document.getElementById('inputWhatIfMinGain'); if (g.value === '') g.value = String(WHATIF_MIN_GAIN_PCT); } // the default lives in minGain.mjs only
+    whatIfAttachTips(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
     // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
@@ -4627,19 +4712,23 @@ async function initWhatIf() {
         try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); else whatIfPollSoon(); }
         catch (err) { failed(whatIfT('runnerGone')); }
     });
+    // A fold toggle (data-whatif-more) in the result or in the setup warning opens or closes its bodies.
+    const fold = (event) => {
+        const more = event.target.closest('[data-whatif-more]');
+        if (!more) return;
+        // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
+        const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
+        const hide = !bodies[0].hidden;
+        for (const body of bodies) body.hidden = hide;
+        whatIfSyncToggles(event.currentTarget);
+    };
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);
-        const more = event.target.closest('[data-whatif-more]');
-        if (more) {
-            // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
-            const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
-            const hide = !bodies[0].hidden;
-            for (const body of bodies) body.hidden = hide;
-            whatIfSyncToggles(event.currentTarget);
-        }
+        fold(event);
     });
-    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
+    document.getElementById('whatIfDiff').addEventListener('click', fold);
+    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded); });
 }
 // #endregion
 

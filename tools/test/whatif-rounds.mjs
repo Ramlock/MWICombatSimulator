@@ -155,6 +155,42 @@ const goal = 'profit';
     const takes = R.acceptTakes(set, (c) => c.est.net, { byPlayer: false, players: ['A'], locked: new Map(), cmp: (a, b) => b.est.net - a.est.net });
     check(takes.get('*')?.id === 'l', 'tie: Accept current winner skips the tied change and takes the one still in');
 }
+// The tie rule in both directions (the owner, 2026-11-14): A and B are tied only when A's upper end minus B's lower end AND B's upper end minus A's lower
+// end are both below the bar; a tied change keeps its A (tiedTo) and comes back when that A goes out for any reason or is refuted (releaseTied).
+{
+    const E = (cands, bars = new Map([['A', 10]]), extra = {}) => R.eliminate(cands, { goal, mult: 3, bars, ...extra });
+    const ids = (p) => p.changes.map((c) => c.id).join();
+    const est = (q, se) => ({ net: q, netSe: se, gain: q, se, accepted: q > 2 * se });
+    // a leads per coin (30 +- 8 for 10: 3.0 per coin, 0.6..5.4) over b (200 +- 1 for 100: 2.0 per coin, 1.97..2.03); neither is beaten per coin. In raw
+    // units b gains far more: b's upper end minus a's lower end, 203 - 6, is far over the bar, so they are not tied (a's 54 - 197 alone was the old test).
+    const a = cand('a', 30, 8, 10), b = cand('b', 200, 1, 100);
+    let set = [a, b], r = E(set);
+    check(!a.out && !b.out && ids(r[0]) === 'a,b', 'tie both ways: a change far above A in raw gain, A leading per coin, is not tied', JSON.stringify(set.map((c) => c.out)));
+    // a then falls under the bar (2 +- 2: upper end 8 < 10): b stands alone and is the pool's last candidate.
+    a.est = est(2, 2); r = E(set);
+    check(a.out === 'bar' && !b.out && ids(r[0]) === 'b' && r[0].noChange === false, 'tie both ways: when A falls under the bar, the far stronger change stands and is the pick', JSON.stringify(set.map((c) => c.out)));
+    // Close in both directions (l 100 +- 1, t 98 +- 1: 103 - 95 = 8 and 101 - 97 = 4, both under 10): tied, as before, with its A kept.
+    const pair = (cost = 0) => { const l = cand('l', 100, 1, cost), t = cand('t', 98, 1, cost); return [l, t]; };
+    let [l, t] = pair(); set = [t, l]; r = E(set);
+    check(t.out === 'tied' && t.tiedTo === l && ids(r[0]) === 'l', 'tie both ways: two changes close in both directions are tied, the tied one keeps its A', JSON.stringify(set.map((c) => c.out)));
+    // A goes out by the bar: the tied change comes back in the same round and stands.
+    l.est = est(5, 1); r = E(set);
+    check(l.out === 'bar' && !t.out && !t.tiedTo && ids(r[0]) === 't', 'tie returns: the tied change comes back when its A goes out by the bar', JSON.stringify(set.map((c) => c.out)));
+    // A goes out as beaten (by the tied change itself: 90 +- 1, upper end 91, under t's lower end 95).
+    [l, t] = pair(); set = [t, l]; E(set); l.est = est(90, 1); r = E(set);
+    check(l.out === 'beaten' && !t.out && ids(r[0]) === 't', 'tie returns: the tied change comes back when its A is beaten', JSON.stringify(set.map((c) => c.out)));
+    // A goes out by the payback limit (cost 1000, limit 15 days: A at 50 +- 1 pays back in 1000 / 53 > 15 days at best, t in 1000 / 101).
+    [l, t] = pair(1000); set = [t, l]; E(set, undefined, { payLimit: 15 });
+    const tiedFirst = t.out === 'tied';
+    l.est = est(50, 1); r = E(set, undefined, { payLimit: 15 });
+    check(tiedFirst && l.out === 'payback' && !t.out && ids(r[0]) === 't', 'tie returns: the tied change comes back when its A goes out by the payback limit', JSON.stringify(set.map((c) => c.out)));
+    // A refuted by the pick check (left out of every pool): the race's releaseTied brings the tied change back, and so does the next elimination.
+    [l, t] = pair(); set = [t, l]; E(set); l.refuted = true;
+    const back = typeof R.releaseTied === 'function' ? R.releaseTied(set) : [];
+    check(back.length === 1 && back[0] === t && !t.out, 'tie returns: releaseTied brings the tied change back when its A is refuted');
+    [l, t] = pair(); set = [t, l]; E(set); l.refuted = true; r = E(set);
+    check(!t.out && ids(r[0]) === 't', 'tie returns: the elimination after a refuted A has the tied change standing', JSON.stringify(set.map((c) => c.out)));
+}
 // The projection: the rounds needed for the sum of the top two margins to fall under the gap between the means, margins shrinking as 1/sqrt(rounds).
 {
     const m = (mean, margin) => ({ mean, margin });
@@ -184,6 +220,49 @@ const goal = 'profit';
     const bx = B.barsFrom([{ party: { expPerHour: 200 } }, { party: { expPerHour: 400 } }], { players: ['A'], n: 2, goal: 'exp', metric: (c) => c.party.expPerHour, fraction: 0.01 });
     check(near(bx.get('A'), 3, 1e-9), 'barsFrom: on another goal the party figure');
     check(B.barsFrom([], { players: ['A'], n: 2, goal: 'profit', fraction: 0.01 }).size === 0, 'barsFrom: no checkpoints, no bars');
+}
+
+// Accept together (design: accept together, sections 1, 2 and 4): togetherOf on eliminate()'s pools, the slot rule, the "cannot decide" pair test, the budget groups.
+{
+    const T = { goal: 'profit', mult: 3, rounds: 10 };
+    const pc = (id, q, se, cost, groups, extra = {}) => cand(id, q, se, cost, { groups, ...extra });
+    const pools = (...lists) => lists.map((changes, i) => ({ key: 'k' + i, changes, noChange: false }));
+    const all = () => true, ids = (r) => r && r.set.map((c) => c.id).join(',');
+    const a = pc('a', 100, 30, 10, ['A:legs']), b = pc('b', 95, 30, 10, ['A:feet']);
+    check(ids(R.togetherOf(pools([a, b]), { ...T, clear: all })) === 'a,b', 'together: two clear changes the race cannot separate soon are one set');
+    check(R.togetherOf(pools([a, b]), { ...T, clear: (c) => c !== b }) === null, 'together: one standing change not clear gives no set');
+    check(R.togetherOf(pools([a]), { ...T, clear: all }) === null && R.togetherOf(pools([a], []), { ...T, clear: all }) === null, 'together: a lone standing change is the lock\'s, not a set (a pool with none standing is settled)');
+    const soon = pc('s', 55, 10, 10, ['A:head']), a2 = pc('a2', 100, 10, 10, ['A:legs']), c2 = pc('c2', 98, 10, 10, ['A:hands']);
+    check(R.togetherOf(pools([a2, c2, soon]), { ...T, clear: all }) === null, 'together: a pair about to separate (n <= rounds run) gives no set');
+    check(ids(R.togetherOf(pools([a2, c2]), { ...T, clear: all })) === 'a2,c2', 'together: once that change drops, the rest are the set');
+    const big = pc('big', 100, 10, 10, ['A:legs']), small = pc('small', 30, 10, 10, ['A:feet']);
+    check(R.togetherOf(pools([big, small]), { ...T, clear: all }) === null, 'together: a large and a small gain that separate soon give no set (raced as today)');
+    const lv = (lvl) => () => null;
+    const l7 = pc('l7', 120, 30, 10, ['A:legs'], { lvl: 7 }), l10 = pc('l10', 90, 30, 30, ['A:legs'], { lvl: 10 }), f8 = pc('f8', 95, 30, 10, ['A:feet'], { lvl: 8 });
+    const levelOf = (c) => (c.lvl ? { item: c.groups[0], level: c.lvl } : null);
+    const r1 = R.togetherOf(pools([l7, l10, f8]), { ...T, clear: all, levelOf });
+    check(ids(r1) === 'f8,l10' && r1.slotLosers.map((c) => c.id).join() === 'l7', 'together: two levels of one item in one slot take the higher level at once', ids(r1));
+    const i1 = pc('i1', 100, 30, 10, ['A:legs']), i2 = pc('i2', 150, 30, 30, ['A:legs']), o = pc('o', 95, 30, 10, ['A:feet']);
+    const r2 = R.togetherOf(pools([i1, i2, o]), { ...T, clear: all, levelOf });
+    check(ids(r2) === 'i2,o', 'together: two items for one slot take the larger estimate (not the better per coin) at once', ids(r2));
+    check(ids(R.togetherOf(pools([i1, i2]), { ...T, clear: all })) === 'i2', 'together: the slot rule leaving one change gives a set of one (its pick)');
+    const e1 = pc('e1', 100, 1, 10, ['A:legs']), e2 = pc('e2', 100, 1, 10, ['A:feet']);
+    check(ids(R.togetherOf(pools([e1, e2]), { ...T, clear: all })) === 'e1,e2', 'together: equal means count as cannot decide');
+    const fr = pc('fr', 100, 1, 0, ['A:food0']), pd = pc('pd', 10, 1, 10, ['A:legs']);
+    check(ids(R.togetherOf(pools([fr], [pd]), { ...T, clear: all })) === 'fr,pd', 'together: a free and a paid change (two pools) never separate, so they count as cannot decide');
+    check(R.togetherOf(pools([a, { ...b, kind: 'trigger' }]), { ...T, clear: all }) === null, 'together: a standing trigger change counts as not clear, so no set while it stands');
+    check(R.togetherOf(pools([a, b]), { ...T, clear: all, failed: new Set([R.setKey([a, b])]) }) === null, 'together: a set whose check failed in this race is not offered again');
+
+    const gc = (id, player, cost, g) => ({ id, player, cost: { cost }, g });
+    const gainOf = (c) => c.g, names = (gs) => gs.map((x) => x.map((c) => c.id).join('+')).join(' | ');
+    const A1 = gc('a1', 'A', 60, 10), A2 = gc('a2', 'A', 50, 8), A3 = gc('a3', 'A', 30, 3), B1 = gc('b1', 'B', 40, 5), B2 = gc('b2', 'B', 35, 4);
+    check(R.budgetGroups([A1, A2, B1], { left: () => 1000, gainOf }).length === 0, 'groups: none when every member fits');
+    check(names(R.budgetGroups([A1, A2, A3, B1], { left: (p) => (p === 'A' ? 100 : 1000), gainOf })) === 'a1+a3+b1 | a2+a3+b1', 'groups: a short player\'s maximal fitting subsets, the others\' members in every group, by total gain');
+    check(names(R.budgetGroups([A1, A2, A3, B1, B2], { left: (p) => (p === 'A' ? 100 : 50), gainOf })) === 'a1+a3+b1 | a1+a3+b2 | a2+a3+b1 | a2+a3+b2', 'groups: two players short give the products of their subsets');
+    const P = [40, 41, 42, 43, 44].map((x) => gc('p' + x, 'A', x, x)); // gain = cost: no pair dominates another; 10 maximal pairs
+    check(R.budgetGroups(P, { left: () => 100, gainOf }).length === 4, 'groups: cut at 4');
+    const D1 = gc('d1', 'A', 60, 10), D2 = gc('d2', 'A', 70, 5);
+    check(names(R.budgetGroups([D1, D2], { left: () => 100, gainOf })) === 'd1', 'groups: a dominated group (less gain, more cost) falls out, the other wins without a race');
 }
 
 console.log(fails ? `${fails} FAILED` : 'all passed');

@@ -73,7 +73,7 @@ export function shrineCost(buff, from, to, routes, token) {
         creditsTokens += t ? Math.ceil((n * t.itemCount) / t.creditCount) : Infinity;
     }
     const tokenCoin = tokens * (token.coin ?? 0);
-    return { cost: creditsCoin + tokenCoin, known: true, path: 'guild shrine', mirrors: 0, note: '', split: { tokens, tokenCoin, tokenValue: token.coin, creditsCoin, creditsTokens: Number.isFinite(creditsTokens) ? creditsTokens : null } };
+    return { cost: creditsCoin + tokenCoin, known: true, path: 'guild shrine', note: '', split: { tokens, tokenCoin, tokenValue: token.coin, creditsCoin, creditsTokens: Number.isFinite(creditsTokens) ? creditsTokens : null } };
 }
 
 // The jump list: numbers and `cap` (a string, or a list from a command line "1,2,cap").
@@ -97,7 +97,7 @@ function sumCosts(parts) {
     const bad = parts.find((c) => !c.known);
     if (bad) return { ...bad };
     const add = (k) => parts.reduce((a, c) => (a === null || c.split[k] === null ? null : a + c.split[k]), 0);
-    return { cost: parts.reduce((a, c) => a + c.cost, 0), known: true, path: 'guild shrine', mirrors: 0, note: '', split: { tokens: add('tokens'), tokenCoin: add('tokenCoin'), tokenValue: parts[0].split.tokenValue, creditsCoin: add('creditsCoin'), creditsTokens: add('creditsTokens') } };
+    return { cost: parts.reduce((a, c) => a + c.cost, 0), known: true, path: 'guild shrine', note: '', split: { tokens: add('tokens'), tokenCoin: add('tokenCoin'), tokenValue: parts[0].split.tokenValue, creditsCoin: add('creditsCoin'), creditsTokens: add('creditsTokens') } };
 }
 
 const routeMemo = new WeakMap(); // pricer -> { routes, token }: one scan of the item table per price snapshot

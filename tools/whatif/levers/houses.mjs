@@ -49,7 +49,7 @@ export function roomUpgradeCost(room, from, to, buy) {
         }
     }
     if (missing.size) return { cost: Infinity, known: false, path: 'house upgrade', note: 'no seller: ' + [...missing].join(', ') };
-    return { cost, known: true, path: 'house upgrade', mirrors: 0, note: '' };
+    return { cost, known: true, path: 'house upgrade', note: '' };
 }
 
 export function roomsFor(spec) {
@@ -83,7 +83,7 @@ function bookCost(ability, books, buy, upper) {
     if (!book) return { cost: Infinity, known: false, path: 'books', note: 'no ability book' };
     const unit = buy(book.hrid);
     if (!Number.isFinite(unit)) return { cost: Infinity, known: false, path: 'books', note: `no seller: ${short(book.hrid)} (${books} books)` };
-    return { cost: unit * books, known: true, path: 'books', mirrors: 0, ...(upper ? { costBound: 'upper' } : {}), note: `${books} x ${short(book.hrid)}${upper ? '; upper bound (XP inside the level unknown)' : ''}` };
+    return { cost: unit * books, known: true, path: 'books', ...(upper ? { costBound: 'upper' } : {}), note: `${books} x ${short(book.hrid)}${upper ? '; upper bound (XP inside the level unknown)' : ''}` };
 }
 
 // An ability that does not fit the player: hands the candidate to onDrop and returns true.

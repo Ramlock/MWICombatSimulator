@@ -10,6 +10,9 @@
 // started) follows the steps and stays above the grey confirmation. Rows are added as steps start, so the count grows.
 // With plan.kinds (the ticked ones of the foods and drinks levers, in that order) a part comes first for each: 'foods' (Stage F) and 'drinks' (Stage D), each its
 // own three halvings run as one part; the runner reports stage 'foods' / 'drinks' and the part shows the current batch).
+// A row whose winner is under its pick check carries checking, checkWhat ({ player, desc }), checkWho (foods and drinks: { index, of }), checkDone / checkPlanned;
+// a row whose winner a check left out carries failed ([{ stage, player, desc, seeds, gainPerUser, sePerUser, buyerNet?, buyerNetSe? }], in order); a race row carries
+// candidates (all of the stage's candidates, the bar's total), back (progress.stageBack: the changes a winner left out by its check brought back into the race) and, while a resumed round runs, kept ({ kept, total }: its runs the record held).
 // A part: { kind: 'foods'|'drinks'|'screen'|'halving'|'steps'|'step'|'moreSteps'|'confirmation', index, state: 'waiting'|'running'|
 // 'done'|'skipped' (a finished search: the part never started and will not), runsPlanned, runsDone, runsUpTo (waiting halving), candidatesLeft, etaSeconds, maxSteps ('steps'),
 // stepsLeft ('moreSteps'), and on a part of a race stage: round, phase ('search' | 'reading'), contending, paused, dropped, simHours
@@ -30,11 +33,12 @@ export function createParts(plan) {
         }
         return pools;
     };
-    // The part "Confirming the picks" (optimize.mjs confirmPick): one row for the whole greedy phase, its runs counted by the optimizer
-    // as distinct runs (progress.picksPlanned / picksDone, never dropping): running while a pick is being checked, grey between two
-    // checks, done once the confirmation starts or the search ends. Not a row of `rows`: it comes back to running at every step.
-    const picks = { started: false, state: 'waiting', runsPlanned: 0, runsDone: 0, fill: 0 };
-    const seen = { planned: 0, done: 0 }, chkBase = {}, greedyBase = { planned: 0, done: 0 }; // the pick-check run counts as last reported / when the check of a foods or drinks stage began
+    // The pick check (core.mjs confirmPick, a set's measureSet) is drawn on the row of the race stage it checks the winner of (progress.checkingStage:
+    // foods, drinks, the screen or a greedy step): one code flow whatever the row's kind. Its runs are the optimizer's distinct pick-check runs
+    // (progress.picksPlanned / picksDone, global and never dropping), counted from where they stood when this check began (chkBase, reset at each new
+    // check of a row: a row whose winner failed its check searches again and checks its next winner from 0).
+    const seen = { planned: 0, done: 0 }, chkBase = {};
+    let curChk = null; // the part key of the row whose check ran at the last message
     const rows = []; // started parts, in order: { kind, index, runsPlanned, runsDone, candidatesLeft, etaSeconds, state }
     const parse = (stage) => {
         if (stage === 'screen') return { kind: 'screen', index: 0 };
@@ -51,32 +55,23 @@ export function createParts(plan) {
         setCandidates(n) { plan.candidates = n; },
         sync(progress) {
             const key = parse(progress.stage), confirming = progress.stage === 'confirming picks';
-            // The pick check of a foods or drinks stage (progress.checking names the stage) is shown on that stage's own row, not as the greedy phase's
-            // 'picks' part: the row stays done and carries checking + its own run counts (the global counts minus what they were when the check began).
-            const chk = confirming && kinds.includes(progress.checking) ? progress.checking : null;
-            if (chk && !chkBase[chk]) chkBase[chk] = { planned: seen.planned, done: seen.done };
-            // The picks the search left out (progress.picksLeftOut, the core's result.notConfirmed): the pick check also runs inside a race, on the leaders' reading seeds, with
-            // no run of its own. A search whose picks were all left out that way never starts the part, but its check did run: the part ends 'done' with `leftOut`, not 'skipped'.
-            if (progress.picksLeftOut) picks.leftOut = progress.picksLeftOut;
+            // The row the check runs on: the stage the core names (checkingStage; an older record names only a foods or drinks stage, in `checking`).
+            const chk = confirming ? parse(progress.checkingStage ?? (kinds.includes(progress.checking) ? progress.checking : '')) : null;
+            // A new check of a row counts from where the global counts stood before its first message (that message already carries its planned runs).
+            const chkId = chk ? chk.kind + ':' + chk.index : null;
+            if (chkId && chkId !== curChk) chkBase[chkId] = { planned: seen.planned, done: seen.done };
+            curChk = chkId;
             if (progress.picksPlanned !== undefined) { seen.planned = progress.picksPlanned; seen.done = progress.picksDone ?? 0; }
-            // The 'picks' part counts the greedy phase's pick checks only: the progress counts are global and stay on every later message, so it takes them
-            // from where the last foods or drinks check left them (`greedyBase`), and never from a message of a foods or drinks stage itself.
-            if (chk) { greedyBase.planned = seen.planned; greedyBase.done = seen.done; }
-            const gPlanned = Math.max(0, seen.planned - greedyBase.planned), gDone = Math.max(0, seen.done - greedyBase.done);
-            if (progress.picksPlanned !== undefined && !chk && !(key && kinds.includes(key.kind)) && gPlanned > 0) {
-                picks.started = true;
-                picks.runsPlanned = Math.max(picks.runsPlanned, gPlanned);
-                picks.runsDone = Math.min(picks.runsPlanned, Math.max(picks.runsDone, gDone));
-                picks.fill = Math.max(picks.fill, picks.runsPlanned > 0 ? picks.runsDone / picks.runsPlanned : 0); // never goes back, as a part's
-            }
             for (const r of rows) {
-                r.checking = r.kind === chk;
-                if (r.checking) { r.checkWho = progress.checkingWho ?? null; r.checkPlanned = Math.max(0, seen.planned - chkBase[chk].planned); r.checkDone = Math.min(r.checkPlanned, Math.max(0, seen.done - chkBase[chk].done)); }
+                r.checking = !!chk && sameRow(r, chk);
+                if (r.checking) { r.checkWho = progress.checkingWho ?? null; r.checkWhat = progress.checkingWhat ?? null; r.checkPlanned = Math.max(0, seen.planned - chkBase[chkId].planned); r.checkDone = Math.min(r.checkPlanned, Math.max(0, seen.done - chkBase[chkId].done)); }
+                else { delete r.checkWho; delete r.checkWhat; delete r.checkPlanned; delete r.checkDone; }
             }
-            if (chk) { for (const r of rows) r.state = 'done'; }
-            else if (confirming) { for (const r of rows) r.state = 'done'; picks.state = 'running'; }
-            else if (progress.stage === 'confirmation' || progress.stage === 'done') { if (picks.started || picks.leftOut) picks.state = 'done'; }
-            else if (key && picks.started) picks.state = 'waiting';
+            // A winner its check left out (progress.checkFailed: the stage, the change, the check's figures): kept on its row, every one in order, so the row
+            // names it while its search goes on (the race brings candidates back and may check another winner) and after it ends.
+            const failed = progress.checkFailed, fKey = failed ? parse(failed.stage) : null, fRow = fKey ? rows.find((r) => sameRow(r, fKey)) : null;
+            if (fRow) { const id = JSON.stringify(failed); if (!(fRow.failed || []).some((f) => JSON.stringify(f) === id)) fRow.failed = [...(fRow.failed || []), failed]; }
+            if (confirming) { for (const r of rows) r.state = 'done'; }
             if (progress.stage === 'done') for (const r of rows) r.state = 'done';
             else if (key) {
                 for (const r of rows) if (!sameRow(r, key)) r.state = 'done';
@@ -95,7 +90,12 @@ export function createParts(plan) {
                 row.fill = Math.max(row.fill ?? 0, row.runsPlanned > 0 ? Math.min(1, row.runsDone / row.runsPlanned) : 0);
                 // The round being run, its phase ('search' | 'reading') and the stage's own totals (see race() in core.mjs): carried only
                 // when the stage reports a round, so a part of an older run keeps its shape.
-                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, acceptable: progress.stageAcceptable ?? 0, separate: progress.stageSeparate ?? null, runs: progress.stageRuns, simHours: progress.stageSimHours });
+                // The runs of the round the record kept from before a stop (core.mjs ensure: progress.runsKept names its stage and round): on that row while that round runs.
+                const rk = progress.runsKept;
+                if (rk && parse(rk.stage) && sameRow(row, parse(rk.stage)) && (rk.round ?? null) === (progress.round ?? null)) row.kept = { kept: rk.kept, total: rk.total };
+                else if (row.kept && (progress.round ?? null) !== row.keptRound) delete row.kept;
+                if (row.kept) row.keptRound = progress.round ?? null;
+                if (progress.round !== undefined) Object.assign(row, { round: progress.round, phase: progress.phase, candidates: progress.stageCandidates ?? null, contending: progress.stageContending, paused: progress.stagePaused, dropped: progress.stageDropped, back: progress.stageBack ?? 0, acceptable: progress.stageAcceptable ?? 0, separate: progress.stageSeparate ?? null, runs: progress.stageRuns, simHours: progress.stageSimHours });
             }
             // 'stopped', 'probe' and 'start' change no row.
             for (const r of rows) if (r.state === 'done') { r.runsDone = r.runsPlanned; r.etaSeconds = 0; }
@@ -109,8 +109,6 @@ export function createParts(plan) {
                 const r = rows.find((x) => x.kind === kind && x.index === si);
                 out.push(r ? { ...r } : waiting(kind, si, poolsOf()[si], stages[si].k));
             }
-            if (picks.state === 'done') picks.runsDone = picks.runsPlanned;
-            out.push({ kind: 'picks', index: 0, state: picks.state, runsPlanned: picks.runsPlanned, runsDone: picks.runsDone, fill: picks.fill, etaSeconds: picks.state === 'running' ? (progress.etaSeconds ?? null) : picks.state === 'done' ? 0 : null, ...(picks.leftOut ? { leftOut: picks.leftOut } : {}) });
             const steps = rows.filter((r) => r.kind === 'step'), conf = rows.find((r) => r.kind === 'confirmation');
             if (!steps.length) out.push({ kind: 'steps', index: 0, state: 'waiting', maxSteps });
             for (const r of steps) out.push({ ...r });

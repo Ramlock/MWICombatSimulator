@@ -274,6 +274,21 @@ check(list.json.length === 1 && list.json[0].id === s1.json.id && list.json[0].g
     check(JSON.stringify(again.json) === JSON.stringify(list.json) && changed.json[0].goal === 'exp' && changed.json[0].players[0] === 'Changed', 'results: the list is the same on a second call and follows a result.json that changed');
 }
 check((await call(base, 'GET', '/api/results/' + s1.json.id)).json.goal === 'profit' && (await call(base, 'GET', '/api/results/000000000000')).status === 404 && (await call(base, 'GET', '/api/results/..%2F..')).status === 404, 'results/<id>: one result; unknown or malformed ids are 404');
+{ // a stopped search (its folder holds partial.json, no result.json) is listed too, marked stopped, by the same list; its report is served; the
+  // search running now is not listed (a resumed one still holds its old partial.json); once it finishes its result.json is what is listed
+    writeFileSync(path.join(mh.dir, 'partial.json'), JSON.stringify({ goal: 'exp', players: ['Alpha', 'Beta'], steps: [], incomplete: true, stoppedBy: 'stop request' }));
+    const withStopped = (await call(base, 'GET', '/api/results')).json, stopped = withStopped.find((e) => e.id === m1.json.id);
+    check(withStopped.length === 2 && stopped?.stopped === true && stopped.goal === 'exp' && !!Date.parse(stopped.finished) && withStopped.find((e) => e.id === s1.json.id).stopped === undefined, 'results: a stopped search is listed, marked stopped; a finished one carries no mark');
+    const report = await call(base, 'GET', '/api/results/' + m1.json.id);
+    check(report.status === 200 && report.json.stoppedBy === 'stop request' && report.json.incomplete === true, 'results/<id>: a stopped search serves its partial.json');
+    await call(base, 'POST', `/api/search/${m1.json.id}/stop`);
+    const resumed = fakes[fakes.length - 1];
+    check(fake.running === m1.json.id && !(await call(base, 'GET', '/api/results')).json.some((e) => e.id === m1.json.id), 'results: the search running now is not listed, though its old partial.json is there');
+    writeFileSync(path.join(mh.dir, 'result.json'), JSON.stringify({ goal: 'exp', players: ['Alpha', 'Beta'], steps: [] }));
+    resumed.onExit(0, '');
+    const done = (await call(base, 'GET', '/api/results')).json.find((e) => e.id === m1.json.id);
+    check(done && done.stopped === undefined && (await call(base, 'GET', '/api/results/' + m1.json.id)).json.incomplete === undefined, 'results: once it finishes its result.json is listed and served, with no stopped mark');
+}
 check((await call(base, 'GET', '/api/search/zzz')).status === 404, 'search/<id>: a malformed id is 404');
 const idx = await call(base, 'GET', '/');
 check(idx.status === 200 && idx.text.includes('bundle.abcd1234.js') && idx.type.startsWith('text/html'), 'static: / serves dist/index.html');
@@ -297,7 +312,10 @@ const lastSnapIs = (dirName, res) => {
     return '';
 };
 const rb = await real.listen(0);
-const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...big, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 1 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
+// The real search's market: the snapshot with an ask for the cheese helmet at +2, which it does not list (a level with no ask is not a
+// candidate since the Philosopher's Mirror is not priced), so Alpha keeps its 4 upgrades (sword and helmet, +1 and +2) the round-1 checks count on.
+const bigHelm2 = { ...big, marketData: { ...big.marketData, '/items/cheese_helmet': { ...big.marketData['/items/cheese_helmet'], 2: { a: 30000, b: 25000 } } } };
+const req = { setups: party, options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, marketplace: { ...bigHelm2, timestamp: 1700000000 } }, goal: 'profit', budgets: { Alpha: 1e9, Beta: 1 }, levers: ['equip'], unitHours: 2, confirmHours: 2, firstSeeds: 4, maxRounds: 6, lockRule: 'reading', readingStep: 8, leaders: 4, maxUp: 2, swaps: false, z: 0, jobs: 2 };
 const wait = async (id, until, ms = 300000) => { const t = Date.now(); const trace = []; for (;;) { const r = (await call(rb, 'GET', '/api/search/' + id)).json; trace.push(r.progress); if (until(r) || Date.now() - t > ms) return { r, trace }; await sleep(150); } };
 const r1 = await call(rb, 'POST', '/api/search', req);
 const id = r1.json.id, dir = path.join(tmp, 'real', id);
@@ -474,6 +492,30 @@ else {
         await ev(`fetch(${JSON.stringify(url + 'api/search')}, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: '{}' }).then(() => 'sent', () => 'blocked')`);
         check(foreign === 'blocked' && launched.length === 1, 'browser: a page of another origin can neither read the interface nor start a search');
     } finally { await chrome.close(); other.close(); await web.close(); }
+}
+
+// ---- The port holder probe (holderVersion): a busy runner of ours is recognized; a stranger is decided at once, a silent one after the wait ----
+{
+    const serve = (handler) => new Promise((r) => { const s = http.createServer(handler); s.listen(0, '127.0.0.1', () => r(s)); });
+    const timed = async (f) => { const t0 = Date.now(); const v = await f(); return [v, Date.now() - t0]; };
+    const busy = await serve((req, res) => setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ runner: 'r1', engine: 'e1' })); }, 3500));
+    const [v1, ms1] = await timed(() => R.holderVersion(busy.address().port));
+    check(v1?.runner === 'r1' && v1?.engine === 'e1' && ms1 >= 3400, `holderVersion: a runner of ours that answers after 3.5 s (busy) is recognized (${ms1} ms)`);
+    const web = await serve((req, res) => { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('<h1>not found</h1>'); });
+    const [v2, ms2] = await timed(() => R.holderVersion(web.address().port));
+    check(v2 === null && ms2 < 1000, `holderVersion: another web server is a stranger, decided at once (${ms2} ms)`);
+    const json = await serve((req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"name":"other"}'); });
+    const [v3, ms3] = await timed(() => R.holderVersion(json.address().port));
+    check(v3 === null && ms3 < 1000, `holderVersion: a JSON answer without runner and engine is a stranger, decided at once (${ms3} ms)`);
+    const net = await import('node:net');
+    const closer = await new Promise((r) => { const s = net.createServer((c) => c.destroy()); s.listen(0, '127.0.0.1', () => r(s)); });
+    const [v4, ms4] = await timed(() => R.holderVersion(closer.address().port));
+    check(v4 === null && ms4 < 1000, `holderVersion: a program that drops the connection is a stranger, decided at once (${ms4} ms)`);
+    const silent = await new Promise((r) => { const s = net.createServer(() => {}); s.listen(0, '127.0.0.1', () => r(s)); });
+    const [v5, ms5] = await timed(() => R.holderVersion(silent.address().port, 1200));
+    check(v5 === null && ms5 >= 1100 && ms5 < 3000 && R.HOLDER_WAIT_MS === 10000, `holderVersion: a silent holder is a stranger once the wait ends (1.2 s here, ${ms5} ms; 10 s by default)`);
+    for (const s of [busy, web, json, closer, silent]) { s.closeAllConnections?.(); s.close(); }
+    silent.unref(); closer.unref();
 }
 
 // Chrome lets go of its profile some seconds after it is killed.

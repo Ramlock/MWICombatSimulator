@@ -51,12 +51,15 @@ export function createNodeStore(out, cacheFrom) {
 // The pool seam. run(task) sends the task to an idle run process (forked on demand, at this process's priority) and resolves with its
 // result message { variant, seed, wallSeconds, checkpoints }; resolves null when its process was ended by drop() or kill(). A run process that
 // exits by itself rejects. drop() ends the runs in flight (their processes are killed; the pool forks new ones for later runs); kill() ends the
-// pool: every process, and every later run() resolves null. Both go through end(), the one way a run is ended.
-export function createNodePool() {
-    const self = fileURLToPath(new URL('./batch.mjs', import.meta.url));
-    const idle = [], all = new Set(), ended = new WeakSet();
+// pool: every process, and every later run() resolves null. Both go through end(), the one way a run is ended. A run ended this way resolves
+// null at once, not when its process has exited: on a full CPU at the lowest priority a killed process takes seconds to be reaped, and a stage
+// button or a stop must not wait for that (the window's Skip, Accept and Stop act in about a second).
+// `script`: the run process's module (batch.mjs; a test passes its own).
+export function createNodePool(script = fileURLToPath(new URL('./batch.mjs', import.meta.url))) {
+    const self = script;
+    const idle = [], all = new Set(), ended = new WeakSet(), pending = new Map(); // pending: child -> its run's settle(null)
     let killed = false;
-    const end = (children) => { for (const c of children) { ended.add(c); c.kill(); } };
+    const end = (children) => { for (const c of children) { ended.add(c); all.delete(c); c.kill(); pending.get(c)?.(); } };
     function spawn() {
         const c = fork(self, ['--child'], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
         try { os.setPriority(c.pid, os.getPriority()); } catch { /* the child exited already */ }
@@ -69,8 +72,10 @@ export function createNodePool() {
             if (killed) return Promise.resolve(null);
             const c = idle.pop() || spawn();
             return new Promise((resolve, reject) => {
-                const onMessage = (res) => { c.off('exit', onExit); idle.push(c); resolve(res); };
-                const onExit = (code) => { c.off('message', onMessage); if (ended.has(c)) resolve(null); else reject(new Error('child exited ' + code)); };
+                const settle = (f) => { pending.delete(c); c.off('message', onMessage); c.off('exit', onExit); f(); };
+                const onMessage = (res) => settle(() => { idle.push(c); resolve(res); });
+                const onExit = (code) => settle(() => (ended.has(c) ? resolve(null) : reject(new Error('child exited ' + code))));
+                pending.set(c, () => settle(() => resolve(null)));
                 c.once('message', onMessage);
                 c.once('exit', onExit);
                 c.send(task);

@@ -11,7 +11,7 @@ export const MARGIN = 0.25; // a filling must regenerate need x (1 + MARGIN) per
 export const KEEP_PER_TYPE = 3; // the cheapest foods kept per type (the player's current foods stay in addition)
 const USES_PER_HOUR = 60; // every food has a 60 second cooldown
 const short = (h) => h.split('/').pop();
-const FREE = (path) => ({ cost: 0, known: true, path, mirrors: 0, note: '' });
+const FREE = (path) => ({ cost: 0, known: true, path, note: '' });
 const askOf = (market, h) => market?.[h]?.['0']?.a;
 
 // A food's type and resource from the item data, whether or not it has an ask. null when it is not a food that restores HP or MP.

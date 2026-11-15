@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { runSearch } from './runner-search.mjs';
 
 const opt = (n) => { const i = process.argv.indexOf('--' + n); return i < 0 ? null : process.argv[i + 1]; };
 const exeSrc = opt('exe');
@@ -131,18 +132,8 @@ try {
     save('one-file-port-taken.txt', o4);
 
     // (6) A short real search through the first start.
-    const req = {
-        setups: ['Alpha', 'Beta'].map((name, i) => ({ name, guildCombatBuffLevels: {}, achievements: {}, houseRooms: {}, triggerMap: {},
-            player: { staminaLevel: 40, intelligenceLevel: 40, attackLevel: 40, meleeLevel: 40, defenseLevel: 40, rangedLevel: 40, magicLevel: 40, equipment: [
-                { itemLocationHrid: '/item_locations/main_hand', itemHrid: i ? '/items/cheese_mace' : '/items/cheese_sword', enhancementLevel: 0 },
-                { itemLocationHrid: '/item_locations/head', itemHrid: '/items/cheese_helmet', enhancementLevel: 0 }] },
-            abilities: [null, null, null, null, null], food: { '/action_types/combat': [] }, drinks: { '/action_types/combat': [] } })),
-        options: { zone: '/actions/combat/fly', tier: 0, comdrop: 0, comexp: 0, prices: 'marketplace-2026-11-03.json' },
-        goal: 'profit', budgets: { Alpha: 1e9, Beta: 0 }, levers: ['equip'], stages: ['4x2', '4x2'], keep: [4], maxUp: 2, swaps: false, z: 0,
-    };
-    const st = await (await fetch(`http://127.0.0.1:${port}/api/search`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) })).json();
-    let r = null; const ts = Date.now();
-    while (Date.now() - ts < 600000) { r = await (await fetch(`http://127.0.0.1:${port}/api/search/${st.id}`)).json(); if (r.state !== 'running') break; await sleep(1000); }
+    const ts = Date.now();
+    const r = await runSearch(port);
     check(r?.state === 'done' && r.result && Array.isArray(r.result.steps), '6: a short real search finishes (optimizer and run workers forked from the exe)', JSON.stringify({ state: r?.state, error: r?.error }));
     console.log(`     search: ${((Date.now() - ts) / 1000).toFixed(0)} s`);
 

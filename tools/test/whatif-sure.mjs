@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const { verdict, checkPick, firstConfirmed, confirmFillings, SURE_BLOCK, SURE_MAX } = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
+const { verdict, rangeOf, checkPick, checkSet, firstConfirmed, confirmFillings, SURE_BLOCK, SURE_MAX, MIN_GAIN_PCT, LEFT_OUT_ENDINGS } = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
 const { refineTrigger } = await import(pathToFileURL(path.join(root, 'tools/whatif/refine.mjs')).href);
 const { joinTriggerDesc } = await import(pathToFileURL(path.join(root, 'tools/whatif/triggers.mjs')).href);
 const { acceptBoth } = await import(pathToFileURL(path.join(root, 'tools/whatif/buyer.mjs')).href);
@@ -19,13 +19,20 @@ const reading = (n, g = 0, k = 16) => ({ seeds: k, gain: g * 100, se: 100, buyer
 
 check('block and ceiling are 16 and 64', SURE_BLOCK === 16 && SURE_MAX === 64);
 check('verdict: the buyer at 2 errors passes', verdict(reading(2.5), 16, { z, goal }) === 'pass' && verdict(reading(2), 16, { z, goal }) === 'pass');
-check('verdict: the party alone at 2 errors passes when the buyer is not a clear loss (the search\'s own rule)', verdict(reading(0, 2.2), 16, { z, goal }) === 'pass' && verdict(reading(-1.5, 2.2), 16, { z, goal }) === 'fail');
-check('verdict: the buyer under 1 error fails at once', verdict(reading(0.9), 16, { z, goal }) === 'fail' && verdict(reading(-3), 16, { z, goal }) === 'fail');
-check('verdict: the buyer between 1 and 2 errors asks for more seeds', verdict(reading(1), 16, { z, goal }) === 'more' && verdict(reading(1.9), 32, { z, goal }) === 'more');
-check('verdict: still between 1 and 2 errors at 64 seeds fails', verdict(reading(1.9), 64, { z, goal }) === 'fail');
-check('verdict: no error and no gain fails (nothing to confirm)', verdict({ accepted: false, gain: 0, se: 0, buyerNet: 0, buyerNetSe: 0 }, 16, { z, goal }) === 'fail');
-check('verdict: another goal decides on the party gain', verdict({ accepted: false, gain: 150, se: 100, buyerNet: 9999, buyerNetSe: 1 }, 16, { z, goal: 'exp' }) === 'more' && verdict({ accepted: true, gain: 250, se: 100 }, 16, { z, goal: 'exp' }) === 'pass');
-check('verdict: z moves both bounds (z 4: 2 to 4 errors is the band)', verdict({ ...reading(3), accepted: false }, 16, { z: 4, goal }) === 'more' && verdict({ ...reading(1.9), accepted: false }, 16, { z: 4, goal }) === 'fail');
+check('verdict: the party alone at 2 errors passes when the buyer is not a clear loss (the search\'s own rule)', verdict(reading(0, 2.2), 16, { z, goal }) === 'pass' && verdict(reading(-1.5, 2.2), 16, { z, goal }) === 'more');
+// The four endings (floor 0 unless given): a loss = the whole range below 0; too small to matter = the whole range under the floor; too small to tell = none at 64.
+const fl = (r, floor) => ({ ...r, floor });
+check('verdict: a loss is the whole range below 0, at its edge', verdict(reading(-2.01), 16, { z, goal }) === 'loss' && verdict(reading(-2), 16, { z, goal }) === 'more' && verdict(reading(-3), 64, { z, goal }) === 'loss');
+check('verdict: too small to matter is the whole range under the floor, at its edge', verdict(fl(reading(0.9), 300), 16, { z, goal }) === 'small' && verdict(fl(reading(1), 300), 16, { z, goal }) === 'more' && verdict(fl(reading(-1), 150), 16, { z, goal }) === 'small');
+check('verdict: below 0 by the whole range is a loss even under the floor', verdict(fl(reading(-2.5), 300), 16, { z, goal }) === 'loss');
+check('verdict: a range that still reaches the floor takes more seeds below 64 and is too small to tell at 64', verdict(fl(reading(1.5), 300), 48, { z, goal }) === 'more' && verdict(fl(reading(1.5), 300), 64, { z, goal }) === 'unsure' && verdict(reading(0), 64, { z, goal }) === 'unsure');
+check('verdict: a good change at 1.5 and at 2 errors under the floor is no longer dropped at 16 seeds (it takes more)', verdict({ ...reading(1.5), accepted: false }, 16, { z, goal }) === 'more' && verdict({ ...reading(1.99), accepted: false }, 16, { z, goal }) === 'more' && verdict(fl({ ...reading(1.5), accepted: false }, 100), 16, { z, goal }) === 'more');
+check('verdict: no error and no gain is too small to tell at 64, too small to matter under a floor (nothing to confirm)', verdict({ accepted: false, gain: 0, se: 0, buyerNet: 0, buyerNetSe: 0 }, 64, { z, goal }) === 'unsure' && verdict({ accepted: false, gain: 0, se: 0, buyerNet: 0, buyerNetSe: 0, floor: 1 }, 16, { z, goal }) === 'small');
+check('verdict: no floor and a floor of 0 or below read alike', verdict(fl(reading(-1), -50), 16, { z, goal }) === 'more' && verdict(fl(reading(-1), 0), 16, { z, goal }) === 'more');
+check('verdict: another goal decides on the party gain', verdict({ accepted: false, gain: 150, se: 100, buyerNet: 9999, buyerNetSe: 1 }, 16, { z, goal: 'exp' }) === 'more' && verdict({ accepted: true, gain: 250, se: 100 }, 16, { z, goal: 'exp' }) === 'pass' && verdict({ accepted: false, gain: 150, se: 100, floor: 400, buyerNet: -1e9, buyerNetSe: 1 }, 16, { z, goal: 'exp' }) === 'small');
+check('verdict: z moves the range (z 4)', verdict({ ...reading(-3), accepted: false }, 16, { z: 4, goal }) === 'more' && verdict({ ...reading(-4.1), accepted: false }, 16, { z: 4, goal }) === 'loss' && verdict(fl({ ...reading(1), accepted: false }, 550), 16, { z: 4, goal }) === 'small' && verdict(fl({ ...reading(1), accepted: false }, 450), 16, { z: 4, goal }) === 'more');
+check('rangeOf: the buyer\'s range and floor per day on the profit goal, per user on another', (() => { const a = rangeOf(fl(reading(1), 300), { z, goal, n: 3 }), b = rangeOf({ gain: 300, se: 30, floor: 90 }, { z, goal: 'exp', n: 3 }); return a.low === -100 && a.high === 300 && a.floor === 300 && b.low === 80 && b.high === 120 && b.floor === 30; })());
+check('the default smallest gain is a share in %, and the left-out endings are three', MIN_GAIN_PCT === 0.12 && LEFT_OUT_ENDINGS.join() === 'loss,small,unsure');
 
 // Scripted measures: the reading by seeds per arm. calls records the seeds asked.
 const script = (byK) => { const calls = []; return { calls, measure: async (k) => { calls.push(k); return byK[k] ?? byK.default; } }; };
@@ -35,24 +42,37 @@ const script = (byK) => { const calls = []; return { calls, measure: async (k) =
     check('case 1, passes: 16 seeds, joins, one measurement', r.passed && r.fresh.seeds === 16 && s.calls.join() === '16', JSON.stringify(s.calls));
 }
 {
-    const s = script({ 16: reading(0.4) });
+    const s = script({ 16: fl(reading(0.4), 300) });
     const r = await checkPick(s.measure, { z, goal });
-    check('case 2, fails at once: below 1 error, 16 seeds only', !r.passed && s.calls.join() === '16');
+    check('case 2, too small to matter at once: the whole range under the floor, 16 seeds only', !r.passed && r.ending === 'small' && s.calls.join() === '16');
+}
+{
+    const s = script({ 16: reading(-2.5) });
+    const r = await checkPick(s.measure, { z, goal });
+    check('case 2b, a loss at once: the whole range below 0, 16 seeds only', !r.passed && r.ending === 'loss' && s.calls.join() === '16');
 }
 {
     const s = script({ 16: reading(1.4, 0, 16), 32: reading(1.7, 0, 32), 48: reading(2.3, 0, 48) });
     const r = await checkPick(s.measure, { z, goal });
-    check('case 3, more seeds then passes: 16, 32 and 48 seeds per arm', r.passed && r.fresh.seeds === 48 && s.calls.join() === '16,32,48', JSON.stringify(s.calls));
+    check('case 3, more seeds then passes: 16, 32 and 48 seeds per arm', r.passed && r.ending === 'pass' && r.fresh.seeds === 48 && s.calls.join() === '16,32,48', JSON.stringify(s.calls));
 }
 {
     const s = script({ default: reading(1.5) });
     const r = await checkPick(s.measure, { z, goal });
-    check('case 4, still under 2 errors at 64 seeds fails: 16, 32, 48, 64', !r.passed && s.calls.join() === '16,32,48,64', JSON.stringify(s.calls));
+    check('case 4, still reaching the floor at 64 seeds is too small to tell: 16, 32, 48, 64', !r.passed && r.ending === 'unsure' && s.calls.join() === '16,32,48,64', JSON.stringify(s.calls));
 }
 {
-    const s = script({ 16: reading(1.5), 32: reading(0.5) });
+    const s = script({ 16: reading(2), 32: reading(1.5), default: reading(1.5) });
     const r = await checkPick(s.measure, { z, goal });
-    check('a pick that falls below 1 error at 32 seeds fails there', !r.passed && s.calls.join() === '16,32');
+    check('a good change at 2 errors (accepted) passes at 16; at 1.5 errors it is no longer dropped at 16', r.passed && s.calls.join() === '16');
+    const s2 = script({ 16: { ...reading(1.5), floor: 100 }, 32: reading(2.2, 0, 32) });
+    const r2 = await checkPick(s2.measure, { z, goal });
+    check('a good change at 1.5 errors takes 32 seeds and passes there', r2.passed && s2.calls.join() === '16,32', JSON.stringify(s2.calls));
+}
+{
+    const s = script({ 16: fl(reading(1.5), 300), 32: fl(reading(0.5), 300) });
+    const r = await checkPick(s.measure, { z, goal });
+    check('a pick whose range falls under the floor at 32 seeds is too small to matter there', !r.passed && r.ending === 'small' && s.calls.join() === '16,32');
 }
 check('a stop ends the check: null', await checkPick(async () => null, { z, goal }) === null);
 
@@ -117,10 +137,10 @@ check('a stop ends the check: null', await checkPick(async () => null, { z, goal
 const opt = fs.readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');
 check('optimizer: fresh seeds start above the final confirmation\'s block (10001..20000)', /const sureOffset = confirmOffset \+ 10000;/.test(opt) && /sureSeeds = \(k\) => Array\.from\(\{ length: k \}, \(_, i\) => sureOffset \+ i \+ 1\)/.test(opt) && /hi = fresh \? sureOffset : confirmOffset/.test(opt));
 check('optimizer: both arms on the same fresh seeds, tagged sure', /\{ ops: baseOps, seed, h, tag: 'sure' \}, \{ ops: \[\.\.\.baseOps, \.\.\.c\.ops\], seed, h, tag: 'sure' \}/.test(opt));
-check('optimizer: the greedy step takes the first confirmed pick; failures go to notConfirmed with their step as they fail, and leave the race', /firstConfirmed\(ok, checkPickAt, /.test(opt) && /confirmPick\(baseOps, cand, fin, label\)/.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: step \+ 1, fresh \}\)/.test(opt) && /cur = cur\.filter\(\(f\) => f !== orig\)/.test(opt));
+check('optimizer: the greedy step takes the first confirmed pick; failures go to notConfirmed with their step as they fail, and leave the race', /firstConfirmed\(ok, checkPickAt, /.test(opt) && /confirmPick\(baseOps, cand, fin, label, null, at\)/.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: step \+ 1, fresh, \.\.\.checkOf\(fresh, ending\) \}\)/.test(opt) && /cur = cur\.filter\(\(f\) => f !== orig\)/.test(opt));
 check('optimizer: a trigger pick is refined before it is confirmed (refineTrigger), measured as one change against the chain, and nothing merges at the end', /cand = await refineAt\(baseOps, c, fin, visitedFor\(c\)\)/.test(opt) && /cand\.est = estimate\(baseOps, cand, fin/.test(opt) && !/mergeTriggerSteps/.test(opt) && !/if \(best\.kind === 'trigger'\) finalists\.push/.test(opt));
-check('optimizer: foods and drinks are confirmed per player on fresh seeds (confirmFillings); failures go to notConfirmed with kind food or drink, and best carries the fresh reading', /confirmFillings\(players, fpool, baseOps, /.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: null, kind: flag, fresh \}\)/.test(opt) && /bestEntry\(kind, after\.find\(\(s\) => s\.name === p\), chosen\[p\], got\.fresh\[p\][,)]/.test(opt) && !/bestPerPlayer/.test(opt));
-check('optimizer: a step carries its fresh reading; result.steps is pushed to in one place', /result\.steps\.push\(\{ \.\.\.row\(best\), \.\.\.\(asIs \? \{ acceptedAsIs: true \} : \{ fresh: bestFresh \}\),/.test(opt) && (opt.match(/result\.steps\.push\(/g) || []).length === 1);
+check('optimizer: foods and drinks are confirmed per player on fresh seeds (confirmFillings); failures go to notConfirmed with kind food or drink, and best carries the fresh reading', /confirmFillings\(players, fpool, start, /.test(opt) && /result\.notConfirmed\.push\(\{ \.\.\.row\(cand\), step: null, kind: flag, fresh, \.\.\.checkOf\(fresh, ending\) \}\)/.test(opt) && /bestEntry\(kind, after\.find\(\(s\) => s\.name === p\), chosen\[p\], freshOf\[p\][,)]/.test(opt) && !/bestPerPlayer/.test(opt));
+check('optimizer: a step carries its fresh reading; result.steps is pushed to in one place (takeStep: a single change or a set accepted together)', /result\.steps\.push\(\{ \.\.\.row\(best\), \.\.\.\(asIs \? \{ acceptedAsIs: true \} : \{ fresh \}\),/.test(opt) && /accepted: true, fresh, kind: 'set'/.test(opt) && (opt.match(/result\.steps\.push\(/g) || []).length === 2 && (opt.slice(opt.indexOf('const takeStep = '), opt.indexOf('publish(result); // snapshot 5')).match(/result\.steps\.push\(/g) || []).length === 2);
 check('optimizer: seven snapshot points (foods and drinks, a race round, candidates priced, last halving, a new over-payback change, a step, a failed pick), all through publish, one snapshot function', (opt.match(/publish\(result\);/g) || []).length === 7 && /outSink\.partial\(snapshot\(result\)\)/.test(opt) && (opt.match(/function snapshot\(/g) || []).length === 1);
 check('optimizer: the progress counts distinct runs once, a cached run done at once, picksPlanned and picksDone in the progress', /sure\.counted\.has\(id\)/.test(opt) && /if \(cache\.get\(id\)\?\.byHours\[r\.h\]\) sure\.done\+\+/.test(opt) && /if \(t\.tag === 'sure'\) sure\.done\+\+/.test(opt) && /progress\.picksPlanned = sure\.planned/.test(opt));
 check('optimizer: the final confirmation block is unchanged (original base, seeds 10001.., tag confirm)', /pick\(\[\], fin\.h, fin\.k \* baseMult, true\), vs = pick\(baseOps, fin\.h, fin\.k, true\)/.test(opt));
@@ -139,6 +159,31 @@ check('optimizer: the final confirmation block is unchanged (original base, seed
     check('optimizer: --max-payback (default 0 = no limit) is read once; the profit goal only; saved in options as maxPaybackDays', /const maxPayback = Number\(arg\('max-payback', 0\)\);/.test(opt) && /const payLimit = goal === 'profit' \? maxPayback : 0;/.test(opt) && /maxPaybackDays: maxPayback/.test(opt));
     check('optimizer: the chain picks only candidates within the limit by the search reading; each over it is listed once by id in result.overPayback with its days', /overPaybackLimit\(c\.cost\.cost, fresh\.buyerNet, payLimit\)/.test(opt) && /!result\.overPayback\.some\(\(x\) => x\.id === c\.id\)\) result\.overPayback\.push\(\{ \.\.\.row\(c\), paybackDays: paybackDays\(c\.cost\.cost, p\.fresh\.buyerNet\) \}\)/.test(opt) && /overPayback: \[\.\.\.result\.overPayback\]/.test(opt));
     check('optimizer: the pick check (steps and foods, one confirmPick) carries the cost and the limit', /\}, \{ z, goal, cost: c\.cost\.cost, maxPayback: payLimit \}\);/.test(opt));
+}
+
+// The check of a set accepted together (sure.mjs checkSet, design section 3), with a stub measure: readings by (variant, against); `arms` records every arm
+// (a member list's key and seeds) a reading needs, so "no new run" is an arm not asked before.
+{
+    const m = (id) => ({ id }), A = m('a'), B = m('b'), C = m('c');
+    const key = (l) => l.map((x) => x.id).sort().join('+') || 'base';
+    const stub = (table) => { const arms = new Set(), calls = []; return { arms, calls, measure: async (v, ag, k) => { const fresh = [key(v), key(ag)].filter((x) => !arms.has(x + '#' + k)); calls.push({ v: key(v), a: key(ag), k, fresh }); for (const x of [key(v), key(ag)]) arms.add(x + '#' + k); const r = table[key(v) + '|' + key(ag)]; return r ? { ...r, seeds: k } : reading(0); } }; };
+    const pass = reading(3, 3), zero = reading(0, 0);
+    let s1 = stub({ 'a+b+c|base': pass, 'a+b+c|b+c': pass, 'a+b+c|a+c': zero, 'a+b+c|a+b': pass, 'a+c|base': pass });
+    let r = await checkSet([A, B, C], s1.measure, { z, goal });
+    const last = s1.calls[s1.calls.length - 1];
+    check('set: a member with zero marginal leaves; the reduced set is checked from the leave-out\'s runs (no new run)', r.passed && key(r.set) === 'a+c' && r.left.map((x) => x.id).join() === 'b' && last.v === 'a+c' && last.fresh.length === 0, JSON.stringify(s1.calls));
+    let s2 = stub({ 'a+b+c|base': pass, 'a+b+c|b+c': pass, 'a+b+c|a+c': zero, 'a+b+c|a+b': zero, 'a|base': pass });
+    r = await checkSet([A, B, C], s2.measure, { z, goal });
+    check('set: two leave and the reduced set gets one more check (new runs)', r.passed && key(r.set) === 'a' && r.left.length === 2 && s2.calls[s2.calls.length - 1].v === 'a' && s2.calls[s2.calls.length - 1].fresh.includes('a'), JSON.stringify(s2.calls) + key(r.set));
+    let s3 = stub({ 'a+b|base': reading(-3, -3) });
+    r = await checkSet([A, B], s3.measure, { z, goal });
+    check('set: a failed set refutes no one (no member is marked, nothing left out) and no leave-out runs follow', !r.passed && r.left.length === 0 && s3.calls.length === 1 && !A.refuted && !B.refuted);
+    let s4 = stub({ 'a+b|base': { ...reading(1.5, 0), accepted: false } });
+    r = await checkSet([A, B], s4.measure, { z, goal });
+    check('set: the set\'s check takes more seeds while between z/2 and z errors, as any pick check', !r.passed && s4.calls.map((c) => c.k).join() === '16,32,48,64');
+    let s5 = stub({ 'a+b|base': pass, 'a+b|b': pass, 'a+b|a': pass });
+    r = await checkSet([A, B], s5.measure, { z, goal });
+    check('set: every marginal passing keeps the whole set, each member\'s marginal reading kept', r.passed && key(r.set) === 'a+b' && r.marginals.size === 2 && r.marginals.get(A).buyerNet === 300);
 }
 
 process.exit(failed ? 1 : 0);

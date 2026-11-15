@@ -71,7 +71,9 @@ const carried = [], seenStages = new Set();
 // just before the pick check showed its stage running, buttons and all, until the search ended, 25 s on a real search).
 let endedStage = null, afterEnd = 0;
 const reran = [];
+const readingPhases = new Set(); // stage#round of every round that showed a reading phase
 const run = await runSynthetic(scenario, {}, { onProgress: (p) => {
+    if (p.phase === 'reading') readingPhases.add(`${p.stage}#${p.round}`);
     if (p.stageEnded) endedStage = p.stageEnded;
     else if (endedStage && p.stage === endedStage) reran.push(`${p.stage}: the end mark went`);
     if (endedStage && p.stage === endedStage) { afterEnd++; const live = (p.parts || []).filter((r) => r.state === 'running' && r.kind !== 'picks'); if (live.length) reran.push(`${p.stage}: ${live.map((r) => r.kind + ':' + r.index).join(',')} running`); }
@@ -85,7 +87,35 @@ check(`progress: an ended race stage stays done (no running row, its end mark ke
 check('progress: a greedy step with rounds, then the confirmation: the confirmation (and the end) carry no round and no stage counters, on the record or on its row', seenStages.has('greedy step') && seenStages.has('confirmation') && carried.length === 0, carried.slice(0, 2).join(' | '));
 const opsOf = (s) => (s.ops ?? s.est?.ops ?? []);
 const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"${player}","slot":"${slot}","delta":${delta}`);
+// Accept together (design: accept together): the screen race's two clear changes of two players, Alice body +2 and Bob head +2, cannot be separated (equal
+// gain per coin), so it ends with one step holding both, checked with each left out once; the report and the window list the members.
+{
+    const s0 = step(0), ids = (s0?.members || []).map((m) => m.id).sort().join(' + ');
+    check('together: the screen race ends with one step whose members are Alice body +2 and Bob head +2', s0?.kind === 'set' && s0.members.length === 2 && hasOp(s0, 'Alice', 'body', 2) && hasOp(s0, 'Bob', 'head', 2) && s0.desc.includes(' + '), JSON.stringify(s0?.members?.map((m) => m.desc)));
+    check('together: the step holds the set\'s fresh reading, the summed cost, and each member\'s own gain (set against set without it)', s0?.fresh?.accepted === true && s0.cost === s0.members.reduce((a, m) => a + m.cost, 0) && s0.members.every((m) => m.marginal && Number.isFinite(m.marginal.gainPerUser)), ids);
+    check('together: the report shows the step marked and one line per member with its own gain', /\(accepted together\)/.test(run.markdown) && s0.members.every((m) => run.markdown.includes(`↳ ${m.desc} (own gain`)));
+    const { renderResult } = await imp('src/whatif/panel.mjs');
+    const html = renderResult(res, (k) => k);
+    const bs = Object.entries(s0?.buyers || {}), longest = bs.reduce((a, e) => (!a || (e[1].payback ?? -1) > (a[1].payback ?? -1) ? e : a), null);
+    check('together: a set of two buyers shows the payback and net of a real buyer and net, the longest payback (each on his own cost), and one tooltip line per buyer', bs.length === 2 && bs.every(([, b]) => b.cost > 0 && Number.isFinite(b.payback)) && s0.payer === longest[0] && s0.payback === longest[1].payback && s0.buyerNet === longest[1].buyerNet && (html.match(/result\.setBuyer/g) || []).length === 2, JSON.stringify({ payer: s0?.payer, payback: s0?.payback, buyers: s0?.buyers }));
+    check('together: the window row joins the members, names both players, and carries their own gains in its tooltip', /data-set="2"/.test(html) && /title="result\.setMarginals/.test(html) && /<td>Alice, Bob<\/td>/.test(html) && !/title="[^"]*&lt;/.test(html), (/title="result\.setMarginals[^"]*"/.exec(html) || [''])[0].slice(0, 300));
+}
 console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length} rounds, ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+// No leader check that can change nothing (core.mjs needsReading): a leader whose pick check has its verdict (shown 'confirmed') takes no more reading runs in
+// that race, so its reading seeds stay where the verdict fell, never past SURE_MAX; a round in which no leader needs one has no reading phase at all.
+{
+    const { SURE_MAX } = await imp('tools/whatif/sure.mjs');
+    const real = run.rounds.filter((r) => !r.provisional), at = new Map(), grew = [];
+    for (const r of real) for (const l of r.pools.flatMap((p) => p.leaders)) {
+        const key = `${r.stage}|${l.id}`;
+        if (at.has(key) && l.readingSeeds !== at.get(key)) grew.push(`${r.stage} round ${r.round} ${l.id}: ${at.get(key)} -> ${l.readingSeeds}`);
+        if (!at.has(key) && l.status === 'confirmed') at.set(key, l.readingSeeds);
+    }
+    const maxRead = Math.max(...real.flatMap((r) => r.pools.flatMap((p) => p.leaders.map((l) => l.readingSeeds))));
+    check(`reading: a leader with its verdict takes no more reading seeds in its race (${at.size} such leaders), and none passes ${SURE_MAX}`, at.size > 0 && grew.length === 0 && maxRead <= SURE_MAX, grew.slice(0, 3).join(' | ') + ` max ${maxRead}`);
+    const quiet = real.filter((r) => r.pools.some((p) => p.leaders.length) && !readingPhases.has(`${r.stage}#${r.round}`));
+    check(`reading: a race whose leaders all have their verdict runs rounds of search runs only, with no reading phase (${quiet.length} such rounds)`, quiet.length > 0 && quiet.every((r) => r.pools.every((p) => p.leaders.every((l) => l.status !== 'few' && l.readingSeeds >= 16))));
+}
 // The rows' order in every round record of the whole search: a pool with no row at 4 seeds (src/whatif/figure.mjs) stays in build order with sortedBy null (and its
 // column in sortPending); otherwise the rows with a figure sort by the column, best first, and the rows without follow in build order. Display order only.
 {
@@ -116,14 +146,17 @@ console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length}
 {
     const capped = await runSynthetic(scenario, { 'max-rounds': 8 }), cres = capped.result;
     check('round limit: the stages that ended on it are in endedByCap with their rounds and the changes left in the running; a search that settled by itself has none', Object.keys(res.endedByCap || {}).length === 0 && cres.endedByCap.screen?.rounds === 8 && cres.endedByCap.screen.left > 0 && cres.endedByCap.foods?.rounds === 8 && cres.endedByCap.foods.left > 0 && cres.steps.length === 0 && !cres.endedByUser?.screen, JSON.stringify(cres.endedByCap));
-    check('round limit: a change the pick check refused inside a race is marked inRace (foods and drinks stage, a step\'s race); the window words those apart from a pick that was locked and then failed its own fresh runs (which this scenario does not produce: the panel test covers that wording)', cres.notConfirmed.length > 0 && cres.notConfirmed.every((x) => x.inRace === true) && cres.notConfirmed.some((x) => x.kind === 'drink') && cres.notConfirmed.some((x) => x.step === 1), `${cres.notConfirmed.length}`);
+    check('round limit: every change the pick check left out inside a race is marked inRace and carries its ending (loss, small, unsure) and its range (foods and drinks stage, a step\'s race); the window words those apart from a pick that was locked and then failed its own fresh runs (which this scenario does not produce: the panel test covers that wording)', cres.notConfirmed.length > 0 && cres.notConfirmed.every((x) => x.inRace === true && ['loss', 'small', 'unsure'].includes(x.ending) && x.range && Number.isFinite(x.range.high)) && cres.notConfirmed.some((x) => x.kind === 'drink'), cres.notConfirmed.map((x) => `${x.kind ?? x.step}:${x.ending}`).join());
+    // (Under the four endings a step's leader whose range still reaches the smallest gain takes more reading seeds than 8 rounds give, so the capped run leaves out only the drinks
+    // whose whole range is below 0; the uncapped search leaves a step's leader out in its race: 'search: the pick that ... fails on fresh ones' below.)
 }
 check('search: finished by itself, not stopped; no real engine run was asked for (the trigger lever is off)', run.outcome.stopped === false && res.options.levers.join() === 'equip,foods,drinks');
 check('search: a clear winner is the first step (Alice body +2)', hasOp(step(0), 'Alice', 'body', 2), JSON.stringify(step(0).desc ?? step(0).id));
-check('search: every step pays back inside 365 days and was confirmed on fresh seeds', steps.length >= 2 && steps.every((s) => s.fresh && s.fresh.accepted && (s.payback === undefined || s.payback === null || s.payback <= PAY + 1)), JSON.stringify(steps.map((s) => s.payback)));
+check('search: every step pays back inside 365 days and was confirmed on fresh seeds', steps.length >= 2 && steps.every((s) => s.fresh && s.fresh.accepted && (s.payback === undefined || s.payback === null || s.payback <= PAY + 1) && Object.values(s.fresh.buyers || {}).every((b) => !(b.cost > 0) || (b.buyerNet > 0 && b.cost / b.buyerNet <= PAY + 1))), JSON.stringify(steps.map((s) => [s.payback, !!s.fresh, s.fresh?.accepted, s.acceptedAsIs ?? false, s.desc.slice(0, 40)])));
 check('search: the losers (Alice legs) are never taken', !steps.some((s) => hasOp(s, 'Alice', 'legs', 1) || hasOp(s, 'Alice', 'legs', 2) || hasOp(s, 'Alice', 'legs', 3)));
 check('search: the change under the 1% bar (Alice head +1) and the one past the payback limit (Alice head +3) are never taken', !steps.some((s) => hasOp(s, 'Alice', 'head', 1) || hasOp(s, 'Alice', 'head', 3)));
-check('search: the tied pair gives one step on Bob\'s head, not both at once', steps.filter((s) => s.player === 'Bob' && /head/.test(JSON.stringify(s.desc ?? ''))).length >= 1 && hasOp(step(1), 'Bob', 'head', 1));
+// (Accept together: Bob's head now joins the screen's set with Alice's body, one level of it: the tied pair still gives one step from Bob's worn +4, not both; a later step from the new level is a new change.)
+check('search: the tied pair gives one step on Bob head, not both at once', steps.filter((s) => /Bob head \S+ \+4 -> /.test(s.desc ?? '')).length === 1 && steps.every((s) => !(hasOp(s, 'Bob', 'head', 1) && hasOp(s, 'Bob', 'head', 2))), JSON.stringify(steps.map((s) => s.desc)));
 const failed1 = res.notConfirmed.find((x) => hasOp(x, 'Bob', 'body', 2));
 check('search: the pick that looks good on the search seeds and fails on fresh ones (Bob body +2) is refuted and listed with its fresh reading', !!failed1 && failed1.fresh && failed1.fresh.accepted === false && !steps.some((s) => hasOp(s, 'Bob', 'body', 2)));
 check('search: the paying change of the player with a profit at zero or below (Cara body +2) can still be taken', steps.some((s) => hasOp(s, 'Cara', 'body', 2)));
@@ -222,14 +255,44 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     check('button: a run that Accept dropped is not stored', ha.hung > 0 && accept2.records.length === accept2.runs, `${accept2.records.length} ${accept2.runs} ${ha.hung}`);
 }
 
-// ---- A search whose every pick is left out inside the race: the pick check ran, so the picks part is done ("None confirmed"), not "Not run" ----
+// ---- A search whose every pick is left out by its check: each row that ran names what its check left out (checkFailed), never "Not run" ----
 {
     const noEffect = structuredClone(scenario); noEffect.effects = []; noEffect.request = { ...noEffect.request, levers: ['equip'] };
     let last = null;
     const ne = await runSynthetic(noEffect, {}, { onProgress: (p) => { last = p; } });
-    const picks = (last?.parts || []).find((x) => x.kind === 'picks');
+    const ran = (last?.parts || []).filter((x) => x.state === 'done'), named = ran.flatMap((x) => x.failed || []), descs = new Set(ne.result.notConfirmed.map((c) => c.desc));
     check('no-effect search: it ends done with every change left out (notConfirmed non-empty, no step)', last?.stage === 'done' && ne.result.notConfirmed.length > 0 && ne.result.steps.length === 0, `${last?.stage} ${ne.result.notConfirmed.length} ${ne.result.steps.length}`);
-    check('no-effect search: the picks part ends done with the number left out, never skipped ("Not run: no change was picked" would contradict "Not confirmed N")', picks?.state === 'done' && picks.leftOut === ne.result.notConfirmed.length, JSON.stringify(picks));
+    check('no-effect search: no picks part; the rows that ran are done and name what their check left out, each one a change of notConfirmed', !(last?.parts || []).some((x) => x.kind === 'picks') && ran.length > 0 && named.length > 0 && named.every((x) => descs.has(x.desc)), JSON.stringify(ran.map((x) => [x.kind, x.index, (x.failed || []).length])));
 }
 
+// Stop then Resume (the same call on the same store) reaches the same set: a set's runs are ordinary store runs and togetherOf reads only estimates and
+// cached readings, so the replay takes the same decision.
+{
+    const halt = (rec, stop) => { if (rec.stage === 'greedy step 1') stop.requested = true; };
+    const r1 = await runSynthetic(scenario, {}, { onRound: halt });
+    const r2 = await runSynthetic(scenario, {}, { records: r1.records, onRound: halt });
+    const k = (r) => (r.result?.steps?.[0]?.members || []).map((m) => m.id).sort().join(' + ');
+    check('together: Stop then Resume on the same store reaches the same set', k(r1) !== '' && k(r1) === k(r2) && r2.result.steps[0].kind === 'set', `${k(r1)} | ${k(r2)}`);
+}
+
+// Stop and Resume on the same folder (records and progress.json): elapsed goes on from the time spent before the stop (core.mjs elapsedBefore), and the round that
+// was cut says how many of its runs the record kept (progress.runsKept, drawn on its row). A clock that moves 1 s per run stands in for the time a run takes.
+{
+    const realNow = Date.now, start = realNow(); let fake = 0;
+    Date.now = () => start + fake;
+    const ticking = (p) => ({ ...p, run: async (t) => { fake += 1000; return p.run(t); } });
+    let seenRound = 0;
+    const halt = (rec, stop) => { if (rec.stage === 'screen' && ++seenRound === 1) stop.requested = true; };
+    try {
+        const r1 = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: halt, poolWrap: ticking });
+        const before = r1.lastProgress?.elapsedSeconds ?? 0, kept = [];
+        const r2 = await runSynthetic(scenario, { 'max-steps': 0 }, { records: r1.records, aux: r1.aux, poolWrap: ticking, onProgress: (p) => { if (p.runsKept) kept.push(p.runsKept); } });
+        const first2 = r2.aux.get('progress.json');
+        check('resume: the first run stopped with elapsed time on its progress', r1.outcome !== 'done' && before > 0, `${r1.outcome} ${before}`);
+        check('resume: elapsed goes on from the stop (the resumed search ends above what the stopped one had, by its own time)', r2.lastProgress.elapsedSeconds > before && first2.elapsedSeconds === r2.lastProgress.elapsedSeconds, `${before} -> ${r2.lastProgress.elapsedSeconds}`);
+        check('resume: a round of the resumed search says how many of its runs the record kept (some, not more than it asks for), with its stage and round', kept.length > 0 && kept.every((k) => k.kept > 0 && k.kept <= k.total && typeof k.stage === 'string'), JSON.stringify(kept.slice(0, 3)));
+        const fresh = []; await runSynthetic(scenario, { 'max-steps': 0 }, { onProgress: (p) => { if (p.runsKept) fresh.push(p); } });
+        check('resume: a fresh search keeps none (no runsKept)', fresh.length === 0, String(fresh.length));
+    } finally { Date.now = realNow; }
+}
 process.exit(failed ? 1 : 0);

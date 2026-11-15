@@ -10,6 +10,7 @@ import conditionMap from '../../src/combatsimulator/data/combatTriggerConditionD
 import dependencyMap from '../../src/combatsimulator/data/combatTriggerDependencyDetailMap.json' with { type: 'json' };
 import abilityDetailMap from '../../src/combatsimulator/data/abilityDetailMap.json' with { type: 'json' };
 import itemDetailMap from '../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
+import { EN, termWords, listWords, changeWords, termOf } from '../../src/whatif/trigger-words.mjs';
 export { conditionMap };
 
 const P = '/combat_trigger_';
@@ -91,9 +92,11 @@ export function grid(samples, conditionHrid) {
 const roundStep = (m) => (m >= 10000 ? 500 : m >= 1000 ? 50 : m >= 100 ? 10 : 1);
 
 // ---- Candidates ----
-const TRIG = (p, hrid, kind, id, desc, triggers, extra = {}) => ({ id: `${p}:trig:${short(hrid)}:${id}`, kind: 'trigger', owner: hrid, groups: [`${p}:trigger:${hrid}`], player: p, monotone: false, desc: `${p} ${short(hrid)} trigger: ${desc}`, ops: [{ op: 'trigger', player: p, hrid, triggers }], cost: { cost: 0, known: true, path: 'loadout tweak', mirrors: 0, note: '' }, ...extra });
-export const termText = (t) => `${short(t.dependencyHrid)} ${short(t.conditionHrid)} ${t.comparatorHrid === GE ? '>=' : t.comparatorHrid === LE ? '<=' : short(t.comparatorHrid)}${isNumeric(t) ? ' ' + t.value : ''}`;
-const listText = (ts) => (ts.length ? ts.map(termText).join(' AND ') : 'always');
+const TRIG = (p, hrid, kind, id, desc, triggers, extra = {}) => ({ id: `${p}:trig:${short(hrid)}:${id}`, kind: 'trigger', owner: hrid, groups: [`${p}:trigger:${hrid}`], player: p, monotone: false, desc: `${p} ${short(hrid)} ${EN.trigger}: ${desc}`, ops: [{ op: 'trigger', player: p, hrid, triggers }], cost: { cost: 0, known: true, path: 'loadout tweak', note: '' }, ...extra });
+// The words come from src/whatif/trigger-words.mjs (the one wording, which the window reads back and words in the page's language).
+export const termText = (t) => termWords(termOf(t));
+const listText = (ts) => listWords(ts.map(termOf));
+const setText = (t, value, cmp) => changeWords({ kind: 'set', term: termOf(t), to: { ...(cmp ? { cmp: short(cmp) } : {}), value } });
 // A trigger list as the report words it ("self current_hp <= 60 AND ..."); null when the list is empty (it always fires).
 export const triggerText = (ts) => (ts.length ? listText(ts) : null);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -109,24 +112,24 @@ export function triggerCands(setup, p, probe, opts = {}) {
         if (opts.owners && !named(opts.owners)) continue;
         if (named(opts.fixed)) continue;
         const cur = effectiveTriggers(setup, o.hrid);
-        if (opts.user?.[o.hrid]) { opts.user[o.hrid].forEach((ts, k) => !same(ts, cur) && out.push(TRIG(p, o.hrid, o.kind, 'user' + k, listText(ts), ts))); continue; }
+        if (opts.user?.[o.hrid]) { opts.user[o.hrid].forEach((ts, k) => !same(ts, cur) && out.push(TRIG(p, o.hrid, o.kind, 'user' + k, changeWords({ kind: 'list', terms: ts.map(termOf) }), ts))); continue; }
         const rec = probe?.[p]?.[o.hrid] || {};
         const g = (t) => grid(rec[qKey(t)]?.s || [], t.conditionHrid);
         const push = (id, desc, ts) => { if (!same(ts, cur) && !out.some((c) => c.owner === o.hrid && same(c.ops[0].triggers, ts))) out.push(TRIG(p, o.hrid, o.kind, id, desc, ts)); };
         // Sweet spot of each numeric term: its value over the grid (3.5 item 2).
         cur.forEach((t, i) => {
             if (!isNumeric(t)) return;
-            for (const v of g(t)) push(`${i}=${v}`, `${termText(t)} -> ${v}`, cur.map((x, j) => (j === i ? { ...x, value: v } : x)));
+            for (const v of g(t)) push(`${i}=${v}`, setText(t, v), cur.map((x, j) => (j === i ? { ...x, value: v } : x)));
         });
         // Structure (3.5 item 4): drop a term, flip a comparator (at the grid's median), the game's default, and
         // added terms from a short list by what the owner does.
         cur.forEach((t, i) => {
-            push(`drop${i}`, `drop ${termText(t)}`, cur.filter((_, j) => j !== i));
-            if (isNumeric(t)) { const gv = g(t); const v = gv.length ? gv[Math.floor(gv.length / 2)] : t.value; push(`flip${i}`, `${termText(t)} -> ${t.comparatorHrid === GE ? '<=' : '>='} ${v}`, cur.map((x, j) => (j === i ? { ...x, comparatorHrid: x.comparatorHrid === GE ? LE : GE, value: v } : x))); }
+            push(`drop${i}`, changeWords({ kind: 'drop', term: termOf(t) }), cur.filter((_, j) => j !== i));
+            if (isNumeric(t)) { const gv = g(t); const v = gv.length ? gv[Math.floor(gv.length / 2)] : t.value; push(`flip${i}`, setText(t, v, t.comparatorHrid === GE ? LE : GE), cur.map((x, j) => (j === i ? { ...x, comparatorHrid: x.comparatorHrid === GE ? LE : GE, value: v } : x))); }
         });
         const def = o.kind === 'ability' ? abilityDetailMap[o.hrid]?.defaultCombatTriggers : itemDetailMap[o.hrid]?.consumableDetail?.defaultCombatTriggers;
-        if (def) push('default', `game default (${listText(def)})`, structuredClone(def));
-        for (const add of addedTerms(o, rec)) push(add.id, `add ${termText(add.t)}`, [...cur.filter((x) => !(x.dependencyHrid === add.t.dependencyHrid && x.conditionHrid === add.t.conditionHrid)), add.t]);
+        if (def) push('default', changeWords({ kind: 'default', terms: def.map(termOf) }), structuredClone(def));
+        for (const add of addedTerms(o, rec)) push(add.id, changeWords({ kind: 'add', term: termOf(add.t) }), [...cur.filter((x) => !(x.dependencyHrid === add.t.dependencyHrid && x.conditionHrid === add.t.conditionHrid)), add.t]);
     }
     return out;
 }
@@ -169,7 +172,7 @@ export function localCands(setup, p, probe, hrid) {
         for (const v of new Set([lo, hi, lo !== undefined ? mid(lo) : undefined, hi !== undefined ? mid(hi) : undefined])) {
             if (v === undefined || v === t.value) continue;
             const ts = cur.map((x, j) => (j === i ? { ...x, value: v } : x));
-            out.push(TRIG(p, hrid, o.kind, `${i}=${v}`, `${termText(t)} -> ${v}`, ts));
+            out.push(TRIG(p, hrid, o.kind, `${i}=${v}`, setText(t, v), ts));
         }
     });
     return out;
@@ -193,5 +196,5 @@ export const joinTriggerDesc = (a, b) => {
         const fa = /^(.*) (\S+)$/.exec(A.from), fb = /^(.*) (\S+)$/.exec(B.from);
         if ((fa && fb && fa[1] === fb[1] && fb[2] === A.to) || B.from === A.to) return `${A.head}${A.from} -> ${B.to}`;
     }
-    return `${a}; then ${b}`;
+    return `${a}; ${EN.then} ${b}`;
 };

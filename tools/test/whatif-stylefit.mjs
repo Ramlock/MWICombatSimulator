@@ -97,7 +97,7 @@ check((core.match(/[^y]misfit\(/g) || []).length === 1 && (core.match(/abilityMi
 check(/styleDrop\(fit, item, \{ id: `\$\{p\}:\$\{slot\}=own:/.test(owned) && /playerFit\(s, itemDetailMap\)/.test(owned), 'optimizer: the owned-items loop drops by the same styleDrop');
 const swapLoop = market.slice(market.indexOf('if (!swapsOn) continue;'));
 check(swapLoop.indexOf('styleDrop(') < swapLoop.indexOf('isDominatedSwap(') && swapLoop.indexOf('pricer.swap(') < swapLoop.indexOf('styleDrop('), 'optimizer: only swaps the market sells are listed as dropped, before the dominance check');
-const enhance = market.slice(market.indexOf('for (let d = 1; it && d <= maxUp; d++)'), market.indexOf('if (!swapsOn) continue;'));
+const enhance = market.slice(market.indexOf('for (const to of it ? upgradeLevels('), market.indexOf('if (!swapsOn) continue;'));
 check(/if \(styleDrop\(fit, itemDetailMap\[it\.itemHrid\], \{ id, player: p, slot, desc,/.test(enhance) && enhance.indexOf('styleDrop(') < enhance.indexOf('out.push('), 'optimizer: a held piece that does not fit gets no enhance step (listed as left out)');
 const abil = core.slice(core.indexOf('function abilityCands'), core.indexOf('function allCandidates'));
 check(/if \(abilityDrop\(fit, l\.abilityHrid, \{ id, player: p, slot: `ability\$\{i\}`, desc,/.test(abil) && /fit = playerFit\(s, itemDetailMap\)/.test(abil), 'optimizer: an ability swap that does not fit is never offered (listed as left out)');

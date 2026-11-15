@@ -17,8 +17,8 @@
 //                                  search carries its report so far (partial) and its version only when newer than `since`, and the latest
 //                                  search round (round, roundVersion) the same way (one counter, one `since`)
 //   POST /api/search/<id>/stop     stops it (exit code 3, run store kept); on a stopped search, resumes it
-//   GET  /api/results              finished searches, newest first: [{ id, finished, goal, players }]
-//   GET  /api/results/<id>         one result.json
+//   GET  /api/results              earlier searches, finished and stopped, newest first: [{ id, finished, goal, players, stopped? }]
+//   GET  /api/results/<id>         one result.json, or a stopped search's partial.json
 // Requests come only from the runner's own page: a Host that is not the loopback address and port, or an Origin
 // that is not the runner's own, is refused with 403.
 import http from 'node:http';
@@ -42,7 +42,7 @@ export const DEFAULT_RESULTS = path.join(os.homedir(), 'MWI-WhatIf', 'results');
 // The optimizer's flags a request may set (camelCase or dashed). --out, --setups, --export and --prices are set by
 // the runner itself; --cache-from is not offered (it reads arbitrary files).
 // The rounds options (unit-hours ... confirm-seeds, confirm-hours) are the search's named options; `stages` and `keep` are still accepted and ignored by the search.
-const PASS = ['unit-hours', 'first-seeds', 'round-seeds', 'leaders', 'pause-mult', 'coverage', 'reading-step', 'reading-min', 'lock-rule', 'max-rounds', 'confirm-seeds', 'confirm-hours', 'players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'max-payback', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'shrine-cap', 'shrine-steps', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
+const PASS = ['unit-hours', 'first-seeds', 'round-seeds', 'leaders', 'pause-mult', 'coverage', 'reading-step', 'reading-min', 'lock-rule', 'max-rounds', 'confirm-seeds', 'confirm-hours', 'players', 'levers', 'goal', 'stages', 'keep', 'error', 'base-mult', 'z', 'max-up', 'swaps', 'swap-levels', 'sell-down', 'slots', 'only-candidates', 'max-steps', 'max-payback', 'min-gain-pct', 'jobs', 'max-minutes', 'confirm-seed-offset', 'skill-up', 'skill-left', 'charms', 'house-rooms', 'house-up', 'ability-steps', 'book-levels', 'shrine-cap', 'shrine-steps', 'probe', 'trigger-owners', 'trigger-fixed', 'budget', 'comdrop', 'comexp', 'tier', 'zone'];
 const dashed = (k) => k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
 const RESERVED = new Set(['synthetic', 'setups', 'options', 'budgets', 'export', 'prices', 'marketplace', 'triggerCands', 'trigger-cands']);
 const SAFE_NAME = /^[^\\/:*?"<>|\r\n]+$/;
@@ -200,19 +200,28 @@ export function createRunner(opts = {}) {
         };
         return { status: 200, body: { id } };
     }
-    // The list of finished searches. A result.json is read (in full: it is one JSON) only when it is new or changed since the last list
-    // (its size and time), so opening the window does not parse every saved result each time.
-    const listed = new Map(); // id -> { mtimeMs, size, entry }
+    // The list of earlier searches: finished ones (result.json) and stopped ones (partial.json, what the search got to; entry `stopped: true`),
+    // one path for both (savedReport). The search running now is left out (a resumed one still holds its old partial.json). A report is read (in
+    // full: it is one JSON) only when it is new or changed since the last list (its size and time), so opening the window does not parse every saved
+    // result each time.
+    const listed = new Map(); // id -> { file, mtimeMs, size, entry }
+    // The report a search folder holds: its result.json when it finished, else its partial.json when it was stopped; null for neither.
+    const savedReport = (dir) => {
+        for (const [name, stopped] of [['result.json', false], ['partial.json', true]]) {
+            const file = path.join(dir, name);
+            try { return { file, stopped, st: statSync(file) }; } catch { /* not this one */ }
+        }
+        return null;
+    };
     function results() {
         if (!existsSync(resultsDir)) return [];
-        return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d)).map((d) => {
-            const f = path.join(resultsDir, d, 'result.json');
-            let st;
-            try { st = statSync(f); } catch { listed.delete(d); return null; }
-            const seen = listed.get(d);
-            if (seen && seen.mtimeMs === st.mtimeMs && seen.size === st.size) return seen.entry;
-            const r = readJson(f), entry = { id: d, finished: st.mtime.toISOString(), goal: r.goal, players: r.players };
-            listed.set(d, { mtimeMs: st.mtimeMs, size: st.size, entry });
+        return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d) && d !== running).map((d) => {
+            const saved = savedReport(path.join(resultsDir, d));
+            if (!saved) { listed.delete(d); return null; }
+            const { file, stopped, st } = saved, seen = listed.get(d);
+            if (seen && seen.file === file && seen.mtimeMs === st.mtimeMs && seen.size === st.size) return seen.entry;
+            const r = readJson(file), entry = { id: d, finished: st.mtime.toISOString(), goal: r.goal, players: r.players, ...(stopped ? { stopped: true } : {}) };
+            listed.set(d, { file, mtimeMs: st.mtimeMs, size: st.size, entry });
             return entry;
         }).filter(Boolean).sort((a, b) => (a.finished < b.finished ? 1 : -1));
     }
@@ -277,8 +286,8 @@ export function createRunner(opts = {}) {
             }
             if (req.method === 'GET' && p === '/api/results') return send(res, 200, results());
             if (req.method === 'GET' && (m = /^\/api\/results\/([^/]+)$/.exec(p))) {
-                const f = path.join(dirOf(m[1]), 'result.json');
-                return existsSync(f) ? send(res, 200, readJson(f)) : send(res, 404, { error: 'no such result' });
+                const saved = savedReport(dirOf(m[1]));
+                return saved ? send(res, 200, readJson(saved.file)) : send(res, 404, { error: 'no such result' });
             }
             return send(res, 404, { error: 'no such endpoint' });
         } catch (e) {
@@ -298,10 +307,14 @@ export function createRunner(opts = {}) {
 }
 
 // Is the holder of this loopback port one of our runners? Its /api/version answers { runner, engine }; a stranger's server does not.
-// Returns that version, or null for a stranger.
-export async function holderVersion(port) {
+// Returns that version, or null for a stranger. A runner of ours busy with a search can take seconds to answer (its event loop is
+// shared with the search's messages, on a full CPU), so the probe waits up to HOLDER_WAIT_MS for an answer. The wait is only that long
+// for a holder that takes the connection and stays silent: a stranger that answers anything (another web server) or refuses the
+// connection is decided as soon as it does, and nothing that answers is ever waited on past its answer.
+export const HOLDER_WAIT_MS = 10000;
+export async function holderVersion(port, wait = HOLDER_WAIT_MS) {
     try {
-        const r = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(2000) });
+        const r = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(wait) });
         const j = await r.json();
         return r.ok && typeof j?.runner === 'string' && typeof j?.engine === 'string' ? { runner: j.runner, engine: j.engine } : null;
     } catch { return null; }

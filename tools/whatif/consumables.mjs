@@ -30,7 +30,7 @@ export function legalIn(list, i, hrid, typeOf) {
     return list.every((h, j) => j === i || !h || typeOf(h) !== t);
 }
 
-const FREE = (path) => ({ cost: 0, known: true, path, mirrors: 0, note: '' });
+const FREE = (path) => ({ cost: 0, known: true, path, note: '' });
 
 // Single-slot swaps: every item of `pool` legal in slot i, and emptying a filled slot. `kind` is 'food' or 'drink'.
 export function swapCands(p, kind, list, nSlots, pool, typeOf) {

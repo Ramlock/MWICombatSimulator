@@ -2,13 +2,15 @@
 // Builds the player the way src/main.js does (new Player + Equipment/Consumable/Ability objects, structuredClone,
 // Player.createFromDTO in the worker) and drives CombatSimulator exactly as src/worker.js does.
 //
-//   node tools/headless-sim.mjs --setup docs/ground-truth/setups/Ramlock.json --houses asis|zero [--hours 1] [--seed 1] [--out file.json]
+//   node tools/headless-sim.mjs --setup docs/ground-truth/setups/<player>.json --houses asis|zero [--hours 1] [--seed 1] [--out file.json]
 //
 // --houses zero sets every house room to 0 before the run; asis keeps the file's levels.
 import { register } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import path from "node:path";
+import { SETUPS_DIR, defaultPlayer } from "./calibration/party.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolvePath(here, "..");
@@ -18,7 +20,7 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) =>
     if (a.startsWith("--")) acc.push([a.slice(2), all[i + 1] && !all[i + 1].startsWith("--") ? all[i + 1] : "true"]);
     return acc;
 }, []));
-const setupPath = resolvePath(root, args.setup ?? "docs/ground-truth/setups/Ramlock.json");
+const setupPath = resolvePath(root, args.setup ?? path.join(SETUPS_DIR, defaultPlayer() + ".json"));
 const houses = args.houses ?? "asis";
 const hours = Number(args.hours ?? 1);
 const seed = Number(args.seed ?? 1);

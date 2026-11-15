@@ -1,12 +1,14 @@
-// Check: the Combat Stats panel equals the engine's time-0 stats for Ramlock's setup.
+// Check: the Combat Stats panel equals the engine's time-0 stats for a player's setup (default: the party's first).
 // Panel side (without the drinks and auras it also shows, those start in combat): what src/main.js updateCombatStatsUI renders, getTimeZeroPlayer (src/simSetup.js) then
 // getCombatStatsPanelValues (src/combatStatsPanel.js). Engine side: a real CombatSimulator run, set up as
 // the worker sets players up, with the player's combatDetails captured at the first combat start (time 0),
 // after generatePermanentBuffs and reset, before the first encounter spawns.
 // Cases: houses as in the file, all houses 0, and houses as file with every extra toggle on.
-// Usage: node tools/calibration/panel-check.mjs [--setup Ramlock] [--zone /actions/combat/infernal_abyss] [--tier 4]
+// Usage: node tools/calibration/panel-check.mjs [--setup <player>] [--zone /actions/combat/infernal_abyss] [--tier 4]
 // Exit code 0 when every panel value equals the engine's in every case, 1 otherwise.
 import { register } from 'node:module';
+
+import { defaultPlayer } from './party.mjs';
 
 register('./hooks.mjs', import.meta.url);
 
@@ -14,7 +16,7 @@ function arg(name, def) {
     const i = process.argv.indexOf('--' + name);
     return i < 0 ? def : process.argv[i + 1];
 }
-const SETUP = arg('setup', 'Ramlock');
+const SETUP = arg('setup') ?? defaultPlayer();
 const ZONE = arg('zone', '/actions/combat/infernal_abyss');
 const TIER = Number(arg('tier', 4));
 

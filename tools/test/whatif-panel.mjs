@@ -44,7 +44,7 @@ const partRows = (h) => [...h.matchAll(/<tr class="whatif-part whatif-part-(\w+)
     const cells = [...m[4].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => c[1]);
     const chip = cells[2].match(/<span class="whatif-chip whatif-st-(\w+)"(?: title="([^"]*)")?>([^<]*)<\/span>/);
     return { cls: m[1], kind: m[2], state: m[3], mark: cells[0], label: txt(cells[1].replace(/<span class="whatif-help"[^>]*>\?<\/span>/g, '')), tip: (cells[1].match(/data-tip="([^"]*)"/) || [])[1], stKey: chip[1], st: chip[3], stTip: unesc(chip[2] || ''),
-        round: txt(cells[3]), runs: txt(cells[4]), hours: txt(cells[5]), cont: txt(cells[6]), paused: txt(cells[7]), dropped: txt(cells[8]), btns: cells[9], html: m[0] };
+        round: txt(cells[3]), runs: txt(cells[4]), hours: txt(cells[5]), cont: txt(cells[6]), paused: txt(cells[7]), dropped: txt(cells[8]), pct: cells[9], detail: cells[10], btns: cells[11], html: m[0] };
 });
 // The rows of a detail list's table (its id), each as its cells' text; its head cells.
 const listTb = (h, id) => (h.match(new RegExp(`<table[^>]*id="${id}"[^>]*>([^]*?)</table>`)) || [])[1];
@@ -64,6 +64,22 @@ const setup = (ring) => ({
 const slots = [{ id: '1', name: 'Alpha', json: JSON.stringify(setup(5)) }, { id: '2', name: 'Beta', json: JSON.stringify(setup(2)) }];
 
 check('variants.mjs re-exports the shared applyOps', variants.applyOps === applyOps);
+
+// Which players the window ticks when it opens: a slot that holds a character (slotHasData).
+{
+    const empty = { player: { attackLevel: 1, magicLevel: 1, meleeLevel: 1, rangedLevel: 1, defenseLevel: 1, staminaLevel: 1, intelligenceLevel: 1, equipment: [] }, food: { '/action_types/combat': [{ itemHrid: '' }, { itemHrid: '' }, { itemHrid: '' }] }, drinks: { '/action_types/combat': [{ itemHrid: '' }, { itemHrid: '' }, { itemHrid: '' }] }, abilities: [0, 1, 2, 3, 4].map(() => ({ abilityHrid: '', level: '1' })), triggerMap: {}, zone: '/actions/combat/fly', simulationTime: '100', houseRooms: { '/house_rooms/dojo': 0 } };
+    const w = (f) => { const o = structuredClone(empty); f(o); return JSON.stringify(o); };
+    check('slotHasData: the empty player (as the page keeps it) holds none', panel.slotHasData(JSON.stringify(empty)) === false);
+    check('slotHasData: a zone, a simulation time, house rooms, a name or triggers alone hold none', panel.slotHasData(w((o) => { o.zone = '/actions/combat/smelly_planet'; o.simulationTime = '24'; o.houseRooms['/house_rooms/dojo'] = 3; o.name = 'Player 1'; o.triggerMap = { '/abilities/x': [] }; })) === false);
+    check('slotHasData: a skill level above 1, a piece of equipment, a food, a drink or an ability each hold one', [
+        w((o) => { o.player.staminaLevel = 2; }),
+        w((o) => { o.player.equipment.push({ itemLocationHrid: '/item_locations/head', itemHrid: '/items/x', enhancementLevel: 0 }); }),
+        w((o) => { o.food['/action_types/combat'][1].itemHrid = '/items/apple'; }),
+        w((o) => { o.drinks['/action_types/combat'][0].itemHrid = '/items/x_coffee'; }),
+        w((o) => { o.abilities[2].abilityHrid = '/abilities/x'; }),
+    ].every(panel.slotHasData));
+    check('slotHasData: bad JSON and nothing hold none', !panel.slotHasData('{') && !panel.slotHasData(undefined) && !panel.slotHasData('null'));
+}
 
 {
     const body = panel.searchBody({ slots, goal: 'profit', budgets: { Alpha: 1e6, Beta: 0 }, levers: ['equip', 'houses'], zone: '/actions/combat/x', tier: '4' });
@@ -487,20 +503,18 @@ const result = {
     for (const l of ['en', 'pt', 'zh']) {
         const h = partRows(panel.renderParts({ state: 'running', progress: { parts: [skRow] } }, tFor(l))), h3 = partRows(panel.renderParts({ state: 'running', progress: { parts: [{ ...skRow, round: 3 }] } }, tFor(l)));
         const P = locales[l].progress;
-        check(`part line: a skipped one-round stage is one row, "ended by you", its counts, no zero count, no "round 1", no "done", ${l}`, h.length === 1 && JSON.stringify([h[0].mark, h[0].label, h[0].st, h[0].round, h[0].runs, h[0].hours, h[0].cont, h[0].paused, h[0].dropped]) === JSON.stringify(['✓', P.partFoods, P.st.ended, '', '5', '20', '2', '', '']) && h[0].st !== P.st.done, JSON.stringify(h));
+        check(`part line: a skipped one-round stage is one row, "ended by you", its counts, no zero count, no In the running count (its race is over), no "round 1", no "done", ${l}`, h.length === 1 && JSON.stringify([h[0].mark, h[0].label, h[0].st, h[0].round, h[0].runs, h[0].hours, h[0].cont, h[0].paused, h[0].dropped]) === JSON.stringify(['✓', P.partFoods, P.st.ended, '', '5', '20', '', '', '']) && h[0].st !== P.st.done, JSON.stringify(h));
         check(`part line: a skipped stage of several rounds reads "round N · ended by you", ${l}`, h3[0].round === '3' && h3[0].st === P.st.ended && h3[0].st !== P.st.done, JSON.stringify(h3));
     }
     {
         // A finished race stage of several rounds says "round N finished"; a running one keeps its live counts, the phase and the buttons on the same line.
         const done = partRows(panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'screen', state: 'done', round: 4, phase: 'reading', contending: 0, paused: 3, dropped: 7, runs: 50, simHours: 900 }] } }, t));
-        check('part line: a finished race of several rounds is one row with its counts and no zero count', done.length === 1 && JSON.stringify([done[0].mark, done[0].label, done[0].st, done[0].round, done[0].runs, done[0].hours, done[0].cont, done[0].paused, done[0].dropped]) === JSON.stringify(['✓', 'Change 1', 'Done', '4', '50', '900', '', '3', '7']), JSON.stringify(done));
+        check('part line: a finished race of several rounds is one row with its counts, no zero count and no In the running nor Set aside count (its race is over)', done.length === 1 && JSON.stringify([done[0].mark, done[0].label, done[0].st, done[0].round, done[0].runs, done[0].hours, done[0].cont, done[0].paused, done[0].dropped]) === JSON.stringify(['✓', 'Change 1', 'Done', '4', '50', '900', '', '', '7']), JSON.stringify(done));
         const run = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 2, phase: 'search', contending: 9, paused: 1, dropped: 0, runs: 12, simHours: 80, acceptable: 0 }] } }, t);
         const rr = partRows(run);
         check('part line: a running race is one row with label, round, phase (its state chip), counts and its button, no text cell', rr.length === 1 && JSON.stringify([rr[0].mark, rr[0].label, rr[0].st, rr[0].round, rr[0].runs, rr[0].hours, rr[0].cont, rr[0].paused, rr[0].dropped]) === JSON.stringify(['▶︎', 'Change 1', 'Searching', '2', '12', '80', '9', '1', '']) && rr[0].btns.includes('data-whatif-done="skip"') && !run.includes('whatif-part-text'), JSON.stringify(rr));
     }
-    const lo = panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'picks', index: 0, state: 'done', runsPlanned: 0, runsDone: 0, leftOut: 9 }] } }, t), loText = plainHtml(lo);
-    check('picks part: a check that ran inside the race and left 9 out reads "None confirmed (left out: 9).", done, no bar, never "Not run"', partRows(lo)[0].stTip === 'None confirmed (left out: 9).' && partRows(lo)[0].cls === 'done' && !loText.includes('Not run') && !lo.includes('Not run') && !lo.includes('whatif-part-skipped') && !lo.includes('class="progress whatif-progress"'), lo.slice(0, 300));
-    for (const l of ['pt', 'zh']) check(`picks part: ${l} has its own none-confirmed line`, partRows(panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'picks', index: 0, state: 'done', runsPlanned: 0, runsDone: 0, leftOut: 9 }] } }, tFor(l)))[0].stTip.includes(locales[l].progress.picksNoneConfirmed.replace('{{n}}', '9')));
+    check('picks part: gone (each row carries its own check): no partPicks or picksNoneConfirmed string in any language', ['en', 'pt', 'zh'].every((l) => !('partPicks' in locales[l].progress) && !('picksNoneConfirmed' in locales[l].progress)));
     const stKeys = ['contending', 'paused', 'confirmed', 'few', 'first', 'tooFew', 'zero', 'loses'];
     for (const l of ['en', 'pt', 'zh']) check(`status words: ${l} has every status word and its tooltip, one or two words for the six a user sees`, stKeys.every((k) => typeof locales[l].rounds.status[k] === 'string' && typeof locales[l].rounds.status[k + 'Tip'] === 'string') && typeof locales[l].rounds.status.bestTip === 'string' && (l !== 'en' || stKeys.every((k) => locales.en.rounds.status[k].split(' ').length <= 4)));
     check('status words: the five of the list, en', JSON.stringify(['confirmed', 'zero', 'loses', 'contending', 'paused'].map((k) => locales.en.rounds.status[k])) === JSON.stringify(['clear gain', 'no clear change yet', 'party loses loot', 'still measuring', 'set aside']));
@@ -526,7 +540,7 @@ const result = {
     check('running: the head says Stage 1 / 3, the race row reads Searching at round 4 and has its button', txt(live).startsWith('Search progressStage 1 / 3') && live.includes('data-whatif-done') && partRows(live)[0].st === 'Searching' && bodyRows(live)[0][3] === '4', txt(live));
     check('stopped, no parts yet: the plain line says Stopped', !/Running/.test(txt(panel.renderProgress({ state: 'stopped', progress: { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0 } }, t))));
     const mainJs = read('src/main.js');
-    check('stopped: a resumed search with no report yet drops the old stopped mark (main.js)', /status\.state === 'running' && whatIf\.resultRunning === 'stopped'\) whatIfShowResult\(whatIf\.result, true\)/.test(mainJs));
+    check('stopped: a resumed search with no report yet drops the old stopped mark, never on a report put on show from Earlier searches (main.js)', /status\.state === 'running' && whatIf\.resultRunning === 'stopped' && !whatIf\.resultLoaded\) whatIfShowResult\(whatIf\.result, true\)/.test(mainJs));
     for (const l of ['pt', 'zh']) check(`stopped: ${l} has the stopped round label`, typeof locales[l].rounds.roundStopped === 'string' && typeof locales.en.rounds.roundStopped === 'string');
     // Item 28: the pool's title is the header of its own table, in place of the Change column's header.
     const titled = panel.renderRounds(rec([pool({ key: 'Zed:free', size: 351, contending: 100, paused: 251 }), pool({ key: 'Zed:paid' })]), t);
@@ -577,8 +591,8 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 // Game names in the descriptions (generic fixtures; the real game bundles of js/i18n.js, run as locale-coverage.mjs does).
 {
     const context = { document: { addEventListener() {} } };
-    vm.runInNewContext(read('js/i18n.js') + '\n;globalThis.__bundles = { en: Wa.en.translation, pt: Pa };', context);
-    const { en, pt } = context.__bundles;
+    vm.runInNewContext(read('js/i18n.js') + '\n;globalThis.__bundles = { en: Wa.en.translation, pt: Pa, zh: Wa.zh.translation };', context);
+    const { en, pt, zh } = context.__bundles;
     const N = { en: panel.namesFrom(en, en), pt: panel.namesFrom(pt, en) };
     const players = ['Alpha', 'Beta'];
     const L = (lng, desc, p = players) => panel.localizeDesc(desc, N[lng], p);
@@ -603,7 +617,26 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('names: a trigger desc reads its owner as an item or ability and its terms as dependency and condition (a condition id can also be an ability id)',
         L('en', trig) === `Alpha Poke trigger: ${en.combatTriggerDependencyNames['/combat_trigger_dependencies/self']} ${en.combatTriggerConditionNames['/combat_trigger_conditions/puncture']} >= 1 AND ${en.combatTriggerDependencyNames['/combat_trigger_dependencies/targeted_enemy']} ${en.combatTriggerConditionNames['/combat_trigger_conditions/current_hp']} <= 50` &&
         en.combatTriggerConditionNames['/combat_trigger_conditions/puncture'] !== en.abilityNames['/abilities/puncture'], L('en', trig));
-    check('names: the runner\'s own trigger words stay (drop, game default, always)', L('en', 'Alpha poke trigger: drop self puncture >= 1').includes('trigger: drop ') && L('en', 'Alpha poke trigger: game default (always)') === 'Alpha Poke trigger: game default (always)');
+    check('names: with no window strings a trigger change keeps the runner\'s English words (drop, game default, always)', L('en', 'Alpha poke trigger: drop self puncture >= 1').includes('trigger: drop ') && L('en', 'Alpha poke trigger: game default (always)') === 'Alpha Poke trigger: game default (always)');
+    {   // A trigger change reads whole in the page's language: our words from the locale files (whatIf.trig), the game's from js/i18n.js.
+        const words = (lng) => { const w = JSON.parse(read(`locales/${lng}/common.json`)).whatIf.trig; return Object.fromEntries(Object.entries(w).map(([k, v]) => [k, v.replace('{{x}}', '{x}')])); };
+        const W = { pt: panel.namesFrom(pt, en, { trig: words('pt') }), zh: panel.namesFrom(zh, en, { trig: words('zh') }), en: panel.namesFrom(en, en, { trig: words('en') }) };
+        const T = (lng, d) => panel.localizeDesc(d, W[lng], players, 'Alpha');
+        const g = (b, table, id) => b[table][id];
+        const self = (b) => g(b, 'combatTriggerDependencyNames', '/combat_trigger_dependencies/self'), hp = (b) => g(b, 'combatTriggerConditionNames', '/combat_trigger_conditions/current_hp');
+        const poke = (b) => g(b, 'abilityNames', '/abilities/poke'), active = (b) => g(b, 'combatTriggerComparatorNames', '/combat_trigger_comparators/is_active');
+        const cases = {
+            'Alpha poke trigger: game default (always)': { pt: `${poke(pt)} gatilho: padrão do jogo (Sempre)`, zh: `${poke(zh)} 触发条件: 游戏默认（始终）` },
+            'Alpha poke trigger: drop self current_hp <= 60': { pt: `${poke(pt)} gatilho: remover ${self(pt)} ${hp(pt)} <= 60`, zh: `${poke(zh)} 触发条件: 删除 ${self(zh)} ${hp(zh)} <= 60` },
+            'Alpha poke trigger: add self current_hp >= 5': { pt: `${poke(pt)} gatilho: adicionar ${self(pt)} ${hp(pt)} >= 5`, zh: `${poke(zh)} 触发条件: 添加 ${self(zh)} ${hp(zh)} >= 5` },
+            'Alpha poke trigger: self current_hp <= 60 -> >= 40': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 -> >= 40`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 -> >= 40` },
+            'Alpha poke trigger: self current_hp <= 60 AND self puncture is_active': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 E ${self(pt)} ${g(pt, 'combatTriggerConditionNames', '/combat_trigger_conditions/puncture')} ${active(pt)}`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 且 ${self(zh)} ${g(zh, 'combatTriggerConditionNames', '/combat_trigger_conditions/puncture')} ${active(zh)}` },
+            'Alpha poke trigger: self current_hp <= 60 -> 40; then Alpha poke trigger: drop self current_hp <= 40': { pt: `${poke(pt)} gatilho: ${self(pt)} ${hp(pt)} <= 60 -> 40; depois ${poke(pt)} gatilho: remover ${self(pt)} ${hp(pt)} <= 40`, zh: `${poke(zh)} 触发条件: ${self(zh)} ${hp(zh)} <= 60 -> 40; 然后 ${poke(zh)} 触发条件: 删除 ${self(zh)} ${hp(zh)} <= 40` },
+        };
+        for (const [d, want] of Object.entries(cases)) for (const lng of ['pt', 'zh']) check(`trigger change in ${lng}: "${d.slice(19)}" reads whole in ${lng}`, T(lng, d) === want[lng], T(lng, d));
+        check('trigger change in en: the window\'s English words give the runner\'s own sentence, game words named', T('en', 'Alpha poke trigger: game default (always)') === `${poke(en)} trigger: game default (always)`, T('en', 'Alpha poke trigger: game default (always)'));
+        check('trigger change: a text that is not a change (an older or hand-written one) shows as it is, ids named', T('zh', 'Alpha poke trigger: something else') === `${poke(zh)} 触发条件: something else`, T('zh', 'Alpha poke trigger: something else'));
+    }
     check('names: an id with no name stays as it is', L('en', 'Alpha feet not_a_real_item_x +1 -> +2') === `Alpha ${en.equipmentTypeNames['/equipment_types/feet']} not_a_real_item_x +1 -> +2`);
     check('names: the player name is never touched, even when it is an id', L('en', 'poke poke 5 -> 6', ['poke']) === 'poke Poke 5 -> 6');
     check('names: without a name source the desc stays as it came', panel.localizeDesc(boots, null, players) === boots && panel.localizeDesc(undefined, N.en) === '');
@@ -656,7 +689,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
         dEn.includes(`${en.skillNames['/skills/magic']} level: here 70, in the search 60`) && dEn.includes(`food 1: here ${en.itemNames['/items/donut']}, in the search ${en.itemNames['/items/apple']}`) &&
         dEn.includes(`ability 1: here ${en.abilityNames['/abilities/heal']} 25, in the search ${en.abilityNames['/abilities/heal']} 20`), dEn);
     check('diff names: a room and a trigger field show names, the trigger terms\' dependency, condition and comparator too',
-        dEn.includes(`${en.houseRoomNames['/house_rooms/dojo']}: here 4, in the search 3`) && dEn.includes(`triggers ${en.abilityNames['/abilities/heal']}: here`) &&
+        dEn.includes(`${en.houseRoomNames['/house_rooms/dojo']}: here 4, in the search 3`) && dEn.includes(`${en.abilityNames['/abilities/heal']} trigger: here`) &&
         dEn.includes(en.combatTriggerDependencyNames['/combat_trigger_dependencies/self']) && dEn.includes(en.combatTriggerConditionNames['/combat_trigger_conditions/current_mp']) &&
         dEn.includes(en.combatTriggerComparatorNames['/combat_trigger_comparators/greater_than_equal'].replace('>', '&gt;')) && !dEn.includes('/combat_trigger_') && !dEn.includes('/abilities/') && !dEn.includes('/house_rooms/'), dEn);
     check('diff names: the same in pt, with the page\'s language and the locale string for the level',
@@ -672,15 +705,41 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('diff names: all seven skill levels have a skill name', 'stamina intelligence attack melee defense ranged magic'.split(' ').every((s) => N.en.get('skillNames', s) !== null && N.pt.get('skillNames', s) !== null));
     check('diff names: the level string exists in en, pt, zh', ['en', 'pt', 'zh'].every((l) => /\{\{skill\}\}/.test(locales[l].diff.level)));
 
+    // The setup warning words a trigger as the result table does (trigger-words.mjs listWords through the window's trig words and the game's names),
+    // never as raw data; it is one line with the count, its list closed behind the page's fold toggle (TODO row 115, points 9 and 10).
+    const tZh = (key, params = {}) => lookup(locales.zh, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k]));
+    const W = { en: panel.namesFrom(en, en, { trig: locales.en.trig }), pt: panel.namesFrom(pt, en, { trig: locales.pt.trig }), zh: panel.namesFrom(zh, en, { trig: locales.zh.trig }) };
+    const tOf = { en: t, pt: tPt, zh: tZh };
+    const two = [...trigTerm('current_mp', 10), { dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/current_hp', comparatorHrid: '/combat_trigger_comparators/less_than_equal', value: 60 }];
+    const trigDiff = [{ player: 'Alpha', field: 'triggers /abilities/heal', page: two, result: [] }, { player: 'Alpha', field: 'triggers /items/donut', page: null, result: two.slice(1) }];
+    const trigText = (lng, terms) => terms.map((x) => [lng === 'en' ? en : lng === 'pt' ? pt : zh].map((b) => [b.combatTriggerDependencyNames[x.dependencyHrid] ?? en.combatTriggerDependencyNames[x.dependencyHrid], b.combatTriggerConditionNames[x.conditionHrid] ?? en.combatTriggerConditionNames[x.conditionHrid], x.comparatorHrid.endsWith('greater_than_equal') ? '>=' : '<=', x.value].join(' '))[0]).join(` ${locales[lng].trig.and} `);
+    for (const lng of ['en', 'pt', 'zh']) {
+        const h = unesc(panel.renderDiff(trigDiff, tOf[lng], W[lng]));
+        const owner = (lng === 'en' ? en : lng === 'pt' ? pt : zh).abilityNames['/abilities/heal'] ?? en.abilityNames['/abilities/heal'];
+        check(`warning trigger (${lng}): a trigger list reads as the result table words it, the page's language and the game's names, "always" for an empty list, the owner as "<name> ${locales[lng].trig.trigger}"`,
+            h.includes(`${owner} ${locales[lng].trig.trigger}: ${tOf[lng]('diff.page')} ${trigText(lng, two)}, ${tOf[lng]('diff.result')} ${locales[lng].trig.always}`) && h.includes(`${tOf[lng]('diff.result')} ${trigText(lng, two.slice(1))}`) && !h.includes('[{') && !h.includes('dependency') && !h.includes('Hrid') && !h.includes('/combat_trigger_'), h);
+    }
+    check('warning trigger: with no names the list still reads as words (the English words and the ids), never as JSON', (() => { const h = unesc(panel.renderDiff(trigDiff, t)); return h.includes('self current_mp >= 10 AND self current_hp <= 60') && h.includes('in the search always') && !h.includes('[{'); })());
+    check('warning trigger: the value helper words a trigger and leaves any other value as before', panel.diffValue(trigDiff[0], 'result', W.en) === locales.en.trig.always && panel.diffValue({ field: 'ring', page: '/items/ring_of_rare_find +7' }, 'page', W.en) === `${en.itemNames['/items/ring_of_rare_find']} +7` && panel.diffValue({ field: 'food 2', page: null }, 'page', W.en) === '—');
+    const many = Array.from({ length: 11 }, (_, i) => ({ player: 'Alpha', field: 'food ' + (i + 1), page: null, result: '/items/donut' }));
+    for (const lng of ['en', 'pt', 'zh']) {
+        const h11 = panel.renderDiff(many, tOf[lng], W[lng]), h1 = panel.renderDiff(many.slice(0, 1), tOf[lng], W[lng]);
+        const line = (h) => h.slice(0, h.indexOf('<ul'));
+        check(`warning count (${lng}): one line with the count (plural for 11, singular for 1), the list behind the page's fold toggle, closed, every difference in it`,
+            line(h11).includes(tOf[lng]('diff.count', { n: 11 })) && line(h1).includes(tOf[lng]('diff.countOne', { n: 1 })) && /<ul class="mb-0 whatif-more" id="whatIfDiffList" hidden>/.test(h11) &&
+            line(h11).includes(`class="btn btn-link btn-sm p-0 whatif-fold" data-whatif-more="whatIfDiffList" data-show="${tOf[lng]('result.dominatedShow')}" data-hide="${tOf[lng]('result.dominatedHide')}"`) && (h11.match(/<li>/g) || []).length === 11 && !line(h11).includes('<li>'), h11.slice(0, 600));
+    }
+    check('warning count: the strings exist in en, pt, zh with the count, each language its own', ['count', 'countOne'].every((k) => ['en', 'pt', 'zh'].every((l) => locales[l].diff[k].includes('{{n}}'))) && locales.pt.diff.count !== locales.en.diff.count && locales.zh.diff.count !== locales.en.diff.count && locales.pt.diff.count !== locales.pt.diff.countOne && locales.en.diff.title === undefined && locales.en.diff.more === undefined);
+
     // The zone line and the loss warning (generic fixtures; the zone name follows the language).
     const zoned = (extra) => ({ ...result, options: { ...result.options, zone: '/actions/combat/fly', tier: 0, ...(extra || {}) } });
     const loss = { ...zoned(), basePerUser: -29000000 / 3 };
     const lossEn = h('en', loss), lossPt = h('pt', loss);
     // The zone name and tier show in the summary bar (pick 9; whatif-window.mjs checks it there, in English and in Portuguese); the result keeps the base chip.
-    const baseChip = (n) => `<span class="whatif-chip" title="${locales.en.result.perUserDay}"><span class="whatif-chip-k">${locales.en.result.baseProfit}</span> <span data-num="${n}"`;
-    check('base chip: the base per user (the field as it is), titled "per user per day", in a chip of its own; the result names no zone', lossEn.includes(baseChip('-9666666.666666666')) && !lossEn.includes('Zone') && !lossEn.includes('Fly'), lossEn.slice(0, 500));
+    const baseChip = (n) => `<span class="whatif-chip" title="${locales.en.result.baseProfitTip}"><span class="whatif-chip-k">${locales.en.result.baseProfit}</span> <span data-num="${n}"`;
+    check('base chip: the base per user (the field as it is), titled with what it is (baseProfitTip); the result names no zone', lossEn.includes(baseChip('-9666666.666666666')) && !lossEn.includes('Zone') && !lossEn.includes('Fly'), lossEn.slice(0, 500));
     const lossPtT = panel.renderResult(loss, tPt, undefined, N.pt);
-    check('base chip: its strings come from the locale (pt)', lossPtT.includes(`<span class="whatif-chip-k">${locales.pt.result.baseProfit}</span>`) && lossPtT.includes(`title="${locales.pt.result.perUserDay}"`) && locales.pt.result.baseProfit !== locales.en.result.baseProfit);
+    check('base chip: its strings come from the locale (pt)', lossPtT.includes(`<span class="whatif-chip-k">${locales.pt.result.baseProfit}</span>`) && lossPtT.includes(`title="${locales.pt.result.baseProfitTip}"`) && locales.pt.result.baseProfit !== locales.en.result.baseProfit);
     check('base chip: it sits before the steps', lossEn.indexOf(locales.en.result.baseProfit) >= 0 && lossEn.indexOf(locales.en.result.baseProfit) < lossEn.indexOf(locales.en.result.steps));
     check('warning: a base below 0 shows the loss line, in every language, under the base chip', lossEn.includes(locales.en.result.baseLoses) && lossPtT.includes(locales.pt.result.baseLoses) && lossEn.indexOf(locales.en.result.baseProfit) < lossEn.indexOf(locales.en.result.baseLoses));
     const gain = h('en', { ...zoned(), basePerUser: 12345 });
@@ -689,7 +748,19 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const old = h('en', { ...result, options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot' } });
     check('base chip: a result with no zone shows neither chip nor warning and does not crash (also with no options, and with an unknown zone)', !old.includes(locales.en.result.baseProfit) && !old.includes(locales.en.result.baseLoses) && !h('en', { ...result, options: undefined }).includes(locales.en.result.baseProfit) && typeof panel.renderResult(zoned({ zone: '/actions/combat/not_a_zone' }), t) === 'string');
     check('base chip: a zone with no tier still shows its base; a result with a zone but no base figure shows no chip', h('en', { ...zoned(), options: { zone: '/actions/combat/fly' }, basePerUser: 7 }).includes(baseChip('7')) && !h('en', zoned()).includes(locales.en.result.baseProfit));
-    check('base chip: the strings exist in en, pt and zh', ['baseProfit', 'perUserDay', 'baseLoses'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')));
+    check('base chip: the strings exist in en, pt and zh', ['baseProfit', 'baseProfitTip', 'baseLoses'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')));
+    // The chips above the result share one line (the running mark, the base profit, and with no answer drawn the left-out chips); no chip for the
+    // changes with no known cost (their list under See details stays).
+    {
+        const withApart = { ...zoned(), basePerUser: 6232000, apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }], overBudget: [{ id: 'o', player: 'Player 1', desc: 'x', cost: 9e9, costPath: 'market' }] };
+        const run = panel.renderResult({ ...withApart, confirmation: undefined }, t, Date.now(), null, true), done = h('en', withApart);
+        const lines = (html) => [...html.matchAll(/<div class="mb-2 whatif-chips whatif-context">([^]*?)<\/div>/g)].map((m) => m[1]);
+        const top = lines(run);
+        check('chips: a running report draws "so far", the base profit and the over-budget chip in one row, the running mark first', top.length === 1 && top[0].indexOf(locales.en.result.soFar) >= 0 && top[0].indexOf(locales.en.result.soFar) < top[0].indexOf(locales.en.result.baseProfit) && top[0].includes('data-left-out="overBudget"'), JSON.stringify(top));
+        check('chips: no unknown-cost chip, running or finished; the finished result still lists the changes with no known cost', ![run, done].some((x) => x.includes('data-left-out="apart"')) && done.includes('id="whatIfApart"'));
+        check('chips: the unknown-cost chip\'s strings are gone in en, pt and zh', ['en', 'pt', 'zh'].every((l) => locales[l].result.leftOutApart === undefined && locales[l].result.leftOutApartOne === undefined));
+        check('chips: the base profit label and its tooltip exist in en, pt and zh, each its own language', ['baseProfit', 'baseProfitTip'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k].length > 0) && locales.pt.result[k] !== locales.en.result[k] && locales.zh.result[k] !== locales.en.result[k]));
+    }
 
     // The skipped swaps (result.dominated): one line with the count, the list closed behind a toggle, names like the other lists.
     const skipped = [{ id: 's1', player: 'Alpha', slot: 'feet', desc: boots, from: { item: '/items/pathseeker_boots_refined', level: 12 }, to: { item: '/items/cotton_boots', level: 0 } },
@@ -880,14 +951,14 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const h2 = panel.renderResult({ ...result, steps: [step], notConfirmed: [nc, { ...nc, id: 'm', desc: 'Ring four', step: 3 }] }, t);
     const i = h2.indexOf('id="whatIfNotConfirmed"');
     check('not confirmed: a heading with its count (a chip) and a toggle, the list closed by default and apart from the steps', h2.includes(locales.en.result.notConfirmed) && h2.includes('data-whatif-more="whatIfNotConfirmed"') && /<table[^>]*id="whatIfNotConfirmed" hidden>/.test(h2) && foldOf(h2, 'whatIfNotConfirmed').includes('whatif-chip-n"><span data-num="2"') && foldOf(h2, 'whatIfNotConfirmed').includes('data-show="Show" data-hide="Hide">Show</button>') && !h2.slice(0, h2.indexOf(locales.en.result.notConfirmed)).includes('Ring three'));
-    check('not confirmed: each row has the player, the change, its step (a chip, titled fresh runs), its fresh gain and error (no seed count)', JSON.stringify(listRows(h2, 'whatIfNotConfirmed')) === JSON.stringify([['Alpha', 'Ring three', 'at step 2', '3 ± 2', '8 ± 5'], ['Alpha', 'Ring four', 'at step 3', '3 ± 2', '8 ± 5']]) && JSON.stringify(headsOf(listTb(h2, 'whatIfNotConfirmed'))) === JSON.stringify(['Player', 'Change', 'Stage', 'Shared loot gain per user', "Buyer's gain"]) && /<span class="whatif-chip" title="fresh runs">at step <span data-num="2"[^>]*>2<\/span><\/span>/.test(listTb(h2, 'whatIfNotConfirmed')) && !plain(h2.slice(i)).includes('seeds'), JSON.stringify(listRows(h2, 'whatIfNotConfirmed')));
-    check('not confirmed: an EXP result shows the gain only', JSON.stringify(listRows(panel.renderResult({ ...result, goal: 'exp', steps: [], notConfirmed: [{ ...nc, fresh: { seeds: 16, gainPerUser: 3, sePerUser: 2, accepted: false } }] }, t), 'whatIfNotConfirmed')) === JSON.stringify([['Alpha', 'Ring three', 'at step 2', '3 ± 2', '—']]));
+    check('not confirmed: each row has the player, the change, its step (a chip, titled fresh runs), its fresh gain and error (no seed count)', JSON.stringify(listRows(h2, 'whatIfNotConfirmed')) === JSON.stringify([['Alpha', 'Ring three', 'at step 2', '—', '3 ± 2', '8 ± 5'], ['Alpha', 'Ring four', 'at step 3', '—', '3 ± 2', '8 ± 5']]) && JSON.stringify(headsOf(listTb(h2, 'whatIfNotConfirmed'))) === JSON.stringify(['Player', 'Change', 'Stage', 'Why', 'Shared loot gain per user', "Buyer's gain"]) && /<span class="whatif-chip" title="fresh runs">at step <span data-num="2"[^>]*>2<\/span><\/span>/.test(listTb(h2, 'whatIfNotConfirmed')) && !plain(h2.slice(i)).includes('seeds'), JSON.stringify(listRows(h2, 'whatIfNotConfirmed')));
+    check('not confirmed: an EXP result shows the gain only', JSON.stringify(listRows(panel.renderResult({ ...result, goal: 'exp', steps: [], notConfirmed: [{ ...nc, fresh: { seeds: 16, gainPerUser: 3, sePerUser: 2, accepted: false } }] }, t), 'whatIfNotConfirmed')) === JSON.stringify([['Alpha', 'Ring three', 'at step 2', '—', '3 ± 2', '—']]));
     check('not confirmed: an older result (no field) or an empty list shows nothing', !panel.renderResult(result, t).includes(locales.en.result.notConfirmed) && !panel.renderResult({ ...result, notConfirmed: [] }, t).includes(locales.en.result.notConfirmed));
     // Two causes, two labels: a leader refused by the pick check inside the race (inRace) is "left out in the race", never "the fresh runs did not confirm them"; the confirmation's own entries keep the old wording.
     const mixed = panel.renderResult({ ...result, steps: [step], notConfirmed: [{ ...nc, id: 'r1', desc: 'Ring five', inRace: true }, { ...nc, id: 'r2', desc: 'Ring six', inRace: true }, nc] }, t);
     const mi = mixed.indexOf('id="whatIfLeftOut"'), mj = mixed.indexOf('id="whatIfNotConfirmed"');
-    check('left out in the race: its own heading, count, note and closed list; the entries that were locked and not confirmed stay in "Not confirmed", counted apart', mi > 0 && mj > 0 && mixed.includes(locales.en.result.leftOut) && plain(foldOf(mixed, 'whatIfLeftOut')).includes('(2 led a race at some point; the pick check on their readings in the race did not confirm them, so they were left out)') && foldOf(mixed, 'whatIfLeftOut').includes('whatif-chip-n"><span data-num="2"') && foldOf(mixed, 'whatIfNotConfirmed').includes('whatif-chip-n"><span data-num="1"') && mixed.slice(mi, mj > mi ? mj : undefined).includes('Ring five') && !mixed.slice(mj).includes('Ring five') && mixed.slice(mj).includes('Ring three') && /<span class="whatif-chip" title="readings in the race">at step <span data-num="2"[^>]*>2<\/span><\/span>/.test(listTb(mixed, 'whatIfLeftOut')) && JSON.stringify(listRows(mixed, 'whatIfLeftOut')[0]) === JSON.stringify(['Alpha', 'Ring five', 'at step 2', '3 ± 2', '8 ± 5']));
-    check('left out in the race: the old "fresh runs did not confirm" note is only on the entries that were checked on fresh runs; a result with only race entries has no "Not confirmed" list; EXP shows the gain only', !plain(panel.renderResult({ ...result, steps: [step], notConfirmed: [{ ...nc, inRace: true }] }, t)).includes('fresh runs did not confirm') && !panel.renderResult({ ...result, steps: [step], notConfirmed: [{ ...nc, inRace: true }] }, t).includes('whatIfNotConfirmed') && JSON.stringify(listRows(panel.renderResult({ ...result, goal: 'exp', steps: [], notConfirmed: [{ ...nc, inRace: true, fresh: { seeds: 16, gainPerUser: 3, sePerUser: 2, accepted: false } }] }, t), 'whatIfLeftOut')) === JSON.stringify([['Alpha', 'Ring three', 'at step 2', '3 ± 2', '—']]));
+    check('left out in the race: its own heading, count, note and closed list; the entries that were locked and not confirmed stay in "Not confirmed", counted apart', mi > 0 && mj > 0 && mixed.includes(locales.en.result.leftOut) && plain(foldOf(mixed, 'whatIfLeftOut')).includes('(2 led a race at some point; the pick check on their readings in the race did not confirm them, so they were left out)') && foldOf(mixed, 'whatIfLeftOut').includes('whatif-chip-n"><span data-num="2"') && foldOf(mixed, 'whatIfNotConfirmed').includes('whatif-chip-n"><span data-num="1"') && mixed.slice(mi, mj > mi ? mj : undefined).includes('Ring five') && !mixed.slice(mj).includes('Ring five') && mixed.slice(mj).includes('Ring three') && /<span class="whatif-chip" title="readings in the race">at step <span data-num="2"[^>]*>2<\/span><\/span>/.test(listTb(mixed, 'whatIfLeftOut')) && JSON.stringify(listRows(mixed, 'whatIfLeftOut')[0]) === JSON.stringify(['Alpha', 'Ring five', 'at step 2', '—', '3 ± 2', '8 ± 5']));
+    check('left out in the race: the old "fresh runs did not confirm" note is only on the entries that were checked on fresh runs; a result with only race entries has no "Not confirmed" list; EXP shows the gain only', !plain(panel.renderResult({ ...result, steps: [step], notConfirmed: [{ ...nc, inRace: true }] }, t)).includes('fresh runs did not confirm') && !panel.renderResult({ ...result, steps: [step], notConfirmed: [{ ...nc, inRace: true }] }, t).includes('whatIfNotConfirmed') && JSON.stringify(listRows(panel.renderResult({ ...result, goal: 'exp', steps: [], notConfirmed: [{ ...nc, inRace: true, fresh: { seeds: 16, gainPerUser: 3, sePerUser: 2, accepted: false } }] }, t), 'whatIfLeftOut')) === JSON.stringify([['Alpha', 'Ring three', 'at step 2', '—', '3 ± 2', '—']]));
     // "Chosen changes" with no pick: the one line says why. "No change gains beyond its error" only when every candidate was decided.
     const none = (extra) => panel.renderResult({ ...result, steps: [], confirmation: undefined, endedByUser: undefined, ...extra }, t);
     check('no steps: a screen that ended on the round limit with changes still in the running says so (the rounds and the count, singular too), not "No change gains beyond its error"', plain(none({ endedByCap: { screen: { rounds: 8, left: 5 } } })).includes('The search reached its round limit (8 rounds) with 5 changes still in the running; none was picked.') && plain(none({ endedByCap: { screen: { rounds: 8, left: 1 } } })).includes('with 1 change still in the running') && !none({ endedByCap: { screen: { rounds: 8, left: 5 } } }).includes(locales.en.result.noSteps) && none({ endedByCap: { screen: { rounds: 8, left: 5 } } }).includes('data-no-steps="cap"'));
@@ -922,7 +993,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const nc = (kind, step) => ({ id: 'n' + kind, player: 'Alpha', desc: 'Alpha ' + kind + ' filling', kind, step, fresh: { seeds: 16, gainPerUser: 9, sePerUser: 2, buyerNet: 3, buyerNetSe: 4, accepted: false } });
     const h = plain(panel.renderResult({ ...live1, notConfirmed: [nc('food', null), nc('drink', null), { ...nc(undefined, 4), kind: undefined }] }, t));
     const ncRows = listRows(panel.renderResult({ ...live1, notConfirmed: [nc('food', null), nc('drink', null), { ...nc(undefined, 4), kind: undefined }] }, t), 'whatIfNotConfirmed');
-    check('not confirmed: a filling is listed as left out in the foods or the drinks, a pick as at its step', JSON.stringify(ncRows.map((r) => r.slice(0, 4))) === JSON.stringify([['Alpha', 'food filling', 'in the foods', '9 ± 2'], ['Alpha', 'drink filling', 'in the drinks', '9 ± 2'], ['Alpha', 'undefined filling', 'at step 4', '9 ± 2']]) && ncRows.length === 3 && panel.renderResult({ ...live1, notConfirmed: [nc('food', null)] }, t).includes('<span class="whatif-chip" title="fresh runs">in the foods</span>'), JSON.stringify(ncRows));
+    check('not confirmed: a filling is listed as left out in the foods or the drinks, a pick as at its step', JSON.stringify(ncRows.map((r) => r.slice(0, 5))) === JSON.stringify([['Alpha', 'food filling', 'in the foods', '—', '9 ± 2'], ['Alpha', 'drink filling', 'in the drinks', '—', '9 ± 2'], ['Alpha', 'undefined filling', 'at step 4', '—', '9 ± 2']]) && ncRows.length === 3 && panel.renderResult({ ...live1, notConfirmed: [nc('food', null)] }, t).includes('<span class="whatif-chip" title="fresh runs">in the foods</span>'), JSON.stringify(ncRows));
     check('live: the pt and zh strings exist for every new key and keep the placeholders', ['running', 'stoppedMark', 'soFar', 'notConfirmedAtStep', 'notConfirmedAtFood', 'notConfirmedAtDrink', 'notConfirmedItem'].every((k) => ['pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== locales.en.result[k] && (locales.en.result[k].match(/\{\{\w+\}\}/g) || []).every((ph) => locales[l].result[k].includes(ph)))));
     check('live: the status URL carries the version the window has, none at 0', panel.API.status('a b', 0) === '/api/search/a%20b' && panel.API.status('x', 7) === '/api/search/x?since=7');
 }
@@ -951,22 +1022,81 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
 {
     const plain = (s) => nums(s).replace(/<[^>]+>/g, '');
     const { makePricer } = await imp('tools/whatif/prices.mjs');
-    // A synthetic market: the body has asks at +0..+4 only, the mirror 100; the robe has a +10 bid.
+    // A synthetic market: the body has asks at +0..+4 and +6 only; the robe has a +10 bid; a Philosopher's Mirror is listed and prices nothing (not priced for now).
     const market = { '/items/philosophers_mirror': { 0: { a: 100, b: -1 } }, '/items/b': { 0: { a: 1, b: -1 }, 2: { a: 2, b: -1 }, 3: { a: 3, b: -1 }, 4: { a: 4, b: 3 }, 6: { a: 1e9, b: -1 } }, '/items/r': { 10: { a: 50, b: 40 } } };
     const P = makePricer(market), sw = P.swap('/items/r', 10, '/items/b', 10), six = P.buy('/items/b', 6), up = P.upgrade('/items/b', 4, 5);
-    check('prices: a mirror chain names the listed level it starts from and the level bought, and whether that level had a dearer ask', sw.mirrors === 20 && sw.from === 4 && sw.to === 10 && !sw.toListed && six.path === 'mirror' && six.from === 4 && six.listed === true, JSON.stringify({ sw, six }));
-    check('prices: mirroring the own item names the owned level as the start', up.path === 'mirror own item' && up.from === 4 && up.to === 5 && up.mirrors === 1, JSON.stringify(up));
-    const chain = { costPath: 'buy via mirror, sell old', note: '', mirrors: 20, mirrorFrom: 4, to: 10 };
+    check('prices: a level the market does not sell has no price, a Mirror listed or not; a level it sells costs its ask', !sw.known && sw.note === 'no seller' && !up.known && six.cost === 1e9 && six.path === 'market' && !('mirrors' in sw), JSON.stringify({ sw, six, up }));
+    const sold = { costPath: 'buy, sell old', note: '' };
     const tOf = (l) => (key, params = {}) => { const s = lookup(locales[l], key); return typeof s === 'string' ? s.replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k])) : '#' + key; };
-    check('price path en: a mirror chain', panel.pricePath(chain, t) === "no +10 listed: 20 Philosopher's Mirrors from +4, sell old", panel.pricePath(chain, t));
-    check('price path pt and zh: the game\'s own names of the mirror', panel.pricePath(chain, tOf('pt')).includes('20 Espelhos Filosofais a partir do +4') && panel.pricePath(chain, tOf('zh')).includes('20 个贤者之镜'), panel.pricePath(chain, tOf('pt')) + ' | ' + panel.pricePath(chain, tOf('zh')));
-    check('price path: one mirror is singular; a cheaper chain than a listed level says so; the own item', panel.pricePath({ ...chain, mirrors: 1, mirrorFrom: 4, to: 5 }, t) === "no +5 listed: 1 Philosopher's Mirror from +4, sell old" && panel.pricePath({ ...chain, toListed: true }, t).includes('cheaper than the +10 listed') && panel.pricePath({ costPath: 'mirror own item', mirrors: 3, mirrorFrom: 7, to: 9 }, t) === "3 Philosopher's Mirrors on your own +7");
+    check('price path: buy, sell old in en, pt and zh', panel.pricePath(sold, t) === 'buy, sell old' && ['pt', 'zh'].every((l) => { const x = panel.pricePath(sold, tOf(l)); return x && !x.startsWith('#') && x !== 'buy, sell old'; }), panel.pricePath(sold, tOf('pt')) + ' | ' + panel.pricePath(sold, tOf('zh')));
     check('price path: the other paths and notes in the shown language, an unknown one as written, no upper-bound caveat', panel.pricePath({ costPath: 'buy, sell old', note: 'old item has no buyer, kept, not counted' }, t) === 'buy, sell old (the old item has no buyer: kept, not counted)' && panel.pricePath({ costPath: 'books', note: '25 x berserk; upper bound (XP inside the level unknown)' }, t) === 'ability books (25 x berserk)' && panel.pricePath({ costPath: 'something new' }, t) === 'something new');
-    const res = { ...result, steps: [{ ...result.steps[0], ...chain, cost: 5e9 }], overBudget: [{ id: 'ob', player: 'Alpha', desc: 'Body b +10', cost: 12e9, ...chain }, { id: 'ob2', player: 'Alpha', desc: 'Ring eight', cost: 5e9, costPath: 'market', note: '' }], overPayback: [{ id: 'sl', player: 'Alpha', desc: 'Ring nine', cost: 90000, costPath: 'buy, sell old', note: '', paybackDays: 612, accepted: true, ops: [] }] };
+    const res = { ...result, steps: [{ ...result.steps[0], ...sold, cost: 5e9 }], overBudget: [{ id: 'ob', player: 'Alpha', desc: 'Body b +10', cost: 12e9, ...sold }, { id: 'ob2', player: 'Alpha', desc: 'Ring eight', cost: 5e9, costPath: 'market', note: '' }], overPayback: [{ id: 'sl', player: 'Alpha', desc: 'Ring nine', cost: 90000, costPath: 'buy, sell old', note: '', paybackDays: 612, accepted: true, ops: [] }] };
     const h = panel.renderResult(res, t), ob = plain(h.slice(h.indexOf('id="whatIfOverBudget"'))), op = plain(h.slice(h.indexOf('id="whatIfOverPayback"')));
-    check('lists: an over-budget row names its price path in its Cost cell; a plain market buy names none', ob.includes("AlphaBody b +1012000000000 (no +10 listed: 20 Philosopher's Mirrors from +4, sell old)") && /AlphaRing eight5000000000(?! \()/.test(ob), ob.slice(0, 400));
+    check('lists: an over-budget row names its price path in its Cost cell; a plain market buy names none', ob.includes('AlphaBody b +1012000000000 (buy, sell old)') && /AlphaRing eight5000000000(?! \()/.test(ob), ob.slice(0, 400));
     check('lists: a pays-back-too-slowly row names its price path in its Cost cell, before the payback days', op.includes('AlphaRing nine90000 (buy, sell old)612'), op.slice(0, 300));
-    check('tables: the chosen row\'s How it is bought cell is the same text', bodyRows(tablesOf(h)[0])[0].some((c) => c === "no +10 listed: 20 Philosopher's Mirrors from +4, sell old"), JSON.stringify(bodyRows(tablesOf(h)[0])[0]));
+    check('tables: the chosen row\'s How it is bought cell is the same text', bodyRows(tablesOf(h)[0])[0].some((c) => c === 'buy, sell old'), JSON.stringify(bodyRows(tablesOf(h)[0])[0]));
+}
+// The "so far" rows (TODO item 6): while a Change is searched, every candidate of the latest round record whose gain so far is above 0 is a row of the
+// chosen changes, marked "so far", below the confirmed rows, with no Apply button; it goes when it stops being positive, appears when it becomes positive,
+// and is not repeated once its check passed (a confirmed row). One row code for both (stepRow).
+{
+    const lead = (id, player, desc, reading, extra = {}) => ({ id, player, desc, cost: 5e5, seeds: 8, readingSeeds: 8, status: 'contending', tooFew: false, reading, low: reading - 100, high: reading + 100, buyerNet: reading * 2, netLow: reading * 2 - 300, netHigh: reading * 2 + 300, payback: 50, ...extra });
+    const round = (stage, leaders) => ({ round: 3, stage, pools: [{ key: 'Alpha:paid', leaders: leaders.filter((l) => l.player === 'Alpha') }, { key: 'Beta:paid', leaders: leaders.filter((l) => l.player === 'Beta') }] });
+    const ls = [lead('x', 'Alpha', 'Alpha Necklace +2 → +3', 800), lead('y', 'Beta', 'Beta Cape +1 → +2', 1200), lead('z', 'Beta', 'Beta Belt +0 → +1', -40), lead('r', 'Alpha', 'Alpha Earrings +1 → +2', 900, { status: 'refuted' }), lead('f', 'Alpha', 'Alpha Pouch +1 → +2', 700, { tooFew: true, readingSeeds: 0 }), lead('s', 'Alpha', 'Alpha Gym 0 → 1', 600, { readingSeeds: 1 })];
+    const pr = { stage: 'greedy step 2' };
+    const rows = panel.soFarSteps(round('greedy step 2', ls), pr, result.steps);
+    check('so far: the candidates of the running Change with a gain so far above 0, largest first (ruled out, no figure yet, too few runs for a figure and not positive are not)', JSON.stringify(rows.map((r) => r.desc)) === JSON.stringify(['Beta Cape +1 → +2', 'Alpha Necklace +2 → +3']) && rows.every((r) => r.soFar === true), JSON.stringify(rows.map((r) => r.desc)));
+    check('so far: the round record\'s figure is the row\'s (gain 1200, its range\'s half as the error; the buyer\'s gain too)', rows[0].gainPerUser === 1200 && rows[0].sePerUser === 100 && rows[0].buyerNet === 2400 && rows[0].buyerNetSe === 300 && rows[0].cost === 5e5, JSON.stringify(rows[0]));
+    check('so far: also while that Change\'s winner is checked; none once another stage runs (the record is of an earlier Change), none for a foods or drinks race, none with no record', panel.soFarSteps(round('greedy step 2', ls), { stage: 'confirming picks', checkingStage: 'greedy step 2' }).length === 2 && panel.soFarSteps(round('greedy step 2', ls), { stage: 'greedy step 3' }).length === 0 && panel.soFarSteps(round('foods', ls), { stage: 'foods' }).length === 0 && panel.soFarSteps(null, pr).length === 0);
+    check('so far: the screen (Change 1) shows them too', panel.soFarSteps(round('screen', ls), { stage: 'screen' }).length === 2);
+    const passed = [...result.steps, { id: 'y', player: 'Beta', desc: 'Beta Cape +1 → +2', gainPerUser: 1100, sePerUser: 200, cost: 5e5, accepted: true }];
+    check('so far: a row whose check passed is a confirmed row and no longer a "so far" one', JSON.stringify(panel.soFarSteps(round('greedy step 2', ls), { stage: 'confirming picks', checkingStage: 'greedy step 2' }, passed).map((r) => r.desc)) === JSON.stringify(['Alpha Necklace +2 → +3']));
+    const next = panel.soFarSteps(round('greedy step 2', [lead('x', 'Alpha', 'Alpha Necklace +2 → +3', -5), lead('z', 'Beta', 'Beta Belt +0 → +1', 300), lead('y', 'Beta', 'Beta Cape +1 → +2', 1300)]), pr, result.steps);
+    check('so far: a row that stops being positive goes away, one that becomes positive appears', JSON.stringify(next.map((r) => r.desc)) === JSON.stringify(['Beta Cape +1 → +2', 'Beta Belt +0 → +1']), JSON.stringify(next.map((r) => r.desc)));
+    const h = panel.renderResult({ ...result, confirmation: undefined }, t, Date.now(), null, true, rows);
+    const trs = [...h.matchAll(/<tr([^>]*)>([^]*?)<\/tr>/g)].filter((m) => /data-so-far|data-whatif-apply="steps:/.test(m[0]));
+    const kinds = trs.map((m) => (/data-so-far/.test(m[1]) ? 'S' : 'C')).join('');
+    check('so far: drawn under "Chosen changes, in order", below the 3 confirmed rows, one per candidate', kinds === 'CCCSS' && h.indexOf(locales.en.result.steps) < h.indexOf('data-so-far'), kinds);
+    const soRows = trs.filter((m) => /data-so-far/.test(m[1]));
+    check('so far: a "so far" row has no Apply button and no number, its mark reads "so far" with a tooltip saying it cannot be applied, and shows its figure (1,200 ± 100)', soRows.every((m) => !/data-whatif-apply/.test(m[2]) && /<td><\/td>/.test(m[2].slice(0, 12)) && m[2].includes('>' + locales.en.result.soFar + '<') && m[2].includes(locales.en.result.soFarRowTip.slice(0, 20))) && soRows[0][2].includes('data-num="1200"') && soRows[0][2].includes('data-num="100"'), soRows[0]?.[2]);
+    check('so far: with no confirmed change yet, the heading and the "so far" rows show', (() => { const x = panel.renderResult({ ...result, steps: [], confirmation: undefined }, t, Date.now(), null, true, rows); return x.includes(locales.en.result.steps) && (x.match(/data-so-far/g) || []).length === 2 && !x.includes('data-no-steps'); })());
+    check('so far: none drawn without the rows (a finished report, a stopped one)', !panel.renderResult(result, t).includes('data-so-far'));
+    for (const [l, tl] of [['pt', (key, p = {}) => lookup(locales.pt, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(p[k]))], ['zh', (key, p = {}) => lookup(locales.zh, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(p[k]))]]) {
+        const x = panel.renderResult({ ...result, confirmation: undefined }, tl, Date.now(), null, true, rows);
+        check('so far: the mark and its tooltip in ' + l, x.includes('>' + locales[l].result.soFar + '<') && typeof locales[l].result.soFarRowTip === 'string' && x.includes(locales[l].result.soFarRowTip.slice(0, 8)));
+    }
+    const main = read('src/main.js');
+    check('so far: main.js draws them from the latest round record and the progress, redraws the report when they change, and none for a report from Earlier searches', /whatIfSoFarSteps\(whatIf\.round, whatIf\.status\?\.progress, result\?\.steps\)/.test(main) && /running === true && !whatIf\.resultLoaded/.test(main) && /whatIfSoFarKey\(whatIfSoFarOf\(whatIf\.result, true\)\) !== whatIf\.soFarKey\) whatIfShowResult\(whatIf\.result, true\)/.test(main) && /whatIfRenderResult\(result, whatIfT, Date\.now\(\), whatIfNames\(\), running, soFar\)/.test(main));
+}
+// The check's four endings in the result (result.notConfirmed[].ending and .range, core.mjs checkOf): a "Why" chip with the range on every left-out
+// change; one the check could not tell is listed apart ("Too small to tell"), never with the loss and too-small ones; the strings in en, pt and zh.
+{
+    const plain = (s) => s.replace(/<[^>]+>/g, '');
+    const base = { goal: 'profit', z: 2, players: ['Alpha'], partySize: 1, steps: [], pickCheck: { seedsPerBlock: 16, maxSeeds: 64, minGainPct: 0.12 } };
+    const nc = (desc, ending, range, extra = {}) => ({ id: desc, player: 'Alpha', desc, step: 2, ops: [], cost: 0, fresh: { seeds: ending === 'unsure' ? 64 : 16, gainPerUser: 3, sePerUser: 2, buyerNet: 8, buyerNetSe: 5, accepted: false }, ending, range, ...extra });
+    const r = { ...base, notConfirmed: [nc('Ring loss', 'loss', { low: -30, high: -2, floor: 40 }), nc('Ring small', 'small', { low: -10, high: 30, floor: 40 }), nc('Ring unsure', 'unsure', { low: -10, high: 60, floor: 40 }), nc('Ring race', 'small', { low: -5, high: 20, floor: 40 }, { inRace: true })] };
+    const h = panel.renderResult(r, t);
+    const rowOf = (id, name) => (listRows(h, id) || []).find((x) => x[1] === name);
+    check('endings: each left-out change says why with its range ("a loss: -30 to -2"; "too small to matter: under 40 a day for sure (-10 to 30)")', plain(String(rowOf('whatIfNotConfirmed', 'Ring loss')?.[3])).includes('a loss: -30 to -2') && plain(String(rowOf('whatIfNotConfirmed', 'Ring small')?.[3])).includes('too small to matter: under 40 a day for sure (-10 to 30)') && plain(String(rowOf('whatIfLeftOut', 'Ring race')?.[3])).includes('too small to matter: under 40 a day for sure'), JSON.stringify(listRows(h, 'whatIfNotConfirmed')));
+    check('endings: too small to tell is its own closed list, apart from the not-confirmed and left-out ones, with its heading and note, never called failed', /<table[^>]*id="whatIfUnsure" hidden>/.test(h) && h.includes(locales.en.result.unsure) && plain(String(rowOf('whatIfUnsure', 'Ring unsure')?.[3])).includes('too small to tell: -10 to 60') && !(listRows(h, 'whatIfNotConfirmed') || []).some((x) => x[1] === 'Ring unsure') && !(listRows(h, 'whatIfLeftOut') || []).some((x) => x[1] === 'Ring unsure') && !/fail/i.test(plain(foldOf(h, 'whatIfUnsure') || '')), foldOf(h, 'whatIfUnsure'));
+    check('endings: each chip has its tooltip (the range\'s errors, the share in %, the seeds of a check that could not tell)', listTb(h, 'whatIfNotConfirmed').includes('title="The whole range is below 0: the figure plus and minus 2 errors."') && listTb(h, 'whatIfNotConfirmed').includes('title="The whole range is under the smallest gain worth showing (0.12 % of the buyer\u0027s own profit per day).') && listTb(h, 'whatIfUnsure').includes('After 64 runs per side'), listTb(h, 'whatIfNotConfirmed'));
+    check('endings: an EXP result says "under X for sure" with no "a day"; a slow pick "pays back past the limit"; an older entry (no ending) a dash', plain(String((listRows(panel.renderResult({ ...base, goal: 'exp', notConfirmed: [nc('Ring x', 'small', { low: -1, high: 3, floor: 4 })] }, t), 'whatIfNotConfirmed') || [])[0]?.[3])).includes('too small to matter: under 4 for sure (-1 to 3)') && plain(String((listRows(panel.renderResult({ ...base, notConfirmed: [nc('Ring y', 'slow', null)] }, t), 'whatIfNotConfirmed') || [])[0]?.[3])).includes('pays back past the limit') && (listRows(panel.renderResult({ ...base, notConfirmed: [{ ...nc('Ring z', undefined, undefined) }] }, t), 'whatIfNotConfirmed') || [])[0]?.[3] === '—');
+    const tL = (l) => (key, params = {}) => { const v = lookup(locales[l], key); return typeof v === 'string' ? v.replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k])) : '#' + key; };
+    check('endings: pt and zh draw every ending, its tooltip and the lists with no missing key', ['pt', 'zh'].every((l) => { const x = panel.renderResult(r, tL(l)); return !x.includes('#result.') && x.includes(lookup(locales[l], 'result.unsure')) && ['loss', 'small', 'smallExp', 'unsure', 'slow', 'lossTip', 'smallTip', 'unsureTip', 'slowTip'].every((k) => typeof lookup(locales[l], 'result.ending.' + k) === 'string'); }));
+    check('endings: the strings in three languages keep their placeholders', ['loss', 'small', 'smallExp', 'unsure', 'lossTip', 'smallTip', 'unsureTip'].every((k) => { const ph = (l) => (lookup(locales[l], 'result.ending.' + k).match(/\{\{\w+\}\}/g) || []).sort().join(); return ph('en') === ph('pt') && ph('en') === ph('zh'); }) && ['progress.unsureGoesOn', 'progress.unsureEnded', 'progress.leftOutPlain', 'rounds.outLoss', 'rounds.outSmall', 'rounds.outUnsure', 'rounds.outTip', 'minGainPct', 'minGainPctTip', 'badMinGain', 'result.unsure', 'result.unsureNote', 'result.endingCol'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof lookup(locales[l], k) === 'string' && lookup(locales[l], k).length > 0)));
+    // The rounds table: the race's left-out leaders by ending (round.candidates.leftOut), each only when above 0.
+    const rec = { round: 5, stage: 'screen', simHours: 10, coverage: 0.99, candidates: { total: 9, contending: 4, paused: 1, refuted: 3, locked: 0, leftOut: { loss: 2, small: 0, unsure: 1 } }, pools: [] };
+    const rh = panel.renderRounds(rec, t);
+    check('endings: the rounds table counts the leaders the check left out by ending (2 a loss, 1 too small to tell, no zero count)', rh.includes('data-rounds="out-loss"') && rh.includes('data-rounds="out-unsure"') && !rh.includes('data-rounds="out-small"') && plain(rh).includes(locales.en.rounds.outLoss) && plain(rh).includes(locales.en.rounds.outUnsure), rh.slice(0, 600));
+    check('endings: a round record from before the endings draws no count', !panel.renderRounds({ ...rec, candidates: { ...rec.candidates, leftOut: undefined } }, t).includes('data-rounds="out-'));
+    // The setting: one field, its unit and default in src/whatif/minGain.mjs; the request carries it only when it is not the default.
+    const mg = await imp('src/whatif/minGain.mjs'), sure = await imp('tools/whatif/sure.mjs');
+    check('setting: the default is a share in % (0.12), the one the search uses (sure.mjs re-exports it)', mg.MIN_GAIN_PCT === 0.12 && sure.MIN_GAIN_PCT === mg.MIN_GAIN_PCT);
+    check('setting: the field reads a share (empty = the default, a decimal comma, 0), and refuses a negative or a word', mg.parseMinGain('') === 0.12 && mg.parseMinGain(' 0,5 ') === 0.5 && mg.parseMinGain('0') === 0 && mg.parseMinGain('-1') === null && mg.parseMinGain('abc') === null);
+    const sb = (minGainPct) => panel.searchBody({ slots, goal: 'profit', budgets: {}, levers: ['equip'], zone: '/actions/combat/x', tier: '4', minGainPct });
+    check('setting: the request carries minGainPct only when it is not the default (an older runner still takes a default search)', sb(0.5).minGainPct === 0.5 && sb(0).minGainPct === 0 && !('minGainPct' in sb(0.12)) && !('minGainPct' in sb(undefined)));
+    const html = read('index.html'), main = read('src/main.js'), server = read('tools/whatif/runner/server.mjs');
+    check('setting: the window has the field with its label and help mark, main.js fills the default from minGain.mjs and refuses a bad value, the runner passes --min-gain-pct', /<input id="inputWhatIfMinGain" type="text" inputmode="decimal" value=""/.test(html) && html.includes('data-i18n="common:whatIf.minGainPct"') && html.includes('data-whatif-tip="minGainPctTip"') && /g\.value = String\(WHATIF_MIN_GAIN_PCT\)/.test(main) && /parseMinGain\(document\.getElementById\('inputWhatIfMinGain'\)\.value\)/.test(main) && main.includes("whatIfT('badMinGain')") && /'max-payback', 'min-gain-pct',/.test(server));
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

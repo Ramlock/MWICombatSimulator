@@ -1,6 +1,6 @@
 // Test: the what-if levers for an item in an empty slot and for the guild shrines, on a generic party (no real player).
 // (1) The swap pricing with no old item. (2) The optimizer (tools/whatif/optimize.mjs) with every budget at 1 Coin (0 is no limit), so every paid
-// change is priced and listed over budget and no run is made: the empty slots offer market items at +0 for their buy price
+// change is priced and listed over budget and no run is made: the empty slots offer market items at every level sold, for their buy price
 // through the swap loop; the weapon slots stay closed while a two-hand weapon is held. (3) The guild shrine lever: costs against a hand
 // computation, the jumps and the cap, the all-five rows, the shrine op, a shrine row over budget with its split, and the window's texts.
 // Usage: node tools/test/whatif-shrines.mjs [--skip-optimizer]       Exit code 0 on pass, 1 on fail.
@@ -49,9 +49,11 @@ check('optimizer, equip lever: no throw', !eq.error, eq.error);
 if (eq.res) {
     const over = eq.res.overBudget;
     const feet = over.filter((c) => c.id.startsWith('Alpha:feet='));
-    check('empty slot: Alpha\'s empty feet slot offers market feet items, as "empty -> <item> +0"', feet.length > 0 && feet.every((c) => / feet empty -> \S+ \+0$/.test(c.desc)), JSON.stringify(feet.slice(0, 3)));
-    check('empty slot: each costs the item\'s +0 buy price, bought only', feet.every((c) => c.cost === ask('/items/' + c.id.split('=')[1].replace(/\+0$/, '')) && c.costPath === 'buy'), JSON.stringify(feet.slice(0, 3)));
-    check('empty slot: only +0 is offered for an empty slot', over.filter((c) => / empty -> /.test(c.desc)).every((c) => c.id.endsWith('+0')));
+    const lvlOf = (c) => { const m = c.id.split('=')[1].match(/^(.+)\+(\d+)$/); return { hrid: '/items/' + m[1], lvl: Number(m[2]) }; };
+    check('empty slot: Alpha\'s empty feet slot offers market feet items, as "empty -> <item> +<level>"', feet.length > 0 && feet.every((c) => / feet empty -> \S+ \+\d+$/.test(c.desc)), JSON.stringify(feet.slice(0, 3)));
+    check('empty slot: each costs the item\'s buy price at its level, bought only', feet.every((c) => { const { hrid, lvl } = lvlOf(c); return c.cost === ask(hrid, lvl) && c.costPath === 'buy'; }), JSON.stringify(feet.slice(0, 3)));
+    const empties = over.filter((c) => / empty -> /.test(c.desc)), sold = (c) => { const { hrid, lvl } = lvlOf(c); return pricer.listedLevels(hrid).includes(lvl); };
+    check('empty slot: every level the market sells is offered, and only those (no --swap-levels)', empties.every(sold) && feet.some((c) => !c.id.endsWith('+0')) && [...new Set(feet.map((c) => lvlOf(c).hrid))].every((h) => pricer.listedLevels(h).every((l) => feet.some((c) => c.id === `Alpha:feet=${h.slice(7)}+${l}`))), JSON.stringify(feet.map((c) => c.id).slice(0, 8)));
     check('empty slot: Alpha (one-hand weapon) gets off-hand items, never a two-hand weapon', over.some((c) => c.id.startsWith('Alpha:off_hand=')) && !over.some((c) => c.id.startsWith('Alpha:two_hand=')));
     check('empty slot: Beta (two-hand weapon) gets no main-hand or off-hand item', !over.some((c) => /^Beta:(main_hand|off_hand)=/.test(c.id)));
     check('empty slot: a filled slot keeps its swaps and upgrades', over.some((c) => c.id === 'Alpha:head+1') && over.some((c) => c.id.startsWith('Alpha:head=') && / head cheese_helmet \+0 -> /.test(c.desc)));

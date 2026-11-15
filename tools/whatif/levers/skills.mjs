@@ -63,7 +63,7 @@ export function skillCands(setups, p, { maxUp = 2, items, styles }) {
                 id: `${p}:${skill}+${d}`, kind: 'skill', timeOnly: true, groups: [`${p}:skill:${skill}`], player: p, skill, delta: d,
                 monotone: false, // a higher level can widen the party's level gap (debuffOnLevelGap), so not monotone
                 desc: `${p} ${skill} ${lv} -> ${lv + d}`, ops: [{ op: 'level', player: p, skill, delta: d }],
-                cost: { cost: 0, known: true, path: 'time (levelled by combat; days in the skill-level table)', mirrors: 0, note: '' },
+                cost: { cost: 0, known: true, path: 'time (levelled by combat; days in the skill-level table)', note: '' },
             });
         }
     }

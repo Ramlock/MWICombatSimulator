@@ -1,9 +1,9 @@
 // What-if optimizer, command line (the Node shell of the search in core.mjs; see the end of this comment), phase 1 (docs/proposals/what-if.md 3.2-3.4, 3.6 item 1): equipment levers, priced from
-// per-level market entries and the Mirror path after 4% market tax (prices.mjs), searched by a screen of every
+// per-level market entries after 4% market tax (prices.mjs), searched by a screen of every
 // single change, successive halving and greedy stacking, with one fresh-seed confirmation at the end.
 //
 // Usage: node tools/whatif/optimize.mjs --out <dir> [options]
-//   --players Ramlock            whose equipment is open (comma list); each change is costed to its player
+//   --players <player>            whose equipment is open (comma list); each change is costed to its player
 //   --levers equip               comma list of equip (phase 1: +N and market swaps), foods and drinks (decided FIRST,
 //                                each as whole fillings of every open slot: foods = Stage F picks each player's best food
 //                                filling, drinks = Stage D his best drink filling (drinkfill.mjs, pruned by his rules); the
@@ -43,9 +43,9 @@
 //                                GAIN is the variant against the base on the variant's own seeds (his pick "Compare on the same seeds")
 //   --base-mult <n>              base seeds per variant seed (they feed the error); default 1 when paired, 4 when unpaired
 //   --z 2                        profit goal: the party's shared loot gain or the buyer's net is above 0 by z errors, and the other is not below -(z/2) errors (acceptBoth)
-//   --max-up 3                   enhance levers +1..+max-up per slot
+//   --max-up <n>                 enhance levers +1..+n per slot; not given: every level above the worn one the market sells (+1..+3 with no ask listed apart)
 //   --swaps / --no-swaps         market swaps of each slot's item (same equipment type, level requirement met)
-//   --swap-levels 0,same         levels a swapped-in item is bought at ("same" = the current item's level)
+//   --swap-levels <list>         levels a swapped-in item is bought at, e.g. 0,same ("same" = the current item's level); not given: every level the market sells
 //   --sell-down                  also keep swaps that free gold (dropped by default, design 4.3 item 2)
 //   --slots ring,neck            restrict the open slots
 //   --only-candidates a,b        restrict to these candidate ids (a pilot)
