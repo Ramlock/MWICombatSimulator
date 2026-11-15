@@ -6,11 +6,26 @@
         "dropPrices": "掉落物价格"
     },
     "talismans": {
-        "title": "Talismans",
-        "power": "Talisman Power"
+        "title": "符石",
+        "power": "符石威力",
+        "names": {
+            "melee_accuracy": "近战精准度",
+            "melee_damage": "近战伤害",
+            "melee_evasion": "近战闪避",
+            "elemental_amplify": "元素增幅",
+            "elemental_penetration": "元素穿透",
+            "elemental_resistance": "元素抗性",
+            "thorns": "荆棘",
+            "threat_reduction": "降低威胁",
+            "smite": "制裁",
+            "overkill": "过量伤害",
+            "echo": "回响",
+            "shatter": "破甲",
+            "fortify": "坚守"
+        }
     },
     "equipment": {
-        "presets": "Presets"
+        "presets": "预设"
     },
     "player": "玩家",
     "trigger": "触发条件",
