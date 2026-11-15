@@ -94,7 +94,7 @@ const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"
     check('together: the report shows the step marked and one line per member with its own gain', /\(accepted together\)/.test(run.markdown) && s0.members.every((m) => run.markdown.includes(`↳ ${m.desc} (own gain`)));
     const { renderResult } = await imp('src/whatif/panel.mjs');
     const html = renderResult(res, (k) => k);
-    check('together: the window row joins the members, names both players, and carries their own gains in its tooltip', /data-set="2"/.test(html) && /title="result\.setMarginals/.test(html) && /<td>Alice, Bob<\/td>/.test(html), html.slice(0, 0));
+    check('together: the window row joins the members, names both players, and carries their own gains in its tooltip', /data-set="2"/.test(html) && /title="result\.setMarginals/.test(html) && /<td>Alice, Bob<\/td>/.test(html) && !/title="[^"]*&lt;/.test(html), (/title="result\.setMarginals[^"]*"/.exec(html) || [''])[0].slice(0, 300));
 }
 console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length} rounds, ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 // The rows' order in every round record of the whole search: a pool with no row at 4 seeds (src/whatif/figure.mjs) stays in build order with sortedBy null (and its

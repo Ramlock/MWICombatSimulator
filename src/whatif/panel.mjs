@@ -40,6 +40,7 @@ export const API = {
 
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? numberHtml(v) : '—');
+const plainNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? formatNumber(v) : '—'); // a number as plain text, for a title attribute (no markup)
 const upper = (row) => row?.costBound === 'upper';
 // A figure is read as "no change" (a player is not used to error margins) when it is strictly inside one error, or smaller than
 // `floor` (the size floor: result.basePerUser / 10000, worked out once in renderResult and passed down; null = no floor). The word
@@ -734,7 +735,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         result.steps.forEach((s, i) => {
             // A step that holds a set accepted together: its members joined, each worded alone, the players joined, and each member's own gain (its marginal) in the tooltip.
             const set = Array.isArray(s.members) && s.members.length > 1;
-            const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${num(m.marginal.gainPerUser)} ± ${num(m.marginal.sePerUser)}` : '—'}`)].join('&#10;'.replace('&#10;', String.fromCharCode(10))))}" data-set="${s.members.length}"` : '';
+            const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${plainNum(m.marginal.gainPerUser)} ± ${plainNum(m.marginal.sePerUser)}` : '—'}`)].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
             const who = set ? [...new Set(s.members.map((m) => m.player))].join(', ') : s.player, what = set ? s.members.map((m) => shown(m)).join(' + ') : shown(s);
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
                 gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
