@@ -38,6 +38,8 @@ import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
 import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData } from "./whatif/panel.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
+import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
+import { attachTips as whatIfAttachTips } from "./whatif/tip.mjs";
 import patchNote from "../patchNote.json";
 import patchNoteI18n from "../patchNote.i18n.json";
 
@@ -4383,18 +4385,12 @@ function whatIfShowDiff() {
     box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT, whatIfNames());
 }
 
-// Redraws the progress box without replacing a stage button whose markup did not change: a button replaced under the pointer loses its hover until the
-// mouse moves (the flicker), so an unchanged button (same part, same mode, same markup) keeps its node. `whatIf.pressed` ({ key, mode }) is in the markup,
-// so a pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
+// Redraws the progress box in place (whatIfMorphInto, morph.mjs): a stage button, or any part of a row, whose markup did not change keeps its node in
+// the document, so the button under the pointer keeps its hover across polls (no flicker). `whatIf.pressed` ({ key, mode }) is in the markup, so a
+// pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
 function whatIfDrawProgress() {
-    const box = document.getElementById('whatIfProgress');
     if (!whatIf.status) return;
-    const next = document.createElement('div');
-    next.innerHTML = whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping');
-    const buttonKey = (b) => b.dataset.whatifPart + '/' + b.dataset.whatifDone;
-    const old = new Map([...box.querySelectorAll('[data-whatif-done]')].map((b) => [buttonKey(b), b]));
-    for (const b of next.querySelectorAll('[data-whatif-done]')) { const o = old.get(buttonKey(b)); if (o && o.outerHTML === b.outerHTML) b.replaceWith(o); }
-    box.replaceChildren(...next.childNodes);
+    whatIfMorphInto(document.getElementById('whatIfProgress'), whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping'));
     alignNumbers();
 }
 
@@ -4415,7 +4411,7 @@ function whatIfShowStatus(status) {
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
     else if (status.state === 'done' && status.result?.round) whatIf.round = status.result.round;
-    document.getElementById('whatIfRounds').innerHTML = whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : '';
+    whatIfMorphInto(document.getElementById('whatIfRounds'), whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : ''); // in place, as the progress box (a help mark keeps its hover)
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
@@ -4649,6 +4645,7 @@ async function initWhatIf() {
         whatIf.version = body;
     } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
     whatIfShowButton();
+    whatIfAttachTips(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
     // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });

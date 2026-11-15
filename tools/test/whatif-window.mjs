@@ -128,8 +128,9 @@ let holdRunning = true;
 let failNext = false;
 const stopDelay = 300; // the fake optimizer's exit after a stop
 let raceProgress = false; // true: the progress message of a race stage in a late round (round 12, 10 ruled out), the long label and counters of the real run
+let raceAcceptable = 1; // the race part's acceptable count (0: no leader to accept, so no Accept button)
 let raceDone = false; // true: the finished Screen race row of the real run (round 1 finished, 473 in the running, the pick checks still going)
-const progress0 = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, acceptable: 1, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }] } : {}) });
+const progress0 = () => ({ stage: 'screen', candidatesLeft: 40, runsDone: 12, runsPlanned: 48, secondsPerRun: 2.5, etaSeconds: 90, ...(raceProgress ? { round: 12, phase: 'reading', stageContending: 40, stagePaused: 63, stageDropped: 10, stageRuns: 735, stageSimHours: 37000, parts: [{ kind: 'foods', index: 0, state: 'running', runsPlanned: 48, runsDone: 12, candidatesLeft: 40, etaSeconds: 90, round: 12, phase: 'reading', contending: 40, paused: 63, dropped: 10, acceptable: raceAcceptable, runs: 735, simHours: 37000 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }, { kind: 'confirmation', index: 0, state: 'waiting' }] } : {}) });
 const progress = () => { const p = progress0(); if (raceDone) p.parts = [{ kind: 'screen', index: 0, state: 'done', runsPlanned: 986, runsDone: 986, candidatesLeft: 473, etaSeconds: 0, round: 1, phase: 'reading', contending: 473, paused: 0, dropped: 0, runs: 986, simHours: 49000 }, { kind: 'picks', index: 0, state: 'running', runsPlanned: 40, runsDone: 12, fill: 0.3, etaSeconds: 60 }, { kind: 'steps', index: 0, state: 'waiting', maxSteps: 20 }]; return p; };
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -155,6 +156,40 @@ try {
         fs.writeFileSync(path.join(shots, name), Buffer.from(s.data, 'base64'));
     };
 
+    // A help mark's tooltip, the pointer on the mark (`pick`: an expression giving the mark; `scroll`: 'end' cuts the screen just under the mark, so the tooltip goes above it,
+    // 'nearest' just brings it into view): the tooltip shows the mark's sentence, inside the window (cut to the screen), is the top element at its own
+    // four corners, and adds no scrollbar (the window's scroll sizes are the same before and after).
+    const tipAt = async (pick, scroll = 'nearest') => {
+        const was = await js(`[innerWidth, innerHeight]`);
+        // At the bottom: the screen is cut just under the mark (the window, 28 px short of the screen's bottom, then scrolls inside itself).
+        if (scroll === 'end') { const bottom = await js(`(() => { const m = ${pick}; m.scrollIntoView({ block: 'nearest' }); return m ? Math.ceil(m.getBoundingClientRect().bottom) : 0; })()`); await page.send('Emulation.setDeviceMetricsOverride', { width: was[0], height: bottom + 44, deviceScaleFactor: 1, mobile: false }); await new Promise((r) => setTimeout(r, 200)); }
+        if (!await js(`(() => { const m = ${pick}; if (!m) return false; m.scrollIntoView({ block: '${scroll}', inline: 'nearest' }); return true; })()`)) return { noMark: true };
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+        await new Promise((r) => setTimeout(r, 250));
+        const sizes = `(() => { const m = document.getElementById('whatIfModal'), b = m.querySelector('.modal-body'); return [m.scrollWidth, m.scrollHeight, b.scrollWidth, b.scrollHeight].join(); })()`;
+        const before = await js(sizes);
+        // The pointer onto the mark and the tooltip measured; again if a poll's redraw moved the mark from under the pointer (a scrollbar of the
+        // window coming or going shifts it sideways).
+        let pos, r;
+        for (let i = 0; i < 4; i++) {
+            pos = await js(`(() => { const b = (${pick}).getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()`);
+            for (const x of [pos[0] - 1, pos[0]]) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: pos[1] });
+            await new Promise((r) => setTimeout(r, 150));
+            r = await js(`(() => { const m = ${pick}, tip = document.querySelector('#whatIfModal .whatif-tip'); if (!tip || tip.hidden) return { shown: false, hover: m.matches(':hover'), mark: [m.getBoundingClientRect().x, m.getBoundingClientRect().y].map(Math.round), at: document.elementFromPoint(${pos[0]}, ${pos[1]})?.className, pos: ${JSON.stringify(pos)}.map(Math.round) };
+                const t = tip.getBoundingClientRect(), w = document.querySelector('#whatIfModal .modal-content').getBoundingClientRect();
+                const inside = t.left >= Math.max(w.left, 0) && t.top >= Math.max(w.top, 0) && t.right <= Math.min(w.right, innerWidth) && t.bottom <= Math.min(w.bottom, innerHeight);
+                const top = [[t.left + 6, t.top + 6], [t.right - 6, t.top + 6], [t.left + 6, t.bottom - 6], [t.right - 6, t.bottom - 6]].every(([x, y]) => document.elementFromPoint(x, y)?.closest('.whatif-tip') === tip);
+                const mb = m.getBoundingClientRect(); return { shown: true, text: tip.textContent === m.dataset.tip, inside, top, above: t.bottom <= mb.top, atBottom: Math.min(w.bottom, innerHeight) - mb.bottom < 40, box: [t.left, t.top, t.right, t.bottom].map(Math.round), win: [w.left, w.top, w.right, w.bottom].map(Math.round) }; })()`);
+            if (r.shown) break;
+        }
+        r.noScroll = (await js(sizes)) === before;
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+        await new Promise((r) => setTimeout(r, 50));
+        r.hidesAfter = await js(`document.querySelector('#whatIfModal .whatif-tip')?.hidden === true`);
+        if (scroll === 'end') { await page.send('Emulation.setDeviceMetricsOverride', { width: was[0], height: was[1], deviceScaleFactor: 1, mobile: false }); await new Promise((r) => setTimeout(r, 200)); }
+        return r;
+    };
+    const tipOk = (r, scroll) => r.shown && r.text && r.inside && r.top && r.noScroll && r.hidesAfter && (scroll !== 'end' || (r.atBottom && r.above));
     await page.send('Page.navigate', { url: base });
     check('the What-if button shows when the runner answers', await until(`document.getElementById('buttonWhatIf')?.style.display === ''`));
     check('the page is dark by default', await js(`document.body.classList.contains('dark-mode')`));
@@ -323,8 +358,18 @@ try {
     live = { partial: { ...foodsOnly, setups: result.setups }, version: 1 };
     check('live: the foods alone are drawn as soon as they arrive, with the running mark, no steps heading, no "no steps" message, no totals', await until(`document.getElementById('whatIfResult').textContent.includes('Best foods')`) && await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return document.querySelector('#whatIfResult .whatif-running .whatif-chip.whatif-st-running')?.title.includes('Running: the report fills in as the search goes.') && t.includes('Player 1Donut') && t.includes('Shared loot gain per user') && !t.includes('fresh runs:') && !t.includes('Chosen changes, in order') && !t.includes('No change gains beyond') && !t.includes('Confirmed on fresh runs') && !t.includes('Apply'); })()`), (await resultText()).slice(0, 400));
     check('live: the window asks for what is newer than what it drew', await (async () => { const t0 = Date.now(); while (Date.now() - t0 < 8000 && !sinces.includes(1)) await new Promise((r) => setTimeout(r, 200)); return sinces.includes(1); })() && sinces.every((s) => s === 0 || s === 1));
-    live = { partial: { ...foodsOnly, setups: result.setups, steps: [result.steps[0]], singles: result.singles, basePerUser: result.basePerUser, best: { foods: foodsOnly.best.foods, drinks: result.best.drinks } }, version: 2 };
+    live = { partial: { ...foodsOnly, setups: result.setups, steps: [result.steps[0]], singles: result.singles, basePerUser: result.basePerUser, apart: result.apart, overBudget: result.overBudget, best: { foods: foodsOnly.best.foods, drinks: result.best.drinks } }, version: 2 };
     check('live: a newer snapshot adds the step, headed "so far", the drinks too; still the running mark and no totals', await until(`document.getElementById('whatIfResult').textContent.includes('Chosen changes, in order')`) && await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('so far') && t.includes('Magic 1→2') && !t.includes('Stamina 1→2') && t.includes('Player 1Attack Coffee') && !!document.querySelector('#whatIfResult .whatif-running .whatif-chip.whatif-st-running')?.title.includes('Running: the report fills in') &&!t.includes('Confirmed on fresh runs') && !t.includes('No change gains beyond'); })()`), (await resultText()).slice(0, 600));
+    // The chips above the report share one line at Full HD (so far, the base profit, the over-budget chip), and there is no unknown-cost chip.
+    {
+        const was = await js(`[innerWidth, innerHeight]`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+        await new Promise((r) => setTimeout(r, 300));
+        const line = await js(`(() => { const row = document.querySelector('#whatIfResult .whatif-context'); if (!row) return null; const raw = [...row.querySelectorAll('.whatif-chip')].map((c) => c.getBoundingClientRect()), chips = raw.map((b) => Math.round(b.top)); return { n: chips.length, tops: [...new Set(chips)], raw: raw.map((b) => [b.top, b.height, b.width].map((v) => +v.toFixed(2))), apart: !!document.querySelector('#whatIfModal [data-left-out="apart"]') }; })()`);
+        check('live: at 1920x1080 the chips above the report (so far, base profit, over budget) share one line', !!line && line.n === 3 && line.tops.length === 1, JSON.stringify(line));
+        check('live: no unknown-cost chip while the search runs', !!line && !line.apart);
+        await page.send('Emulation.setDeviceMetricsOverride', { width: was[0], height: was[1], deviceScaleFactor: 1, mobile: false });
+    }
     await shot('whatIfModal', 'whatif-live.png');
     // The search rounds: under the live report, a round counter, contention counts and the table of the leaders; it follows a newer round.
     const roundsText = () => js(`document.getElementById('whatIfRounds').textContent`);
@@ -346,13 +391,39 @@ try {
         const fitRow = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), btns = [...row.querySelectorAll('[data-whatif-done]')], cells = [...row.children], edge = body.getBoundingClientRect().right; return { noOverflow: body.scrollWidth <= body.clientWidth, labelWraps: getComputedStyle(l).whiteSpace === 'normal' && l.scrollWidth <= l.clientWidth + 1, textWraps: !x && cells[6]?.textContent === '40' && cells[7]?.textContent === '63' && cells[8]?.textContent === '10' && btns.length === 2 && l.getBoundingClientRect().right <= edge + 0.5 && cells.every((c) => c.getBoundingClientRect().right <= edge + 0.5) && btns.every((b) => b.getBoundingClientRect().right <= edge + 0.5), ellipsis: getComputedStyle(l).textOverflow === 'ellipsis' && getComputedStyle(l).overflow !== 'visible', text: l.textContent }; })()`);
         check(`at ${w}x${h} a race stage row (counters after the status text, on the stage's own line, then the done button) is not cut, wraps, and the window has no horizontal scroll`, !!fitRow && fitRow.noOverflow && fitRow.labelWraps && fitRow.textWraps && !fitRow.ellipsis, JSON.stringify(fitRow));
     }
-    // The progress redraw keeps an unchanged stage button: the same node across polls (a replaced node loses its hover state: the flicker), and a later poll with a changed part still draws it.
+    // The pointer rests on "Accept current winner" while the window polls: the redraw keeps the button in the document, so it keeps its node and its
+    // hover look at every poll (a node replaced, or taken out of the page and put back, drops its hover and fades back in: the flicker). A real
+    // change still shows at once: a press disables both buttons, a failed press gives them back, and no leader to accept takes Accept away.
     {
-        await until(`!!document.querySelector('#whatIfProgress [data-whatif-done="skip"]')`);
-        await js(`(() => { window.__skipBtn = document.querySelector('#whatIfProgress [data-whatif-done="skip"]'); window.__skipBtn.__mark = 1; return true; })()`);
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+        await until(`!!document.querySelector('#whatIfProgress [data-whatif-done="accept"]')`);
+        await new Promise((r) => setTimeout(r, 300));
+        const [bx, by] = await js(`(() => { const b = document.querySelector('#whatIfProgress [data-whatif-done="accept"]').getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()`);
+        for (const x of [bx - 2, bx]) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: by });
+        await new Promise((r) => setTimeout(r, 300)); // past the button's own hover transition
+        await js(`(() => { const box = document.getElementById('whatIfProgress'), b = box.querySelector('[data-whatif-done="accept"]'); window.__accept = b; window.__looks = [];
+            const look = () => { const a = box.querySelector('[data-whatif-done="accept"]'), cs = a && getComputedStyle(a); return a && { same: a === b, hover: a.matches(':hover'), bg: cs.backgroundColor, color: cs.color, disabled: a.disabled, cls: a.className }; };
+            window.__look0 = look(); window.__obs = new MutationObserver(() => window.__looks.push(look())); window.__obs.observe(box, { childList: true, subtree: true, characterData: true, attributes: true }); return true; })()`);
         const n0 = sinces.length;
-        for (let i = 0; i < 100 && sinces.length < n0 + 2; i++) await new Promise((r) => setTimeout(r, 100));
-        check('the Skip button is the same node after two more polls (the progress redraw does not replace it: no hover flicker)', sinces.length >= n0 + 2 && await js(`document.querySelector('#whatIfProgress [data-whatif-done="skip"]') === window.__skipBtn`));
+        for (let i = 0; i < 100 && sinces.length < n0 + 4; i++) await new Promise((r) => setTimeout(r, 100));
+        const rest = await js(`(() => { window.__obs.disconnect(); return { first: window.__look0, looks: window.__looks }; })()`);
+        const steady = rest.looks.length > 0 && rest.first.hover && rest.looks.every((l) => l && l.same && l.hover && l.bg === rest.first.bg && l.color === rest.first.color && !l.disabled && l.cls === rest.first.cls);
+        check('with the pointer resting on Accept, four polls keep its node, its hover and its colours (no flicker)', sinces.length >= n0 + 4 && steady, JSON.stringify({ first: rest.first, changed: rest.looks.filter((l) => !(l && l.same && l.hover && l.bg === rest.first.bg)).slice(0, 3), n: rest.looks.length }));
+        const press = await js(`(() => { const b = window.__accept; b.click(); const skip = document.querySelector('#whatIfProgress [data-whatif-done="skip"]'); return { same: document.querySelector('#whatIfProgress [data-whatif-done="accept"]') === b, disabled: b.disabled, text: b.textContent, skipDisabled: skip.disabled }; })()`);
+        check('a press of Accept shows at once, on the same node: Accepting…, both buttons disabled', press.same && press.disabled && press.text === 'Accepting…' && press.skipDisabled, JSON.stringify(press));
+        check('the refused press gives both buttons back, Accept still the same node', await until(`(() => { const b = document.querySelector('#whatIfProgress [data-whatif-done="accept"]'); return b === window.__accept && !b.disabled && b.textContent === 'Accept current winner'; })()`));
+        await js(`(document.getElementById('whatIfMessage').textContent = '', true)`);
+        raceAcceptable = 0;
+        check('no leader to accept: the next poll takes Accept away and keeps Skip', await until(`!document.querySelector('#whatIfProgress [data-whatif-done="accept"]') && !!document.querySelector('#whatIfProgress [data-whatif-done="skip"]')`, 5000));
+        raceAcceptable = 1;
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+    }
+    // Bug: a help mark's tooltip in the stage list was cut by its cell. Each place: a row of the stage list, its last row, at the bottom of the screen.
+    for (const [name, pick, scroll] of [['a row of the stage list', `document.querySelector('#whatIfProgress .whatif-part[data-kind="steps"] .whatif-help')`, 'nearest'],
+        ['the last row of the stage list', `document.querySelector('#whatIfProgress tbody tr:last-child .whatif-help')`, 'nearest'],
+        ['the last row of the stage list at the bottom of the screen', `document.querySelector('#whatIfProgress tbody tr:last-child .whatif-help')`, 'end']]) {
+        const r = await tipAt(pick, scroll);
+        check(`the tooltip of a help mark in ${name} shows whole, inside the window, over everything, with no scrollbar added`, tipOk(r, scroll), JSON.stringify(r));
     }
     // The same row once its race has ended (done): wraps like the running one, is never cut, its figures stay inside the window, one scroll axis.
     raceDone = true; raceProgress = true;
@@ -446,11 +517,19 @@ try {
     check('Resume continues the stopped search (the same search id, by the runner restarting it), no new search is posted', await until(`document.getElementById('buttonWhatIfSearch').textContent !== 'Starting…'`) && received?.options?.marketplace?.timestamp === 1700000000 && received === receivedBefore);
     check('Resume runs it to the end and the result shows', await until(`document.getElementById('whatIfResult').textContent.includes('Apply 1 to 2')`));
     check('the result shows "≤" and the unknown-cost list', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return t.includes('≤') && t.includes('A token item'); })()`));
+    check('a finished result shows no unknown-cost chip (the list of changes with no known cost stays under See details)', await js(`!document.querySelector('#whatIfModal [data-left-out="apart"]') && !!document.getElementById('whatIfApart')`));
     check('the result shows the snapshot time and the priced over-budget group', await js(`(() => { const t = document.getElementById('whatIfResult').textContent; return document.querySelector('#whatIfResult [data-prices-stale] .whatif-chip')?.title.includes('market snapshot of 2023-11-14 22:13 UTC') && t.includes('Priced, over budget') && t.includes('Feet Pathseeker Boots ★ +12→Cotton Boots +0'); })()`));
     check('a finished search: the button reads Start', (await js(readButton)) === 'Start primary', await js(readButton));
     check('the earlier searches list fills', await until(`document.getElementById('selectWhatIfResult').options.length === 1`));
     check('the chosen-changes table reads party gain, error, buyer gain, error, cost, payback, How it is bought, and a row shows its fresh reading and the payback on it (a loss as a minus)', await js(`(() => { const T = [...document.querySelectorAll('#whatIfResult table')].find((x) => x.textContent.includes('How it is bought')); const th = [...T.querySelector('thead tr').children].map((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('')); const td = [...T.querySelector('tbody tr').children].map((e) => e.textContent); const i = th.indexOf('Shared loot gain per user'); return i === 3 && th.slice(i, i + 5).join('|') === "Shared loot gain per user|Buyer's gain|Cost|Payback days|How it is bought" && !th.some((x) => /Spent|Stage|Shared gain|Own supplies|error/.test(x)) && td[i].startsWith('266') && td[i].endsWith('± 40') && td[i + 1].startsWith('3,300') && td[i + 1].endsWith('± 150') && td[i + 3] === '≤ 76' && td[i + 4] === 'ability books' && T.querySelector('tbody tr').children[i + 4].querySelector('.whatif-chip')?.title === '25 x berserk'; })()`));
     check('the buyer payback of a net of 0 or below is a dash (a loss shows as a minus), and the confirmation shows the party gain and a line per player', await js(`(() => { const r = [...document.querySelectorAll('#whatIfResult table')].find((x) => x.textContent.includes('How it is bought')).querySelectorAll('tbody tr')[1]; const t = document.getElementById('whatIfResult').textContent; const own = [...document.querySelectorAll('#whatIfResult table[data-confirm="players"], #whatIfResult table:not(.whatif-list):not(.whatif-each):not([data-best])')].map((x) => x.textContent).join(' '); return r.children[6].textContent === '—' && r.children[4].textContent.startsWith('-200') && t.includes('Player 13,300 ± 150≤ 34') && t.includes('Party (the shared loot, per user)417 ± 47') && !t.includes('Spent') && !own.includes('Stage'); })()`));
+    // The same in the result's tables: a table header, the rightmost header (by the window's right edge), and at the bottom of the screen.
+    for (const [name, pick, scroll] of [['a table header', `document.querySelector('#whatIfResult th .whatif-help')`, 'nearest'],
+        ['the rightmost table header', `[...document.querySelectorAll('#whatIfResult th .whatif-help')].filter((m) => m.offsetParent).sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right)[0]`, 'nearest'],
+        ['a table header at the bottom of the screen', `document.querySelector('#whatIfResult th .whatif-help')`, 'end']]) {
+        const r = await tipAt(pick, scroll);
+        check(`the tooltip of a help mark in ${name} shows whole, inside the window, over everything, with no scrollbar added`, tipOk(r, scroll), JSON.stringify(r));
+    }
     await shot('whatIfModal', 'whatif-result.png');
     if (shots) {
         await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -474,7 +553,7 @@ try {
     check('the toggle opens the grey rows', await js(`!document.getElementById('whatIfMoreSingles').hidden && document.querySelector('[data-whatif-more="whatIfMoreSingles"]').textContent === 'Hide the 1 not accepted'`));
     check('there is no helps-the-party group: five tables outside the detail lists, no heading, no hint, no steak row', await js(`(() => { const r = document.getElementById('whatIfResult'), t = r.textContent; return r.querySelectorAll('table:not(.whatif-list)').length === 5 && !t.includes('Helps the party') && !t.includes('Not bought:') && !/steak/i.test(t); })()`));
 
-    check('the finished result shows the zone and tier once, in the summary bar, a base-profit chip in its own row, and the loss warning under it', await js(`(() => { const r = document.getElementById('whatIfResult'), sel = (id) => document.getElementById(id).selectedOptions[0].textContent; const chips = [...document.querySelectorAll('#whatIfSummaryChips .whatif-chip')]; const zone = chips.find((c) => c.querySelector('.whatif-chip-k')?.textContent === 'Zone'); const base = r.querySelector('.whatif-context .whatif-chip'); const warn = r.querySelector('.whatif-callout.whatif-warn'); return !!zone && zone.textContent.includes(sel('selectWhatIfZone')) && zone.textContent.includes(sel('selectWhatIfTier')) && !r.textContent.includes('Zone:') && !!base && base.textContent.startsWith('base party profit') && base.textContent.includes('-9,667k') && warn?.textContent === 'At this zone the party loses money at base, so a gain here means losing less.' && !!(base.compareDocumentPosition(warn) & Node.DOCUMENT_POSITION_FOLLOWING); })()`));
+    check('the finished result shows the zone and tier once, in the summary bar, a base-profit chip in its own row, and the loss warning under it', await js(`(() => { const r = document.getElementById('whatIfResult'), sel = (id) => document.getElementById(id).selectedOptions[0].textContent; const chips = [...document.querySelectorAll('#whatIfSummaryChips .whatif-chip')]; const zone = chips.find((c) => c.querySelector('.whatif-chip-k')?.textContent === 'Zone'); const base = r.querySelector('.whatif-context .whatif-chip'); const warn = r.querySelector('.whatif-callout.whatif-warn'); return !!zone && zone.textContent.includes(sel('selectWhatIfZone')) && zone.textContent.includes(sel('selectWhatIfTier')) && !r.textContent.includes('Zone:') && !!base && base.textContent.startsWith('profit now, per player per day') && base.textContent.includes('-9,667k') && warn?.textContent === 'At this zone the party loses money at base, so a gain here means losing less.' && !!(base.compareDocumentPosition(warn) & Node.DOCUMENT_POSITION_FOLLOWING); })()`));
     check('the result shows Best foods and Best drinks above Chosen changes with the page\'s own names, a trigger in parentheses on a food only, no row for an unchanged player, and the baseline line', await js(`(() => { const r = document.getElementById('whatIfResult'), t = r.textContent; const at = (s) => t.indexOf(s); return at('Best foods') > 0 && at('Best foods') < at('Best drinks') && at('Best drinks') < at('Chosen changes, in order') && /Player 1Donut \\(.+Current.+\\)Spaceberry Cake/.test(t) && !t.includes('/items/') && !/\\bdonut\\b/.test(t) && t.includes('Player 1Attack CoffeeWisdom Coffee') && !/Coffee \\(/.test(t) && !r.querySelector('[data-best="foods"]').textContent.includes('Nobody') && (() => { const h = [...r.querySelectorAll('.whatif-h')].find((e) => e.textContent.startsWith('Chosen changes, in order')); return h?.querySelector('.whatif-help')?.dataset.tip === 'Everything below is measured on top of these foods and drinks.' && !!(r.querySelector('table[data-best="drinks"]').compareDocumentPosition(h) & Node.DOCUMENT_POSITION_FOLLOWING); })(); })()`), (await js(`document.getElementById('whatIfResult').textContent.slice(0, 2600)`)));
     check('the over-budget list is closed behind one toggle beside its heading and count chip, and shows game names, not ids', await js(`(() => { const ul = document.getElementById('whatIfOverBudget'); const b = document.querySelector('[data-whatif-more="whatIfOverBudget"]'); const line = b.parentElement, rows = ul.querySelectorAll('tbody tr'); return ul.hidden && getComputedStyle(ul).display === 'none' && b.textContent === 'Show' && line.textContent.startsWith('Priced, over budget') && line.querySelector('.whatif-chip-n').textContent === '3' && line.querySelector('.whatif-help').dataset.tip === '(3, not ranked: each is priced above its player\\'s budget)' && ul.textContent.includes('Feet Pathseeker Boots ★ +12→Cotton Boots +0') && !ul.textContent.includes('pathseeker_boots_refined') && ul.textContent.includes('not_a_real_item_x') && rows[0].children[0].textContent === 'Player 1' && rows[0].children[1].textContent.startsWith('Feet Pathseeker') && rows[1].children[0].textContent === 'Player 1' && rows[1].children[1].textContent.startsWith('not_a_real_item_x'); })()`));
     await js(`document.querySelector('[data-whatif-more="whatIfOverBudget"]').click(), true`);

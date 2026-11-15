@@ -359,7 +359,8 @@
         },
         "result": {
             "goal": "Objetivo",
-            "baseProfit": "lucro-base do grupo",
+            "baseProfit": "lucro atual, por jogador por dia",
+            "baseProfitTip": "O lucro do grupo por dia com a configuração de hoje, dividido pelo número de jogadores: a base de todo ganho mostrado aqui.",
             "baseLoses": "Nesta zona o grupo perde dinheiro na base, então um ganho aqui significa perder menos.",
             "steps": "Mudanças escolhidas, em ordem",
             "noSteps": "Nenhuma alteração ganha além do seu erro dentro dos orçamentos.",
@@ -432,8 +433,6 @@
             "leftOutBudgetOne": "1 acima do orçamento",
             "upperChip": "limite superior",
             "pricesChip": "Preços: snapshot antigo",
-            "leftOutApartOne": "1 sem custo conhecido",
-            "leftOutApart": "{{n}} sem custo conhecido",
             "overPaybackShow": "Mostrar as {{n}} de retorno lento demais",
             "overPaybackHide": "Ocultar as {{n}} de retorno lento demais",
             "overPaybackDays": "se paga em {{days}} dias",

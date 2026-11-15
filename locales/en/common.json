@@ -361,7 +361,8 @@
         },
         "result": {
             "goal": "Goal",
-            "baseProfit": "base party profit",
+            "baseProfit": "profit now, per player per day",
+            "baseProfitTip": "The party's profit per day with the setup as it is today, divided by the number of players: what every gain here is measured against.",
             "baseLoses": "At this zone the party loses money at base, so a gain here means losing less.",
             "steps": "Chosen changes, in order",
             "noSteps": "No change gains beyond its error within the budgets.",
@@ -434,8 +435,6 @@
             "leftOutBudgetOne": "1 over budget",
             "upperChip": "upper bound",
             "pricesChip": "Prices: old snapshot",
-            "leftOutApartOne": "1 unknown cost",
-            "leftOutApart": "{{n}} unknown cost",
             "overPaybackShow": "Show the {{n}} that pay back too slowly",
             "overPaybackHide": "Hide the {{n}} that pay back too slowly",
             "overPaybackDays": "pays back in {{days}} days",

@@ -360,7 +360,8 @@
         },
         "result": {
             "goal": "目标",
-            "baseProfit": "队伍基础利润",
+            "baseProfit": "当前利润（每名玩家每天）",
+            "baseProfitTip": "队伍按当前配置的每日利润，除以玩家人数：这里每项收益的比较基准。",
             "baseLoses": "在此区域，队伍在基础状态下是亏损的，因此这里的收益只意味着少亏一些。",
             "steps": "选定的改动（按顺序）",
             "noSteps": "在预算内没有收益超过误差的改动。",
@@ -433,8 +434,6 @@
             "leftOutBudgetOne": "1 项超出预算",
             "upperChip": "上限",
             "pricesChip": "价格：旧快照",
-            "leftOutApartOne": "1 项成本未知",
-            "leftOutApart": "{{n}} 项成本未知",
             "overPaybackShow": "显示这 {{n}} 项回本太慢的改动",
             "overPaybackHide": "隐藏这 {{n}} 项回本太慢的改动",
             "overPaybackDays": "{{days}} 天回本",

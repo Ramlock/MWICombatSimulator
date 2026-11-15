@@ -119,9 +119,10 @@
         #whatIfModal .whatif-h { font-size: 1.05rem; }
         .whatif-chips { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
         .whatif-h.whatif-chips { gap: .5rem; }
+        .whatif-chips > .whatif-running { display: inline-flex; }
         .whatif-chip { display: inline-flex; align-items: center; gap: .3em; padding: .05rem .55rem; border-radius: 1rem; background: #343a40; border: 1px solid #495057; color: #dee2e6; font-size: .8rem; font-weight: 500; line-height: 1.45; white-space: nowrap; }
         .whatif-chip-k { color: #9aa4ae; font-weight: 400; }
-        button.whatif-chip { cursor: pointer; } button.whatif-chip:hover { border-color: #adb5bd; }
+        button.whatif-chip { cursor: pointer; font-family: inherit; } button.whatif-chip:hover { border-color: #adb5bd; }
         .whatif-chip-warn { background: rgba(240, 192, 96, .12); border-color: #b07800; color: #f0c060; }
         .whatif-chip-n { background: #495057; margin-left: .4rem; font-variant-numeric: tabular-nums; }
         .whatif-st-done { background: rgba(46, 158, 94, .18); border-color: #2e9e5e; color: #7bd3a4; }
@@ -130,8 +131,8 @@
         .whatif-st-waiting, .whatif-st-skipped { color: #8b949e; }
         .whatif-help { display: inline-flex; align-items: center; justify-content: center; width: 1.15em; height: 1.15em; border-radius: 50%; border: 1px solid #6c757d; color: #adb5bd; font-size: .72rem; font-weight: 600; cursor: help; position: relative; margin-left: .35em; vertical-align: .1em; }
         .whatif-help:hover, .whatif-help:focus { border-color: #9ec5fe; color: #9ec5fe; outline: none; }
-        .whatif-help:hover::after, .whatif-help:focus::after { content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); width: max-content; max-width: 26rem; white-space: normal; background: #1e2125; color: #e9ecef; border: 1px solid #6c757d; border-radius: .3rem; padding: .4rem .6rem; font-weight: 400; font-size: .85rem; line-height: 1.35; z-index: 30; text-align: left; box-shadow: 0 4px 14px rgba(0, 0, 0, .6); }
-        th.num .whatif-help:hover::after, th.num .whatif-help:focus::after { left: auto; right: 0; }
+        /* The help marks' one tooltip (src/whatif/tip.mjs places it, inside the window, over everything). */
+        .whatif-tip { position: fixed; z-index: 1090; top: 0; left: 0; width: max-content; max-width: 26rem; white-space: normal; background: #1e2125; color: #e9ecef; border: 1px solid #6c757d; border-radius: .3rem; padding: .4rem .6rem; font-weight: 400; font-size: .85rem; line-height: 1.35; text-align: left; box-shadow: 0 4px 14px rgba(0, 0, 0, .6); }
         .whatif-fig { font-size: .85rem; margin-left: 1.25rem; white-space: nowrap; }
         .whatif-fig-k { color: #9aa4ae; } .whatif-fig-v { font-variant-numeric: tabular-nums; font-weight: 600; color: #f8f9fa; }
         .whatif-parts-head { display: flex; align-items: baseline; flex-wrap: wrap; row-gap: .25rem; margin-bottom: .35rem; }

@@ -705,12 +705,16 @@ function gainTh(t, key, cls = '') { return `<th class="num${cls}">${esc(t('col.'
 export function renderResult(result, t, now = Date.now(), names = null, running = false) {
     if (!result) return '';
     const L = [];
-    if (running) L.push(`<div class="mb-2 whatif-running">${chip(esc(t(running === 'stopped' ? 'progress.st.halted' : 'result.soFar')), running === 'stopped' ? 'whatif-st-halted' : 'whatif-st-running', esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running')))}</div>`);
+    // The top line: the running (or stopped) mark and the base profit share one row of chips, which wraps only when the width runs out; with no
+    // answer drawn (a report still running, or a result with no confirmation) the left-out and stale-prices chips join it (topChips, below).
+    const topChips = [];
+    if (running) topChips.push(`<span class="whatif-running">${chip(esc(t(running === 'stopped' ? 'progress.st.halted' : 'result.soFar')), running === 'stopped' ? 'whatif-st-halted' : 'whatif-st-running', esc(t(running === 'stopped' ? 'result.stoppedMark' : 'result.running')))}</span>`);
     const known = [...new Set([...Object.keys(result.budgets || {}), ...(result.setups || []).map((x) => x.name)])];
     const shown = (row) => arrowed(esc(localizeDesc(row.desc, names, row.player ? [row.player, ...known] : known, row.player)));
     // Goal and zone show once, in the summary bar over the result (or in the open setup form); the result's own row keeps the base profit.
     const base = zoneBase(result);
-    if (base !== null) L.push(`<div class="mb-2 whatif-chips whatif-context">${chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(base)}`, '', esc(t('result.perUserDay')))}</div>`);
+    if (base !== null) topChips.push(chip(`<span class="whatif-chip-k">${esc(t('result.baseProfit'))}</span> ${num(base)}`, '', esc(t('result.baseProfitTip'))));
+    const topAt = L.length;
     if (result.goal !== 'exp' && Number.isFinite(result.basePerUser) && result.basePerUser < 0) L.push(`<div class="mb-2 whatif-warn whatif-callout">${esc(t('result.baseLoses'))}</div>`);
     const prices = pricesLine(result, t, now);
     const pricesChip = prices ? `<span data-prices-stale>${chip(esc(t('result.pricesChip')), 'whatif-chip-warn', esc(prices.replace(/<[^>]+>/g, '')))}</span>` : '';
@@ -770,10 +774,14 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     const answer = L.splice(confAt);
     if (answer.length) answer.unshift(`<div class="whatif-h">${esc(t('result.answer'))}</div>`);
     // What a limit or a missing price left out, and stale prices: one row of chips under the answer, each opening its list under See details.
-    const leftOut = [['overPayback', 'leftOutPayback', 'whatIfOverPayback', { days: formatNumber(result.options?.maxPaybackDays) }], ['overBudget', 'leftOutBudget', 'whatIfOverBudget', {}], ['apart', 'leftOutApart', 'whatIfApart', {}]]
+    // (No chip for the changes with no known cost: their list under See details says it.)
+    const leftOut = [['overPayback', 'leftOutPayback', 'whatIfOverPayback', { days: formatNumber(result.options?.maxPaybackDays) }], ['overBudget', 'leftOutBudget', 'whatIfOverBudget', {}]]
         .filter(([k]) => result[k]?.length).map(([k, key, id, p]) => { const n = result[k].length; return `<button type="button" class="whatif-chip whatif-chip-warn" data-left-out="${k}" data-whatif-more="${id} whatIfDetails" title="${esc(t('result.' + k + 'Note', { n, ...p }))}">${esc(plural(t, 'result.' + key, n, { n }))}</button>`; });
-    const chipsRow = leftOut.length || pricesChip ? [`<div class="whatif-chips mb-2">${leftOut.join('')}${pricesChip}</div>`] : [];
+    const under = answer.length ? [...leftOut, pricesChip].filter(Boolean) : [];
+    if (!answer.length) topChips.push(...leftOut, ...(pricesChip ? [pricesChip] : []));
+    const chipsRow = under.length ? [`<div class="whatif-chips mb-2">${under.join('')}</div>`] : [];
     L.splice(bestAt, 0, ...answer, ...chipsRow);
+    if (topChips.length) L.splice(topAt, 0, `<div class="mb-2 whatif-chips whatif-context">${topChips.join('')}</div>`);
     const hiddenRow = (s) => s.hiddenFood || s.hiddenAlt; // hiddenFood: a food row the search left out (one per player); hiddenAlt: another value of a setting a kept row already changes (one row per setting)
     const anySingles = (result.singles || []).some((s) => !hiddenRow(s));
     // Everything below is detail: it sits closed behind one "See details" toggle (each list still closed on its own under it).

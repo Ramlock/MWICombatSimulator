@@ -712,10 +712,10 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const loss = { ...zoned(), basePerUser: -29000000 / 3 };
     const lossEn = h('en', loss), lossPt = h('pt', loss);
     // The zone name and tier show in the summary bar (pick 9; whatif-window.mjs checks it there, in English and in Portuguese); the result keeps the base chip.
-    const baseChip = (n) => `<span class="whatif-chip" title="${locales.en.result.perUserDay}"><span class="whatif-chip-k">${locales.en.result.baseProfit}</span> <span data-num="${n}"`;
-    check('base chip: the base per user (the field as it is), titled "per user per day", in a chip of its own; the result names no zone', lossEn.includes(baseChip('-9666666.666666666')) && !lossEn.includes('Zone') && !lossEn.includes('Fly'), lossEn.slice(0, 500));
+    const baseChip = (n) => `<span class="whatif-chip" title="${locales.en.result.baseProfitTip}"><span class="whatif-chip-k">${locales.en.result.baseProfit}</span> <span data-num="${n}"`;
+    check('base chip: the base per user (the field as it is), titled with what it is (baseProfitTip); the result names no zone', lossEn.includes(baseChip('-9666666.666666666')) && !lossEn.includes('Zone') && !lossEn.includes('Fly'), lossEn.slice(0, 500));
     const lossPtT = panel.renderResult(loss, tPt, undefined, N.pt);
-    check('base chip: its strings come from the locale (pt)', lossPtT.includes(`<span class="whatif-chip-k">${locales.pt.result.baseProfit}</span>`) && lossPtT.includes(`title="${locales.pt.result.perUserDay}"`) && locales.pt.result.baseProfit !== locales.en.result.baseProfit);
+    check('base chip: its strings come from the locale (pt)', lossPtT.includes(`<span class="whatif-chip-k">${locales.pt.result.baseProfit}</span>`) && lossPtT.includes(`title="${locales.pt.result.baseProfitTip}"`) && locales.pt.result.baseProfit !== locales.en.result.baseProfit);
     check('base chip: it sits before the steps', lossEn.indexOf(locales.en.result.baseProfit) >= 0 && lossEn.indexOf(locales.en.result.baseProfit) < lossEn.indexOf(locales.en.result.steps));
     check('warning: a base below 0 shows the loss line, in every language, under the base chip', lossEn.includes(locales.en.result.baseLoses) && lossPtT.includes(locales.pt.result.baseLoses) && lossEn.indexOf(locales.en.result.baseProfit) < lossEn.indexOf(locales.en.result.baseLoses));
     const gain = h('en', { ...zoned(), basePerUser: 12345 });
@@ -724,7 +724,19 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     const old = h('en', { ...result, options: { pricesTimestamp: 1700000000, pricesSource: 'snapshot' } });
     check('base chip: a result with no zone shows neither chip nor warning and does not crash (also with no options, and with an unknown zone)', !old.includes(locales.en.result.baseProfit) && !old.includes(locales.en.result.baseLoses) && !h('en', { ...result, options: undefined }).includes(locales.en.result.baseProfit) && typeof panel.renderResult(zoned({ zone: '/actions/combat/not_a_zone' }), t) === 'string');
     check('base chip: a zone with no tier still shows its base; a result with a zone but no base figure shows no chip', h('en', { ...zoned(), options: { zone: '/actions/combat/fly' }, basePerUser: 7 }).includes(baseChip('7')) && !h('en', zoned()).includes(locales.en.result.baseProfit));
-    check('base chip: the strings exist in en, pt and zh', ['baseProfit', 'perUserDay', 'baseLoses'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')));
+    check('base chip: the strings exist in en, pt and zh', ['baseProfit', 'baseProfitTip', 'baseLoses'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k] !== '')));
+    // The chips above the result share one line (the running mark, the base profit, and with no answer drawn the left-out chips); no chip for the
+    // changes with no known cost (their list under See details stays).
+    {
+        const withApart = { ...zoned(), basePerUser: 6232000, apart: [{ id: 'u', desc: 'A token item', note: 'no seller' }], overBudget: [{ id: 'o', player: 'Player 1', desc: 'x', cost: 9e9, costPath: 'market' }] };
+        const run = panel.renderResult({ ...withApart, confirmation: undefined }, t, Date.now(), null, true), done = h('en', withApart);
+        const lines = (html) => [...html.matchAll(/<div class="mb-2 whatif-chips whatif-context">([^]*?)<\/div>/g)].map((m) => m[1]);
+        const top = lines(run);
+        check('chips: a running report draws "so far", the base profit and the over-budget chip in one row, the running mark first', top.length === 1 && top[0].indexOf(locales.en.result.soFar) >= 0 && top[0].indexOf(locales.en.result.soFar) < top[0].indexOf(locales.en.result.baseProfit) && top[0].includes('data-left-out="overBudget"'), JSON.stringify(top));
+        check('chips: no unknown-cost chip, running or finished; the finished result still lists the changes with no known cost', ![run, done].some((x) => x.includes('data-left-out="apart"')) && done.includes('id="whatIfApart"'));
+        check('chips: the unknown-cost chip\'s strings are gone in en, pt and zh', ['en', 'pt', 'zh'].every((l) => locales[l].result.leftOutApart === undefined && locales[l].result.leftOutApartOne === undefined));
+        check('chips: the base profit label and its tooltip exist in en, pt and zh, each its own language', ['baseProfit', 'baseProfitTip'].every((k) => ['en', 'pt', 'zh'].every((l) => typeof locales[l].result[k] === 'string' && locales[l].result[k].length > 0) && locales.pt.result[k] !== locales.en.result[k] && locales.zh.result[k] !== locales.en.result[k]));
+    }
 
     // The skipped swaps (result.dominated): one line with the count, the list closed behind a toggle, names like the other lists.
     const skipped = [{ id: 's1', player: 'Alpha', slot: 'feet', desc: boots, from: { item: '/items/pathseeker_boots_refined', level: 12 }, to: { item: '/items/cotton_boots', level: 0 } },
