@@ -4,7 +4,12 @@
 // steps 1 to 11 in order, and the outward calls come after the built-file tests, in the order release, uploads, push; (2) a failure
 // at each of steps 1 to 10 stops there: exit 1, nothing of the later steps called, the DONE / NOT DONE lists split at that step;
 // (3) a second run with the same commit after a failed push skips the build, the tests, the release and the uploads, and pushes;
-// a third run pushes nothing; (4) -DryRun makes no outward call and logs steps 4, 5 and 8 as skipped.
+// a third run pushes nothing; (4) -DryRun makes no outward call and logs steps 4, 5 and 8 as skipped; (5) the script's REAL Invoke-Api
+// and Test-CommitOnRemote, under Windows PowerShell 5.1 with 'Stop', against a fake gh and git first on PATH (no network, no token
+// read): a second seam replaces only Get-Token, calls the two real functions, writes what each returned or threw, and exits before
+// the flow. A 404 on stderr with exit 1 returns $null; another failure throws with gh's message; a success returns the parsed JSON
+// (also with a warning on stderr); a body goes in by --input; an empty success returns an empty table; a commit git does not know is
+// not on a remote, one an origin branch contains is.
 // Usage: node tools/test/release-script.mjs. Needs Windows PowerShell. Exit code 0 on pass, 1 on fail.
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -97,6 +102,75 @@ try {
     const stepText = (n) => d.out.split(/STEP /).find((s) => s.startsWith(`${n} `)) || '';
     check([4, 5, 8].every((n) => /SKIPPED \(dry run\)/.test(stepText(n))) && /RESULT \(dry run\)/.test(d.out) && idx(d.calls, /^Build-Runner/) >= 0 && idx(d.calls, /^Test-RunnerExe/) >= 0,
         '4: -DryRun builds and tests, and logs steps 4, 5 and 8 as skipped', d.out);
+
+    // (5) The real Invoke-Api and Test-CommitOnRemote, against a fake gh and git.
+    const bin = path.join(work, 'bin'), argsLog = path.join(work, 'native-args.log'), result = path.join(work, 'native-result.json');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'fake-native.mjs'), String.raw`
+import fs from 'node:fs';
+const [tool, ...args] = process.argv.slice(2), mode = process.env.FAKE_MODE;
+fs.appendFileSync(process.env.FAKE_ARGS, JSON.stringify([tool, ...args]) + '\n');
+const out = (s) => process.stdout.write(s + '\n'), err = (s) => process.stderr.write(s + '\n');
+function main() {
+    if (tool === 'git') {
+        if (args.includes('fetch')) return 0;
+        if (mode === 'unknown') { err('error: no such commit ' + args[args.length - 1]); return 129; }
+        out('  origin/claude/x'); out('  origin/main'); return 0;
+    }
+    switch (mode) {
+        case '404': out('{"message":"Not Found","status":"404"}'); err('gh: Not Found (HTTP 404)'); return 1;
+        case '401': out('{"message":"Bad credentials","status":"401"}'); err('gh: Bad credentials (HTTP 401)'); return 1;
+        case 'ok': out('{"id":5,"name":"runner-x"}'); return 0;
+        case 'warn': err('warning: a line on stderr'); out('{"id":6}'); return 0;
+        case 'echo': out(fs.readFileSync(args[args.indexOf('--input') + 1], 'utf8')); return 0;
+        case 'empty': return 0;
+    }
+    err('fake: unknown mode ' + mode); return 2;
+}
+process.exitCode = main();
+`);
+    for (const t of ['gh', 'git']) fs.writeFileSync(path.join(bin, t + '.cmd'), `@node "%~dp0fake-native.mjs" ${t} %*\r\n@exit /b %errorlevel%\r\n`);
+    const apiSeam = path.join(work, 'api-seam.ps1');
+    fs.writeFileSync(apiSeam, String.raw`
+function Get-Token { 'fake-token' }
+$env:Path = $env:FAKE_BIN + ';' + $env:Path
+$res = [ordered]@{}
+function Try-Case([string]$Name, [string]$Mode, [scriptblock]$Call) {
+    $env:FAKE_MODE = $Mode
+    try {
+        $v = & $Call
+        $script:res[$Name] = @{ threw = $false; isNull = ($null -eq $v); type = $(if ($null -ne $v) { $v.GetType().Name }); count = $(if ($v -is [hashtable]) { $v.Count })
+            id = $(if ($null -ne $v) { $v.id }); tag = $(if ($null -ne $v) { $v.tag_name }); value = $(if ($v -is [bool]) { $v }) }
+    } catch { $script:res[$Name] = @{ threw = $true; msg = $_.Exception.Message } }
+}
+Try-Case 'notFound' '404' { Invoke-Api GET 'releases/tags/runner-x' }
+Try-Case 'fail' '401' { Invoke-Api GET 'releases/tags/runner-x' }
+Try-Case 'ok' 'ok' { Invoke-Api GET 'releases/tags/runner-x' }
+Try-Case 'warn' 'warn' { Invoke-Api GET 'releases/tags/runner-x' }
+Try-Case 'body' 'echo' { Invoke-Api POST 'releases' @{ tag_name = 'runner-y' } }
+Try-Case 'empty' 'empty' { Invoke-Api DELETE 'releases/assets/1' }
+Try-Case 'unknownCommit' 'unknown' { Test-CommitOnRemote ('0' * 40) }
+Try-Case 'onRemote' 'contains' { Test-CommitOnRemote ('1' * 40) }
+[IO.File]::WriteAllText($env:FAKE_RESULT, ($res | ConvertTo-Json -Depth 4))
+[Environment]::Exit(0)   # 'exit' in a dot-sourced file returns only from that file, and the flow would run
+`);
+    fs.writeFileSync(argsLog, '');
+    const e = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Commit', newCommit()],
+        { env: { ...process.env, MWI_RELEASE_SEAM: apiSeam, FAKE_BIN: bin, FAKE_ARGS: argsLog, FAKE_RESULT: result }, encoding: 'utf8', windowsHide: true });
+    const eOut = e.stdout + e.stderr;
+    check(e.status === 0 && !/STEP /.test(eOut) && fs.existsSync(result), '5: the seam reaches the real functions and exits before the flow', eOut);
+    const res = fs.existsSync(result) ? JSON.parse(fs.readFileSync(result, 'utf8')) : {}, show = (k) => JSON.stringify(res[k]);
+    check(res.notFound && !res.notFound.threw && res.notFound.isNull, '5: Invoke-Api: a 404 on stderr with exit 1 returns $null', show('notFound'));
+    check(res.fail && res.fail.threw && /^gh api GET releases\/tags\/runner-x failed: .*Bad credentials \(HTTP 401\)/.test(res.fail.msg), '5: Invoke-Api: another failure throws with gh\'s message', show('fail'));
+    check(res.ok && !res.ok.threw && res.ok.id === 5, '5: Invoke-Api: a success returns the parsed JSON', show('ok'));
+    check(res.warn && !res.warn.threw && res.warn.id === 6, '5: Invoke-Api: a success with a line on stderr returns the parsed stdout', show('warn'));
+    check(res.body && !res.body.threw && res.body.tag === 'runner-y', '5: Invoke-Api: a body goes in by --input', show('body'));
+    check(res.empty && !res.empty.threw && res.empty.type === 'Hashtable' && res.empty.count === 0, '5: Invoke-Api: an empty success returns an empty table', show('empty'));
+    check(res.unknownCommit && !res.unknownCommit.threw && res.unknownCommit.value === false, '5: Test-CommitOnRemote: a commit git does not know is not on a remote', show('unknownCommit'));
+    check(res.onRemote && !res.onRemote.threw && res.onRemote.value === true, '5: Test-CommitOnRemote: a commit an origin branch contains is', show('onRemote'));
+    const ghCalls = fs.readFileSync(argsLog, 'utf8').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l)).filter((a) => a[0] === 'gh');
+    check(ghCalls.length === 6 && ghCalls.every((a) => a.includes('Authorization: token fake-token') && a.some((x) => x.startsWith('repos/Ramlock/MWICombatSimulator/'))),
+        '5: every gh call went to the fake, with the seam\'s token and the repo path', ghCalls.map((a) => a.join(' ')).join(' | '));
 } finally {
     for (const c of commits) fs.rmSync(path.join(os.tmpdir(), 'mwi-release-' + c.slice(0, 7)), { recursive: true, force: true });
     fs.rmSync(work, { recursive: true, force: true });

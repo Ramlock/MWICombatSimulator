@@ -21,19 +21,33 @@ $env:Path = 'C:\Windows\System32;' + $env:Path
 $env:BROWSER = 'C:\Windows\System32\where.exe'   # a no-op: any runner started below never opens a browser
 
 function Write-Log([string]$m) { Write-Host ('{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m) }
+function Invoke-Native([string]$Exe, [string[]]$Arguments) {
+    # Runs a native command and returns its exit code and its stdout and stderr lines, apart. Windows PowerShell 5.1 turns each stderr
+    # line of a redirected native call (2>&1, 2>$null) into an error record, which 'Stop' makes terminating before the exit code can be
+    # read; the preference is 'Continue' in this function's scope only, and every caller decides from Code.
+    $null = Get-Command $Exe -CommandType Application   # a missing command throws here, under 'Stop', not as a stale exit code below
+    $ErrorActionPreference = 'Continue'
+    $o =New-Object System.Collections.Generic.List[string]; $e = New-Object System.Collections.Generic.List[string]
+    & $Exe @Arguments 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $e.Add("$_") } else { $o.Add("$_") } }
+    [pscustomobject]@{ Code = $LASTEXITCODE; Out = [string[]]$o.ToArray(); Err = [string[]]$e.ToArray() }
+}
 
 # ---- The functions every outside effect goes through (the test seam replaces them). ----
 function Get-Token { (gh auth token --user Ramlock).Trim() }
 function Invoke-Api([string]$Method, [string]$Path, $Body = $null) {
-    # Returns the parsed JSON, or $null on 404.
+    # Returns the parsed JSON (stdout only), $null on 404, an empty table on an empty answer; any other failure throws with gh's message.
     $tok = Get-Token
     $a = @('api', '-X', $Method, "repos/$Repo/$Path", '-H', "Authorization: token $tok")
     $in = $null
     if ($null -ne $Body) { $in = [IO.Path]::GetTempFileName(); [IO.File]::WriteAllText($in, ($Body | ConvertTo-Json -Depth 5)); $a += @('--input', $in) }
     try {
-        $out = & gh @a 2>&1
-        if ($LASTEXITCODE -ne 0) { if ("$out" -match 'HTTP 404') { return $null }; throw "gh api $Method $Path failed: $out" }
-        $text = ($out | Out-String).Trim()
+        $r = Invoke-Native gh $a
+        if ($r.Code -ne 0) {
+            $msg = (@($r.Err) + @($r.Out)) -join ' '
+            if ($msg -match 'HTTP 404') { return $null }
+            throw "gh api $Method $Path failed: $msg"
+        }
+        $text = ($r.Out -join "`n").Trim()
         if (-not $text) { return @{} }
         if ($text.StartsWith('{') -or $text.StartsWith('[')) { return ($text | ConvertFrom-Json) }
         return $text
@@ -41,7 +55,12 @@ function Invoke-Api([string]$Method, [string]$Path, $Body = $null) {
 }
 function Test-CommitOnRemote([string]$Sha) {
     git -C $Root fetch -q origin; if ($LASTEXITCODE -ne 0) { throw 'git fetch failed' }
-    return [bool](git -C $Root branch -r --contains $Sha 2>$null | Where-Object { $_ -match 'origin/' })
+    $r = Invoke-Native git @('-C', $Root, 'branch', '-r', '--contains', $Sha)
+    if ($r.Code -ne 0) {
+        if ("$($r.Err)" -match 'no such commit|malformed object name') { return $false }   # a commit no fetched branch has
+        throw "git branch -r --contains failed: $($r.Err -join ' ')"
+    }
+    return [bool]($r.Out | Where-Object { $_ -match 'origin/' })
 }
 function Test-MainAncestor([string]$Sha) { git -C $Root merge-base --is-ancestor origin/main $Sha; return $LASTEXITCODE -eq 0 }
 function Get-WorktreeState { @{ Head = (git -C $Root rev-parse HEAD).Trim(); Clean = -not (git -C $Root status --porcelain --untracked-files=no) } }
