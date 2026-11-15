@@ -27,6 +27,7 @@ import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs
 import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay, NO_LIMIT_TEXT } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
+import { defaultPlayer } from '../calibration/party.mjs';
 import { playerFit, misfit, abilityMisfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
 import { SURE_BLOCK, SURE_MAX, verdict, checkPick, firstConfirmed, confirmFillings, checkSet } from './sure.mjs';
@@ -75,7 +76,7 @@ export async function main(settings, seams) {
     const stages = [{ k: firstK, h: unitH }]; // the one fixed stage left: round 1, today's screen
     const fin = { k: finK, h: finH }; // the measurement of the pick checks, the confirmation and the trigger refinement
     const keep = [];
-    const players = list(arg('players', 'Ramlock'));
+    const players = list(arg('players', null) ?? defaultPlayer(data.setups.map((s) => s.name)));
     // With no --max-up, the upgrades are every level the market sells above the worn one (+1 to +3 with no ask listed apart as no
     // seller); with no --swap-levels, the swaps are every level of the new item the market sells (prices.mjs upgradeLevels,
     // swapLevelsOf). Either option given keeps its old meaning: +1 to +max-up (3); the given levels (0 and the worn level).

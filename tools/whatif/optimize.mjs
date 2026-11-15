@@ -3,7 +3,7 @@
 // single change, successive halving and greedy stacking, with one fresh-seed confirmation at the end.
 //
 // Usage: node tools/whatif/optimize.mjs --out <dir> [options]
-//   --players Ramlock            whose equipment is open (comma list); each change is costed to its player
+//   --players <player>            whose equipment is open (comma list); each change is costed to its player
 //   --levers equip               comma list of equip (phase 1: +N and market swaps), foods and drinks (decided FIRST,
 //                                each as whole fillings of every open slot: foods = Stage F picks each player's best food
 //                                filling, drinks = Stage D his best drink filling (drinkfill.mjs, pruned by his rules); the
