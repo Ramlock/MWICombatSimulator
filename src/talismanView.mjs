@@ -4,8 +4,9 @@
 import { TALISMAN_MODIFIERS } from './combatsimulator/talismans.js';
 
 // A modifier whose name is one of the game's own translated strings (the game's bundle in js/i18n.js): its key there, so the page's
-// translation (data-i18n, updateContent) shows the game's word in each language. A modifier not listed keeps the table's English name in every
-// language: the game's bundle has no string for it (melee and elemental lines, Thorns, Threat Reduction, the five unique ones).
+// translation (data-i18n, updateContent) shows the game's word in each language. A modifier not listed (melee and elemental lines, Thorns,
+// Threat Reduction, the five unique ones) has no string in that bundle: its name is `common:talismans.names.<id>` in locales/*/common.json, the
+// game's own words (en, pt, zh) from the game's current client (talismanModifierNames, combatStats, talismansPanel.reducedThreat).
 export const TALISMAN_NAME_KEYS = {
     auto_attack_damage: 'combatStats.autoAttackDamage', ability_damage: 'combatStats.abilityDamage', attack_speed: 'combatStats.attackSpeed',
     cast_speed: 'combatStats.castSpeed', ability_haste: 'combatStats.abilityHaste', critical_rate: 'combatStats.criticalRate',
@@ -33,7 +34,7 @@ export function talismanViewHtml(talismans, t) {
     const tr = (key, fallback) => { const v = t ? t(key) : null; return typeof v === 'string' && v && v !== key && !v.endsWith('.' + key) ? v : fallback; };
     const items = lines.map((l) => {
         const name = TALISMAN_MODIFIERS[l.modifier]?.name ?? String(l.modifier);
-        const key = TALISMAN_NAME_KEYS[l.modifier];
+        const key = TALISMAN_NAME_KEYS[l.modifier] ?? (TALISMAN_MODIFIERS[l.modifier] ? `common:talismans.names.${l.modifier}` : null);
         const label = key ? `<span data-i18n="${esc(key)}">${esc(tr(key, name))}</span>` : `<span>${esc(name)}</span>`;
         return `<li class="talisman-line">${label} <span class="talisman-grade">G${esc(l.grade)}</span></li>`;
     }).join('');

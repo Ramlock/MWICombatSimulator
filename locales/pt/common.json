@@ -6,8 +6,23 @@
         "dropPrices": "Preços dos itens"
     },
     "talismans": {
-        "title": "Talismans",
-        "power": "Talisman Power"
+        "title": "Talismãs",
+        "power": "Poder de talismã",
+        "names": {
+            "melee_accuracy": "Precisão corpo a corpo",
+            "melee_damage": "Dano corpo a corpo",
+            "melee_evasion": "Evasão corpo a corpo",
+            "elemental_amplify": "Amplificação elemental",
+            "elemental_penetration": "Penetração elemental",
+            "elemental_resistance": "Resistência elemental",
+            "thorns": "Espinhos",
+            "threat_reduction": "Ameaça reduzida",
+            "smite": "Castigo",
+            "overkill": "Dano excedente",
+            "echo": "Eco",
+            "shatter": "Estilhaçar",
+            "fortify": "Fortificar"
+        }
     },
     "equipment": {
         "presets": "Predefinições"

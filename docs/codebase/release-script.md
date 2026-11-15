@@ -13,14 +13,14 @@ D:\Apps\HeavyRun\HeavyRun.exe --label "<what it loads>" --minutes 60 --wait -- p
 - `-Commit <full sha>` (required): the commit to release; it must be on the remote, a fast-forward of `origin/main`, and the worktree must be at it and clean (untracked files are ignored).
 - `-DryRun`: the same flow; every outward call (create the release, upload or delete an asset, push `main`, rerun Pages) is skipped and logged as `SKIPPED (dry run)`, and so are the steps that only check an outward effect (6, 7, 9, 10).
 
-It stops at the first failed step, logs `DONE:` and `NOT DONE:` lists and exits 1. A second run with the same commit carries on: the build and the tests of the built files are kept (marker files in `%TEMP%\mwi-release-<short sha>`), an existing release with the tag, an asset of the same name and size, `main` already at the commit and a successful Pages run are found and not redone. Every log line has a timestamp; the token (`gh auth token --user Ramlock`) is read at run time and never logged.
+It stops at the first failed step, logs `DONE:` and `NOT DONE:` lists and exits 1. A second run with the same commit carries on: the build and the tests of the built files are kept (marker files in `%TEMP%\mwi-release-<short sha>`), an existing release with the tag, an asset of the same name and size, `main` already at the commit and a successful Pages run are found and not redone. Every log line has a timestamp; the owner's token (`gh auth token --user <owner of the repo slug>`) is read at run time and never logged.
 
 ## Steps
 
 1. Checks: the commit is on a remote branch; `origin/main` is its ancestor; the worktree is at it and clean.
 2. Builds `WhatIfRunner.exe` and `WhatIfRunner.zip` (`build-exe.ps1 -Zip`), with `C:\Windows\System32` first on PATH.
 3. Tests both by a real search: the exe with `tools/test/whatif-runner-exe.mjs`, the zip with `tools/release/zip-search.mjs` (the zip's own node.exe and server, the search of `tools/test/runner-search.mjs`).
-4. Creates the release `runner-<short sha>`, latest (`gh api POST releases` with the Ramlock token).
+4. Creates the release `runner-<short sha>`, latest (`gh api POST releases` with the owner's token).
 5. Uploads the two assets (`uploads.github.com`); an asset of the same name and another size is deleted first.
 6. Waits until `releases/latest/download/<name>` redirects to the new tag (up to 10 min), downloads both into a new temp folder and byte-compares them with the builds.
 7. Tests the downloaded exe by a real search.

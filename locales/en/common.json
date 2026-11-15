@@ -7,7 +7,22 @@
     },
     "talismans": {
         "title": "Talismans",
-        "power": "Talisman Power"
+        "power": "Talisman Power",
+        "names": {
+            "melee_accuracy": "Melee Accuracy",
+            "melee_damage": "Melee Damage",
+            "melee_evasion": "Melee Evasion",
+            "elemental_amplify": "Elemental Amplify",
+            "elemental_penetration": "Elemental Penetration",
+            "elemental_resistance": "Elemental Resistance",
+            "thorns": "Thorns",
+            "threat_reduction": "Reduced Threat",
+            "smite": "Smite",
+            "overkill": "Overkill",
+            "echo": "Echo",
+            "shatter": "Shatter",
+            "fortify": "Fortify"
+        }
     },
     "equipment": {
         "presets": "Presets"
