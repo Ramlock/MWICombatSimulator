@@ -31,8 +31,9 @@ export function diffStat(vs, bs, rule, bsSame) {
 // buyer's own supplies per day; the net and its error are diffStat of that one series (never the loot error plus the
 // supplies error: the two move together). Accepted when the net is above 0 by `z` errors. `vcp` / `bcp`: the variant's and
 // the base's checkpoints, in seed order; `bcpSame` (optional): the base's checkpoints on the variant's own seeds (see diffStat).
+// `player` may be a list (a budget group of the accept-together rule, bought by several): q is then the sum of each buyer's own q.
 export function buyerNet(vcp, bcp, player, n, rule, z, bcpSame) {
-    const q = (cp) => lootOf(cp) / n - suppliesOf(cp, player);
+    const ps = Array.isArray(player) ? player : [player], q = (cp) => ps.reduce((a, p) => a + lootOf(cp) / n - suppliesOf(cp, p), 0);
     const { gain: net, se, seSame } = diffStat(vcp.map(q), bcp.map(q), rule, bcpSame && bcpSame.map(q));
     return { net, se, seSame, accepted: net > 0 && net >= z * se };
 }

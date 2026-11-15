@@ -379,6 +379,7 @@
             "endedByUser": "ended by you after round {{n}}",
             "endedByUserDuring": "ended by you during round {{n}}, its finished runs kept",
             "acceptedAsIs": "accepted as is",
+            "setMarginals": "Accepted together. Each change's own gain (the set against the set without it), per user per day:",
             "gainPerDay": "Gain per day",
             "paysBackIn": "Pays back in (days)",
             "singlesNotShown": "{{n}} more searched, not confirmed, not shown",

@@ -378,6 +378,7 @@
             "endedByUser": "由你在第 {{n}} 轮后结束",
             "endedByUserDuring": "由你在第 {{n}} 轮中结束，已完成的运行已保留",
             "acceptedAsIs": "按原样采纳",
+            "setMarginals": "一起采纳。每项改动自身的增益（整组对比去掉该项后的整组），每人每天：",
             "gainPerDay": "每日收益",
             "paysBackIn": "回本天数",
             "singlesNotShown": "另有 {{n}} 个已搜索但未确认，不显示",

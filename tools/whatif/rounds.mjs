@@ -251,6 +251,7 @@ export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(
 // so such a pair counts as undecided) the rounds the race still needs to separate them, in its own unit (per coin, bounds() at `mult` errors) and
 // uncapped, are more than the `rounds` it has run; equal means never separate. A set whose member ids are in `failed` (its check failed in this race) is
 // not offered again. `levelOf(c)` -> { item, level } or null: the item a change puts in its slot and its level.
+// A trigger change counts as not clear (the owner's pick, 2026-11-14: "keep trigger changes out of sets"): its pick is refined before its check, which a set does not do.
 // Pure: estimates and the caller's cached readings only, so a replay of the stored runs takes the same decision.
 // Returns null (the race goes on as today) or { set: the changes in id order, slotLosers: the changes dropped by the slot rule }. A set of one is the slot
 // rule leaving one change: it is that pool's pick, as a lone lock is.
@@ -272,7 +273,7 @@ export function undecided(a, b, { goal, mult, rounds }) {
 }
 export function togetherOf(pools, { goal, mult, rounds, clear, levelOf, failed = new Set() }) {
     const standing = pools.flatMap((p) => p.changes);
-    if (standing.length < 2 || !standing.every(clear)) return null;
+    if (standing.length < 2 || !standing.every((c) => c.kind !== 'trigger' && clear(c))) return null; // a trigger change is never in a set (the owner, 2026-11-14): while one stands, the race goes on as today
     let set = [...standing].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const slotLosers = [];
     for (let again = true; again;) {

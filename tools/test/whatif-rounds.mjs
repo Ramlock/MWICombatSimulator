@@ -250,6 +250,7 @@ const goal = 'profit';
     check(ids(R.togetherOf(pools([e1, e2]), { ...T, clear: all })) === 'e1,e2', 'together: equal means count as cannot decide');
     const fr = pc('fr', 100, 1, 0, ['A:food0']), pd = pc('pd', 10, 1, 10, ['A:legs']);
     check(ids(R.togetherOf(pools([fr], [pd]), { ...T, clear: all })) === 'fr,pd', 'together: a free and a paid change (two pools) never separate, so they count as cannot decide');
+    check(R.togetherOf(pools([a, { ...b, kind: 'trigger' }]), { ...T, clear: all }) === null, 'together: a standing trigger change counts as not clear, so no set while it stands');
     check(R.togetherOf(pools([a, b]), { ...T, clear: all, failed: new Set([R.setKey([a, b])]) }) === null, 'together: a set whose check failed in this race is not offered again');
 
     const gc = (id, player, cost, g) => ({ id, player, cost: { cost }, g });

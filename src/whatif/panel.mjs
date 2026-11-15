@@ -732,7 +732,11 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             ['#', t('col.player'), t('col.change')].map((h) => `<th>${esc(h)}</th>`).join('') + colHead(t) + [t('col.cost'), t('col.payback')].map((h) => `<th class="num">${esc(h)}</th>`).join('') +
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         result.steps.forEach((s, i) => {
-            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(s.player)}</td><td class="chg">${shown(s)}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
+            // A step that holds a set accepted together: its members joined, each worded alone, the players joined, and each member's own gain (its marginal) in the tooltip.
+            const set = Array.isArray(s.members) && s.members.length > 1;
+            const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${num(m.marginal.gainPerUser)} ± ${num(m.marginal.sePerUser)}` : '—'}`)].join('&#10;'.replace('&#10;', String.fromCharCode(10))))}" data-set="${s.members.length}"` : '';
+            const who = set ? [...new Set(s.members.map((m) => m.player))].join(', ') : s.player, what = set ? s.members.map((m) => shown(m)).join(' + ') : shown(s);
+            L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
                 gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
                 `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td></tr>`);
         });
