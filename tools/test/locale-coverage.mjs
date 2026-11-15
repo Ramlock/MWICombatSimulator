@@ -122,6 +122,7 @@ const notTheGameWord = {
     'whatIf.rounds.status.zero:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
     'whatIf.rounds.status.zeroTip:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
     'whatIf.result.otherStyleOne:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
+    'whatIf.chart.noFigures:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
     'whatIf.rounds.col.candidate:change': '"mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
     'whatIf.rounds.col.candidate': '"Mudança" is the noun (a change to a setup), not the verb Alterar of the game (its button "Change creator code")',
     'whatIf.result.running:change': "\"podem mudar\" (the lists may still change) is the plain verb, not the game's button Alterar",

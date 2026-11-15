@@ -339,9 +339,7 @@
         "chart": {
             "round": "Round",
             "toBeat": "to beat",
-            "zero": "0",
             "paybackUp": "{{col}} (shorter is up)",
-            "stageHead": "{{stage}} · {{rounds}}",
             "rounds": "{{n}} rounds",
             "roundsOne": "{{n}} round",
             "running": "running",
@@ -350,8 +348,7 @@
             "noRounds": "{{stage}}: ended before its first round finished, so there is no chart.",
             "tipFigure": "{{value}} [{{low}}, {{high}}] · round {{round}}",
             "tipFigureOne": "{{value}} · round {{round}}",
-            "asideNote": "set aside",
-            "hint": "Hover a line to isolate it and its row; click it to jump to its row."
+            "groupsStage": "{{stage}}, budget groups"
         },
         "rounds": {
             "coverageK": "Coverage",

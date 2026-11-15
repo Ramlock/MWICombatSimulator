@@ -337,9 +337,7 @@
         "chart": {
             "round": "Rodada",
             "toBeat": "a superar",
-            "zero": "0",
             "paybackUp": "{{col}} (menor fica no alto)",
-            "stageHead": "{{stage}} · {{rounds}}",
             "rounds": "{{n}} rodadas",
             "roundsOne": "{{n}} rodada",
             "running": "em andamento",
@@ -348,8 +346,7 @@
             "noRounds": "{{stage}}: encerrada antes de a primeira rodada terminar, então não há gráfico.",
             "tipFigure": "{{value}} [{{low}}, {{high}}] · rodada {{round}}",
             "tipFigureOne": "{{value}} · rodada {{round}}",
-            "asideNote": "deixada de lado",
-            "hint": "Passe o mouse sobre uma linha para isolá-la com a sua linha da tabela; clique para ir até a linha da tabela."
+            "groupsStage": "{{stage}}, grupos de orçamento"
         },
         "rounds": {
             "coverageK": "Cobertura",

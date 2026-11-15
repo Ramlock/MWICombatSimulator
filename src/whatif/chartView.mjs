@@ -126,7 +126,7 @@ export function createChartHost(container, opts) {
         chart.$view = {
             xMax: model.xMax, sepX: colored ? layout.sepX : NaN, pulse: new Set(model.column.filter((c) => c.pulse).map((c) => c.id)),
             levels: [
-                { value: 0, text: t('chart.zero'), color: THEME.zero, dash: [] },
+                { value: 0, text: format(0), color: THEME.zero, dash: [] },
                 ...(Number.isFinite(model.toBeat) ? [{ value: model.toBeat, text: t('chart.toBeat') + ' ' + format(model.toBeat), color: 'rgba(255, 190, 90, 0.8)', dash: [6, 4] }] : []),
             ],
         };

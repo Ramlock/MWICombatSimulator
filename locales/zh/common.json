@@ -338,19 +338,16 @@
         "chart": {
             "round": "轮次",
             "toBeat": "需超越",
-            "zero": "0",
             "paybackUp": "{{col}}（越短越靠上）",
-            "stageHead": "{{stage}} · {{rounds}}",
             "rounds": "{{n}} 轮",
             "roundsOne": "{{n}} 轮",
-            "running": "进行中",
+            "running": "运行中",
             "firstLook": "初步结果：来自最初几次运行的数值，尚无折线。",
             "noFigures": "目前没有任何更改具备数值所需的 {{n}} 次新运行。",
             "noRounds": "{{stage}}：在第一轮完成前已结束，因此没有图表。",
             "tipFigure": "{{value}} [{{low}}, {{high}}] · 第 {{round}} 轮",
             "tipFigureOne": "{{value}} · 第 {{round}} 轮",
-            "asideNote": "暂时搁置",
-            "hint": "悬停在折线上可单独显示它及其表格行；点击可跳转到其表格行。"
+            "groupsStage": "{{stage}}·预算分组"
         },
         "rounds": {
             "coverageK": "覆盖率",

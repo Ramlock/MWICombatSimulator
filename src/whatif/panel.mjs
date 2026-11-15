@@ -281,7 +281,9 @@ export function pollDelay(status, pressed, now, fastUntil) {
 const stepLabel = (t, index) => t('progress.partStep', { n: Number(index) + 1 });
 // The name a stage of a round record goes by in the window ('foods', 'drinks', 'screen', 'greedy step N'): the same words the progress parts use (the chart's titles).
 export function stageLabel(stage, t) {
-    const s = String(stage), step = /^greedy step (\d+)$/.exec(s);
+    const s = String(stage), step = /^greedy step (\d+)$/.exec(s), groups = /^(.+) groups$/.exec(s);
+    // A set that did not fit the budgets races its budget groups as a race of its own ('screen groups', 'greedy step N groups').
+    if (groups) return t('chart.groupsStage', { stage: stageLabel(groups[1], t) });
     return s === 'foods' ? t('progress.partFoods') : s === 'drinks' ? t('progress.partDrinks') : s === 'screen' ? t('progress.partScreen') : step ? stepLabel(t, step[1]) : s;
 }
 // The two buttons of the race stage that runs now (main.js posts API.done with the mode): "Accept current winner" (only while some pool without a
