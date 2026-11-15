@@ -12,6 +12,8 @@ A player DTO (and a what-if setup) may carry `talismans: { power, lines: [{ modi
 
 The Tracker's character export and the self slot of its party export write this field (`talismansForSim` in `userscript/mwics-exporter.user.js`); the page keeps it in the slot's JSON and shows it read-only (`src/talismanView.mjs`).
 
+The names shown: a modifier the game's bundle in `js/i18n.js` has (`TALISMAN_NAME_KEYS`) uses its key there; every other one (melee and elemental lines, Thorns, Reduced Threat, the five unique ones), the label and Talisman Power use `common:talismans.*` in `locales/{en,pt,zh}/common.json`, the game's own words taken 2026-11-15 from the game's test client (not yet in the live one): `test.milkywayidle.com/static/js/main.60d0d5b1.chunk.js` (en), `7.4277e30d.chunk.js` (pt), `10.14d8a4bb.chunk.js` (zh), keys `talismanModifierNames./talisman_modifiers/*`, `combatStats.talismanPower|smite|overkill|echo|shatter|fortify`, `characterManagement.talismans`, `talismansPanel.reducedThreat`.
+
 ## The table (`src/combatsimulator/talismans.js`)
 
 - `TALISMAN_MODIFIERS`: per modifier its name, its six grade values (the game's `talismanModifierDetailMap`) and the engine stats it adds to (the names `Player.updateCombatDetails` sums from equipment; melee lines go to stab, slash and smash, elemental lines to water, nature and fire).

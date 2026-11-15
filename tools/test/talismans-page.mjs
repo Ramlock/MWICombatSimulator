@@ -75,11 +75,11 @@ try {
 
     await lang('pt');
     v = await view();
-    check('pt: the game's own words for every line and the label (Dano mágico, Armadura, Eco, Precisão corpo a corpo, Talismãs, Poder de talismã)', v && /Dano mágico G3/.test(v.text) && /Armadura G2/.test(v.text) && /Eco G1/.test(v.text) && /Precisão corpo a corpo G4/.test(v.text) && /Talismãs/.test(v.text) && /Poder de talismã \+20%/.test(v.text) && !/Echo|Melee|Talisman/.test(v.text), v?.text);
+    check('pt: the game words for every line and the label (Dano mágico, Armadura, Eco, Precisão corpo a corpo, Talismãs, Poder de talismã)', v && /Dano mágico G3/.test(v.text) && /Armadura G2/.test(v.text) && /Eco G1/.test(v.text) && /Precisão corpo a corpo G4/.test(v.text) && /Talismãs/.test(v.text) && /Poder de talismã \+20%/.test(v.text) && !/Echo|Melee|Talisman/.test(v.text), v?.text);
     await shot('talismans-pt');
     await lang('zh');
     v = await view();
-    check('zh: the game's own words for every line and the label (魔法伤害, 护甲, 回响, 近战精准度, 符石, 符石威力)', v && /魔法伤害 G3/.test(v.text) && /护甲 G2/.test(v.text) && /回响 G1/.test(v.text) && /近战精准度 G4/.test(v.text) && /符石/.test(v.text) && /符石威力 \+20%/.test(v.text) && !/[A-Za-z]{3,}/.test(v.text), v?.text);
+    check('zh: the game words for every line and the label (魔法伤害, 护甲, 回响, 近战精准度, 符石, 符石威力)', v && /魔法伤害 G3/.test(v.text) && /护甲 G2/.test(v.text) && /回响 G1/.test(v.text) && /近战精准度 G4/.test(v.text) && /符石/.test(v.text) && /符石威力 \+20%/.test(v.text) && !/[A-Za-z]{3,}/.test(v.text), v?.text);
     await shot('talismans-zh');
     await lang('en');
 
