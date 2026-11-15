@@ -73,3 +73,32 @@ export async function confirmFillings(players, pool, baseOps, check, onFail, isO
     }
     return { baseOps: ops, chosen, fresh };
 }
+
+// The check of a set accepted together (design section 3): the set against the base as one change, by checkPick on the confirm seeds, then each
+// member left out once on the same seeds. `measure(variant, against, k)` is the reading of base + every `variant` member's ops against base + every
+// `against` member's ops on k fresh seeds per arm (`against` empty: against the base), its accept rule per buyer (each player who buys a member in
+// variant and not in against: acceptBoth at z and the payback limit on his own cost), its deciding figure the weakest buyer's; null on a stop.
+// m's marginal is the set against "set minus m", paired on the same seeds, under the same verdict at the set's seeds; a member whose marginal fails
+// leaves the set (it is not refuted). One leaving: the reduced set is "set minus m", whose runs the leave-out already made, checked from them (no new
+// run). Two or more leaving: the reduced set gets one more checkPick. Returns { passed, set, fresh, marginals: Map member -> reading, left: [members] },
+// or null on a stop. A set that fails refutes no one (the caller keeps it by setKey so it is not offered again in the race).
+export async function checkSet(members, measure, { z, goal, block = SURE_BLOCK, max = SURE_MAX }) {
+    const whole = await checkPick((k) => measure(members, [], k), { z, goal, block, max, cost: 0, maxPayback: 0 });
+    if (whole === null) return null;
+    if (!whole.passed) return { passed: false, set: members, fresh: whole.fresh, marginals: new Map(), left: [] };
+    const k = whole.fresh.seeds, marginals = new Map(), left = [];
+    for (const m of members) {
+        const r = await measure(members, members.filter((x) => x !== m), k);
+        if (r === null) return null;
+        marginals.set(m, r);
+        if (verdict(r, k, { z, goal, max: k }) !== 'pass') left.push(m);
+    }
+    if (!left.length) return { passed: true, set: members, fresh: whole.fresh, marginals, left };
+    const rest = members.filter((m) => !left.includes(m));
+    if (!rest.length) return { passed: false, set: members, fresh: whole.fresh, marginals, left };
+    const again = left.length === 1
+        ? await checkPick((kk) => measure(rest, [], kk), { z, goal, block: k, max: k, cost: 0, maxPayback: 0 })
+        : await checkPick((kk) => measure(rest, [], kk), { z, goal, block, max, cost: 0, maxPayback: 0 });
+    if (again === null) return null;
+    return { passed: again.passed, set: rest, fresh: again.fresh, marginals, left };
+}

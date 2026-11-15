@@ -241,3 +241,79 @@ export function eliminate(cands, { goal, mult, byPlayer = false, bars = new Map(
     }
     return pools;
 }
+
+// ---- Accept together (design: the private repo's docs/proposals/what-if-accept-together.md, approved 2026-11-14) ----
+// The owner: "Maybe we should have a mode where all leading changes are tested together and then accepted together when the tool can't decide between
+// them?" A race that picks one change per step ends with a set when, this round, (1) two or more changes stand (eliminate()'s pools, every pool together)
+// and every one of them is a clear gain (`clear(c)`: a leader whose reading seeds pass the pick check, as the lock's own sure()); (2) changes of one slot
+// (overlapping `groups`) are resolved at once: two levels of one item take the higher level, two items the larger estimate (rankedOf()'s mean, not per
+// coin); (3) the search cannot decide: for every pair of one pool (the race compares changes only inside a pool: a free and a paid change never separate,
+// so such a pair counts as undecided) the rounds the race still needs to separate them, in its own unit (per coin, bounds() at `mult` errors) and
+// uncapped, are more than the `rounds` it has run; equal means never separate. A set whose member ids are in `failed` (its check failed in this race) is
+// not offered again. `levelOf(c)` -> { item, level } or null: the item a change puts in its slot and its level.
+// Pure: estimates and the caller's cached readings only, so a replay of the stored runs takes the same decision.
+// Returns null (the race goes on as today) or { set: the changes in id order, slotLosers: the changes dropped by the slot rule }. A set of one is the slot
+// rule leaving one change: it is that pool's pick, as a lone lock is.
+export const setKey = (list) => list.map((c) => c.id).sort().join(' + ');
+const overlaps = (a, b) => a.groups?.some((g) => b.groups?.includes(g));
+export function slotWinner(a, b, { goal, levelOf = () => null }) {
+    const la = levelOf(a), lb = levelOf(b);
+    if (la && lb && la.item === lb.item && la.level !== lb.level) return la.level > lb.level ? a : b;
+    const qa = rankedOf(a.est, goal)?.q ?? -Infinity, qb = rankedOf(b.est, goal)?.q ?? -Infinity;
+    return qa !== qb ? (qa > qb ? a : b) : (a.id < b.id ? a : b);
+}
+export function undecided(a, b, { goal, mult, rounds }) {
+    if (poolKey(a, false) !== poolKey(b, false)) return true;
+    const ba = bounds(a, goal, mult), bb = bounds(b, goal, mult);
+    const A = { mean: ba.v, margin: (ba.hi - ba.lo) / 2 }, B = { mean: bb.v, margin: (bb.hi - bb.lo) / 2 };
+    if (A.mean === B.mean) return true;
+    const n = roundsToSeparate(A, B, rounds, Infinity);
+    return n !== null && n > rounds;
+}
+export function togetherOf(pools, { goal, mult, rounds, clear, levelOf, failed = new Set() }) {
+    const standing = pools.flatMap((p) => p.changes);
+    if (standing.length < 2 || !standing.every(clear)) return null;
+    let set = [...standing].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const slotLosers = [];
+    for (let again = true; again;) {
+        again = false;
+        for (let i = 0; i < set.length && !again; i++) for (let j = i + 1; j < set.length && !again; j++) {
+            if (!overlaps(set[i], set[j])) continue;
+            const loser = slotWinner(set[i], set[j], { goal, levelOf }) === set[i] ? set[j] : set[i];
+            slotLosers.push(loser); set = set.filter((c) => c !== loser); again = true;
+        }
+    }
+    if (set.length >= 2) {
+        for (let i = 0; i < set.length; i++) for (let j = i + 1; j < set.length; j++) if (!undecided(set[i], set[j], { goal, mult, rounds })) return null;
+        if (failed.has(setKey(set))) return null;
+    }
+    return { set, slotLosers };
+}
+
+// The groups when a set does not fit the budgets (design section 4). Budgets are per player: for each player whose members do not all fit what he has
+// left (`left(player)`), his maximal fitting subsets; with two or more players short, the products of each one's; the other players' members join every
+// group. A group dominated by another (summed gain no higher and cost no lower, `gainOf(c)` the estimate's mean) falls out; the rest are ranked by summed
+// gain (the owner's same-slot rule carried over: the larger total gain) and cut at `max` (4). Returns [] when every member fits (no groups needed), else the
+// groups, each a list of members; one group left wins without a race.
+export function budgetGroups(set, { left, gainOf, max = 4 }) {
+    const cost = (c) => Math.max(c.cost.cost, 0), sum = (g, f) => g.reduce((a, c) => a + f(c), 0);
+    const byPlayer = new Map();
+    for (const c of set) { if (!byPlayer.has(c.player)) byPlayer.set(c.player, []); byPlayer.get(c.player).push(c); }
+    const options = [];
+    let short = false;
+    for (const [p, mine] of byPlayer) {
+        if (sum(mine, cost) <= left(p)) { options.push([mine]); continue; }
+        short = true;
+        const fits = [];
+        for (let mask = 1; mask < 1 << mine.length; mask++) { const s = mine.filter((_, i) => mask & (1 << i)); if (sum(s, cost) <= left(p)) fits.push(s); }
+        const maximal = fits.filter((s) => !fits.some((t) => t.length > s.length && s.every((c) => t.includes(c))));
+        options.push(maximal.length ? maximal : [[]]);
+    }
+    if (!short) return [];
+    let groups = [[]];
+    for (const opts of options) groups = groups.flatMap((g) => opts.map((o) => [...g, ...o]));
+    groups = groups.filter((g) => g.length);
+    const g = (x) => sum(x, gainOf), k = (x) => sum(x, cost);
+    const kept = groups.filter((x) => !groups.some((y) => y !== x && g(y) >= g(x) && k(y) <= k(x) && (g(y) > g(x) || k(y) < k(x))));
+    return kept.sort((a, b) => g(b) - g(a) || k(a) - k(b)).slice(0, max);
+}

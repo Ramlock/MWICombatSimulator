@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const { verdict, checkPick, firstConfirmed, confirmFillings, SURE_BLOCK, SURE_MAX } = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
+const { verdict, checkPick, checkSet, firstConfirmed, confirmFillings, SURE_BLOCK, SURE_MAX } = await import(pathToFileURL(path.join(root, 'tools/whatif/sure.mjs')).href);
 const { refineTrigger } = await import(pathToFileURL(path.join(root, 'tools/whatif/refine.mjs')).href);
 const { joinTriggerDesc } = await import(pathToFileURL(path.join(root, 'tools/whatif/triggers.mjs')).href);
 const { acceptBoth } = await import(pathToFileURL(path.join(root, 'tools/whatif/buyer.mjs')).href);
@@ -139,6 +139,31 @@ check('optimizer: the final confirmation block is unchanged (original base, seed
     check('optimizer: --max-payback (default 0 = no limit) is read once; the profit goal only; saved in options as maxPaybackDays', /const maxPayback = Number\(arg\('max-payback', 0\)\);/.test(opt) && /const payLimit = goal === 'profit' \? maxPayback : 0;/.test(opt) && /maxPaybackDays: maxPayback/.test(opt));
     check('optimizer: the chain picks only candidates within the limit by the search reading; each over it is listed once by id in result.overPayback with its days', /overPaybackLimit\(c\.cost\.cost, fresh\.buyerNet, payLimit\)/.test(opt) && /!result\.overPayback\.some\(\(x\) => x\.id === c\.id\)\) result\.overPayback\.push\(\{ \.\.\.row\(c\), paybackDays: paybackDays\(c\.cost\.cost, p\.fresh\.buyerNet\) \}\)/.test(opt) && /overPayback: \[\.\.\.result\.overPayback\]/.test(opt));
     check('optimizer: the pick check (steps and foods, one confirmPick) carries the cost and the limit', /\}, \{ z, goal, cost: c\.cost\.cost, maxPayback: payLimit \}\);/.test(opt));
+}
+
+// The check of a set accepted together (sure.mjs checkSet, design section 3), with a stub measure: readings by (variant, against); `arms` records every arm
+// (a member list's key and seeds) a reading needs, so "no new run" is an arm not asked before.
+{
+    const m = (id) => ({ id }), A = m('a'), B = m('b'), C = m('c');
+    const key = (l) => l.map((x) => x.id).sort().join('+') || 'base';
+    const stub = (table) => { const arms = new Set(), calls = []; return { arms, calls, measure: async (v, ag, k) => { const fresh = [key(v), key(ag)].filter((x) => !arms.has(x + '#' + k)); calls.push({ v: key(v), a: key(ag), k, fresh }); for (const x of [key(v), key(ag)]) arms.add(x + '#' + k); const r = table[key(v) + '|' + key(ag)]; return r ? { ...r, seeds: k } : reading(0); } }; };
+    const pass = reading(3, 3), zero = reading(0, 0);
+    let s1 = stub({ 'a+b+c|base': pass, 'a+b+c|b+c': pass, 'a+b+c|a+c': zero, 'a+b+c|a+b': pass, 'a+c|base': pass });
+    let r = await checkSet([A, B, C], s1.measure, { z, goal });
+    const last = s1.calls[s1.calls.length - 1];
+    check('set: a member with zero marginal leaves; the reduced set is checked from the leave-out\'s runs (no new run)', r.passed && key(r.set) === 'a+c' && r.left.map((x) => x.id).join() === 'b' && last.v === 'a+c' && last.fresh.length === 0, JSON.stringify(s1.calls));
+    let s2 = stub({ 'a+b+c|base': pass, 'a+b+c|b+c': pass, 'a+b+c|a+c': zero, 'a+b+c|a+b': zero, 'a|base': pass });
+    r = await checkSet([A, B, C], s2.measure, { z, goal });
+    check('set: two leave and the reduced set gets one more check (new runs)', r.passed && key(r.set) === 'a' && r.left.length === 2 && s2.calls[s2.calls.length - 1].v === 'a' && s2.calls[s2.calls.length - 1].fresh.includes('a'), JSON.stringify(s2.calls) + key(r.set));
+    let s3 = stub({ 'a+b|base': reading(-3, -3) });
+    r = await checkSet([A, B], s3.measure, { z, goal });
+    check('set: a failed set refutes no one (no member is marked, nothing left out) and no leave-out runs follow', !r.passed && r.left.length === 0 && s3.calls.length === 1 && !A.refuted && !B.refuted);
+    let s4 = stub({ 'a+b|base': { ...reading(1.5, 0), accepted: false } });
+    r = await checkSet([A, B], s4.measure, { z, goal });
+    check('set: the set\'s check takes more seeds while between z/2 and z errors, as any pick check', !r.passed && s4.calls.map((c) => c.k).join() === '16,32,48,64');
+    let s5 = stub({ 'a+b|base': pass, 'a+b|b': pass, 'a+b|a': pass });
+    r = await checkSet([A, B], s5.measure, { z, goal });
+    check('set: every marginal passing keeps the whole set, each member\'s marginal reading kept', r.passed && key(r.set) === 'a+b' && r.marginals.size === 2 && r.marginals.get(A).buyerNet === 300);
 }
 
 process.exit(failed ? 1 : 0);
