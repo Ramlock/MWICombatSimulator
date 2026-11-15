@@ -300,14 +300,20 @@ export async function main(settings, seams) {
             if (cache.get(id)?.byHours[r.h]) sure.done++;
         }
     }
+    // One measurement of a check (confirmPick and measureSet, one code flow): the runs of k seeds per arm, `against` and `against` + c's ops, planned
+    // and run, with the check shown on the progress row; false when a stop or the time limit ended them. Its log line: checkLine.
+    async function measureArms(against, c, k, h, label, who = null) {
+        const reqs = sureReqs(against, c, k, h);
+        planSure(reqs);
+        report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who });
+        return !!await ensure(reqs);
+    }
+    const checkLine = (label, what, k, fresh, withBuyer) => console.log(`  ${label} check of ${what}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${withBuyer && goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
     async function confirmPick(baseOps, c, fin, label, who) {
         return checkPick(async (k) => {
-            const reqs = sureReqs(baseOps, c, k, fin.h);
-            planSure(reqs);
-            report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who ?? null });
-            if (!await ensure(reqs)) return null;
+            if (!await measureArms(baseOps, c, k, fin.h, label, who ?? null)) return null;
             const fresh = freshRead(baseOps, c, k, fin.h);
-            console.log(`  ${label} check of ${c.desc}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
+            checkLine(label, c.desc, k, fresh, true);
             return fresh;
         }, { z, goal, cost: c.cost.cost, maxPayback: payLimit });
     }
@@ -320,15 +326,12 @@ export async function main(settings, seams) {
     function measureSet(baseOps, fin, label) {
         return async (variant, against, k) => {
             const aOps = [...baseOps, ...setOps(against)], added = variant.filter((m) => !against.includes(m)), one = { ops: setOps(added), cost: { cost: 0 } };
-            const reqs = sureReqs(aOps, one, k, fin.h);
-            planSure(reqs);
-            report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: null });
-            if (!await ensure(reqs)) return null;
+            if (!await measureArms(aOps, one, k, fin.h, label)) return null;
             const buyers = [...new Set(added.map((m) => m.player))];
             const reads = buyers.map((p) => ({ p, cost: added.filter((m) => m.player === p).reduce((a, m) => a + Math.max(m.cost.cost, 0), 0), r: freshRead(aOps, { ...one, player: p }, k, fin.h) }));
             const weakest = reads.reduce((a, x) => (goal !== 'profit' || !a || x.r.buyerNet / (x.r.buyerNetSe || 1) < a.r.buyerNet / (a.r.buyerNetSe || 1) ? x : a), null);
             const fresh = { ...weakest.r, accepted: reads.every((x) => x.r.accepted && (goal !== 'profit' || !overPaybackLimit(x.cost, x.r.buyerNet, payLimit))), ...(goal === 'profit' ? { buyers: Object.fromEntries(reads.map((x) => [x.p, { buyerNet: x.r.buyerNet, buyerNetSe: x.r.buyerNetSe, cost: x.cost }])) } : {}) };
-            console.log(`  ${label} check of ${added.map((m) => m.desc).join(' + ')}${against.length ? ` over ${against.map((m) => m.desc).join(' + ')}` : ''}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
+            checkLine(label, `${added.map((m) => m.desc).join(' + ')}${against.length ? ` over ${against.map((m) => m.desc).join(' + ')}` : ''}`, k, fresh, false);
             return fresh;
         };
     }
@@ -617,7 +620,7 @@ export async function main(settings, seams) {
     // `unitH` hours (today's screen); each later round gives every candidate that is not paused `roundSeeds` more, plus the base's
     // `baseMult` times as many. After the new seeds: every candidate's figure is estimate() at its own seed count (no second formula),
     // the contention test runs on every candidate (rounds.mjs: two pools, K leaders each, pause below the leaders' lowest lower bound at
-    // `pauseMult` errors, a paused one resumes by itself), and the current leaders get `readStep` more READING seeds (sureSeeds: from
+    // `pauseMult` errors, a paused one resumes by itself), and the current leaders whose pick check has no verdict yet (needsReading) get `readStep` more READING seeds (sureSeeds: from
     // sureOffset + 1, the pick check's block, never used to choose): the figure shown as a result and its t range come only from those.
     // A round record goes out through outSink.round. The race ends with a lock (the leader's reading seeds pass the pick check's accept
     // rule, and with lockRule 'both' it is its pool's last candidate standing: eliminate() in rounds.mjs), with no change left standing (no upper
@@ -666,6 +669,12 @@ export async function main(settings, seams) {
         }
         return { verdict: 'wait' };
     }
+    // Whether a leader still needs reading runs this round: the one place that decides which leaders the reading phase runs (a later rule adds its case here).
+    // A leader needs them only while its pick check has no verdict ('wait'). A verdict, once given, is read from the same seeds every later round of the race
+    // (peekCheck reads its blocks from the first reading seed up, on a base that does not change), so a run past it changes no decision: not the lock, not the
+    // refutation, not accept together (its `clear` is this same verdict, read every round for every standing change). The check is never bounded higher than
+    // SURE_MAX, where the verdict always falls. What still reads every reading seed: the figure and range shown (readingOf), which stop narrowing at the verdict.
+    const needsReading = (base, c, h) => peekCheck(base, c, h).verdict === 'wait';
     // ---- The rows of a round record (the real round's and the first look's: one shape, one order) ----
     // What a foods or drinks candidate changes, slot by slot: the new item of each slot it changes (the panel leaves the other slots blank), with the
     // readable text of its trigger when the candidate sets one (an unchanged trigger is the default and is not said). Others have none: the panel
@@ -849,9 +858,11 @@ export async function main(settings, seams) {
             const cont = contention(active.filter((c) => !c.out), { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst, order: players });
             // A pool's last candidate standing is read even when it is not among the K best by rank (it is the one that can be locked).
             const leaders = [...new Set([...cont.pools.flatMap((p) => p.leaders), ...standing.filter((p) => !p.noChange && p.changes.length === 1).map((p) => p.changes[0])])];
-            if (readStep > 0 && leaders.length) {
-                const reqs = leaders.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
-                report({ stage, round: stageRound, phase: 'reading', candidatesLeft: leaders.length });
+            // The reading phase runs only for the leaders that need it (needsReading); a round where none does has no reading phase (no wait, no phase shown).
+            const reading = readStep > 0 ? leaders.filter((c) => needsReading(base, c, H)) : [];
+            if (reading.length) {
+                const reqs = reading.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
+                report({ stage, round: stageRound, phase: 'reading', candidatesLeft: reading.length });
                 const read1 = await ensure(reqs, { skippable: true });
                 if (read1 === BY_USER) return userEnd(stageRound);
                 if (!read1) return null;

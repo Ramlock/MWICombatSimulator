@@ -71,7 +71,9 @@ const carried = [], seenStages = new Set();
 // just before the pick check showed its stage running, buttons and all, until the search ended, 25 s on a real search).
 let endedStage = null, afterEnd = 0;
 const reran = [];
+const readingPhases = new Set(); // stage#round of every round that showed a reading phase
 const run = await runSynthetic(scenario, {}, { onProgress: (p) => {
+    if (p.phase === 'reading') readingPhases.add(`${p.stage}#${p.round}`);
     if (p.stageEnded) endedStage = p.stageEnded;
     else if (endedStage && p.stage === endedStage) reran.push(`${p.stage}: the end mark went`);
     if (endedStage && p.stage === endedStage) { afterEnd++; const live = (p.parts || []).filter((r) => r.state === 'running' && r.kind !== 'picks'); if (live.length) reran.push(`${p.stage}: ${live.map((r) => r.kind + ':' + r.index).join(',')} running`); }
@@ -99,6 +101,21 @@ const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"
     check('together: the window row joins the members, names both players, and carries their own gains in its tooltip', /data-set="2"/.test(html) && /title="result\.setMarginals/.test(html) && /<td>Alice, Bob<\/td>/.test(html) && !/title="[^"]*&lt;/.test(html), (/title="result\.setMarginals[^"]*"/.exec(html) || [''])[0].slice(0, 300));
 }
 console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length} rounds, ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+// No leader check that can change nothing (core.mjs needsReading): a leader whose pick check has its verdict (shown 'confirmed') takes no more reading runs in
+// that race, so its reading seeds stay where the verdict fell, never past SURE_MAX; a round in which no leader needs one has no reading phase at all.
+{
+    const { SURE_MAX } = await imp('tools/whatif/sure.mjs');
+    const real = run.rounds.filter((r) => !r.provisional), at = new Map(), grew = [];
+    for (const r of real) for (const l of r.pools.flatMap((p) => p.leaders)) {
+        const key = `${r.stage}|${l.id}`;
+        if (at.has(key) && l.readingSeeds !== at.get(key)) grew.push(`${r.stage} round ${r.round} ${l.id}: ${at.get(key)} -> ${l.readingSeeds}`);
+        if (!at.has(key) && l.status === 'confirmed') at.set(key, l.readingSeeds);
+    }
+    const maxRead = Math.max(...real.flatMap((r) => r.pools.flatMap((p) => p.leaders.map((l) => l.readingSeeds))));
+    check(`reading: a leader with its verdict takes no more reading seeds in its race (${at.size} such leaders), and none passes ${SURE_MAX}`, at.size > 0 && grew.length === 0 && maxRead <= SURE_MAX, grew.slice(0, 3).join(' | ') + ` max ${maxRead}`);
+    const quiet = real.filter((r) => r.pools.some((p) => p.leaders.length) && !readingPhases.has(`${r.stage}#${r.round}`));
+    check(`reading: a race whose leaders all have their verdict runs rounds of search runs only, with no reading phase (${quiet.length} such rounds)`, quiet.length > 0 && quiet.every((r) => r.pools.every((p) => p.leaders.every((l) => l.status !== 'few' && l.readingSeeds >= 16))));
+}
 // The rows' order in every round record of the whole search: a pool with no row at 4 seeds (src/whatif/figure.mjs) stays in build order with sortedBy null (and its
 // column in sortPending); otherwise the rows with a figure sort by the column, best first, and the rows without follow in build order. Display order only.
 {
