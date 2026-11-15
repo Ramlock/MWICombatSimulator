@@ -378,6 +378,7 @@
             "endedByUserDuring": "encerrada por você durante a rodada {{n}}, as execuções concluídas mantidas",
             "acceptedAsIs": "aceita como está",
             "setMarginals": "Aceitas juntas. O ganho próprio de cada mudança (o conjunto contra o conjunto sem ela), por usuário por dia:",
+            "setBuyer": "{{who}}: ganho do comprador {{net}} por dia, retorno em {{days}} dias",
             "gainPerDay": "Ganho por dia",
             "paysBackIn": "Se paga em (dias)",
             "singlesNotShown": "mais {{n}} buscadas, não confirmadas, não mostradas",

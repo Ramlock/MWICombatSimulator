@@ -1121,9 +1121,13 @@ export async function main(settings, seams) {
                 console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
             } else {
                 const cost = members.reduce((a, m) => a + m.cost.cost, 0), n = setups0.length, ps = [...new Set(members.map((m) => m.player))];
+                // Payback per buyer (design: his members' cost over his own net, the limit on him): the row shows the buyer the limit binds, the longest payback,
+                // with that buyer's net; every buyer's figures stay on the step (buyers), so a window draws them and never recomputes them.
+                const buyers = goal === 'profit' && fresh.buyers ? Object.fromEntries(Object.entries(fresh.buyers).map(([p, b]) => [p, { ...b, payback: b.cost > 0 && b.buyerNet > 0 ? paybackDays(b.cost, b.buyerNet) : null }])) : null;
+                const binding = buyers && Object.entries(buyers).reduce((a, e) => (!a || (e[1].payback ?? -1) > (a[1].payback ?? -1) ? e : a), null);
                 const mark = (r) => r && { gainPerUser: r.gain / n, sePerUser: r.se / n, ...(r.buyerNet !== undefined ? { buyerNet: r.buyerNet, buyerNetSe: r.buyerNetSe } : {}), seeds: r.seeds };
                 result.steps.push({ id: setKey(members), player: ps.length === 1 ? ps[0] : null, players: ps, ops: setOps(members), desc: members.map((m) => m.desc).join(' + '), ...perUser(fresh.gain, fresh.se), gain: fresh.gain, se: fresh.se, cost,
-                    ...(fresh.buyerNet !== undefined ? { buyerNet: fresh.buyerNet, buyerNetSe: fresh.buyerNetSe } : {}), payback: goal === 'profit' && ps.length === 1 && cost > 0 && fresh.buyerNet > 0 ? paybackDays(cost, fresh.buyerNet) : null, accepted: true, fresh, kind: 'set', // payback: one buyer, his cost over his net; several: each one's in fresh.buyers
+                    ...(binding ? { buyerNet: binding[1].buyerNet, buyerNetSe: binding[1].buyerNetSe, payer: binding[0], buyers } : {}), payback: binding ? binding[1].payback : null, accepted: true, fresh, kind: 'set',
                     costPath: members.map((m) => m.cost.path).filter(Boolean).join(' + '), note: '', members: members.map((m) => ({ id: m.id, desc: m.desc, player: m.player, cost: m.cost.cost, kind: m.kind, costPath: m.cost.path, marginal: mark(marginals?.get(m)) })), ...running });
                 console.log(`step ${step + 1}: together ${members.map((m) => m.desc).join(' + ')}, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}, cost ${fmt(cost)}`);
             }
@@ -1337,6 +1341,8 @@ export async function main(settings, seams) {
             L.push(`| ${i + 1} | ${s.desc}${s.acceptedAsIs ? ' (accepted as is)' : ''}${s.members ? ' (accepted together)' : ''} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`);
             // A set accepted together: one indented line per member, with its own gain (the set against the set without it, same seeds).
             for (const m of s.members || []) L.push(`|  | ↳ ${m.desc} (own gain ${m.marginal ? gainMd(m.marginal.gainPerUser, m.marginal.sePerUser) : '—'}) |  |  | ${fmt(m.cost)} |  |  |  |`);
+            // A set of two or more buyers: one line per buyer, his own net and payback on his own cost (the row shows the longest, s.payer's).
+            if (s.buyers && Object.keys(s.buyers).length > 1) for (const [p, b] of Object.entries(s.buyers)) L.push(`|  | ↳ ${p} pays ${fmt(b.cost)} |  | ${gainMd(b.buyerNet, b.buyerNetSe)} | ${fmt(b.cost)} | ${b.payback?.toFixed(1) ?? '-'} |  |  |`);
         });
         L.push('', "Party gain: the change in the group's shared loot per player per day, before anyone's food and drink. Buyer's gain: that player's share of it plus the change in what they spend on their own food and drink, so a free change can show no party gain and still pay the player by saving food and drink.");
         if (result.confirmation) {

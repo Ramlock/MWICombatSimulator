@@ -94,6 +94,8 @@ const hasOp = (s, player, slot, delta) => JSON.stringify(s).includes(`"player":"
     check('together: the report shows the step marked and one line per member with its own gain', /\(accepted together\)/.test(run.markdown) && s0.members.every((m) => run.markdown.includes(`↳ ${m.desc} (own gain`)));
     const { renderResult } = await imp('src/whatif/panel.mjs');
     const html = renderResult(res, (k) => k);
+    const bs = Object.entries(s0?.buyers || {}), longest = bs.reduce((a, e) => (!a || (e[1].payback ?? -1) > (a[1].payback ?? -1) ? e : a), null);
+    check('together: a set of two buyers shows the payback and net of a real buyer and net, the longest payback (each on his own cost), and one tooltip line per buyer', bs.length === 2 && bs.every(([, b]) => b.cost > 0 && Number.isFinite(b.payback)) && s0.payer === longest[0] && s0.payback === longest[1].payback && s0.buyerNet === longest[1].buyerNet && (html.match(/result\.setBuyer/g) || []).length === 2, JSON.stringify({ payer: s0?.payer, payback: s0?.payback, buyers: s0?.buyers }));
     check('together: the window row joins the members, names both players, and carries their own gains in its tooltip', /data-set="2"/.test(html) && /title="result\.setMarginals/.test(html) && /<td>Alice, Bob<\/td>/.test(html) && !/title="[^"]*&lt;/.test(html), (/title="result\.setMarginals[^"]*"/.exec(html) || [''])[0].slice(0, 300));
 }
 console.log(`     (full search: ${run.runs} synthetic runs, ${run.rounds.length} rounds, ${((Date.now() - t0) / 1000).toFixed(1)} s)`);

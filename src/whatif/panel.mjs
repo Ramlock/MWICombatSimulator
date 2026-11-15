@@ -519,7 +519,7 @@ const paybackCell = (row, t) => (row.payback === null || row.payback === undefin
 const hasSplit = (row) => Number.isFinite(row?.sharedGainPerUser);
 // withFresh: a chosen change, whose row shows its fresh reading.
 function gainCells(row, goalExp, t, floor, withFresh = false) {
-    const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(f, row, 'buyerNet', 'buyerNetSe');
+    const f = withFresh ? row.fresh : null, [gain, gainSe] = reading(f, row, 'gainPerUser', 'sePerUser'), [net, netSe] = reading(row.members ? null : f, row, 'buyerNet', 'buyerNetSe'); // a set: the buyer its payback is (row.payer), never the fresh reading's weakest
     return gainCell(gain, gainSe, t, floor) + (!goalExp && Number.isFinite(net) ? gainCell(net, netSe, t, floor) : '<td class="num">—</td>');
 }
 // A shrine change's split (the row's shrineSplit, tools/whatif/levers/shrines.mjs): the Guild Tokens its levels require, and its Guild Credits
@@ -559,7 +559,7 @@ const isTimeOnly = (s) => s.timeOnly === true || /^time/.test(String(s.costPath
 // A chosen change (withFresh) with a fresh reading and a cost: the cost over the fresh buyer's gain (paybackDays, the search's own helper);
 // with no cost or no positive buyer's gain, or any other row, what the row says.
 const buyerPayback = (row, goalExp, t, withFresh = false) => {
-    const days = withFresh && !goalExp ? paybackDays(row.cost, row.fresh?.buyerNet) : null;
+    const days = withFresh && !goalExp && !row.members ? paybackDays(row.cost, row.fresh?.buyerNet) : null; // a set carries its own payback (its payer's)
     if (days !== null) return paybackCell({ payback: days, costBound: row.costBound, cost: row.cost }, t);
     return goalExp || !hasSplit(row) ? paybackCell(row, t) : paybackCell({ payback: row.paybackOwn, costBound: row.costBound, cost: row.cost }, t);
 };
@@ -735,7 +735,8 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
         result.steps.forEach((s, i) => {
             // A step that holds a set accepted together: its members joined, each worded alone, the players joined, and each member's own gain (its marginal) in the tooltip.
             const set = Array.isArray(s.members) && s.members.length > 1;
-            const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${plainNum(m.marginal.gainPerUser)} ± ${plainNum(m.marginal.sePerUser)}` : '—'}`)].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
+            const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${plainNum(m.marginal.gainPerUser)} ± ${plainNum(m.marginal.sePerUser)}` : '—'}`),
+                ...(s.buyers && Object.keys(s.buyers).length > 1 ? Object.entries(s.buyers).map(([p, b]) => t('result.setBuyer', { who: p, net: plainNum(b.buyerNet), days: Number.isFinite(b.payback) ? b.payback.toFixed(1) : '—' })) : [])].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
             const who = set ? [...new Set(s.members.map((m) => m.player))].join(', ') : s.player, what = set ? s.members.map((m) => shown(m)).join(' + ') : shown(s);
             L.push(`<tr${s.accepted === false ? ' class="whatif-weak"' : ''}><td>${i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
                 gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + pathCell(s, t) +
