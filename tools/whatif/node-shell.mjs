@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { list } from './options.mjs';
+import { jsonlLine, readJsonl } from '../../src/whatif/runsJsonl.mjs';
 
 // The price snapshot's market table (what prices.mjs makePricer reads).
 export function loadMarket(file) {
@@ -40,9 +41,9 @@ export function createNodeStore(out, cacheFrom) {
     const file = path.join(out, 'runs.jsonl');
     return {
         *load() {
-            for (const f of [...(list(cacheFrom) || []), file]) if (existsSync(f)) for (const l of readFileSync(f, 'utf8').split('\n').filter(Boolean)) yield JSON.parse(l);
+            for (const f of [...(list(cacheFrom) || []), file]) if (existsSync(f)) yield* readJsonl(readFileSync(f, 'utf8'));
         },
-        put(record) { appendFileSync(file, JSON.stringify(record) + '\n'); },
+        put(record) { appendFileSync(file, jsonlLine(record)); },
         readAux(name) { const f = path.join(out, name); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; },
         writeAux(name, value) { writeFileSync(path.join(out, name), JSON.stringify(value)); },
     };
