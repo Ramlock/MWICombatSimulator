@@ -9,8 +9,8 @@ check('relaunches when not under HeavyRun and it exists', shouldRelaunch({}, tru
 check('no relaunch under HeavyRun', shouldRelaunch({ MWI_UNDER_HEAVYRUN: '1' }, true) === false);
 check('no relaunch where HeavyRun does not exist', shouldRelaunch({}, false) === false);
 check('minutes: default per file', minutesFor(['tools/test/a.mjs', 'tools/test/b.mjs']) === 2 * DEFAULT_MINUTES);
-check('minutes: a long file counts its own', minutesFor(['tools/test/whatif-runner-exe.mjs']) === 15);
-check('minutes: never cut to 60', minutesFor(Array(40).fill('tools/test/runner-search.mjs')) === 400);
+check('minutes: a long file counts its own', minutesFor(['tools/test/whatif-runner-exe.mjs']) === 15 && minutesFor(['tools/test/whatif-synthetic.mjs']) === 14);
+check('minutes: never cut to 60', minutesFor(Array(40).fill('tools/test/whatif-presses.mjs')) === 480);
 const k = countLines(['SKIPPED the scan: no setups', 'ok   a', '2026-11-15 18:00:00 SKIPPED other'].join(String.fromCharCode(10)));
 check('counts SKIPPED lines (plain and stamped)', k.skipped === 2 && k.ok === 1, JSON.stringify(k));
 check('a skip passes without --strict', exitCode([{ code: 0, skipped: 1 }], false) === 0);

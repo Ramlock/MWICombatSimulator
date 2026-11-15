@@ -13,12 +13,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const HEAVYRUN = 'D:\\Apps\\HeavyRun\\HeavyRun.exe';
-export const DEFAULT_MINUTES = 2;
-// The long files (minutes each may take); every other file counts DEFAULT_MINUTES.
-export const LONG_MINUTES = {
-    'whatif-runner-exe.mjs': 15, 'runner-search.mjs': 10, 'whatif-runner.mjs': 10, 'whatif-sure.mjs': 8, 'whatif-rounds.mjs': 8,
-    'whatif-window.mjs': 8, 'whatif-get-runner-page.mjs': 5, 'zones-toggle-page.mjs': 4, 'talismans-page.mjs': 4, 'import-popup-page.mjs': 4,
-};
+export const DEFAULT_MINUTES = 1;
+// The long files (minutes each may take): about twice the time measured through this loop on 2026-11-15 (synthetic 409 s, presses 338 s,
+// window 95 s, foods-drinks 65 s); whatif-runner-exe.mjs is not measured (needs a built exe). Every other file took under 40 s.
+export const LONG_MINUTES = { 'whatif-runner-exe.mjs': 15, 'whatif-synthetic.mjs': 14, 'whatif-presses.mjs': 12, 'whatif-window.mjs': 4, 'whatif-foods-drinks.mjs': 3 };
 const stamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 // The counts of a log's text: lines starting ok / PASS / pass / ✔, and FAIL / fail / not ok / ✖ (after the line's own timestamp, if any).
@@ -33,8 +31,8 @@ export function countLines(text) {
     return { ok, fail, skipped };
 }
 // Whether to start again through HeavyRun: not already under it, and it exists here.
-// The HeavyRun memory floor: MEMORY_FLOOR_GB, or none when a what-if file is among the files (WHATIF_FLOOR_GB null: unmeasured or 8 GB+).
-export const MEMORY_FLOOR_GB = 3, WHATIF_FLOOR_GB = null;
+// The HeavyRun memory floor: MEMORY_FLOOR_GB, or none when a what-if file is among the files (WHATIF_FLOOR_GB; null would mean unmeasured or 8 GB+: no floor).
+export const MEMORY_FLOOR_GB = 3, WHATIF_FLOOR_GB = 6;   // what-if: the highest peak measured 2026-11-15 was +4.3 GB (whatif-presses.mjs), plus about 1 GB
 export const memoryArgs = (files) => { const n = files.some((f) => path.basename(f).startsWith('whatif-')) ? WHATIF_FLOOR_GB : MEMORY_FLOOR_GB; return n ? ['--memory-gb', String(n)] : []; };
 export const shouldRelaunch = (env, heavyRunExists) => !env.MWI_UNDER_HEAVYRUN && heavyRunExists;
 // The minutes these files may take: the sum of each one's, at least 1 (never cut: over 60, the loop says so and stops).
