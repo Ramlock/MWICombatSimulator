@@ -33,7 +33,7 @@ function Invoke-Native([string]$Exe, [string[]]$Arguments) {
 }
 
 # ---- The functions every outside effect goes through (the test seam replaces them). ----
-function Get-Token { (gh auth token --user Ramlock).Trim() }
+function Get-Token { (gh auth token --user ($Repo -split '/')[0]).Trim() }   # the owner's login, from the repo slug
 function Invoke-Api([string]$Method, [string]$Path, $Body = $null) {
     # Returns the parsed JSON (stdout only), $null on 404, an empty table on an empty answer; any other failure throws with gh's message.
     $tok = Get-Token

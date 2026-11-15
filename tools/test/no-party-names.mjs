@@ -22,8 +22,8 @@ if (!names.length) {
     console.log('SKIPPED the scan: no setups in docs/ground-truth/setups');
 } else {
     const files = execFileSync('git', ['ls-files', '-z', '--', 'tools', 'src', 'docs'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
-    // The allowed public uses, each by its exact text: the owner's release addresses and the patch note's translation credit.
-    const ALLOWED = (n) => [`https://github.com/${n}/MWICombatSimulator/releases/latest/download/`, `Machine translation by ${n}"`, `机器翻译（${n} 提供）`, `Tradução automática por ${n}"`];
+    // The allowed public uses, each by its exact text: the owner's release addresses, the site address, the repo slug and the patch note's translation credit.
+    const ALLOWED = (n) => [`https://github.com/${n}/MWICombatSimulator/releases/latest/download/`, `https://${n.toLowerCase()}.github.io/MWICombatSimulator/`, `${n}/MWICombatSimulator`, `Machine translation by ${n}"`, `机器翻译（${n} 提供）`, `Tradução automática por ${n}"`];
     const allowed = (line, n) => ALLOWED(n).reduce((l, a) => l.split(a).join(''), line);
     const hits = [];
     for (const f of files) {
