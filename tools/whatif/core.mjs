@@ -648,12 +648,15 @@ export async function main(settings, seams) {
     const endedByUser = {}; // stage -> the rounds the stage finished when the user ended it (result.endedByUser)
     const endedByCap = {}; // stage -> { rounds, left }: the stage ended on --max-rounds with `left` candidates still in the running (no lock, not ended by the user): result.endedByCap
     const endedBySkip = {}; // stage -> true when the end was a Skip (during round endedByUser + 1, its finished runs kept), absent for an Accept (result.endedBySkip)
-    const haveSeeds = (ops, seeds, h) => { const key = keyOf(ops); return seeds.every((s) => cache.get(key + '#' + s)?.byHours[h]); };
-    // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached).
+    // The reading seeds this search has asked for, per base, variant and hours (set by the race's reading phase). A run already in the store from an earlier
+    // call (a resume) counts only once the search has asked for it again, round by round, so a resumed race reads, peeks and refutes in the same round
+    // as the uninterrupted one (a verdict read from every stored reading seed at round 1 moved refutations, and with them the cuts, earlier).
+    const readTaken = new Map(), readKey = (base, c, h) => keyOf(base) + '|' + keyOf([...base, ...c.ops]) + '|' + h;
+    // The reading seeds a candidate has (consecutive from sureOffset + 1, both arms cached), up to those this search has asked for (readTaken).
     function readCount(base, c, h) {
-        const vOps = [...base, ...c.ops], bk = keyOf(base), vk = keyOf(vOps);
+        const vOps = [...base, ...c.ops], bk = keyOf(base), vk = keyOf(vOps), max = readTaken.get(readKey(base, c, h)) ?? 0;
         let k = 0;
-        while (k < 4096 && cache.get(bk + '#' + (sureOffset + k + 1))?.byHours[h] && cache.get(vk + '#' + (sureOffset + k + 1))?.byHours[h]) k++;
+        while (k < max && cache.get(bk + '#' + (sureOffset + k + 1))?.byHours[h] && cache.get(vk + '#' + (sureOffset + k + 1))?.byHours[h]) k++;
         return k;
     }
     // The figure and range of a leader from its k reading seeds: the search's own error rule (freshRead) and an ordinary t range at `coverage`.
@@ -677,8 +680,7 @@ export async function main(settings, seams) {
     // again by confirmPick later from the same cache.
     function peekCheck(base, c, h) {
         for (let k = SURE_BLOCK; k <= SURE_MAX; k += SURE_BLOCK) {
-            const seeds = sureSeeds(k);
-            if (!haveSeeds(base, seeds, h) || !haveSeeds([...base, ...c.ops], seeds, h)) return { verdict: 'wait' };
+            if (readCount(base, c, h) < k) return { verdict: 'wait' };
             const fresh = freshRead(base, c, k, h), v = verdict(fresh, k, { z, goal, max: SURE_MAX });
             if (v === 'more') continue;
             const slow = v === 'pass' && overPaybackLimit(c.cost.cost, fresh.buyerNet, payLimit);
@@ -896,7 +898,8 @@ export async function main(settings, seams) {
             // The reading phase runs only for the leaders that need it (needsReading); a round where none does has no reading phase (no wait, no phase shown).
             const reading = readStep > 0 ? leaders.filter((c) => needsReading(base, c, H)) : [];
             if (reading.length) {
-                const reqs = reading.flatMap((c) => sureSeeds(readCount(base, c, H) + readStep).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]));
+                // Each one asks for readStep more reading seeds than it has (readTaken: from here on they count, whether run now or already stored).
+                const reqs = reading.flatMap((c) => { const n = readCount(base, c, H) + readStep; readTaken.set(readKey(base, c, H), n); return sureSeeds(n).flatMap((seed) => [{ ops: base, seed, h: H, tag: 'read' }, { ops: [...base, ...c.ops], seed, h: H, tag: 'read' }]); });
                 report({ stage, round: stageRound, phase: 'reading', candidatesLeft: reading.length });
                 const read1 = await ensure(reqs, { skippable: true });
                 if (read1 === BY_USER) return userEnd(stageRound);

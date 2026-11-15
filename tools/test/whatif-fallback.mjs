@@ -83,12 +83,13 @@ const nc = runF.result.notConfirmed.filter((x) => x.player === 'Alice' && x.kind
 check('foods: the cake fillings fail their check and are listed as not confirmed, each with what came back after it (back)', nc.length > 0 && nc.every((x) => Array.isArray(x.back)) && nc.some((x) => x.back.length > 0), JSON.stringify(nc.map((x) => [x.desc, x.back])));
 check('foods: a gummy filling the cake had put out comes back and passes: Alice gets it', !alice(runF).unchanged && items(alice(runF)).includes('/items/orange_gummy') && !items(alice(runF)).includes('/items/strawberry_cake'), JSON.stringify(alice(runF)));
 check('foods: the log names what came back and after which failed check', /foods: Alice food: .*strawberry_cake.* failed its pick check; back in the race: Alice food: /.test(logF), logF.split('\n').filter((l) => /pick check/.test(l)).slice(0, 4).join(' | '));
-// A stop in the middle (the first round after a failed check, with candidates back in the race), then a resume from the recorded runs: the same result.
+// A stop in the middle (the first round after a failed check, with candidates back in the race; the stopped result holds only the race's live best, soFar),
+// then a resume from the recorded runs: the same result.
 let stopped = false;
 const { res: part } = await quiet(() => runSynthetic(foods, { 'max-steps': 0 }, { onRound: (rec, stop) => { if (!stopped && rec.stage === 'foods' && rec.candidates.refuted > 0) { stopped = true; stop.requested = true; } } }));
 const { res: resumed } = await quiet(() => runSynthetic(foods, { 'max-steps': 0 }, { records: part.records }));
 const sig = (res) => JSON.stringify({ best: res.result.best.foods, nc: res.result.notConfirmed.map((x) => [x.id, x.back]) });
-check('stop and resume across a failed check: the stop came after one, and the resumed search walks to the same result as the uninterrupted one', stopped && !part.result.best.foods.Alice && sig(resumed) === sig(runF), (() => { const a = sig(resumed), b = sig(runF); let i = 0; while (i < a.length && a[i] === b[i]) i++; return `${stopped} at ${i}: ${a.slice(i - 150, i + 150)} || ${b.slice(i - 150, i + 150)}`; })());
+check('stop and resume across a failed check: the stop came after one, and the resumed search walks to the same result as the uninterrupted one', stopped && (!part.result.best.foods.Alice || part.result.best.foods.Alice.soFar) && sig(resumed) === sig(runF), (() => { const a = sig(resumed), b = sig(runF); let i = 0; while (i < a.length && a[i] === b[i]) i++; return `${stopped} at ${i}: ${a.slice(i - 150, i + 150)} || ${b.slice(i - 150, i + 150)}`; })());
 // A Change stage (the default scenario: Bob's body +2 reads far better on the search seeds than it is): a step winner that fails brings back what it had put out.
 const { res: runC } = await quiet(() => runSynthetic(base, {}));
 const ncC = runC.result.notConfirmed.filter((x) => x.step !== null && x.step !== undefined);
