@@ -495,11 +495,11 @@
         "apply": "Apply",
         "applyTo": "Apply 1 to {{n}}",
         "diff": {
-            "title": "The page's setup differs from the one the search ran on; its gains may not hold:",
+            "count": "The page's setup differs from the one the search ran on in {{n}} places; its gains may not hold",
+            "countOne": "The page's setup differs from the one the search ran on in {{n}} place; its gains may not hold",
             "page": "here",
             "result": "in the search",
-            "level": "{{skill}} level",
-            "more": "and {{n}} more"
+            "level": "{{skill}} level"
         }
     }
 }

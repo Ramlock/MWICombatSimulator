@@ -542,7 +542,7 @@ const result = {
     check('running: the head says Stage 1 / 3, the race row reads Searching at round 4 and has its button', txt(live).startsWith('Search progressStage 1 / 3') && live.includes('data-whatif-done') && partRows(live)[0].st === 'Searching' && bodyRows(live)[0][3] === '4', txt(live));
     check('stopped, no parts yet: the plain line says Stopped', !/Running/.test(txt(panel.renderProgress({ state: 'stopped', progress: { stage: 'start', candidatesLeft: null, runsDone: 0, runsPlanned: 0 } }, t))));
     const mainJs = read('src/main.js');
-    check('stopped: a resumed search with no report yet drops the old stopped mark (main.js)', /status\.state === 'running' && whatIf\.resultRunning === 'stopped'\) whatIfShowResult\(whatIf\.result, true\)/.test(mainJs));
+    check('stopped: a resumed search with no report yet drops the old stopped mark, never on a report put on show from Earlier searches (main.js)', /status\.state === 'running' && whatIf\.resultRunning === 'stopped' && !whatIf\.resultLoaded\) whatIfShowResult\(whatIf\.result, true\)/.test(mainJs));
     for (const l of ['pt', 'zh']) check(`stopped: ${l} has the stopped round label`, typeof locales[l].rounds.roundStopped === 'string' && typeof locales.en.rounds.roundStopped === 'string');
     // Item 28: the pool's title is the header of its own table, in place of the Change column's header.
     const titled = panel.renderRounds(rec([pool({ key: 'Zed:free', size: 351, contending: 100, paused: 251 }), pool({ key: 'Zed:paid' })]), t);
@@ -691,7 +691,7 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
         dEn.includes(`${en.skillNames['/skills/magic']} level: here 70, in the search 60`) && dEn.includes(`food 1: here ${en.itemNames['/items/donut']}, in the search ${en.itemNames['/items/apple']}`) &&
         dEn.includes(`ability 1: here ${en.abilityNames['/abilities/heal']} 25, in the search ${en.abilityNames['/abilities/heal']} 20`), dEn);
     check('diff names: a room and a trigger field show names, the trigger terms\' dependency, condition and comparator too',
-        dEn.includes(`${en.houseRoomNames['/house_rooms/dojo']}: here 4, in the search 3`) && dEn.includes(`triggers ${en.abilityNames['/abilities/heal']}: here`) &&
+        dEn.includes(`${en.houseRoomNames['/house_rooms/dojo']}: here 4, in the search 3`) && dEn.includes(`${en.abilityNames['/abilities/heal']} trigger: here`) &&
         dEn.includes(en.combatTriggerDependencyNames['/combat_trigger_dependencies/self']) && dEn.includes(en.combatTriggerConditionNames['/combat_trigger_conditions/current_mp']) &&
         dEn.includes(en.combatTriggerComparatorNames['/combat_trigger_comparators/greater_than_equal'].replace('>', '&gt;')) && !dEn.includes('/combat_trigger_') && !dEn.includes('/abilities/') && !dEn.includes('/house_rooms/'), dEn);
     check('diff names: the same in pt, with the page\'s language and the locale string for the level',
@@ -706,6 +706,32 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     check('diff names: every equipment slot the page holds has a slot name (unnamed: ' + (unnamed.join(',') || 'none') + ')', unnamed.length === 0, unnamed.join());
     check('diff names: all seven skill levels have a skill name', 'stamina intelligence attack melee defense ranged magic'.split(' ').every((s) => N.en.get('skillNames', s) !== null && N.pt.get('skillNames', s) !== null));
     check('diff names: the level string exists in en, pt, zh', ['en', 'pt', 'zh'].every((l) => /\{\{skill\}\}/.test(locales[l].diff.level)));
+
+    // The setup warning words a trigger as the result table does (trigger-words.mjs listWords through the window's trig words and the game's names),
+    // never as raw data; it is one line with the count, its list closed behind the page's fold toggle (TODO row 115, points 9 and 10).
+    const tZh = (key, params = {}) => lookup(locales.zh, key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(params[k]));
+    const W = { en: panel.namesFrom(en, en, { trig: locales.en.trig }), pt: panel.namesFrom(pt, en, { trig: locales.pt.trig }), zh: panel.namesFrom(zh, en, { trig: locales.zh.trig }) };
+    const tOf = { en: t, pt: tPt, zh: tZh };
+    const two = [...trigTerm('current_mp', 10), { dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/current_hp', comparatorHrid: '/combat_trigger_comparators/less_than_equal', value: 60 }];
+    const trigDiff = [{ player: 'Alpha', field: 'triggers /abilities/heal', page: two, result: [] }, { player: 'Alpha', field: 'triggers /items/donut', page: null, result: two.slice(1) }];
+    const trigText = (lng, terms) => terms.map((x) => [lng === 'en' ? en : lng === 'pt' ? pt : zh].map((b) => [b.combatTriggerDependencyNames[x.dependencyHrid] ?? en.combatTriggerDependencyNames[x.dependencyHrid], b.combatTriggerConditionNames[x.conditionHrid] ?? en.combatTriggerConditionNames[x.conditionHrid], x.comparatorHrid.endsWith('greater_than_equal') ? '>=' : '<=', x.value].join(' '))[0]).join(` ${locales[lng].trig.and} `);
+    for (const lng of ['en', 'pt', 'zh']) {
+        const h = unesc(panel.renderDiff(trigDiff, tOf[lng], W[lng]));
+        const owner = (lng === 'en' ? en : lng === 'pt' ? pt : zh).abilityNames['/abilities/heal'] ?? en.abilityNames['/abilities/heal'];
+        check(`warning trigger (${lng}): a trigger list reads as the result table words it, the page's language and the game's names, "always" for an empty list, the owner as "<name> ${locales[lng].trig.trigger}"`,
+            h.includes(`${owner} ${locales[lng].trig.trigger}: ${tOf[lng]('diff.page')} ${trigText(lng, two)}, ${tOf[lng]('diff.result')} ${locales[lng].trig.always}`) && h.includes(`${tOf[lng]('diff.result')} ${trigText(lng, two.slice(1))}`) && !h.includes('[{') && !h.includes('dependency') && !h.includes('Hrid') && !h.includes('/combat_trigger_'), h);
+    }
+    check('warning trigger: with no names the list still reads as words (the English words and the ids), never as JSON', (() => { const h = unesc(panel.renderDiff(trigDiff, t)); return h.includes('self current_mp >= 10 AND self current_hp <= 60') && h.includes('in the search always') && !h.includes('[{'); })());
+    check('warning trigger: the value helper words a trigger and leaves any other value as before', panel.diffValue(trigDiff[0], 'result', W.en) === locales.en.trig.always && panel.diffValue({ field: 'ring', page: '/items/ring_of_rare_find +7' }, 'page', W.en) === `${en.itemNames['/items/ring_of_rare_find']} +7` && panel.diffValue({ field: 'food 2', page: null }, 'page', W.en) === '—');
+    const many = Array.from({ length: 11 }, (_, i) => ({ player: 'Alpha', field: 'food ' + (i + 1), page: null, result: '/items/donut' }));
+    for (const lng of ['en', 'pt', 'zh']) {
+        const h11 = panel.renderDiff(many, tOf[lng], W[lng]), h1 = panel.renderDiff(many.slice(0, 1), tOf[lng], W[lng]);
+        const line = (h) => h.slice(0, h.indexOf('<ul'));
+        check(`warning count (${lng}): one line with the count (plural for 11, singular for 1), the list behind the page's fold toggle, closed, every difference in it`,
+            line(h11).includes(tOf[lng]('diff.count', { n: 11 })) && line(h1).includes(tOf[lng]('diff.countOne', { n: 1 })) && /<ul class="mb-0 whatif-more" id="whatIfDiffList" hidden>/.test(h11) &&
+            line(h11).includes(`class="btn btn-link btn-sm p-0 whatif-fold" data-whatif-more="whatIfDiffList" data-show="${tOf[lng]('result.dominatedShow')}" data-hide="${tOf[lng]('result.dominatedHide')}"`) && (h11.match(/<li>/g) || []).length === 11 && !line(h11).includes('<li>'), h11.slice(0, 600));
+    }
+    check('warning count: the strings exist in en, pt, zh with the count, each language its own', ['count', 'countOne'].every((k) => ['en', 'pt', 'zh'].every((l) => locales[l].diff[k].includes('{{n}}'))) && locales.pt.diff.count !== locales.en.diff.count && locales.zh.diff.count !== locales.en.diff.count && locales.pt.diff.count !== locales.pt.diff.countOne && locales.en.diff.title === undefined && locales.en.diff.more === undefined);
 
     // The zone line and the loss warning (generic fixtures; the zone name follows the language).
     const zoned = (extra) => ({ ...result, options: { ...result.options, zone: '/actions/combat/fly', tier: 0, ...(extra || {}) } });

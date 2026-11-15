@@ -274,6 +274,21 @@ check(list.json.length === 1 && list.json[0].id === s1.json.id && list.json[0].g
     check(JSON.stringify(again.json) === JSON.stringify(list.json) && changed.json[0].goal === 'exp' && changed.json[0].players[0] === 'Changed', 'results: the list is the same on a second call and follows a result.json that changed');
 }
 check((await call(base, 'GET', '/api/results/' + s1.json.id)).json.goal === 'profit' && (await call(base, 'GET', '/api/results/000000000000')).status === 404 && (await call(base, 'GET', '/api/results/..%2F..')).status === 404, 'results/<id>: one result; unknown or malformed ids are 404');
+{ // a stopped search (its folder holds partial.json, no result.json) is listed too, marked stopped, by the same list; its report is served; the
+  // search running now is not listed (a resumed one still holds its old partial.json); once it finishes its result.json is what is listed
+    writeFileSync(path.join(mh.dir, 'partial.json'), JSON.stringify({ goal: 'exp', players: ['Alpha', 'Beta'], steps: [], incomplete: true, stoppedBy: 'stop request' }));
+    const withStopped = (await call(base, 'GET', '/api/results')).json, stopped = withStopped.find((e) => e.id === m1.json.id);
+    check(withStopped.length === 2 && stopped?.stopped === true && stopped.goal === 'exp' && !!Date.parse(stopped.finished) && withStopped.find((e) => e.id === s1.json.id).stopped === undefined, 'results: a stopped search is listed, marked stopped; a finished one carries no mark');
+    const report = await call(base, 'GET', '/api/results/' + m1.json.id);
+    check(report.status === 200 && report.json.stoppedBy === 'stop request' && report.json.incomplete === true, 'results/<id>: a stopped search serves its partial.json');
+    await call(base, 'POST', `/api/search/${m1.json.id}/stop`);
+    const resumed = fakes[fakes.length - 1];
+    check(fake.running === m1.json.id && !(await call(base, 'GET', '/api/results')).json.some((e) => e.id === m1.json.id), 'results: the search running now is not listed, though its old partial.json is there');
+    writeFileSync(path.join(mh.dir, 'result.json'), JSON.stringify({ goal: 'exp', players: ['Alpha', 'Beta'], steps: [] }));
+    resumed.onExit(0, '');
+    const done = (await call(base, 'GET', '/api/results')).json.find((e) => e.id === m1.json.id);
+    check(done && done.stopped === undefined && (await call(base, 'GET', '/api/results/' + m1.json.id)).json.incomplete === undefined, 'results: once it finishes its result.json is listed and served, with no stopped mark');
+}
 check((await call(base, 'GET', '/api/search/zzz')).status === 404, 'search/<id>: a malformed id is 404');
 const idx = await call(base, 'GET', '/');
 check(idx.status === 200 && idx.text.includes('bundle.abcd1234.js') && idx.type.startsWith('text/html'), 'static: / serves dist/index.html');

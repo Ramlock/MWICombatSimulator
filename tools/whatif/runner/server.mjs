@@ -17,8 +17,8 @@
 //                                  search carries its report so far (partial) and its version only when newer than `since`, and the latest
 //                                  search round (round, roundVersion) the same way (one counter, one `since`)
 //   POST /api/search/<id>/stop     stops it (exit code 3, run store kept); on a stopped search, resumes it
-//   GET  /api/results              finished searches, newest first: [{ id, finished, goal, players }]
-//   GET  /api/results/<id>         one result.json
+//   GET  /api/results              earlier searches, finished and stopped, newest first: [{ id, finished, goal, players, stopped? }]
+//   GET  /api/results/<id>         one result.json, or a stopped search's partial.json
 // Requests come only from the runner's own page: a Host that is not the loopback address and port, or an Origin
 // that is not the runner's own, is refused with 403.
 import http from 'node:http';
@@ -200,19 +200,28 @@ export function createRunner(opts = {}) {
         };
         return { status: 200, body: { id } };
     }
-    // The list of finished searches. A result.json is read (in full: it is one JSON) only when it is new or changed since the last list
-    // (its size and time), so opening the window does not parse every saved result each time.
-    const listed = new Map(); // id -> { mtimeMs, size, entry }
+    // The list of earlier searches: finished ones (result.json) and stopped ones (partial.json, what the search got to; entry `stopped: true`),
+    // one path for both (savedReport). The search running now is left out (a resumed one still holds its old partial.json). A report is read (in
+    // full: it is one JSON) only when it is new or changed since the last list (its size and time), so opening the window does not parse every saved
+    // result each time.
+    const listed = new Map(); // id -> { file, mtimeMs, size, entry }
+    // The report a search folder holds: its result.json when it finished, else its partial.json when it was stopped; null for neither.
+    const savedReport = (dir) => {
+        for (const [name, stopped] of [['result.json', false], ['partial.json', true]]) {
+            const file = path.join(dir, name);
+            try { return { file, stopped, st: statSync(file) }; } catch { /* not this one */ }
+        }
+        return null;
+    };
     function results() {
         if (!existsSync(resultsDir)) return [];
-        return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d)).map((d) => {
-            const f = path.join(resultsDir, d, 'result.json');
-            let st;
-            try { st = statSync(f); } catch { listed.delete(d); return null; }
-            const seen = listed.get(d);
-            if (seen && seen.mtimeMs === st.mtimeMs && seen.size === st.size) return seen.entry;
-            const r = readJson(f), entry = { id: d, finished: st.mtime.toISOString(), goal: r.goal, players: r.players };
-            listed.set(d, { mtimeMs: st.mtimeMs, size: st.size, entry });
+        return readdirSync(resultsDir).filter((d) => /^[0-9a-f]{12}$/.test(d) && d !== running).map((d) => {
+            const saved = savedReport(path.join(resultsDir, d));
+            if (!saved) { listed.delete(d); return null; }
+            const { file, stopped, st } = saved, seen = listed.get(d);
+            if (seen && seen.file === file && seen.mtimeMs === st.mtimeMs && seen.size === st.size) return seen.entry;
+            const r = readJson(file), entry = { id: d, finished: st.mtime.toISOString(), goal: r.goal, players: r.players, ...(stopped ? { stopped: true } : {}) };
+            listed.set(d, { file, mtimeMs: st.mtimeMs, size: st.size, entry });
             return entry;
         }).filter(Boolean).sort((a, b) => (a.finished < b.finished ? 1 : -1));
     }
@@ -277,8 +286,8 @@ export function createRunner(opts = {}) {
             }
             if (req.method === 'GET' && p === '/api/results') return send(res, 200, results());
             if (req.method === 'GET' && (m = /^\/api\/results\/([^/]+)$/.exec(p))) {
-                const f = path.join(dirOf(m[1]), 'result.json');
-                return existsSync(f) ? send(res, 200, readJson(f)) : send(res, 404, { error: 'no such result' });
+                const saved = savedReport(dirOf(m[1]));
+                return saved ? send(res, 200, readJson(saved.file)) : send(res, 404, { error: 'no such result' });
             }
             return send(res, 404, { error: 'no such endpoint' });
         } catch (e) {

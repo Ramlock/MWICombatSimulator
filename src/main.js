@@ -4116,7 +4116,7 @@ function initErrorHandling() {
 // the logic is in src/whatif/panel.mjs, the interface in docs/codebase/whatif-window.md. Every figure shown is the
 // runner's or the result's own; the window computes none.
 const whatIfT = (key, params) => i18next.t('common:whatIf.' + key, params);
-const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
+const whatIf = { searchId: null, state: null, watch: null, result: null, resultRunning: false, resultLoaded: false, earlier: [], partialVersion: 0, pressed: null, status: null, pending: null, sentKey: null };
 
 // The page's player slots, one per real player tab; the current tab is saved first, so the slots hold what the screen
 // shows. With onlySelected, the players ticked in the window's own tick boxes (never the page's).
@@ -4329,11 +4329,13 @@ function whatIfNames() {
 
 // `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
 // running mark. A lists the reader opened (the folds) stays open when one running report replaces another.
-function whatIfShowResult(result, running = false) {
+// `loaded`: the report was put on show from "Earlier searches" (whatIfLoadResult), not by the search the window watches.
+function whatIfShowResult(result, running = false, loaded = false) {
     const box = document.getElementById('whatIfResult');
     const open = running && whatIf.resultRunning ? [...box.querySelectorAll('.whatif-more:not([hidden])')].map((e) => e.id) : [];
     whatIf.result = result;
     whatIf.resultRunning = running;
+    whatIf.resultLoaded = loaded;
     box.innerHTML = result ? whatIfRenderResult(result, whatIfT, Date.now(), whatIfNames(), running) : '';
     for (const id of open) {
         const body = document.getElementById(id);
@@ -4382,7 +4384,20 @@ function whatIfShowDiff() {
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
     const page = whatIfPageSetups(whatIfSlots(false).filter((s) => names.has(s.name)));
+    // The list behind the warning's one line stays open when a redraw replaces it (each running report redraws the warning).
+    const open = document.getElementById('whatIfDiffList')?.hidden === false;
     box.innerHTML = whatIfRenderDiff(whatIfDiffSetups(page, result.setups), whatIfT, whatIfNames());
+    const list = document.getElementById('whatIfDiffList');
+    if (open && list) list.hidden = false;
+    whatIfSyncToggles(box);
+}
+
+// A new search clears the result on show, its setup warning and its search rounds, at the Start click once the settings are read (a start the
+// window refuses keeps them); the result stays reachable under "Earlier searches" when its search had finished.
+function whatIfClearResult() {
+    whatIf.round = null;
+    document.getElementById('whatIfRounds').innerHTML = '';
+    whatIfShowResult(null);
 }
 
 // Redraws the progress box in place (whatIfMorphInto, morph.mjs): a stage button, or any part of a row, whose markup did not change keeps its node in
@@ -4415,9 +4430,9 @@ function whatIfShowStatus(status) {
     if (status.state === 'done' && status.result) whatIfShowResult(status.result);
     else if (status.state === 'running' && status.partial) { whatIf.partialVersion = Math.max(whatIf.partialVersion, status.partialVersion || 0); whatIfShowResult(status.partial, true); }
     else if ((status.state === 'stopped' || status.state === 'error') && whatIf.resultRunning === true) whatIfShowResult(whatIf.result, 'stopped'); // what it got to stays, marked
-    else if (status.state === 'running' && whatIf.resultRunning === 'stopped') whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
+    else if (status.state === 'running' && whatIf.resultRunning === 'stopped' && !whatIf.resultLoaded) whatIfShowResult(whatIf.result, true); // resumed, no new report yet: the old report loses its stopped mark
     if (status.state !== 'running') whatIfStopWatching();
-    if (status.state === 'done') whatIfLoadList();
+    if (status.state === 'done' || status.state === 'stopped') whatIfLoadList(); // a stopped search is listed too
     whatIfShowSetup();
 }
 
@@ -4549,6 +4564,7 @@ async function whatIfPostSearch() {
     whatIfMessage('');
     const read = whatIfReadSettings(true);
     if (read.message) { whatIfMessage(read.message); return; }
+    whatIfClearResult();
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfT('fetchingPrices'));
@@ -4582,18 +4598,26 @@ async function whatIfStopOrResume() {
     } catch (err) { failed(whatIfT('runnerGone')); }
 }
 
+// "Earlier searches": the runner's list (finished and stopped searches, one list), kept in whatIf.earlier so a language change redraws it.
 async function whatIfLoadList() {
-    const select = document.getElementById('selectWhatIfResult');
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.results);
         if (!ok || !Array.isArray(body)) return;
-        select.replaceChildren(...body.map((r) => {
-            const option = document.createElement('option');
-            option.value = r.id;
-            option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit')].filter(Boolean).join(' · ');
-            return option;
-        }));
+        whatIf.earlier = body;
+        whatIfDrawList();
     } catch (err) { /* the runner is gone; the Start button reports it */ }
+}
+// One entry per search: when, who, the goal, and "Stopped" (whatIf.state.stopped) for a search that was stopped before it finished.
+function whatIfDrawList() {
+    const select = document.getElementById('selectWhatIfResult');
+    const keep = select.value;
+    select.replaceChildren(...whatIf.earlier.map((r) => {
+        const option = document.createElement('option');
+        option.value = r.id;
+        option.textContent = [r.finished, (r.players || []).join(', '), r.goal === 'exp' ? whatIfT('goal.exp') : whatIfT('goal.profit'), r.stopped ? whatIfT('state.stopped') : ''].filter(Boolean).join(' · ');
+        return option;
+    }));
+    if (whatIf.earlier.some((r) => r.id === keep)) select.value = keep;
 }
 
 async function whatIfLoadResult() {
@@ -4601,7 +4625,14 @@ async function whatIfLoadResult() {
     if (!id) return;
     try {
         const { ok, body } = await whatIfRequest(WHATIF_API.result(id));
-        if (ok) { whatIfMessage(''); whatIfShowResult(body); }
+        // A stopped search (the runner sends its partial.json) is put on show as the window shows it right after Stop: its report with the
+        // stopped mark and its last search round under it; a finished one as before, with its last round. The id's entry says which.
+        if (ok) {
+            whatIfMessage('');
+            whatIf.round = body.round ?? null;
+            document.getElementById('whatIfRounds').innerHTML = whatIf.round ? whatIfRenderRounds(whatIf.round, whatIfT, whatIfNames()) : '';
+            whatIfShowResult(body, whatIf.earlier.find((r) => r.id === id)?.stopped ? 'stopped' : false, true);
+        }
         else whatIfMessage(body.error || whatIfT('runnerError'));
     } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
 }
@@ -4667,19 +4698,23 @@ async function initWhatIf() {
         try { const { ok, body } = await whatIfRequest(WHATIF_API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); else whatIfPollSoon(); }
         catch (err) { failed(whatIfT('runnerGone')); }
     });
+    // A fold toggle (data-whatif-more) in the result or in the setup warning opens or closes its bodies.
+    const fold = (event) => {
+        const more = event.target.closest('[data-whatif-more]');
+        if (!more) return;
+        // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
+        const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
+        const hide = !bodies[0].hidden;
+        for (const body of bodies) body.hidden = hide;
+        whatIfSyncToggles(event.currentTarget);
+    };
     document.getElementById('whatIfResult').addEventListener('click', (event) => {
         const button = event.target.closest('[data-whatif-apply]');
         if (button) whatIfApply(button.dataset.whatifApply);
-        const more = event.target.closest('[data-whatif-more]');
-        if (more) {
-            // One toggle may open several bodies (the ids it lists, space-separated): the first decides, the others follow it.
-            const bodies = more.dataset.whatifMore.split(' ').map((id) => document.getElementById(id)).filter(Boolean);
-            const hide = !bodies[0].hidden;
-            for (const body of bodies) body.hidden = hide;
-            whatIfSyncToggles(event.currentTarget);
-        }
+        fold(event);
     });
-    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning); });
+    document.getElementById('whatIfDiff').addEventListener('click', fold);
+    i18next.on('languageChanged', () => { whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded); });
 }
 // #endregion
 

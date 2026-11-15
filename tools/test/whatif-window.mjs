@@ -76,6 +76,11 @@ const bigResult = (() => {
 })();
 let serveBig = false;
 let serveOlder = false;
+// serveTrigger: the earlier result's first setup holds a two-term trigger on Poke that the page does not, so the warning has a trigger difference to word.
+let serveTrigger = false;
+const pokeTrigger = [{ dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/current_hp', comparatorHrid: '/combat_trigger_comparators/less_than_equal', value: 60 },
+    { dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/current_mp', comparatorHrid: '/combat_trigger_comparators/greater_than_equal', value: 10 }];
+const withTrigger = () => ({ ...result, setups: result.setups.map((x, i) => (i ? x : { ...x, triggerMap: { ...(x.triggerMap || {}), '/abilities/poke': pokeTrigger } })) });
 // The live report: what the runner would serve as `partial` (with its version) while the search runs; `sinces` is what the window asked with.
 let live = null;
 const sinces = [];
@@ -116,14 +121,19 @@ const server = http.createServer((req, res) => {
         sinces.push(since);
         return send(res, 200, { state: search.state, progress: progress(), ...(search.state === 'done' ? { result } : search.state === 'running' && live && live.version > since ? { partial: live.partial, partialVersion: live.version } : {}), ...(search.state === 'running' && rounds && rounds.version > since ? { round: rounds.round, roundVersion: rounds.version } : {}) });
     }
-    if (url.pathname === '/api/results') return send(res, 200, search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : []);
-    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBig ? bigResult : serveOlder ? olderResult : result);
+    if (url.pathname === '/api/results') return send(res, 200, [...(serveStopped ? [{ id: 'search-stopped', finished: '2026-01-02 09:00', goal: 'profit', players: ['Player 1'], stopped: true }] : []), ...(search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : [])]);
+    if (url.pathname === '/api/results/search-stopped') return send(res, 200, stoppedReport());
+    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBig ? bigResult : serveOlder ? olderResult : serveTrigger ? withTrigger() : result);
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     const file = path.join(dist, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
     if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
     fs.createReadStream(file).pipe(res);
 });
+// serveStopped: "Earlier searches" also lists a stopped search (the runner's entry with `stopped: true`), whose report is its partial.json: the
+// result so far, marked incomplete, with its last search round.
+let serveStopped = false;
+const stoppedReport = () => ({ ...result, confirmation: undefined, incomplete: true, stoppedBy: 'stop request', round: roundRec(5, 6, 400, 1600) });
 let holdRunning = true;
 let failNext = false;
 const stopDelay = 300; // the fake optimizer's exit after a stop
@@ -611,6 +621,61 @@ try {
         (await js(`document.getElementById('inputLevel_attack').value`)) === (await js(`document.getElementById('inputLevel_attack').value`)));
     await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
     check('Show loads an earlier result', await until(`document.getElementById('whatIfResult').textContent.includes('Magic 1')`));
+    // The setup warning (TODO row 115): one line with the count, the list closed behind the page's fold toggle; a trigger difference worded as
+    // the result table words it (the game's names, the page's language), never as raw data.
+    serveTrigger = true;
+    await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+    const diffState = `(() => { const box = document.getElementById('whatIfDiff'), list = document.getElementById('whatIfDiffList'), b = box.querySelector('[data-whatif-more="whatIfDiffList"]'); const line = box.querySelector('.whatif-fold-line'); return { n: list ? list.querySelectorAll('li').length : -1, hidden: list?.hidden, display: list ? getComputedStyle(list).display : null, toggle: b?.textContent, line: line?.textContent || '', lineH: line ? line.getBoundingClientRect().height : 0, text: box.textContent }; })()`;
+    check('the warning on a result computed on another setup is one line with the count of differences, its list closed', await until(`(() => { const d = ${diffState}; return d.n > 1 && d.hidden && d.display === 'none' && d.toggle === 'Show' && d.line.startsWith("The page's setup differs from the one the search ran on in " + d.n + ' places') && d.lineH < 40; })()`), JSON.stringify(await js(diffState)));
+    const scrollDiff = () => js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), e = document.getElementById('whatIfDiff'); body.scrollTop += e.getBoundingClientRect().top - body.getBoundingClientRect().top - 160; return true; })()`);
+    await scrollDiff();
+    await shot('whatIfModal', 'warning-one-line.png');
+    await js(`document.querySelector('[data-whatif-more="whatIfDiffList"]').click(), true`);
+    const pokeWords = (lng) => `[i18next.t('combatTriggerDependencyNames./combat_trigger_dependencies/self', { lng: '${lng}' }) + ' ' + i18next.t('combatTriggerConditionNames./combat_trigger_conditions/current_hp', { lng: '${lng}' }) + ' <= 60', i18next.t('combatTriggerDependencyNames./combat_trigger_dependencies/self', { lng: '${lng}' }) + ' ' + i18next.t('combatTriggerConditionNames./combat_trigger_conditions/current_mp', { lng: '${lng}' }) + ' >= 10'].join(' ' + i18next.t('common:whatIf.trig.and') + ' ')`;
+    const trigLine = `(() => { const li = [...document.querySelectorAll('#whatIfDiffList li')].find((x) => x.textContent.includes(i18next.t('abilityNames./abilities/poke') + ' ' + i18next.t('common:whatIf.trig.trigger') + ':')); return li ? li.textContent : ''; })()`;
+    check('a click opens the list: every difference one line, the Magic level by name, the trigger difference worded with the game\'s names', await until(`(() => { const d = ${diffState}; const tl = ${trigLine}; return !d.hidden && d.toggle === 'Hide' && d.text.includes('Magic level:') && tl.endsWith('in the search ' + ${pokeWords('en')}) && !d.text.includes('[{') && !d.text.includes('dependency') && !d.text.includes('/combat_trigger_'); })()`), JSON.stringify(await js(diffState)));
+    await scrollDiff();
+    await shot('whatIfModal', 'warning-open.png');
+    for (const [lng, sh] of [['pt', 'warning-open-pt.png'], ['zh', 'warning-open-zh.png']]) {
+        await js(`i18next.changeLanguage('${lng}').then(() => true)`);
+        check(`in ${lng} the warning's line, its toggle and the trigger difference follow the language, and the open list stays open across the redraw`, await until(`(() => { const d = ${diffState}; const tl = ${trigLine}; return !d.hidden && d.toggle === i18next.t('common:whatIf.result.dominatedHide') && d.line.startsWith(i18next.t('common:whatIf.diff.count', { n: d.n })) && tl.endsWith(i18next.t('common:whatIf.diff.result') + ' ' + ${pokeWords(lng)}) && !d.text.includes('[{'); })()`), JSON.stringify(await js(diffState)));
+        await scrollDiff();
+        await shot('whatIfModal', sh);
+    }
+    await js(`i18next.changeLanguage('en').then(() => true)`);
+    await js(`document.querySelector('[data-whatif-more="whatIfDiffList"]').click(), true`);
+    check('a second click closes the list again', await js(`document.getElementById('whatIfDiffList').hidden && document.querySelector('[data-whatif-more="whatIfDiffList"]').textContent === 'Show'`));
+    serveTrigger = false;
+    // A stopped search is listed under Earlier searches, marked as stopped in its entry (en, pt, zh: whatIf.state.stopped), beside the finished
+    // ones (one list); Show puts it on screen as the window shows it right after Stop: the stopped mark and its last search round (TODO row 115).
+    serveStopped = true;
+    // The list is read again when the window opens (the show event, as `reopen` above).
+    await js(reopen);
+    const entries = `[...document.getElementById('selectWhatIfResult').options].map((o) => [o.value, o.textContent])`;
+    check('Earlier searches lists the stopped search, marked as stopped, beside the finished one', await until(`(() => { const e = ${entries}; return e.length === 2 && e[0][0] === 'search-stopped' && e[0][1].endsWith(' · Stopped') && e[1][0] === 'search-1' && !e[1][1].includes('Stopped'); })()`), JSON.stringify(await js(entries)));
+    const listShot = async (name) => {
+        // The select's own drop-down is drawn by the browser outside the page (no picture has it): for the picture it is shown as an open list (size).
+        await js(`(() => { const s = document.getElementById('selectWhatIfResult'); s.size = s.options.length; s.value = 'search-stopped'; document.querySelector('#whatIfModal .modal-body').scrollTop = 0; return true; })()`);
+        await shot('whatIfModal', name);
+        await js(`(() => { document.getElementById('selectWhatIfResult').size = 0; return true; })()`);
+    };
+    await listShot('earlier-searches-stopped.png');
+    for (const [lng, sh] of [['pt', 'earlier-searches-stopped-pt.png'], ['zh', 'earlier-searches-stopped-zh.png']]) {
+        await js(`i18next.changeLanguage('${lng}').then(() => true)`);
+        check(`in ${lng} the stopped entry's mark follows the language, the selection kept`, await until(`(() => { const e = ${entries}; return e.length === 2 && e[0][1].endsWith(' · ' + i18next.t('common:whatIf.state.stopped')) && i18next.t('common:whatIf.state.stopped') !== 'Stopped'; })()`), JSON.stringify(await js(entries)));
+        await listShot(sh);
+    }
+    await js(`i18next.changeLanguage('en').then(() => true)`);
+    await js(`(() => { document.getElementById('whatIfResult').innerHTML = ''; document.getElementById('whatIfRounds').innerHTML = ''; document.getElementById('selectWhatIfResult').value = 'search-stopped'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    const stoppedState = `(() => { const r = document.getElementById('whatIfResult'), mark = r.querySelector('.whatif-running'); return { mark: mark?.innerHTML || '', halted: !!r.querySelector('.whatif-st-halted'), magic: r.textContent.includes('Magic 1'), rounds: document.getElementById('whatIfRounds').textContent.length }; })()`;
+    check('Show puts the stopped search on screen as after Stop: its report with the stopped mark and its last search round', await until(`(() => { const d = ${stoppedState}; return d.magic && d.halted && d.mark.includes('Stopped: this is where the search got to.') && d.rounds > 0; })()`), JSON.stringify(await js(stoppedState)));
+    if (shots) { await js(`(() => { document.querySelector('#whatIfModal .modal-body').scrollTop = 0; return true; })()`); await new Promise((r) => setTimeout(r, 300)); }
+    await shot('whatIfModal', 'stopped-search-shown.png');
+    await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    check('Show on the finished search after it draws it with no stopped mark', await until(`(() => { const d = ${stoppedState}; return d.magic && !d.halted && !d.mark; })()`), JSON.stringify(await js(stoppedState)));
+    serveStopped = false;
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
     serveOlder = true;
     await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
     check('an older result (a helps-the-party group, no buyer net) loads with no group, no hint, dashes in the buyer cells and the run-again line', await until(`(() => { const r = document.getElementById('whatIfResult'), t = r.textContent, row = [...r.querySelectorAll('table')].find((x) => x.textContent.includes('How it is bought'))?.querySelector('tbody tr'); return t.includes('Magic 1') && !t.includes('Helps the party') && !t.includes('Not bought:') && !!row && row.children[4].textContent === '—'; })()`));
@@ -649,6 +714,20 @@ try {
     check('a three-player page gives three tick boxes in the window', await js(`document.querySelectorAll('#whatIfPlayers input').length === 3 && [...document.querySelectorAll('#whatIfPlayers label')].map((l) => l.textContent).join() === 'Player 1,Player 2,Player 3'`));
     await js(`document.getElementById('whatIfPlayer_3').click(), true`);
     check('the budget rows follow the ticks in a three-player window', await js(`[...document.querySelectorAll('#whatIfBudgets input')].map((i) => i.dataset.player).join() === 'Player 1,Player 3'`));
+    // A new search clears the earlier result and its warning at the Start click, before the first progress shows (TODO row 115, point 8);
+    // the earlier result stays reachable under Earlier searches.
+    await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    check('before the new search an earlier result and its warning are on show', await until(`document.getElementById('whatIfResult').textContent.includes('Magic 1') && !!document.getElementById('whatIfDiffList')`));
+    holdRunning = true;
+    const atClick = await js(`(() => { const b = document.getElementById('buttonWhatIfSearch'); b.click(); return { result: document.getElementById('whatIfResult').innerHTML, diff: document.getElementById('whatIfDiff').innerHTML, rounds: document.getElementById('whatIfRounds').innerHTML, button: b.textContent }; })()`);
+    check('at the Start click the earlier result, its warning and its rounds are gone, before the runner answers', atClick.result === '' && atClick.diff === '' && atClick.rounds === '' && atClick.button === 'Starting…', JSON.stringify(atClick).slice(0, 300));
+    check('the new search runs with no old result in the window', await until(`document.getElementById('whatIfState').textContent === 'Searching' && !!document.getElementById('whatIfProgress').textContent`) && await js(`document.getElementById('whatIfResult').innerHTML === '' && document.getElementById('whatIfDiff').innerHTML === ''`));
+    if (shots) { await js(`(() => { document.querySelector('#whatIfModal .modal-body').scrollTop = 0; return true; })()`); await new Promise((r) => setTimeout(r, 300)); }
+    await shot('whatIfModal', 'new-search-clears-result.png');
+    holdRunning = false;
+    check('the new search finishes and its result shows', await until(`document.getElementById('whatIfState').textContent === 'Done' && document.getElementById('whatIfResult').textContent.includes('Magic 1')`));
+    await js(`(() => { document.getElementById('whatIfResult').innerHTML = ''; document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    check('an earlier result is still reachable under Earlier searches', await until(`document.getElementById('selectWhatIfResult').options.length >= 1 && document.getElementById('whatIfResult').textContent.includes('Magic 1')`));
     // A search the runner reports failed: the state chip reads Error, and nothing in the progress area reads Running or Searching.
     failNext = true;
     await js(`document.getElementById('buttonWhatIfSearch').click(), true`);

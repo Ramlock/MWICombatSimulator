@@ -3,7 +3,7 @@
 // progress, and shows the optimizer's result.json as it is. It computes no figure: every number shown is a field of the
 // result or of the progress (the UI is output only); the only thing it works out itself is which page slot an op names
 // and where the page's setup differs from the one the search ran on.
-import { EN as TRIG_EN, readChange, readList, changeWords, listWords } from './trigger-words.mjs';
+import { EN as TRIG_EN, readChange, readList, changeWords, listWords, termOf } from './trigger-words.mjs';
 import { applyOps } from './applyOps.mjs';
 import { numberHtml, formatNumber, unitOf } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
@@ -918,15 +918,26 @@ export function diffLabel(field, names, t) {
     const level = /^([a-z]+)Level$/.exec(field);
     if (level) { const skill = names.get('skillNames', level[1]); return skill === null ? field : t('diff.level', { skill }); }
     if (/^[a-z_]+$/.test(field)) return names.get('equipmentTypeNames', field) ?? field;
+    // A trigger field as the result table words a trigger change's owner: "<owner name> trigger" (trigWords: the window's own word).
+    if (field.startsWith('triggers ')) return hridsToNames(field.slice(9), names) + ' ' + trigWords(names).trigger;
     return hridsToNames(field, names);
 }
 
-// The differences as one line each, for the warning. `names`: see namesFrom; the ids in the fields and values show as names.
+// A difference's value as the warning shows it (output only). A trigger list (the game's terms) is worded by the one wording of a trigger
+// (trigger-words.mjs listWords, as the result table words it): the page's language and the game's names, "always" for an empty list; with no
+// names, the English words and the ids. Any other value: its text, every hrid in it as its name ('—' for none).
+export function diffValue(d, side, names = null) {
+    const v = d[side];
+    if (d.field.startsWith('triggers ') && Array.isArray(v)) return names ? listWords(v.map(termOf), trigWords(names), trigNames(names)) : listWords(v.map(termOf));
+    return names ? hridsToNames(fmtRaw(v), names) : fmtRaw(v);
+}
+// The warning: one line with the count of differences ("differs in N places"; diff.count / diff.countOne) and, at its right end, the page's
+// fold toggle (foldLine), which opens the list of them, one line each, closed by default (#whatIfDiffList). `names`: see namesFrom.
 export function renderDiff(diff, t, names = null) {
     if (!diff.length) return '';
-    const value = (v) => (names ? hridsToNames(fmtRaw(v), names) : fmtRaw(v));
-    const shown = diff.slice(0, 8).map((d) => `<li>${esc(d.player)}, ${esc(diffLabel(d.field, names, t))}: ${esc(t('diff.page'))} ${esc(value(d.page))}, ${esc(t('diff.result'))} ${esc(value(d.result))}</li>`).join('');
-    const more = diff.length > 8 ? `<li>${esc(t('diff.more', { n: diff.length - 8 }))}</li>` : '';
-    return `<div class="whatif-warn">${esc(t('diff.title'))}<ul class="mb-0">${shown}${more}</ul></div>`;
+    const n = diff.length;
+    const rows = diff.map((d) => `<li>${esc(d.player)}, ${esc(diffLabel(d.field, names, t))}: ${esc(t('diff.page'))} ${esc(diffValue(d, 'page', names))}, ${esc(t('diff.result'))} ${esc(diffValue(d, 'result', names))}</li>`).join('');
+    const line = foldLine('whatIfDiffList', esc(plural(t, 'diff.count', n, { n })), '', t('result.dominatedShow'), t('result.dominatedHide'));
+    return `<div class="whatif-warn whatif-diff">${line}<ul class="mb-0 whatif-more" id="whatIfDiffList" hidden>${rows}</ul></div>`;
 }
-const fmtRaw = (v) => (v === null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+const fmtRaw = (v) => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));

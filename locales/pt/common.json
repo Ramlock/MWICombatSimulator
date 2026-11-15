@@ -493,11 +493,11 @@
         "apply": "Aplicar",
         "applyTo": "Aplicar 1 a {{n}}",
         "diff": {
-            "title": "O setup da página difere do usado na busca; os ganhos podem não valer:",
+            "count": "O setup da página difere do usado na busca em {{n}} pontos; os ganhos podem não valer",
+            "countOne": "O setup da página difere do usado na busca em {{n}} ponto; os ganhos podem não valer",
             "page": "aqui",
             "result": "na busca",
-            "level": "nível de {{skill}}",
-            "more": "e mais {{n}}"
+            "level": "nível de {{skill}}"
         }
     }
 }
