@@ -401,6 +401,40 @@ try {
         const fitRow = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), btns = [...row.querySelectorAll('[data-whatif-done]')], cells = [...row.children], edge = body.getBoundingClientRect().right; return { noOverflow: body.scrollWidth <= body.clientWidth, labelWraps: getComputedStyle(l).whiteSpace === 'normal' && l.scrollWidth <= l.clientWidth + 1, textWraps: !x && cells[6]?.textContent === '40' && cells[7]?.textContent === '63' && cells[8]?.textContent === '10' && btns.length === 2 && l.getBoundingClientRect().right <= edge + 0.5 && cells.every((c) => c.getBoundingClientRect().right <= edge + 0.5) && btns.every((b) => b.getBoundingClientRect().right <= edge + 0.5), ellipsis: getComputedStyle(l).textOverflow === 'ellipsis' && getComputedStyle(l).overflow !== 'visible', text: l.textContent }; })()`);
         check(`at ${w}x${h} a race stage row (counters after the status text, on the stage's own line, then the done button) is not cut, wraps, and the window has no horizontal scroll`, !!fitRow && fitRow.noOverflow && fitRow.labelWraps && fitRow.textWraps && !fitRow.ellipsis, JSON.stringify(fitRow));
     }
+    // Columns that stay put (TODO row 117): one row drawn in every state it can show (waiting, searching, checking leaders, the winner under check with a long
+    // name, a winner left out, done, halted, skipped), in en, pt and zh, in the page's own window at 1920 and 1366 wide: every header's left edge and width is the
+    // same in all of them. The rows are drawn by the panel's renderParts into a table beside the live one (the poll redraws that one).
+    {
+        const panelM = await import(new URL('../../src/whatif/panel.mjs', import.meta.url));
+        const loc = Object.fromEntries(['en', 'pt', 'zh'].map((l) => [l, JSON.parse(fs.readFileSync(path.join(root, 'locales', l, 'common.json'), 'utf8')).whatIf]));
+        const tOf = (l) => (key, p = {}) => { const v = key.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), loc[l]); return typeof v === 'string' ? v.replace(/\{\{(\w+)\}\}/g, (_, k) => String(p[k])) : key; };
+        const longWhat = { player: 'Player 3', desc: 'Off hand holy_buckler +4 -> +10 + Body crimson_plate_body +4 -> +6 + Legs rainbow_plate_legs +3 -> +5' };
+        const race = { kind: 'step', index: 3, round: 128, runs: 123456, simHours: 9876543, candidates: 1234, contending: 1180, paused: 999, dropped: 1000, acceptable: 3, separate: { rounds: 999 } };
+        const states = [
+            ['waiting', { kind: 'step', index: 3, state: 'waiting', runsUpTo: 99999 }, 'running'],
+            ['searching', { ...race, state: 'running', phase: 'search' }, 'running'],
+            ['checking leaders', { ...race, state: 'running', phase: 'reading', kept: { kept: 98765, total: 123456 } }, 'running'],
+            ['checking the winner', { ...race, state: 'done', checking: true, checkWhat: longWhat, checkWho: { index: 3, of: 5 }, checkDone: 12345, checkPlanned: 23456 }, 'running'],
+            ['left out, goes on', { ...race, state: 'running', phase: 'search', failed: [{ stage: 'greedy step 3', ...longWhat, seeds: 16, gainPerUser: -1234567, sePerUser: 234567 }] }, 'running'],
+            ['done, left out', { ...race, state: 'done', failed: [{ stage: 'greedy step 3', ...longWhat, seeds: 16, gainPerUser: -1234567, sePerUser: 234567 }] }, 'done'],
+            ['ended by you', { ...race, state: 'done', skipped: true }, 'done'],
+            ['halted', { ...race, state: 'running', phase: 'search' }, 'stopped'],
+            ['skipped', { kind: 'confirmation', index: 0, state: 'skipped' }, 'done'],
+        ];
+        for (const [w, h] of [[1920, 1080], [1366, 768]]) {
+            await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+            await new Promise((r) => setTimeout(r, 300));
+            const seen = [];
+            for (const l of ['en', 'pt', 'zh']) for (const [name, row, searchState] of states) {
+                const html = panelM.renderParts({ state: searchState, progress: { elapsedSeconds: 123456, secondsPerRun: 12.34, parts: [row] } }, tOf(l));
+                const m = await js(`(() => { const box = document.getElementById('whatIfProgress'); let t = document.getElementById('__colTest'); if (!t) { t = document.createElement('div'); t.id = '__colTest'; box.after(t); } t.innerHTML = ${JSON.stringify(html)}; const ths = [...t.querySelectorAll('thead th')]; const body = document.querySelector('#whatIfModal .modal-body'); return { cols: ths.map((x) => { const r = x.getBoundingClientRect(); return [Math.round(r.left * 10) / 10, Math.round(r.width * 10) / 10]; }), scroll: body.scrollWidth > body.clientWidth + 1 }; })()`);
+                seen.push({ l, name, ...m });
+            }
+            await js(`document.getElementById('__colTest')?.remove()`);
+            const ref = JSON.stringify(seen[0].cols), moved = seen.filter((x) => JSON.stringify(x.cols) !== ref || x.scroll);
+            check(`columns at ${w}x${h}: every header's left edge and width are the same across ${states.length} states of a row in en, pt and zh, and no horizontal scroll`, seen.length === states.length * 3 && seen[0].cols.length === 12 && moved.length === 0, JSON.stringify(moved.slice(0, 2).map((x) => [x.l, x.name, x.cols, x.scroll])) + ' ref ' + ref);
+        }
+    }
     // The pointer rests on "Accept current winner" while the window polls: the redraw keeps the button in the document, so it keeps its node and its
     // hover look at every poll (a node replaced, or taken out of the page and put back, drops its hover and fades back in: the flicker). A real
     // change still shows at once: a press disables both buttons, a failed press gives them back, and no leader to accept takes Accept away.
@@ -441,7 +475,7 @@ try {
         await page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
         await until(`!!document.querySelector('#whatIfProgress .whatif-part-done.whatif-part-race')`);
         await new Promise((r) => setTimeout(r, 400));
-        const fitDone = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-done.whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), edge = body.getBoundingClientRect().right, within = [l, x].every((e) => !e || (e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().right <= edge + 0.5)); return { noOverflow: body.scrollWidth <= body.clientWidth, within, wraps: getComputedStyle(l).whiteSpace === 'normal', noButton: !row.querySelector('[data-whatif-done]'), noRunning: !/Running|round [0-9]+ running/.test(row.textContent), counts: row.children[6]?.textContent === '473' && row.children[7]?.textContent === '' && row.children[8]?.textContent === '', text: row.textContent }; })()`);
+        const fitDone = await js(`(() => { const body = document.querySelector('#whatIfModal .modal-body'), row = document.querySelector('#whatIfProgress .whatif-part-done.whatif-part-race'); if (!row) return null; const l = row.querySelector('.whatif-part-label'), x = row.querySelector('.whatif-part-text'), edge = body.getBoundingClientRect().right, within = [l, x].every((e) => !e || (e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().right <= edge + 0.5)); return { noOverflow: body.scrollWidth <= body.clientWidth, within, wraps: getComputedStyle(l).whiteSpace === 'normal', noButton: !row.querySelector('[data-whatif-done]'), noRunning: !/Running|round [0-9]+ running/.test(row.textContent), counts: row.children[6]?.textContent === '' && row.children[7]?.textContent === '' && row.children[8]?.textContent === '', text: row.textContent }; })()`);
         check(`at ${w}x${h} a finished race stage row is not cut, its figures stay inside the window, it has no done button and no horizontal scroll`, !!fitDone && fitDone.noOverflow && fitDone.within && fitDone.wraps && fitDone.noButton && fitDone.noRunning && fitDone.counts, JSON.stringify(fitDone));
     }
     raceDone = false;

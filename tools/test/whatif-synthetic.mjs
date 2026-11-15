@@ -253,14 +253,14 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     check('button: a run that Accept dropped is not stored', ha.hung > 0 && accept2.records.length === accept2.runs, `${accept2.records.length} ${accept2.runs} ${ha.hung}`);
 }
 
-// ---- A search whose every pick is left out inside the race: the pick check ran, so the picks part is done ("None confirmed"), not "Not run" ----
+// ---- A search whose every pick is left out by its check: each row that ran names what its check left out (checkFailed), never "Not run" ----
 {
     const noEffect = structuredClone(scenario); noEffect.effects = []; noEffect.request = { ...noEffect.request, levers: ['equip'] };
     let last = null;
     const ne = await runSynthetic(noEffect, {}, { onProgress: (p) => { last = p; } });
-    const picks = (last?.parts || []).find((x) => x.kind === 'picks');
+    const ran = (last?.parts || []).filter((x) => x.state === 'done'), named = ran.flatMap((x) => x.failed || []), descs = new Set(ne.result.notConfirmed.map((c) => c.desc));
     check('no-effect search: it ends done with every change left out (notConfirmed non-empty, no step)', last?.stage === 'done' && ne.result.notConfirmed.length > 0 && ne.result.steps.length === 0, `${last?.stage} ${ne.result.notConfirmed.length} ${ne.result.steps.length}`);
-    check('no-effect search: the picks part ends done with the number left out, never skipped ("Not run: no change was picked" would contradict "Not confirmed N")', picks?.state === 'done' && picks.leftOut === ne.result.notConfirmed.length, JSON.stringify(picks));
+    check('no-effect search: no picks part; the rows that ran are done and name what their check left out, each one a change of notConfirmed', !(last?.parts || []).some((x) => x.kind === 'picks') && ran.length > 0 && named.length > 0 && named.every((x) => descs.has(x.desc)), JSON.stringify(ran.map((x) => [x.kind, x.index, (x.failed || []).length])));
 }
 
 // Stop then Resume (the same call on the same store) reaches the same set: a set's runs are ordinary store runs and togetherOf reads only estimates and
@@ -273,4 +273,24 @@ check('search: seeded and deterministic (a second run takes the same steps, pick
     check('together: Stop then Resume on the same store reaches the same set', k(r1) !== '' && k(r1) === k(r2) && r2.result.steps[0].kind === 'set', `${k(r1)} | ${k(r2)}`);
 }
 
+// Stop and Resume on the same folder (records and progress.json): elapsed goes on from the time spent before the stop (core.mjs elapsedBefore), and the round that
+// was cut says how many of its runs the record kept (progress.runsKept, drawn on its row). A clock that moves 1 s per run stands in for the time a run takes.
+{
+    const realNow = Date.now, start = realNow(); let fake = 0;
+    Date.now = () => start + fake;
+    const ticking = (p) => ({ ...p, run: async (t) => { fake += 1000; return p.run(t); } });
+    let seenRound = 0;
+    const halt = (rec, stop) => { if (rec.stage === 'screen' && ++seenRound === 1) stop.requested = true; };
+    try {
+        const r1 = await runSynthetic(scenario, { 'max-steps': 0 }, { onRound: halt, poolWrap: ticking });
+        const before = r1.lastProgress?.elapsedSeconds ?? 0, kept = [];
+        const r2 = await runSynthetic(scenario, { 'max-steps': 0 }, { records: r1.records, aux: r1.aux, poolWrap: ticking, onProgress: (p) => { if (p.runsKept) kept.push(p.runsKept); } });
+        const first2 = r2.aux.get('progress.json');
+        check('resume: the first run stopped with elapsed time on its progress', r1.outcome !== 'done' && before > 0, `${r1.outcome} ${before}`);
+        check('resume: elapsed goes on from the stop (the resumed search ends above what the stopped one had, by its own time)', r2.lastProgress.elapsedSeconds > before && first2.elapsedSeconds === r2.lastProgress.elapsedSeconds, `${before} -> ${r2.lastProgress.elapsedSeconds}`);
+        check('resume: a round of the resumed search says how many of its runs the record kept (some, not more than it asks for), with its stage and round', kept.length > 0 && kept.every((k) => k.kept > 0 && k.kept <= k.total && typeof k.stage === 'string'), JSON.stringify(kept.slice(0, 3)));
+        const fresh = []; await runSynthetic(scenario, { 'max-steps': 0 }, { onProgress: (p) => { if (p.runsKept) fresh.push(p); } });
+        check('resume: a fresh search keeps none (no runsKept)', fresh.length === 0, String(fresh.length));
+    } finally { Date.now = realNow; }
+}
 process.exit(failed ? 1 : 0);

@@ -135,6 +135,10 @@ export async function main(settings, seams) {
     // --cache-from a.jsonl,b.jsonl: earlier runs.jsonl files read as well (never written), so a new search reuses
     // another search's runs of the same setups without copying them.
     for (const r of runStore.load()) put(r);
+    // The runs the record held when this process started (a resume's runs kept from before the stop): ensure() counts the ones a batch asks for (progress.runsKept).
+    const fromRecord = new Set(cache.keys());
+    // A resumed search's elapsed time goes on from where it stopped: the time the search's folder recorded (its last progress.json) plus this process's own.
+    const elapsedBefore = Number(runStore.readAux?.('progress.json')?.elapsedSeconds) || 0;
     function put(r) {
         const id = r.key + '#' + r.seed;
         const prev = cache.get(id);
@@ -166,7 +170,7 @@ export async function main(settings, seams) {
     // cached run is done when it is counted): planned never drops and done never exceeds it. Shown as the part "Confirming the picks".
     const sure = { planned: 0, done: 0, counted: new Set() };
     let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
-    const STAGE_FIELDS = ['round', 'phase', 'stageContending', 'stagePaused', 'stageAcceptable', 'stageSeparate', 'stageDropped', 'stageRuns', 'stageSimHours', 'stageEnded', 'stageSkipped']; // the progress fields of a race stage
+    const STAGE_FIELDS = ['round', 'phase', 'stageCandidates', 'stageContending', 'stagePaused', 'stageAcceptable', 'stageSeparate', 'stageDropped', 'stageRuns', 'stageSimHours', 'stageEnded', 'stageSkipped']; // the progress fields of a race stage
     // The end mark of a race stage outlives the race: the pick checks that follow report under the same stage name, and the row must stay done (no
     // stage buttons) through them. It goes when the next race starts, and at the confirmation and the end (they carry no stage field).
     const STAGE_END = ['stageEnded', 'stageSkipped'];
@@ -179,9 +183,8 @@ export async function main(settings, seams) {
         const left = progress.runsPlanned - progress.runsDone;
         progress.secondsPerRun = batch.done ? batch.wall / batch.done : wallLog.length ? wall / wallLog.length : null;
         progress.etaSeconds = left <= 0 ? 0 : hours ? Math.round((wall / hours) * batch.hoursLeft / Math.min(jobs, left)) : null;
-        progress.elapsedSeconds = Math.round((Date.now() - t0) / 1000);
+        progress.elapsedSeconds = elapsedBefore + Math.round((Date.now() - t0) / 1000);
         if (sure.planned) { progress.picksPlanned = sure.planned; progress.picksDone = sure.done; }
-        if (notConfirmedList?.length) progress.picksLeftOut = notConfirmedList.length; // the picks left out so far (result.notConfirmed): the pick check also runs inside a race, on the leaders' reading seeds, with no run of its own
         if (partsTracker) progress.parts = partsTracker.sync(progress);
         outSink.progress(progress);
     }
@@ -203,6 +206,10 @@ export async function main(settings, seams) {
         for (const t of need.values()) tasks.push({ ...t, checkpoints: allHours.filter((x) => x <= t.h) });
         tasks.sort((a, b) => b.h - a.h); // longest first, so the last wave is short
         batch = { hoursLeft: tasks.reduce((a, t) => a + t.h, 0), wall: 0, done: 0 };
+        // The runs of this batch the record already held when the search was resumed (kept from before the stop), of all the batch asks for. Only a batch that
+        // kept some sets it; it names the stage and round it belongs to, so the window shows it on that row while that round runs (progress.mjs).
+        const ids = new Set(reqs.map((r) => keyOf(r.ops) + '#' + r.seed)), kept = [...ids].filter((id) => fromRecord.has(id) && !need.has(id)).length;
+        if (kept > 0) progress.runsKept = { kept, total: ids.size, stage: progress.stage, round: progress.round ?? null };
         report({ runsDone: 0, runsPlanned: tasks.length });
         if (!tasks.length) return true;
         if (stopSignal.requested) { stoppedByTime = true; return false; }
@@ -302,20 +309,30 @@ export async function main(settings, seams) {
     }
     // One measurement of a check (confirmPick and measureSet, one code flow): the runs of k seeds per arm, `against` and `against` + c's ops, planned
     // and run, with the check shown on the progress row; false when a stop or the time limit ended them. Its log line: checkLine.
-    async function measureArms(against, c, k, h, label, who = null) {
+    async function measureArms(against, c, k, h, label, who = null, at = label, what = null) {
         const reqs = sureReqs(against, c, k, h);
         planSure(reqs);
-        report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who });
+        report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who, checkingStage: at, checkingWhat: what });
         return !!await ensure(reqs);
     }
     const checkLine = (label, what, k, fresh, withBuyer) => console.log(`  ${label} check of ${what}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${withBuyer && goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${fresh.accepted ? 'passes' : 'not confirmed yet'}`);
-    async function confirmPick(baseOps, c, fin, label, who) {
-        return checkPick(async (k) => {
-            if (!await measureArms(baseOps, c, k, fin.h, label, who ?? null)) return null;
+    // The change under check, as the window names it on its row (progress.checkingWhat): the candidate's player and desc, the result's own wording.
+    const whatOf = (list) => { const ps = [...new Set(list.map((c) => c.player).filter(Boolean))]; return { player: ps.length === 1 ? ps[0] : null, desc: list.map((c) => c.desc).join(' + ') }; };
+    // A row's winner that its check left out (the one path, a lone pick's or a set's): the progress record names the row's stage (checkFailed.stage), the
+    // change and the check's two figures, so the row says which winner was left out while its search goes on (progress.mjs keeps every one per row).
+    function leftOutByCheck(at, list, fresh) {
+        report({ checkFailed: { stage: at, ...whatOf(list), seeds: fresh?.seeds ?? null, gainPerUser: fresh?.gainPerUser ?? null, sePerUser: fresh?.sePerUser ?? null, ...(Number.isFinite(fresh?.buyerNet) ? { buyerNet: fresh.buyerNet, buyerNetSe: fresh.buyerNetSe } : {}) } });
+    }
+    // `at`: the race stage whose row the check is drawn on (progress.checkingStage): 'foods', 'drinks', 'screen' or 'greedy step n'.
+    async function confirmPick(baseOps, c, fin, label, who, at = label) {
+        const got = await checkPick(async (k) => {
+            if (!await measureArms(baseOps, c, k, fin.h, label, who ?? null, at, whatOf([c]))) return null;
             const fresh = freshRead(baseOps, c, k, fin.h);
             checkLine(label, c.desc, k, fresh, true);
             return fresh;
         }, { z, goal, cost: c.cost.cost, maxPayback: payLimit });
+        if (got && !got.passed) leftOutByCheck(at, [c], got.fresh);
+        return got;
     }
 
     // The reading of a set accepted together (sure.mjs checkSet): base + every `variant` member's ops against base + every `against` member's ops, on
@@ -323,10 +340,10 @@ export async function main(settings, seams) {
     // order are one arm). Its accept rule is per buyer (each player who buys a member of variant not in against): freshRead's own acceptBoth for him,
     // and the payback limit on his own cost; its buyer's figure is the weakest buyer's (net over error), so sure.mjs verdict reads it unchanged.
     const setOps = (list) => list.flatMap((m) => m.ops);
-    function measureSet(baseOps, fin, label) {
+    function measureSet(baseOps, fin, label, at = label) {
         return async (variant, against, k) => {
             const aOps = [...baseOps, ...setOps(against)], added = variant.filter((m) => !against.includes(m)), one = { ops: setOps(added), cost: { cost: 0 } };
-            if (!await measureArms(aOps, one, k, fin.h, label)) return null;
+            if (!await measureArms(aOps, one, k, fin.h, label, null, at, whatOf(variant))) return null;
             const buyers = [...new Set(added.map((m) => m.player))];
             const reads = buyers.map((p) => ({ p, cost: added.filter((m) => m.player === p).reduce((a, m) => a + Math.max(m.cost.cost, 0), 0), r: freshRead(aOps, { ...one, player: p }, k, fin.h) }));
             const weakest = reads.reduce((a, x) => (goal !== 'profit' || !a || x.r.buyerNet / (x.r.buyerNetSe || 1) < a.r.buyerNet / (a.r.buyerNetSe || 1) ? x : a), null);
@@ -791,7 +808,7 @@ export async function main(settings, seams) {
         // may fall and rise). report() adds them to every progress message of the stage (stageCtx), whichever batch is running.
         const widthPrev = new Map(); // pool key -> the top leader's range width of the last round (item: range width and the one before)
         let stageCont = { contending: cands.length, paused: 0, acceptable: 0 };
-        stageCtx = () => ({ stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
+        stageCtx = () => ({ stageCandidates: cands.length, stageContending: stageCont.contending, stagePaused: stageCont.paused, stageAcceptable: stageCont.acceptable, stageSeparate: stageCont.separate ?? null, stageDropped: cands.filter((c) => c.refuted || c.out).length, stageRuns: wallLog.length - runs0, stageSimHours: wallLog.reduce((a, r) => a + r.h, 0) - hours0 });
         // The stage's end (the one path): its last figures and its end go to the progress record at once (stageEnded names the stage), so the row stops
         // reading "running" and drops the buttons however long the pick checks take. A stage that stops (return null) is not ended: it stays the part that was running, drawn halted.
         let prevLive = [], prevTakes = new Map(); // the leaders of the last finished round and what its Accept would take (what a press before the next round finishes returns)
@@ -876,7 +893,7 @@ export async function main(settings, seams) {
             }
             for (const c of leaders) {
                 const p = peek.get(c);
-                if (p.verdict === 'fail') { c.refuted = true; onRefute?.(c, p); }
+                if (p.verdict === 'fail') { c.refuted = true; leftOutByCheck(stage, [c], p.fresh); onRefute?.(c, p); }
             }
             // A change set aside as tied with a leader refuted just now comes back (rounds.mjs releaseTied): its pool is not settled this round.
             const released = releaseTied(cands);
@@ -1157,7 +1174,7 @@ export async function main(settings, seams) {
             cur = guard(cur).filter((c) => !c.timeOnly);
         };
         for (; step <= maxSteps;) { // (the race runs once more after the last step, so the leaders are the ones for the final base; no pick joins past maxSteps)
-            const label = `step ${step + 1}`;
+            const label = `step ${step + 1}`, at = step === 0 ? 'screen' : `greedy step ${step}`; // `at`: this step's race stage, the row its checks are drawn on
             // A leader that fails the pick check on its reading seeds leaves the race: one that pays back past the limit is listed once
             // (result.overPayback), any other is a pick that is not confirmed (result.notConfirmed, never tried again).
             const refuteStep = (c, p) => {
@@ -1165,7 +1182,7 @@ export async function main(settings, seams) {
                 else { dead.add(c.id); result.notConfirmed.push({ ...row(c), step: step + 1, fresh: p.fresh, inRace: true }); console.log(`${label}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`); }
                 publish(result);
             };
-            const res = await race(cur, baseOps, { stage: step === 0 ? 'screen' : `greedy step ${step}`, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result), failedSets: failedAt(baseOps), left: (p) => (p in budgets ? budgets[p] - (spent[p] ?? 0) : 0) });
+            const res = await race(cur, baseOps, { stage: at, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result), failedSets: failedAt(baseOps), left: (p) => (p in budgets ? budgets[p] - (spent[p] ?? 0) : 0) });
             if (!res) return stop(result);
             if (!singlesDone) {
                 singlesDone = true;
@@ -1192,7 +1209,7 @@ export async function main(settings, seams) {
                         console.log(`  ${label}: ${c.desc} refined to ${cand.desc}, gain ${fmt(cand.est.gain)} ± ${fmt(cand.est.se)}`);
                     }
                 }
-                const r = await confirmPick(baseOps, cand, fin, label);
+                const r = await confirmPick(baseOps, cand, fin, label, null, at);
                 return r && { ...r, cand };
             };
             // A set accepted together (the race's `set`): checked as one change against the chain, each member left out once (sure.mjs checkSet). One
@@ -1209,8 +1226,9 @@ export async function main(settings, seams) {
                 res.set = win.members;
             }
             if (res.set && step < maxSteps) {
-                const got = await checkSet(res.set, measureSet(baseOps, fin, label), { z, goal });
+                const got = await checkSet(res.set, measureSet(baseOps, fin, label, at), { z, goal });
                 if (got === null) return stop(result);
+                if (!got.passed) leftOutByCheck(at, got.set, got.fresh);
                 if (!got.passed) { failedAt(baseOps).add(setKey(res.set)); failedAt(baseOps).add(res.togetherKey); console.log(`${label}: the set ${res.set.map((c) => c.desc).join(' + ')} not confirmed on fresh seeds, no member refuted`); continue; }
                 if (got.left.length) console.log(`${label}: left out of the set (marginal not confirmed): ${got.left.map((c) => c.desc).join(', ')}`);
                 takeStep(got.set, got.fresh, false, got.marginals);

@@ -106,13 +106,13 @@ export function flagsFromRequest(req, extra = {}) {
 
 // The whole search on a scenario, in this process, without a page: the real core on the real seams except the pool and measureNeed (above) and an in-memory store
 // and sink. `extra` flags win over the scenario's request; `onRound(record, stop)` can press the stage buttons (stop.press('accept' | 'skip'), the core's own press) or stop.requested = true.
-// `records` primes the store with earlier runs (a run that reaches the pool is a store miss, counted in `runs`). Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, records, stop, seen }.
-export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, records: prior = [], poolWrap = (p) => p } = {}) {
+// `records` primes the store with earlier runs (a run that reaches the pool is a store miss, counted in `runs`). `aux` primes the small files (need.json, probe.json, progress.json) with an earlier run's. Resolves { outcome, result, markdown, rounds, partials, lastProgress, runs, records, aux, stop, seen }.
+export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, records: prior = [], aux: priorAux = null, poolWrap = (p) => p } = {}) {
     const E = await import('./engine.mjs'); // registers the loader hooks: the core is imported after it
     const { default: Trigger } = await import(new URL('../../src/combatsimulator/trigger.js', import.meta.url));
     const { main } = await import('./core.mjs');
     const flags = flagsFromRequest(scenario.request, { budgets: Object.entries(scenario.budgets).map(([p, v]) => `${p}=${v}`).join(','), jobs: 8, players: scenario.players.map((p) => p.name), ...extra });
-    const records = [...prior], aux = new Map(), rounds = [], partials = [];
+    const records = [...prior], aux = new Map(priorAux ?? []), rounds = [], partials = [];
     const seen = { separate: new Set(), checkingWho: new Set(), checking: new Set() }; // what the progress records showed (the stage rows read them)
     const stop = { requested: false, done: false };
     let result = null, markdown = null, lastProgress = null, runs = 0;
@@ -124,7 +124,7 @@ export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, 
         pool: counted, stop, hash: (t) => createHash('sha1').update(t).digest('hex'),
         sink: {
             progress(p) {
-                lastProgress = JSON.parse(JSON.stringify(p));
+                lastProgress = JSON.parse(JSON.stringify(p)); aux.set('progress.json', lastProgress); // the node shell writes progress.json into the folder readAux reads
                 onProgress?.(lastProgress);
                 if (p.stageSeparate) seen.separate.add(p.stageSeparate.rounds);
                 if (p.checkingWho) seen.checkingWho.add(`${p.checking} ${p.checkingWho.index} of ${p.checkingWho.of}`);
@@ -139,5 +139,5 @@ export async function runSynthetic(scenario, extra = {}, { onRound, onProgress, 
     };
     const settings = { flags, argsText: 'synthetic', jobs: Number(flags.jobs), pricesFile: 'synthetic', pricesKey: 'synthetic', setupsDir: 'synthetic' };
     const outcome = await main(settings, seams);
-    return { outcome, result, markdown, rounds, partials, lastProgress, runs, records, stop, seen };
+    return { outcome, result, markdown, rounds, partials, lastProgress, runs, records, aux, stop, seen };
 }

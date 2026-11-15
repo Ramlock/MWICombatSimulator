@@ -44,7 +44,7 @@ const partRows = (h) => [...h.matchAll(/<tr class="whatif-part whatif-part-(\w+)
     const cells = [...m[4].matchAll(/<td[^>]*>([^]*?)<\/td>/g)].map((c) => c[1]);
     const chip = cells[2].match(/<span class="whatif-chip whatif-st-(\w+)"(?: title="([^"]*)")?>([^<]*)<\/span>/);
     return { cls: m[1], kind: m[2], state: m[3], mark: cells[0], label: txt(cells[1].replace(/<span class="whatif-help"[^>]*>\?<\/span>/g, '')), tip: (cells[1].match(/data-tip="([^"]*)"/) || [])[1], stKey: chip[1], st: chip[3], stTip: unesc(chip[2] || ''),
-        round: txt(cells[3]), runs: txt(cells[4]), hours: txt(cells[5]), cont: txt(cells[6]), paused: txt(cells[7]), dropped: txt(cells[8]), btns: cells[9], html: m[0] };
+        round: txt(cells[3]), runs: txt(cells[4]), hours: txt(cells[5]), cont: txt(cells[6]), paused: txt(cells[7]), dropped: txt(cells[8]), pct: cells[9], detail: cells[10], btns: cells[11], html: m[0] };
 });
 // The rows of a detail list's table (its id), each as its cells' text; its head cells.
 const listTb = (h, id) => (h.match(new RegExp(`<table[^>]*id="${id}"[^>]*>([^]*?)</table>`)) || [])[1];
@@ -503,20 +503,18 @@ const result = {
     for (const l of ['en', 'pt', 'zh']) {
         const h = partRows(panel.renderParts({ state: 'running', progress: { parts: [skRow] } }, tFor(l))), h3 = partRows(panel.renderParts({ state: 'running', progress: { parts: [{ ...skRow, round: 3 }] } }, tFor(l)));
         const P = locales[l].progress;
-        check(`part line: a skipped one-round stage is one row, "ended by you", its counts, no zero count, no "round 1", no "done", ${l}`, h.length === 1 && JSON.stringify([h[0].mark, h[0].label, h[0].st, h[0].round, h[0].runs, h[0].hours, h[0].cont, h[0].paused, h[0].dropped]) === JSON.stringify(['✓', P.partFoods, P.st.ended, '', '5', '20', '2', '', '']) && h[0].st !== P.st.done, JSON.stringify(h));
+        check(`part line: a skipped one-round stage is one row, "ended by you", its counts, no zero count, no In the running count (its race is over), no "round 1", no "done", ${l}`, h.length === 1 && JSON.stringify([h[0].mark, h[0].label, h[0].st, h[0].round, h[0].runs, h[0].hours, h[0].cont, h[0].paused, h[0].dropped]) === JSON.stringify(['✓', P.partFoods, P.st.ended, '', '5', '20', '', '', '']) && h[0].st !== P.st.done, JSON.stringify(h));
         check(`part line: a skipped stage of several rounds reads "round N · ended by you", ${l}`, h3[0].round === '3' && h3[0].st === P.st.ended && h3[0].st !== P.st.done, JSON.stringify(h3));
     }
     {
         // A finished race stage of several rounds says "round N finished"; a running one keeps its live counts, the phase and the buttons on the same line.
         const done = partRows(panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'screen', state: 'done', round: 4, phase: 'reading', contending: 0, paused: 3, dropped: 7, runs: 50, simHours: 900 }] } }, t));
-        check('part line: a finished race of several rounds is one row with its counts and no zero count', done.length === 1 && JSON.stringify([done[0].mark, done[0].label, done[0].st, done[0].round, done[0].runs, done[0].hours, done[0].cont, done[0].paused, done[0].dropped]) === JSON.stringify(['✓', 'Change 1', 'Done', '4', '50', '900', '', '3', '7']), JSON.stringify(done));
+        check('part line: a finished race of several rounds is one row with its counts, no zero count and no In the running nor Set aside count (its race is over)', done.length === 1 && JSON.stringify([done[0].mark, done[0].label, done[0].st, done[0].round, done[0].runs, done[0].hours, done[0].cont, done[0].paused, done[0].dropped]) === JSON.stringify(['✓', 'Change 1', 'Done', '4', '50', '900', '', '', '7']), JSON.stringify(done));
         const run = panel.renderParts({ state: 'running', progress: { parts: [{ kind: 'screen', state: 'running', round: 2, phase: 'search', contending: 9, paused: 1, dropped: 0, runs: 12, simHours: 80, acceptable: 0 }] } }, t);
         const rr = partRows(run);
         check('part line: a running race is one row with label, round, phase (its state chip), counts and its button, no text cell', rr.length === 1 && JSON.stringify([rr[0].mark, rr[0].label, rr[0].st, rr[0].round, rr[0].runs, rr[0].hours, rr[0].cont, rr[0].paused, rr[0].dropped]) === JSON.stringify(['▶︎', 'Change 1', 'Searching', '2', '12', '80', '9', '1', '']) && rr[0].btns.includes('data-whatif-done="skip"') && !run.includes('whatif-part-text'), JSON.stringify(rr));
     }
-    const lo = panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'picks', index: 0, state: 'done', runsPlanned: 0, runsDone: 0, leftOut: 9 }] } }, t), loText = plainHtml(lo);
-    check('picks part: a check that ran inside the race and left 9 out reads "None confirmed (left out: 9).", done, no bar, never "Not run"', partRows(lo)[0].stTip === 'None confirmed (left out: 9).' && partRows(lo)[0].cls === 'done' && !loText.includes('Not run') && !lo.includes('Not run') && !lo.includes('whatif-part-skipped') && !lo.includes('class="progress whatif-progress"'), lo.slice(0, 300));
-    for (const l of ['pt', 'zh']) check(`picks part: ${l} has its own none-confirmed line`, partRows(panel.renderParts({ state: 'done', progress: { parts: [{ kind: 'picks', index: 0, state: 'done', runsPlanned: 0, runsDone: 0, leftOut: 9 }] } }, tFor(l)))[0].stTip.includes(locales[l].progress.picksNoneConfirmed.replace('{{n}}', '9')));
+    check('picks part: gone (each row carries its own check): no partPicks or picksNoneConfirmed string in any language', ['en', 'pt', 'zh'].every((l) => !('partPicks' in locales[l].progress) && !('picksNoneConfirmed' in locales[l].progress)));
     const stKeys = ['contending', 'paused', 'confirmed', 'few', 'first', 'tooFew', 'zero', 'loses'];
     for (const l of ['en', 'pt', 'zh']) check(`status words: ${l} has every status word and its tooltip, one or two words for the six a user sees`, stKeys.every((k) => typeof locales[l].rounds.status[k] === 'string' && typeof locales[l].rounds.status[k + 'Tip'] === 'string') && typeof locales[l].rounds.status.bestTip === 'string' && (l !== 'en' || stKeys.every((k) => locales.en.rounds.status[k].split(' ').length <= 4)));
     check('status words: the five of the list, en', JSON.stringify(['confirmed', 'zero', 'loses', 'contending', 'paused'].map((k) => locales.en.rounds.status[k])) === JSON.stringify(['clear gain', 'no clear change yet', 'party loses loot', 'still measuring', 'set aside']));

@@ -234,10 +234,10 @@ export function diffSetups(page, base) {
 }
 
 // Progress line from GET /api/search/<id>: the runner's own fields, shown as they come.
-export function renderProgress(status, t, pressed = null, stopping = false) {
+export function renderProgress(status, t, pressed = null, stopping = false, names = null) {
     if (!status) return '';
     const p = status.progress || {};
-    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t, pressed, stopping);
+    if (Array.isArray(p.parts) && p.parts.length) return renderParts(status, t, pressed, stopping, names);
     const parts = [`<b>${esc(t('state.' + status.state))}</b>`];
     if (p.stage) parts.push(esc(t('progress.stage')) + ' ' + esc(p.stage));
     if (p.candidatesLeft !== undefined) parts.push(esc(t('progress.candidatesLeft')) + ' ' + num(p.candidatesLeft));
@@ -293,8 +293,17 @@ function stageButtons(t, acceptable, key, pressed, stopping = false) {
     const b = (mode, text, tip) => `<button type="button" class="btn btn-outline-secondary btn-sm py-0 whatif-stage-done${done === mode ? ' whatif-pending' : ''}" data-whatif-done="${mode}" data-whatif-part="${esc(key)}" title="${esc(t(tip))}"${done || stopping ? ' disabled' : ''}>${esc(done === mode ? t(mode === 'accept' ? 'progress.stageAccepting' : 'progress.stageSkipping') : text)}</button>`;
     return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') + ' ' : '') + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
-export function renderParts(status, t, pressed = null, stopping = false) {
+// The Search progress table's column widths (a fixed layout: no state, badge, count, bar or text of a row moves a column; the Details column takes the rest
+// of the width and cuts a long text, its whole text in its tooltip). One per column of `cols` below, in order; null = the rest.
+export const PART_COL_WIDTHS = ['1.75rem', '10rem', '10.5rem', '4rem', '5.5rem', '6rem', '6rem', '5.5rem', '5.5rem', '8rem', null, '16rem'];
+// Markup to plain text, for a title attribute (escaped again where it is put in one).
+const plainOf = (html) => String(html).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+export function renderParts(status, t, pressed = null, stopping = false, names = null) {
     const p = status.progress || {}, parts = p.parts;
+    // A change a row names (the winner under check, one its check left out): the result's own wording (localizeDesc: the game's names in the page's
+    // language), its player first.
+    const whatHtml = (w) => (w ? `${w.player ? chip(esc(w.player)) + ' ' : ''}${arrowed(esc(localizeDesc(w.desc, names, w.player ? [w.player] : [], w.player)))}` : '');
+    const pm = (v, se) => (Number.isFinite(v) ? num(fit(v, se)) + ' ± ' + marginHtml(fit(v, se), se) : '—');
     // The search's own state decides what is drawn as running: a search that is stopped, done or failed has no part that runs, whatever the
     // last progress record says (the part that was running when it stopped is drawn halted, with the figures it had).
     const live = status.state === 'running';
@@ -303,13 +312,12 @@ export function renderParts(status, t, pressed = null, stopping = false) {
     // (checking picks, why a part never ran, the time left) is the state chip's tooltip.
     const cell = (v) => `<td class="num">${Number(v) > 0 ? num(v) : ''}</td>`;
     const rowsHtml = parts.map((row) => {
-        const r = row.state === 'running' && !live ? { ...row, state: 'halted' } : row;
+        const r = (row.state === 'running' || row.checking) && !live ? { ...row, state: 'halted', checking: false } : row;
         const label = r.kind === 'foods' ? t('progress.partFoods')
             : r.kind === 'drinks' ? t('progress.partDrinks')
             : r.kind === 'screen' ? t('progress.partScreen')
             : r.kind === 'halving' ? t('progress.partHalving', { n: r.index })
             : r.kind === 'steps' ? t('progress.partStepsShort')
-            : r.kind === 'picks' ? t('progress.partPicks')
             : r.kind === 'step' ? stepLabel(t, r.index)
             : r.kind === 'moreSteps' ? t('progress.partMoreSteps', { n: r.stepsLeft })
             : t('progress.partConfirmation');
@@ -317,14 +325,14 @@ export function renderParts(status, t, pressed = null, stopping = false) {
         const labelTip = r.kind === 'steps' ? t('progress.partSteps', { n: r.maxSteps }) : r.kind === 'confirmation' && r.state === 'waiting' ? t('progress.partConfirmationWaiting') : '';
         const rounded = r.round !== undefined && r.round !== null && r.state !== 'waiting';
         const race = rounded && r.state === 'running';
-        const noneConfirmed = r.state === 'done' && r.kind === 'picks' && !(r.runsPlanned > 0) && r.leftOut > 0;
+        // The row's winner under its check (one code flow for every kind of row): the row reads "Checking the winner", the Details cell names the change and
+        // the check's runs (done / planned); the state's tooltip says the same in a sentence (foods and drinks: whose pick, of how many).
+        const checkRuns = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
         let text = '', cls;
         if (r.state === 'waiting') { if (r.runsUpTo !== undefined) text = plural(t, 'progress.upTo', r.runsUpTo, { n: num(r.runsUpTo) }); cls = 'waiting'; }
         else if (r.state === 'done') {
-            const runs = r.checking ? plural(t, 'progress.runsOf', r.checkPlanned, { done: num(r.checkDone), total: num(r.checkPlanned) }) : '';
-            const checking = r.checking ? (r.checkWho ? fill(t, 'progress.checkingPicksOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs }) : fill(t, 'progress.checkingPicks', { runs })) : null;
-            text = noneConfirmed ? fill(t, 'progress.picksNoneConfirmed', { n: num(r.leftOut) }) : (checking ?? '');
-            cls = checking ? 'running' : 'done';
+            text = r.checking ? (r.checkWho ? fill(t, 'progress.checkingWinnerOf', { n: num(r.checkWho.index), of: num(r.checkWho.of), runs: checkRuns }) : fill(t, 'progress.checkingWinnerTip', { runs: checkRuns })) : '';
+            cls = r.checking ? 'running' : 'done';
         }
         else if (r.state === 'skipped') { text = esc(t(r.kind === 'confirmation' ? 'progress.skippedNoStep' : 'progress.skippedNoPick')); cls = 'skipped'; }
         else if (r.state === 'halted') cls = 'halted';
@@ -334,9 +342,8 @@ export function renderParts(status, t, pressed = null, stopping = false) {
         }
         if (race && r.separate) text = r.separate.rounds === null ? t('progress.separateFar') : plural(t, 'progress.separateRounds', r.separate.rounds, { n: num(r.separate.rounds) });
         const mark = { done: '✓', running: '▶︎', waiting: '○', halted: '■︎', skipped: '–' }[cls];
-        const stKey = cls !== 'running' ? (r.state === 'done' && r.skipped ? 'ended' : cls) : r.state === 'done' ? 'checkingPicks' : rounded ? (r.phase === 'reading' ? 'checking' : 'searching') : 'running';
-        const strip = (html) => String(html).replace(/<[^>]+>/g, '');
-        const st = `<span class="whatif-chip whatif-st-${cls}"${text ? ` title="${esc(strip(text))}"` : ''}>${esc(t('progress.st.' + stKey))}</span>`;
+        const stKey = cls !== 'running' ? (r.state === 'done' && r.skipped ? 'ended' : cls) : r.state === 'done' ? 'checkingWinner' : rounded ? (r.phase === 'reading' ? 'checking' : 'searching') : 'running';
+        const st = `<span class="whatif-chip whatif-st-${cls}"${text ? ` title="${esc(plainOf(text))}"` : ''}>${esc(t('progress.st.' + stKey))}</span>`;
         const pct = (r.state === 'running' || r.state === 'halted') && r.runsPlanned > 0 ? Math.min(100, Math.max(0, Number.isFinite(r.fill) ? r.fill * 100 : (r.runsDone / r.runsPlanned) * 100)) : 0;
         // Runs: a race stage's count; another part's "done / planned", with a thin bar while it runs (a waiting part has none; a waiting
         // re-check whose runs are planned shows them).
@@ -344,15 +351,30 @@ export function renderParts(status, t, pressed = null, stopping = false) {
             ? `<td class="num">${num(r.state === 'done' ? r.runsPlanned : r.runsDone)} / ${num(r.runsPlanned)}${cls === 'running' || cls === 'halted' ? `<div class="progress whatif-progress mt-1" style="height: 4px;"><div class="progress-bar" style="width: ${pct}%"></div></div>` : ''}</td>` : '<td></td>';
         const round = rounded && (Number(r.round) > 1 || race) ? `<td class="num">${num(r.round)}</td>` : '<td></td>';
         const left = !rounded && (r.kind === 'halving' || r.kind === 'foods' || r.kind === 'drinks') && r.candidatesLeft != null ? r.candidatesLeft : null;
-        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(rounded ? r.contending : left)}${cell(r.paused)}${cell(r.dropped)}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed, stopping) : ''}</td></tr>`;
+        // A row that is done has no candidate in the running nor set aside: its race is over (a done row whose winner its check left out says so in Details).
+        const over = r.state === 'done';
+        // Progress of a race row: its candidates ruled out over all its candidates (a count of candidates, not of time); a done row is 100 %.
+        const ruled = rounded && (over || Number(r.candidates) > 0) ? (over ? 100 : Math.min(100, Math.max(0, (100 * (Number(r.dropped) || 0)) / Number(r.candidates)))) : null;
+        const pctCell = ruled === null ? '<td></td>' : `<td class="whatif-part-pct"><div class="whatif-pct-in"><div class="progress whatif-progress" style="height: 6px;"><div class="progress-bar" style="width: ${ruled}%"></div></div><span class="num">${Math.floor(ruled)}%</span></div></td>`;
+        // Details: the winner under check and its runs; otherwise the runs of this round kept from before a stop, and the last winner a check left out (every
+        // one, with the check's two figures, in its help mark). A long text is cut, its whole text the cell's tooltip; it never widens the column.
+        const failed = !r.checking && Array.isArray(r.failed) && r.failed.length ? r.failed : [];
+        const lastFail = failed[failed.length - 1];
+        const bits = r.checking ? [`<span class="whatif-part-what">${whatHtml(r.checkWhat)}</span>`, `<span class="whatif-part-runs">${checkRuns}</span>`]
+            : [...(r.kept && r.state !== 'waiting' ? [`<span class="whatif-part-kept">${plural(t, 'progress.keptRuns', r.kept.total, { kept: num(r.kept.kept), total: num(r.kept.total) })}</span>`] : []),
+                ...(lastFail ? [`<span class="whatif-part-what" data-left-out="${failed.length}">${esc(t(over ? 'progress.leftOutEnded' : 'progress.leftOutGoesOn'))} ${whatHtml(lastFail)}</span>`] : [])];
+        const failTip = failed.map((f) => plainOf(t('progress.leftOutTip', { change: whatHtml(f), gain: pm(f.gainPerUser, f.sePerUser), buyer: pm(f.buyerNet, f.buyerNetSe), seeds: num(f.seeds) }))).join('\n');
+        const detail = bits.length ? `<td class="whatif-part-detail"><div class="whatif-part-detail-in" title="${esc(bits.map(plainOf).join(' · '))}">${bits.join('')}</div>${help(esc(failTip))}</td>` : '<td class="whatif-part-detail"></td>';
+        return `<tr class="whatif-part whatif-part-${cls}${rounded ? ' whatif-part-race' : ''}" data-kind="${esc(r.kind)}" data-state="${cls}"><td class="whatif-part-mark">${mark}</td><td class="whatif-part-label"><b>${esc(label)}</b>${help(esc(labelTip))}</td><td>${st}</td>${round}${runs}${cell(r.simHours)}${cell(over ? null : rounded ? r.contending : left)}${cell(over ? null : r.paused)}${cell(r.dropped)}${pctCell}${detail}<td class="whatif-part-btns">${race ? stageButtons(t, r.acceptable, partKey(r), pressed, stopping) : ''}</td></tr>`;
     }).join('');
-    const cols = ['', 'stage', 'state', 'round', 'runs', 'hours', 'contending', 'paused', 'dropped', ''];
-    const head = cols.map((c, i) => `<th${i >= 3 && i <= 8 ? ' class="num"' : ''}>${c ? esc(t('progress.col.' + c)) : ''}</th>`).join('');
+    const cols = ['', 'stage', 'state', 'round', 'runs', 'hours', 'contending', 'paused', 'dropped', 'progress', 'detail', ''];
+    const head = cols.map((c, i) => `<th${i >= 3 && i <= 8 ? ' class="num"' : ''}>${c ? esc(t('progress.col.' + c)) : ''}${c === 'progress' ? help(esc(t('progress.col.progressTip'))) : ''}</th>`).join('');
+    const colgroup = `<colgroup>${PART_COL_WIDTHS.map((w) => (w ? `<col style="width: ${w}">` : '<col>')).join('')}</colgroup>`;
     const figs = [];
     if (running >= 0) figs.push(fig(t('progress.col.part'), `${num(running + 1)} / ${num(parts.length)}`));
     if (p.secondsPerRun !== undefined && p.secondsPerRun !== null) figs.push(fig(t('progress.secondsPerRunCap'), `<span title="${esc(p.secondsPerRun)}">${esc(Number(p.secondsPerRun).toFixed(2))}</span>`));
     if (p.elapsedSeconds !== undefined && p.elapsedSeconds !== null) figs.push(fig(t('progress.elapsed'), esc(duration(p.elapsedSeconds))));
-    let html = `<div class="whatif-parts"><div class="whatif-parts-head"><span class="whatif-title">${esc(t('progress.title'))}</span>${figs.join('')}</div><table class="table table-sm whatif-table whatif-parts-table"><thead><tr>${head}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    let html = `<div class="whatif-parts"><div class="whatif-parts-head"><span class="whatif-title">${esc(t('progress.title'))}</span>${figs.join('')}</div><table class="table table-sm whatif-table whatif-parts-table">${colgroup}<thead><tr>${head}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
     if (status.state === 'error' && status.error) html += `<div class="whatif-callout whatif-callout-danger">${esc(status.error)}</div>`;
     return html;
 }

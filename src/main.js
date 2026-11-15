@@ -4405,7 +4405,7 @@ function whatIfClearResult() {
 // pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
 function whatIfDrawProgress() {
     if (!whatIf.status) return;
-    whatIfMorphInto(document.getElementById('whatIfProgress'), whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping'));
+    whatIfMorphInto(document.getElementById('whatIfProgress'), whatIfRenderProgress(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping', whatIfNames()));
     alignNumbers();
 }
 
