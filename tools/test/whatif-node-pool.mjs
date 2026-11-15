@@ -1,7 +1,8 @@
 // Test: the search's run-process pool (tools/whatif/node-shell.mjs createNodePool). A run ended by drop() or kill() resolves null at once, before
 // its killed process has exited (on a full CPU a killed process takes seconds to be reaped; the window's Skip, Accept and Stop must not wait for
 // it); a run that answers resolves with its answer and its process is reused; a run process that exits by itself rejects.
-// Usage: node tools/test/whatif-node-pool.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-node-pool.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';

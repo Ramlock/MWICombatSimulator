@@ -68,8 +68,12 @@ function Build-Runner([string]$Sha, [string]$Exe, [string]$Zip) {
     & (Join-Path $Root 'tools\runner-zip\build-exe.ps1') -Commit $Sha -Out $Exe -Zip $Zip | ForEach-Object { Write-Log "  $_" }
 }
 function Test-RunnerExe([string]$Exe, [string]$Short) {
-    node (Join-Path $Root 'tools\test\whatif-runner-exe.mjs') --exe $Exe --commit $Short | ForEach-Object { Write-Log "  $_" }
-    if ($LASTEXITCODE -ne 0) { throw "whatif-runner-exe failed on $Exe" }
+    # This script runs under HeavyRun (docs/codebase/release-script.md), so it sets the marker the what-if test's guard checks (tools/test/heavyrun-guard.mjs).
+    $was = $env:MWI_UNDER_HEAVYRUN; $env:MWI_UNDER_HEAVYRUN = '1'
+    try {
+        node (Join-Path $Root 'tools\test\whatif-runner-exe.mjs') --exe $Exe --commit $Short | ForEach-Object { Write-Log "  $_" }
+        if ($LASTEXITCODE -ne 0) { throw "whatif-runner-exe failed on $Exe" }
+    } finally { $env:MWI_UNDER_HEAVYRUN = $was }
 }
 function Test-RunnerZip([string]$Zip) {
     $d = New-TempDir

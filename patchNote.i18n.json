@@ -695,7 +695,12 @@
                 "假设分析：搜索进行时，目前看来有益的改动会列在已选改动下方，并标为尚未核对",
                 "假设分析：核对无法判定的改动会获得更多运行，每个被排除的改动都会说明原因（亏损、太小无关紧要或太小无法判断）并附上范围",
                 "假设分析：点击“采纳当前领先者”或“跳过此阶段”后，停止并继续时会保留该操作",
-                "从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）"
+                "从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）",
+                "假设分析：每个阶段的实时图表：每个领先的更改一条线，逐轮显示，最新的范围在右侧",
+                "假设分析：切换语言后整个窗口随之更新，可用的阶段按钮显示为可用，继续后的搜索在重放阶段显示其运行次数",
+                "假设分析：阶段列表的标记与所在行对齐",
+                "符石名称、符石标签和符石威力现在以游戏自己的中文和葡萄牙文显示；\"Presets\" 已翻译为中文",
+                "黑暗模式、数字格式和语言开关现在随页面滚动，不再遮挡结果"
             ]
         },
         "pt": {
@@ -719,7 +724,12 @@
                 "E se: durante a busca, as mudanças que parecem positivas até agora aparecem sob as mudanças escolhidas, marcadas como ainda não conferidas",
                 "E se: uma mudança que a conferência não decide recebe mais execuções, e cada mudança deixada de fora diz por quê (uma perda, pequena demais para importar ou pequena demais para saber) com sua faixa",
                 "E se: um clique em Aceitar o vencedor atual ou Pular esta etapa é mantido ao Parar e Retomar",
-                "Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)"
+                "Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)",
+                "E se: um gráfico ao vivo de cada etapa: uma linha por mudança entre as líderes, rodada a rodada, com as faixas mais recentes à direita",
+                "E se: a janela inteira acompanha a troca de idioma, os botões de etapa ativos parecem ativos e uma busca retomada mostra suas execuções nas etapas repetidas",
+                "E se: as marcas da lista de etapas ficam alinhadas com suas linhas",
+                "Nomes dos talismãs, o rótulo Talismãs e o Poder de talismã agora aparecem em chinês e português com as palavras do próprio jogo; \"Presets\" traduzido em chinês",
+                "Os botões de modo escuro, formato de números e idioma agora rolam com a página em vez de cobrir os resultados"
             ]
         }
     },

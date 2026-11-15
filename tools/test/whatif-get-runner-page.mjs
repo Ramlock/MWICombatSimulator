@@ -2,7 +2,8 @@
 // why, the download links (the exe and the zip constants in src/whatif/runnerDownload.mjs), four steps, in en, pt and zh; the search
 // controls are hidden. On a page a runner serves (a fake /api/version) the same window shows the search and no download pane.
 // The built page (dist/) in our own headless Chrome. Needs a built dist/ (npx webpack) and network for the page's CDN scripts.
-// Usage: node tools/test/whatif-get-runner-page.mjs [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves a dark Full HD picture.
+// Usage: node tools/test/run-tests.mjs whatif-get-runner-page.mjs -- [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves a dark Full HD picture.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';

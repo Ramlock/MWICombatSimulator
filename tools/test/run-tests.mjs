@@ -3,8 +3,9 @@
 // one line per file: exit code, ok count, fail count, seconds. Exit code 0 when every file exits 0.
 // When it is not already under HeavyRun (MWI_UNDER_HEAVYRUN unset) and D:\Apps\HeavyRun\HeavyRun.exe exists, it starts itself again through
 // ONE HeavyRun call for the whole loop, its minutes the sum of the files' own (LONG_MINUTES, else DEFAULT_MINUTES), capped at 60, memory floor 3 GB (one node process and at most one headless Chrome: under 2 GB). Where
-// HeavyRun does not exist it runs plainly. BROWSER is a no-op for every file; no core limit is ever passed.
-// Usage: node tools/test/run-tests.mjs [file ...]        Docs: docs/codebase/test-loop.md.
+// HeavyRun does not exist it runs plainly. BROWSER is a no-op for every file; no core limit is ever passed. Every file it runs gets MWI_UNDER_HEAVYRUN=1,
+// on both paths: the what-if files' guard (heavyrun-guard.mjs) ends any what-if file started without it. Arguments after -- go to every file it runs.
+// Usage: node tools/test/run-tests.mjs [--strict] [file ...] [-- <file arguments>]        Docs: docs/codebase/test-loop.md.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -39,9 +40,18 @@ export const shouldRelaunch = (env, heavyRunExists) => !env.MWI_UNDER_HEAVYRUN &
 export const minutesFor = (files) => Math.max(1, files.reduce((s, f) => s + (LONG_MINUTES[path.basename(f)] ?? DEFAULT_MINUTES), 0));
 // The loop's exit code: 1 when a file failed, or under --strict when a file skipped anything.
 export const exitCode = (results, strict) => results.some((r) => r.code !== 0 || (strict && r.skipped > 0)) ? 1 : 0;
+// The modules in tools/test that are not test files: the loop itself and the what-if files' guard.
+export const NOT_TESTS = ['run-tests.mjs', 'heavyrun-guard.mjs'];
+// The loop's own arguments, and the files' (everything after the first --).
+export const splitArgs = (argv) => {
+    const i = argv.indexOf('--'), own = i < 0 ? argv : argv.slice(0, i);
+    return { strict: own.includes('--strict'), names: own.filter((a) => a !== '--strict'), fileArgs: i < 0 ? [] : argv.slice(i + 1) };
+};
+// The environment of each file the loop runs: BROWSER a no-op, and the marker the what-if files' guard checks.
+export const fileEnv = (env) => ({ ...env, BROWSER: 'true', MWI_UNDER_HEAVYRUN: '1' });
 // The files to run: the named ones (resolved in tools/test then userscript/test), or all of them.
 export function resolveFiles(names, dir = root) {
-    const all = [...fs.readdirSync(path.join(dir, 'tools/test')).filter((f) => f.endsWith('.mjs') && f !== 'run-tests.mjs').map((f) => 'tools/test/' + f),
+    const all = [...fs.readdirSync(path.join(dir, 'tools/test')).filter((f) => f.endsWith('.mjs') && !NOT_TESTS.includes(f)).map((f) => 'tools/test/' + f),
         ...fs.readdirSync(path.join(dir, 'userscript/test')).filter((f) => /\.(c|m)?js$/.test(f)).map((f) => 'userscript/test/' + f)];
     if (!names.length) return all;
     return names.map((n) => {
@@ -52,12 +62,12 @@ export function resolveFiles(names, dir = root) {
     });
 }
 
-async function runOne(file, logDir) {
+async function runOne(file, logDir, fileArgs) {
     const log = fs.createWriteStream(path.join(logDir, path.basename(file) + '.log'));
     const t0 = Date.now(); let text = '', rest = '';
     const write = (chunk) => { rest += chunk; const lines = rest.split(/\r?\n/); rest = lines.pop(); for (const l of lines) { const s = `${stamp()} ${l}\n`; text += s; log.write(s); } };
     const code = await new Promise((resolve) => {
-        const p = spawn(process.execPath, [file], { cwd: root, env: { ...process.env, BROWSER: 'true' }, windowsHide: true });
+        const p = spawn(process.execPath, [file, ...fileArgs], { cwd: root, env: fileEnv(process.env), windowsHide: true });
         p.stdout.on('data', write); p.stderr.on('data', write);
         p.on('close', (c) => resolve(c ?? 1)); p.on('error', () => resolve(1));
     });
@@ -68,8 +78,8 @@ async function runOne(file, logDir) {
 }
 
 async function main() {
-    const args = process.argv.slice(2), strict = args.includes('--strict');
-    const files = resolveFiles(args.filter((a) => a !== '--strict'));
+    const { strict, names, fileArgs } = splitArgs(process.argv.slice(2));
+    const files = resolveFiles(names);
     const minutes = minutesFor(files);
     if (minutes > 60) {
         console.log(`${stamp()} these files may take ${minutes} min, over HeavyRun's 60: run them in parts, e.g. the what-if files (whatif-*.mjs) apart from the rest`);
@@ -77,7 +87,7 @@ async function main() {
     }
     if (shouldRelaunch(process.env, fs.existsSync(HEAVYRUN))) {
         const r = spawnSync(HEAVYRUN, ['--label', `test loop, ${files.length} file(s), one node process at a time; headless Chrome for page tests`, '--minutes', String(minutes), ...memoryArgs(files), '--wait', '--',
-            process.execPath, fileURLToPath(import.meta.url), ...(strict ? ['--strict'] : []), ...files], { stdio: 'inherit', env: { ...process.env, MWI_UNDER_HEAVYRUN: '1', BROWSER: 'true' }, windowsHide: true });
+            process.execPath, fileURLToPath(import.meta.url), ...(strict ? ['--strict'] : []), ...files, ...(fileArgs.length ? ['--', ...fileArgs] : [])], { stdio: 'inherit', env: { ...process.env, MWI_UNDER_HEAVYRUN: '1', BROWSER: 'true' }, windowsHide: true });
         process.exit(r.status ?? 1);
     }
     const logDir = path.join(root, '.test-logs', stamp().replace(/[: ]/g, '-'));
@@ -87,7 +97,7 @@ async function main() {
     for (const f of files) {
         const used0 = os.totalmem() - os.freemem(); let peak = 0;
         const timer = setInterval(() => { peak = Math.max(peak, os.totalmem() - os.freemem() - used0); }, 500);
-        const r = await runOne(f, logDir);
+        const r = await runOne(f, logDir, fileArgs);
         clearInterval(timer); results.push(r);
         console.log(`${stamp()} ${f} exit=${r.code} ok=${r.ok} fail=${r.fail} skipped=${r.skipped} ${r.secs}s peak=+${(peak / 2 ** 30).toFixed(1)}GB`);
     }

@@ -1,7 +1,8 @@
 // Test: the stacked progress parts (tools/whatif/progress.mjs) across a whole search, the runner passing them through,
 // and the panel drawing one row per part (src/whatif/panel.mjs renderParts), with the old single line when a progress
 // file has no parts. Generic fixtures only.
-// Usage: node tools/test/whatif-progress-parts.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-progress-parts.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

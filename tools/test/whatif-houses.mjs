@@ -1,7 +1,8 @@
 // Test: the phase 3 upgrade levers of the what-if optimizer (tools/whatif/levers/houses.mjs): house room costs and
 // candidates, ability-level and book costs and candidates, the upper-bound mark and the optimizer's row copying it.
 // No simulator run. Generic setups and prices only, no private data.
-// Usage: node tools/test/whatif-houses.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-houses.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

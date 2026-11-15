@@ -1,7 +1,8 @@
 // Test: the food filling of the what-if search (tools/whatif/foodfill.mjs): the food table and the dominance cut on the repo's
 // price file, the qualify rule at the margin, the best 3 per type with no widening, the current filling, slot placement,
 // trigger inheritance, the id and description shape, and fewer open slots. Invented foods and needs; no private data.
-// Usage: node tools/test/whatif-food.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-food.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

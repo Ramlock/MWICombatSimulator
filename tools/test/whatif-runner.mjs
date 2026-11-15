@@ -5,7 +5,8 @@
 // optimizer run through the interface on a generic two-player party: a step is paid only from its own player's coin,
 // progress arrives, a stop leaves the run store intact and the same request resumes and finishes; result.json carries
 // the contract's fields. Generic setups only, no private data. Temporary folders under the OS temp folder, removed.
-// Usage: node tools/test/whatif-runner.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-runner.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';

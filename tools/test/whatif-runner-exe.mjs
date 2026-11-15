@@ -7,9 +7,10 @@
 // opened on the running one; (3) a port held by a runner of another version: exit 4, its message, nothing opened; (4) a port held by
 // another program: exit 1, EADDRINUSE and the "another port" hint, nothing opened; (5) no write access to the data folder: exit 1 and
 // one line; (6) a short real search through the first start (the optimizer and its run workers are the exe itself, forked).
-// Usage: node tools/test/whatif-runner-exe.mjs --exe <WhatIfRunner.exe> [--commit <short sha VERSION.txt must name>] [--work <scratch dir, default the OS temp folder>]
+// Usage: node tools/test/run-tests.mjs whatif-runner-exe.mjs -- --exe <WhatIfRunner.exe> [--commit <short sha VERSION.txt must name>] [--work <scratch dir, default the OS temp folder>]
 //        [--captures <dir>: writes the console text of starts 1, 2 and 4 as one-file-first-start.txt, one-file-second-start.txt,
 //        one-file-port-taken.txt]. Needs Windows (icacls for case 5). Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';

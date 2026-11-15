@@ -2,7 +2,8 @@
 // folder (presses.json, beside its runs) at the point it took effect, and a resume (the same call on the same store and folder) replays it there through the
 // live press's own path, so the resumed search ends that stage at the same round with the same outcome. A new search (its own folder) reads none.
 // Runs the whole search on the synthetic scenario (tools/whatif/synthetic.mjs, scenario tools/test/synthetic/scenario.json), with no page.
-// Usage: node tools/test/whatif-presses.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-presses.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 

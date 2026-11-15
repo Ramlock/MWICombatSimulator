@@ -1,7 +1,8 @@
 // Test: a winner that fails its pick check brings back what only it had put out (rounds.mjs reopen, core.mjs race fallBack), recursively, in every stage.
 // Two parts: the rule on hand-made pools (pure), and whole searches on the synthetic pool (tools/whatif/synthetic.mjs): a foods stage whose search-seed
 // winner fails its check and the filling it had put out passes, a Change stage, and a stop and resume across a failed check.
-// Usage: node tools/test/whatif-fallback.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-fallback.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 

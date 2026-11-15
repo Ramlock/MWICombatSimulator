@@ -2,7 +2,8 @@
 // rules a to d with their counts on the repo's price file, the fillings (one drink of each of nSlots types, the baseline
 // filling left out, placement into slots, op shape), and that a drink put in a slot takes its own item's triggers, never the
 // replaced drink's (engine: triggers are keyed by item). Invented players; no private data.
-// Usage: node tools/test/whatif-drinks.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-drinks.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

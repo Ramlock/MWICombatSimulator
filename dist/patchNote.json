@@ -22,7 +22,12 @@
             "What-if: while a search runs, changes that look positive so far are listed under the chosen changes, marked as not checked yet",
             "What-if: a change the check cannot settle gets more runs, and every change left out now says why (a loss, too small to matter, or too small to tell) with its range",
             "What-if: a press of Accept current winner or Skip this stage is kept through Stop and Resume",
-            "Talismans imported from the MWI Combat Tracker are shown with the player's equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)"
+            "Talismans imported from the MWI Combat Tracker are shown with the player's equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)",
+            "What-if: a live chart for each stage: one line per leading change, round by round, with the latest ranges at the right",
+            "What-if: the whole window follows a language change, live stage buttons look live, and a resumed search shows its runs on replayed stages",
+            "What-if: the stage list's marks line up with their rows",
+            "Talisman names, the Talismans label and Talisman Power now show in Chinese and Portuguese with the game's own words; \"Presets\" is translated in Chinese",
+            "The Dark Mode, number format and language switches now scroll with the page instead of covering the results"
         ]
     },
     "2026-11-14":

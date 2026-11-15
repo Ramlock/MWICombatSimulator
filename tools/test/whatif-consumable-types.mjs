@@ -1,6 +1,7 @@
 // Test: the what-if consumable candidates keep the game's one-per-type rule (tools/whatif/consumables.mjs), and the
 // tier pairs change two slots within their own types. Generic loadout, no private data.
-// Usage: node tools/test/whatif-consumable-types.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-consumable-types.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

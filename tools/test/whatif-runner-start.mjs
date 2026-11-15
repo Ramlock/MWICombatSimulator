@@ -3,7 +3,8 @@
 // /api/version at the moment it is called and records the time, so the order "listening, then open" is measured, not assumed.
 // Cases: a free port; our runner already holds it; a stranger holds it (an HTTP server of another kind, and a socket that never answers);
 // another start failure (a bad port); no --open flag (the Linux way: the address is printed, nothing is opened).
-// Usage: node tools/test/whatif-runner-start.mjs   Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-runner-start.mjs   Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';

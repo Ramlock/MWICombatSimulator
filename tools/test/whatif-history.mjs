@@ -1,6 +1,7 @@
 // Test: the chart's history data (src/whatif/history.mjs): round records grouped by stage, pool and candidate; the 4-seed rule; a payback pool; leaders that
 // leave and come back; a resumed search's replayed stages; a stage with no records. Pure, synthetic records only.
-// Usage: node tools/test/whatif-history.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-history.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { buildHistory, lastRuns, columnOf } from '../../src/whatif/history.mjs';
 
 let failed = 0;

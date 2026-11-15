@@ -1,6 +1,7 @@
 // Test: the skill-level levers (tools/whatif/levers/skills.mjs). Synthetic setups, rates and results only, no
 // private data, no simulator run.
-// Usage: node tools/test/whatif-skills.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-skills.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

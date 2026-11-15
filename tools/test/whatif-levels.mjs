@@ -2,7 +2,8 @@
 // and their use in tools/whatif/core.mjs candidatesFor). With no --max-up and no --swap-levels, every level the market sells is offered;
 // a level with no ask is not, and has no price: the Philosopher's Mirror is not priced for now. Either option given keeps its old meaning.
 // The market below is made up.
-// Usage: node tools/test/whatif-levels.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-levels.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

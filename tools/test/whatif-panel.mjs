@@ -2,7 +2,8 @@
 // (per-user gain and error, cost with "≤" for an upper bound, payback, running spend), applies a row's ops to the page's
 // slots (naming a player the page lacks instead of applying), lists where the page's setup differs from the search's,
 // and every string it uses exists in English, Portuguese and Chinese.
-// Usage: node tools/test/whatif-panel.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-panel.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';

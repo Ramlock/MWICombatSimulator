@@ -6,11 +6,26 @@
         "dropPrices": "掉落物价格"
     },
     "talismans": {
-        "title": "Talismans",
-        "power": "Talisman Power"
+        "title": "符石",
+        "power": "符石威力",
+        "names": {
+            "melee_accuracy": "近战精准度",
+            "melee_damage": "近战伤害",
+            "melee_evasion": "近战闪避",
+            "elemental_amplify": "元素增幅",
+            "elemental_penetration": "元素穿透",
+            "elemental_resistance": "元素抗性",
+            "thorns": "荆棘",
+            "threat_reduction": "降低威胁",
+            "smite": "制裁",
+            "overkill": "过量伤害",
+            "echo": "回响",
+            "shatter": "破甲",
+            "fortify": "坚守"
+        }
     },
     "equipment": {
-        "presets": "Presets"
+        "presets": "预设"
     },
     "player": "玩家",
     "trigger": "触发条件",
@@ -331,7 +346,23 @@
             "timeLeft": "剩余 {{time}}",
             "done": "完成",
             "secondsPerRunCap": "每次运行秒数",
-            "elapsed": "已用时间"
+            "elapsed": "已用时间",
+            "inFlight": "{{n}} 次运行进行中",
+            "inFlightOne": "{{n}} 次运行进行中"
+        },
+        "chart": {
+            "round": "轮次",
+            "toBeat": "需超越",
+            "paybackUp": "{{col}}（越短越靠上）",
+            "rounds": "{{n}} 轮",
+            "roundsOne": "{{n}} 轮",
+            "running": "运行中",
+            "firstLook": "初步结果：来自最初几次运行的数值，尚无折线。",
+            "noFigures": "目前没有任何更改具备数值所需的 {{n}} 次新运行。",
+            "noRounds": "{{stage}}：在第一轮完成前已结束，因此没有图表。",
+            "tipFigure": "{{value}} [{{low}}, {{high}}] · 第 {{round}} 轮",
+            "tipFigureOne": "{{value}} · 第 {{round}} 轮",
+            "groupsStage": "{{stage}}·预算分组"
         },
         "rounds": {
             "coverageK": "覆盖率",

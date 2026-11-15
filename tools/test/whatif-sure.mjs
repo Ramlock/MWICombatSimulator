@@ -1,7 +1,8 @@
 // Test: the pick check of the greedy chain (tools/whatif/sure.mjs, wired in tools/whatif/optimize.mjs): the verdict, the extra
 // seeds up to 64, a failed pick replaced by the next best, and how the optimizer wires it (seeds, tags, result fields). Generic
 // fixtures only: a scripted `measure` stands in for the fresh runs, so the five cases are exact.
-// Usage: node tools/test/whatif-sure.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-sure.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

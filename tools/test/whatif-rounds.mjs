@@ -1,5 +1,6 @@
 // Test: the pure part of the search that keeps refining (tools/whatif/rounds.mjs): the t range, the bounds, the pause test and its
-// resume, the lock helpers. No page, no runs, no private data. Usage: node tools/test/whatif-rounds.mjs   Exit code 0 on pass, 1 on fail.
+// resume, the lock helpers. No page, no runs, no private data. Usage: node tools/test/run-tests.mjs whatif-rounds.mjs   Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');

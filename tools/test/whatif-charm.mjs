@@ -1,6 +1,7 @@
 // Test: the charm what-if's arithmetic (tools/whatif/charm.mjs) and the level op (tools/whatif/variants.mjs).
 // Synthetic setups, rates and profits only, no private data, no simulator run.
-// Usage: node tools/test/whatif-charm.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-charm.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

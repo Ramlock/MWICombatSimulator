@@ -3,7 +3,8 @@
 // pair, a change under the 1% bar, a paid change that fails the payback limit, one that passes, a pick that fails the fresh-run check, a player whose profit
 // is zero or below. Two parts: the elimination rule (rounds.mjs eliminate, pure) on the scenario's true numbers, and the whole search (core.mjs main) on the
 // synthetic pool, with no page. The same scenario drives a real-page run (runner `--synthetic`).
-// Usage: node tools/test/whatif-synthetic.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-synthetic.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 

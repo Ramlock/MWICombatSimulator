@@ -4,7 +4,8 @@
 // (tools/whatif/optimize.mjs) on a generic party of two: with a map where one player has an export, the levers that need
 // it run for that player and skip the other (result.skippedNoExport), with none they skip both, and nothing throws; the old
 // single form still works. Generic fixtures only; temporary folders under the OS temp folder, removed.
-// Usage: node tools/test/whatif-exports.mjs [--skip-optimizer]       Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-exports.mjs -- [--skip-optimizer]       Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

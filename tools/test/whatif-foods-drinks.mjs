@@ -2,7 +2,8 @@
 // both hashes as the old `consumables` request did, so a rerun finds the old search's folder, runs and result); the progress plan (parts follow the ticked
 // kinds); the core on the synthetic simulation (tools/whatif/synthetic.mjs, scenario tools/test/synthetic/scenario.json): Foods alone runs no drinks stage,
 // Drinks alone runs no foods stage, and `consumables` or both ticked gives the same result.
-// Usage: node tools/test/whatif-foods-drinks.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-foods-drinks.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

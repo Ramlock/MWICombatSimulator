@@ -19,7 +19,7 @@ It stops at the first failed step, logs `DONE:` and `NOT DONE:` lists and exits 
 
 1. Checks: the commit is on a remote branch; `origin/main` is its ancestor; the worktree is at it and clean.
 2. Builds `WhatIfRunner.exe` and `WhatIfRunner.zip` (`build-exe.ps1 -Zip`), with `C:\Windows\System32` first on PATH.
-3. Tests both by a real search: the exe with `tools/test/whatif-runner-exe.mjs`, the zip with `tools/release/zip-search.mjs` (the zip's own node.exe and server, the search of `tools/test/runner-search.mjs`).
+3. Tests both by a real search: the exe with `tools/test/whatif-runner-exe.mjs` (called directly, with `MWI_UNDER_HEAVYRUN=1` set for that call only: the script runs under HeavyRun, and the what-if test's guard checks the marker, `docs/codebase/test-loop.md`), the zip with `tools/release/zip-search.mjs` (the zip's own node.exe and server, the search of `tools/test/runner-search.mjs`).
 4. Creates the release `runner-<short sha>`, latest (`gh api POST releases` with the owner's token).
 5. Uploads the two assets (`uploads.github.com`); an asset of the same name and another size is deleted first.
 6. Waits until `releases/latest/download/<name>` redirects to the new tag (up to 10 min), downloads both into a new temp folder and byte-compares them with the builds.

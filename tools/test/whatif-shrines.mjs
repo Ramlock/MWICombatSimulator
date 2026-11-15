@@ -3,7 +3,8 @@
 // change is priced and listed over budget and no run is made: the empty slots offer market items at every level sold, for their buy price
 // through the swap loop; the weapon slots stay closed while a two-hand weapon is held. (3) The guild shrine lever: costs against a hand
 // computation, the jumps and the cap, the all-five rows, the shrine op, a shrine row over budget with its split, and the window's texts.
-// Usage: node tools/test/whatif-shrines.mjs [--skip-optimizer]       Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-shrines.mjs -- [--skip-optimizer]       Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

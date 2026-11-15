@@ -1,6 +1,7 @@
 // Test: what the What-if chart draws (src/whatif/chartModel.mjs): the axis fit, the rank colours, the right-edge column layout, which lines get a band, the hover, the lines that left
 // (grey, dashed), the gaps, the payback pool (reversed axis), the first look (bars only) and the empty pool. Pure, synthetic records only.
-// Usage: node tools/test/whatif-chart-model.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-chart-model.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import { poolModel, fitAxis, toBeatNow, rankColor, columnLayout, GREY, BAND_TOP, COLUMN_BAR_PX } from '../../src/whatif/chartModel.mjs';
 import { buildHistory } from '../../src/whatif/history.mjs';
 

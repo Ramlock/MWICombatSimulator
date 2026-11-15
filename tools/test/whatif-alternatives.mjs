@@ -1,7 +1,8 @@
 // Test: one row per setting (tools/whatif/alternatives.mjs): the setting key of each op kind, which rows the helper hides (the row kept is the first in the
 // search's own order), the paid switch (off: a paid row is never grouped), and the foods case (hideFoodRows is one case of the same function).
 // Invented names, ids and figures only; no private data.
-// Usage: node tools/test/whatif-alternatives.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-alternatives.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 

@@ -1,7 +1,8 @@
 // Test: dominated market swaps (tools/whatif/dominated.mjs) and how the optimizer uses them (tools/whatif/optimize.mjs).
 // Generic test items are added to the engine's own item map (same module instance), so the engine's
 // Equipment.getCombatStat judges them with its enhancement bonus. No private data.
-// Usage: node tools/test/whatif-dominated.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-dominated.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

@@ -2,7 +2,8 @@
 // (misfit: bounds, rules P and F) and abilities (abilityMisfit: rules D and B), and every candidate builder uses them (market
 // swaps, owned items, enhance steps, ability swaps; books and ability levels in whatif-houses.mjs). Real game data, invented
 // setups. No private data.
-// Usage: node tools/test/whatif-stylefit.mjs        Exit code 0 on pass, 1 on fail.
+// Usage: node tools/test/run-tests.mjs whatif-stylefit.mjs        Exit code 0 on pass, 1 on fail.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

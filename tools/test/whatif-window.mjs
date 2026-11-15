@@ -3,7 +3,8 @@
 // the window sends the page's party, budgets and levers, shows progress, Stop and Resume, shows the result, and Apply
 // writes into the page's setup (a player the page lacks is named, nothing applied).
 // Needs a built dist/ (npx webpack) and network for the page's CDN scripts.
-// Usage: node tools/test/whatif-window.mjs [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves dark pictures.
+// Usage: node tools/test/run-tests.mjs whatif-window.mjs -- [--shots <dir>]   Exit code 0 on pass, 1 on fail. --shots saves dark pictures.
+import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';

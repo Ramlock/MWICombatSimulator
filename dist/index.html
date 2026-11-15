@@ -51,6 +51,9 @@
         .whatif-weak td { color: #999 !important; }
         .whatif-warn { color: #b07800; }
         .whatif-dim { color: #888; }
+        .whatif-chart-stage { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .5rem; }
+        .whatif-chart-box { position: relative; width: 100%; background-color: #16181c; border: 1px solid #343a40; border-radius: 4px; }
+        .whatif-table tr.whatif-hot td { background-color: rgba(255, 226, 122, 0.14); }
         .talisman-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding-top: calc(0.375rem + 1px); }
         .talisman-grade { color: #aaa; }
         .talisman-power { color: #aaa; }
@@ -86,7 +89,6 @@
         body.dark-mode .whatif-warn { color: #f0c060; }
         body.dark-mode .whatif-progress { background-color: #1e2125; border: 1px solid #6c757d; }
         body.dark-mode .whatif-progress .progress-bar { background-color: #3d8bfd; }
-        .whatif-part-mark { display: inline-block; width: 1.5em; text-align: center; font-family: sans-serif; }
         .whatif-parts-table td.whatif-part-label { white-space: normal; overflow-wrap: anywhere; }
         .whatif-part-done .progress-bar { background-color: #198754; }
         body.dark-mode .whatif-part-done .progress-bar { background-color: #2e9e5e; }
@@ -158,7 +160,7 @@
         .whatif-part-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .whatif-part-runs, .whatif-part-kept { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .whatif-parts-table tr.whatif-part { display: table-row; }
-        .whatif-parts-table td.whatif-part-mark { width: 1.75em; text-align: center; }
+        .whatif-parts-table td.whatif-part-mark { width: 1.75em; text-align: center; vertical-align: middle; font-family: sans-serif; }
         .whatif-parts-table tr.whatif-part-running > td { background: rgba(61, 139, 253, .13) !important; }
         .whatif-parts-table tr.whatif-part-running > td:first-child { box-shadow: inset 3px 0 0 #3d8bfd; }
         .whatif-parts-table tr.whatif-part-waiting, .whatif-parts-table tr.whatif-part-skipped { opacity: .5; }
@@ -166,6 +168,7 @@
         .whatif-parts-table td.whatif-part-btns .btn { display: block; margin: .1rem 0; }
         .whatif-parts-table td.whatif-part-btns .whatif-btn-slot { visibility: hidden; }
         .whatif-pending::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-right: .4em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: whatif-spin .8s linear infinite; vertical-align: -.05em; }
+        .whatif-stage-done:disabled { opacity: .35; } /* live: a light outline; disabled: dim (a live one never reads as disabled) */
         .whatif-stage-done.whatif-pending:disabled { opacity: 1; color: #f0c060; border-color: #b07800; }
         body.dark-mode #whatIfModal .whatif-table > thead th { background: #2b3035; }
         body.dark-mode #whatIfModal .whatif-table > tbody > tr:nth-child(even) > td { background-color: rgba(255, 255, 255, .03); }
@@ -278,7 +281,7 @@
         try { if (localStorage.getItem('darkModeEnabled') !== 'false') document.body.classList.add('dark-mode'); } catch (e) { document.body.classList.add('dark-mode'); }
     </script>
     <!-- Top right: Dark Mode and ISO number toggles; js/i18n.js adds the language buttons after them. -->
-    <div id="topRightControls" style="position: fixed; top: 10px; right: 10px; z-index: 1000; display: flex; align-items: center; gap: 12px;">
+    <div id="topRightControls" style="position: absolute; top: 10px; right: 10px; z-index: 1000; display: flex; align-items: center; gap: 12px;">
         <div class="form-check form-switch m-0">
             <input class="form-check-input" type="checkbox" role="switch" id="darkModeToggle">
             <label class="form-check-label" for="darkModeToggle" data-i18n="common:controls.darkMode">Dark Mode</label>
@@ -1975,6 +1978,7 @@
                     <div id="whatIfMessage" class="whatif-warn"></div>
                     <div id="whatIfDiff"></div>
                     <div id="whatIfResult"></div>
+                    <div id="whatIfCharts"></div>
                     <div id="whatIfRounds"></div>
                 </div>
             </div>
@@ -2348,10 +2352,10 @@
         </div>
         <!-- #endregion -->
     </div>
-    <script src="js/i18n.js?v=5f3437a1"></script>
+    <script src="js/i18n.js?v=f37ba198"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.2.0/js/bootstrap.bundle.min.js" integrity="sha512-9GacT4119eY3AcosfWtHMsT5JyZudrexyEVzTBWV3viP/YfB9e2pEy3N7WXL3SV6ASXpTU0vzzSxsbfsuUH4sQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha512-Y51n9mtKTVBh3Jbx5pZSJNDDMyY+yGe77DGtBPzRlgsf/YLCh13kSZ3JmfHGzYFCmOndraf0sQgfM654b7dJ3w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="bundle.5f3437a1.js" type="module"></script>
+    <script src="bundle.f37ba198.js" type="module"></script>
 </body>
 <footer>
     <div style="text-align: center;">

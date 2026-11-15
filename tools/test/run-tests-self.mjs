@@ -1,5 +1,5 @@
 // Test of the test loop's pure parts (tools/test/run-tests.mjs): the count line's parsing, the relaunch decision, the minutes, the file names.
-import { countLines, shouldRelaunch, minutesFor, resolveFiles, exitCode, memoryArgs, DEFAULT_MINUTES, MEMORY_FLOOR_GB, WHATIF_FLOOR_GB } from './run-tests.mjs';
+import { countLines, shouldRelaunch, minutesFor, resolveFiles, exitCode, memoryArgs, splitArgs, fileEnv, NOT_TESTS, DEFAULT_MINUTES, MEMORY_FLOOR_GB, WHATIF_FLOOR_GB } from './run-tests.mjs';
 let failed = 0;
 const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL ') + name + (cond ? '' : ' ' + extra)); if (!cond) failed++; };
 const c = countLines('ok   a\nFAIL b\nPASS: all\n2026-11-15 18:00:00 ok   stamped\n✔ node test\n✖ node fail\nnot ok 3\nlooks ok\n');
@@ -24,4 +24,10 @@ check('userscript names resolve', resolveFiles(['tracker.test.cjs'])[0] === 'use
 let threw = false; try { resolveFiles(['no-such-file']); } catch { threw = true; }
 check('an unknown name throws', threw);
 check('all: excludes the loop itself', !resolveFiles([]).includes('tools/test/run-tests.mjs'));
+check('all: excludes the what-if guard module', NOT_TESTS.includes('heavyrun-guard.mjs') && !resolveFiles([]).includes('tools/test/heavyrun-guard.mjs'));
+const s1 = splitArgs(['--strict', 'a', 'b']), s2 = splitArgs(['whatif-runner-exe', '--', '--exe', 'x.exe', '--strict']);
+check('args: no -- means no file arguments', s1.strict && JSON.stringify(s1.names) === '["a","b"]' && s1.fileArgs.length === 0, JSON.stringify(s1));
+check('args: after -- they go to the files, untouched', !s2.strict && JSON.stringify(s2.names) === '["whatif-runner-exe"]' && JSON.stringify(s2.fileArgs) === '["--exe","x.exe","--strict"]', JSON.stringify(s2));
+const e = fileEnv({ PATH: 'p' });
+check('each file gets the guard marker and a no-op BROWSER', e.MWI_UNDER_HEAVYRUN === '1' && e.BROWSER === 'true' && e.PATH === 'p', JSON.stringify(e));
 process.exit(failed ? 1 : 0);
