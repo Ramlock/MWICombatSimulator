@@ -143,6 +143,7 @@ export function createChartHost(container, opts) {
         chart.data.datasets = datasetsOf(model, { t, format, labelOf, layout });
         const x = chart.options.scales.x, y = chart.options.scales.y;
         x.min = model.xMin; x.max = colored ? layout.xEnd : model.xMax;
+        x.title = { display: true, text: t('chart.round'), color: THEME.text }; // renewed on every draw, as the y title is: a language change redraws the chart
         x.ticks.stepSize = Math.max(1, Math.ceil((model.xMax - model.xMin) / 12)); x.ticks.includeBounds = false; // a tick per round (or every few), none at the column's odd end
         const title = (model.better === 'lower' ? t('chart.paybackUp', { col: t('rounds.col.payback') }) : t(model.col === 'buyerNet' ? 'col.buyerGain' : 'col.partyGain'));
         const next = { min: model.axis.min, max: model.axis.max };

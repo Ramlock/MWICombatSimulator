@@ -166,7 +166,9 @@
             "then": "depois",
             "gameDefault": "padrão do jogo ({{x}})",
             "drop": "remover {{x}}",
-            "add": "adicionar {{x}}"
+            "add": "adicionar {{x}}",
+            "kept": "gatilho mantido",
+            "copied": "gatilho copiado de {{x}}"
         },
         "button": "E se",
         "title": "E se",

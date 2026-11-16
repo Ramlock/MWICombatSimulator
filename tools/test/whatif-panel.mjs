@@ -723,6 +723,17 @@ function flat(o, p = '') { return Object.entries(o).reduce((a, [k, v]) => (typeo
     }
     check('warning trigger: with no names the list still reads as words (the English words and the ids), never as JSON', (() => { const h = unesc(panel.renderDiff(trigDiff, t)); return h.includes('self current_mp >= 10 AND self current_hp <= 60') && h.includes('in the search always') && !h.includes('[{'); })());
     check('warning trigger: the value helper words a trigger and leaves any other value as before', panel.diffValue(trigDiff[0], 'result', W.en) === locales.en.trig.always && panel.diffValue({ field: 'ring', page: '/items/ring_of_rare_find +7' }, 'page', W.en) === `${en.itemNames['/items/ring_of_rare_find']} +7` && panel.diffValue({ field: 'food 2', page: null }, 'page', W.en) === '—');
+    // A food or drinks filling (foodfill.mjs / drinkfill.mjs: "<player> food: ...", "<player> drinks: ...") reads in the page's language: the game's
+    // words for food and drinks, the items' names, the empty slot and the trigger notes in the window's words.
+    for (const lng of ['en', 'pt', 'zh']) {
+        const b = lng === 'en' ? en : lng === 'pt' ? pt : zh, L = locales[lng], nm = (h) => b.itemNames[h] ?? en.itemNames[h];
+        const F = panel.namesFrom(b, en, { empty: L.rounds.slotEmpty, trig: Object.fromEntries(Object.entries(L.trig).map(([k, v]) => [k, v.replace('{{x}}', '{x}')])) }); // as the page passes them (whatIfNames)
+        const food = panel.localizeDesc('Alpha food: empty -> donut (trigger copied from blueberry_cake), blueberry_cake -> gummy (trigger kept)', F, players);
+        const drinks = panel.localizeDesc('Alpha drinks: attack_coffee -> empty, empty -> attack_coffee', F, players, 'Alpha');
+        const wantFood = `Alpha ${b.itemCategoryNames['/item_categories/food']}: ${L.rounds.slotEmpty} → ${nm('/items/donut')} (${L.trig.copied.replace('{{x}}', nm('/items/blueberry_cake'))}), ${nm('/items/blueberry_cake')} → ${nm('/items/gummy')} (${L.trig.kept})`;
+        const wantDrinks = `${b.itemCategoryPluralNames['/item_categories/drink']}: ${nm('/items/attack_coffee')} → ${L.rounds.slotEmpty}, ${L.rounds.slotEmpty} → ${nm('/items/attack_coffee')}`;
+        check(`fillings (${lng}): a food and a drinks change read in the page's language (the game's words for food and drinks, the item names, the empty slot, the trigger notes)`, food === wantFood && drinks === wantDrinks && (lng === 'en' || !/(food|drinks|empty|trigger|kept|copied)/.test(food + drinks)), JSON.stringify({ food, wantFood, drinks, wantDrinks }));
+    }
     const many = Array.from({ length: 11 }, (_, i) => ({ player: 'Alpha', field: 'food ' + (i + 1), page: null, result: '/items/donut' }));
     for (const lng of ['en', 'pt', 'zh']) {
         const h11 = panel.renderDiff(many, tOf[lng], W[lng]), h1 = panel.renderDiff(many.slice(0, 1), tOf[lng], W[lng]);

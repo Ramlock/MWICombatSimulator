@@ -4040,6 +4040,7 @@ function createChartHost(container, opts) {
         chart.data.datasets = datasetsOf(model, { t, format, labelOf, layout });
         const x = chart.options.scales.x, y = chart.options.scales.y;
         x.min = model.xMin; x.max = colored ? layout.xEnd : model.xMax;
+        x.title = { display: true, text: t('chart.round'), color: _charts_base_mjs__WEBPACK_IMPORTED_MODULE_0__.THEME.text }; // renewed on every draw, as the y title is: a language change redraws the chart
         x.ticks.stepSize = Math.max(1, Math.ceil((model.xMax - model.xMin) / 12)); x.ticks.includeBounds = false; // a tick per round (or every few), none at the column's odd end
         const title = (model.better === 'lower' ? t('chart.paybackUp', { col: t('rounds.col.payback') }) : t(model.col === 'buyerNet' ? 'col.buyerGain' : 'col.partyGain'));
         const next = { min: model.axis.min, max: model.axis.max };
@@ -4882,6 +4883,7 @@ const NAME_TABLES = {
     combatTriggerDependencyNames: '/combat_trigger_dependencies/',
     combatTriggerConditionNames: '/combat_trigger_conditions/',
     actionNames: '/actions/', // the zone: "combat/fly"
+    itemCategoryPluralNames: '/item_categories/', // a drinks filling: "Drinks: ..."
     houseRoomNames: '/house_rooms/', // the "where the page differs" warning holds room hrids
     guildShrineNames: '/guild_shrines/', // a shrine change: "force 2 -> 3"
     combatTriggerComparatorNames: '/combat_trigger_comparators/', // and trigger terms as JSON
@@ -4913,6 +4915,18 @@ const swap = (text, tables, names) => text.replace(SLUG, (id) => {
     for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
     return typeof names.words?.[id] === 'string' ? names.words[id] : id;
 });
+const FILL_EN = { kept: 'trigger kept', copied: 'trigger copied from {x}' };
+const FILL_NOTE = /(\(trigger kept\)|\(trigger copied from [^)]*\))/;
+function fillShown(kind, parts, names) {
+    const word = (kind === 'food' ? names.get('itemCategoryNames', 'food') : names.get('itemCategoryPluralNames', 'drink')) ?? kind;
+    const w = { ...FILL_EN, ...(names.words?.trig || {}) };
+    const shown = parts.split(FILL_NOTE).map((s, i) => {
+        if (i % 2 === 0) return swap(s, ITEMS_ETC, names).replace(/ -> /g, ' → '); // the window's arrow, as the tables draw it
+        if (s === '(trigger kept)') return '(' + w.kept + ')';
+        return '(' + w.copied.replace('{x}', swap(s.slice('(trigger copied from '.length, -1), ITEMS_ETC, names)) + ')';
+    }).join('');
+    return word + ': ' + shown;
+}
 // A desc with every game id replaced by its name; an id with no name stays. `players` are the names the result
 // holds: the player name leads the desc and is never touched. Trigger descs ("<owner> trigger: <terms>") read the
 // owner as an item or ability and the terms as trigger dependency and condition (a condition can share an id with an ability).
@@ -4926,6 +4940,10 @@ function localizeDesc(desc, names, players = [], dropPlayer = null) {
     const rest = text.slice(skip);
     const room = names.rooms.find(([en]) => rest.startsWith(en + ' '));
     if (room) return head + room[1] + rest.slice(room[0].length);
+    // A food or drinks filling ("food: a -> b (trigger kept), empty -> c (trigger copied from a)", foodfill.mjs / drinkfill.mjs): the game's
+    // words for food and drinks, the slot changes with their names and the window's arrow, the trigger notes in the window's words (the tables and the charts' labels).
+    const fill = /^(food|drinks): /.exec(rest);
+    if (fill) return head + fillShown(fill[1], rest.slice(fill[0].length), names);
     const at = rest.indexOf(' trigger: ');
     // Two trigger changes of one owner in a row ("<change>; then <player> <owner> trigger: <change>"): each part is worded alone.
     const then = rest.indexOf(`; ${_trigger_words_mjs__WEBPACK_IMPORTED_MODULE_1__.EN.then} `);
@@ -10341,9 +10359,8 @@ function whatIfShowExportStatus() {
 // Shown while no player is ticked in the window; cleared again once one is (only its own text).
 function whatIfCheckPlayers() {
     const none = !document.querySelector('#whatIfPlayers input:checked');
-    const message = document.getElementById('whatIfMessage');
-    if (none) whatIfMessage(whatIfT('noPlayers'));
-    else if (message.textContent === whatIfT('noPlayers')) whatIfMessage('');
+    if (none) whatIfMessage(whatIfSaid('noPlayers'));
+    else if (whatIf.message?.key === 'noPlayers') whatIfMessage('');
 }
 
 async function whatIfRequest(url, options) {
@@ -10352,8 +10369,13 @@ async function whatIfRequest(url, options) {
     return { ok: response.ok, body };
 }
 
-function whatIfMessage(text) {
-    document.getElementById('whatIfMessage').textContent = text || '';
+// The window's message line: '' (none), a text as it came (the runner's own error) or a window string (whatIfSaid: its key and params),
+// kept so that a language change words it again (whatIfDrawMessage).
+const whatIfSaid = (key, params) => ({ key, params });
+function whatIfMessage(message) { whatIf.message = message || ''; whatIfDrawMessage(); }
+function whatIfDrawMessage() {
+    const m = whatIf.message;
+    document.getElementById('whatIfMessage').textContent = m && typeof m === 'object' ? whatIfT(m.key, m.params) : m || '';
 }
 
 // A budget is a number of coin: parseNumber's reading, rounded to a whole coin; an empty field is 0 (the search reads 0 as no limit);
@@ -10448,7 +10470,7 @@ function whatIfApplyExportLevers(prevDisabled = null) {
 // The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
 function whatIfNames() {
     const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
-    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty'), ability: bundle(i18next.resolvedLanguage || i18next.language)?.abilitySlot?.ability || bundle('en')?.abilitySlot?.ability, trig: Object.fromEntries(['trigger', 'always', 'and', 'then', 'gameDefault', 'drop', 'add'].map((k) => [k, whatIfT('trig.' + k, { x: '{x}' })])) });
+    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty'), ability: bundle(i18next.resolvedLanguage || i18next.language)?.abilitySlot?.ability || bundle('en')?.abilitySlot?.ability, trig: Object.fromEntries(['trigger', 'always', 'and', 'then', 'gameDefault', 'drop', 'add', 'kept', 'copied'].map((k) => [k, whatIfT('trig.' + k, { x: '{x}' })])) });
 }
 
 // `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
@@ -10654,8 +10676,8 @@ async function whatIfPoll(w) {
         const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.status(whatIf.searchId, whatIf.partialVersion));
         if (w !== whatIf.watch) return;
         if (ok) whatIfShowStatus(body); // a state other than running ends the watch
-        else { whatIfMessage(body.error || whatIfT('runnerError')); whatIfStopWatching(); }
-    } catch (err) { if (w === whatIf.watch) { whatIfMessage(whatIfT('runnerGone')); whatIfStopWatching(); } }
+        else { whatIfMessage(body.error || whatIfSaid('runnerError')); whatIfStopWatching(); }
+    } catch (err) { if (w === whatIf.watch) { whatIfMessage(whatIfSaid('runnerGone')); whatIfStopWatching(); } }
     finally { w.busy = false; }
     if (w !== whatIf.watch) return;
     const delay = w.again ? 0 : (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.pollDelay)(whatIf.status, whatIf.pressed, Date.now(), w.fastUntil);
@@ -10675,7 +10697,7 @@ async function whatIfStart() {
 // mark: the budget fields are marked valid or not (a start does; the button's draw only reads).
 function whatIfReadSettings(mark) {
     const slots = whatIfSlots(true);
-    if (!slots.length) return { message: whatIfT('noPlayers') };
+    if (!slots.length) return { message: whatIfSaid('noPlayers') };
     const budgets = {};
     let badBudget = null;
     for (const input of document.querySelectorAll('#whatIfBudgets input')) {
@@ -10684,21 +10706,21 @@ function whatIfReadSettings(mark) {
         if (value === null) { badBudget ??= input; continue; }
         budgets[input.dataset.player] = value;
     }
-    if (badBudget) return { message: whatIfT('badBudget', { player: badBudget.dataset.player }) };
+    if (badBudget) return { message: whatIfSaid('badBudget', { player: badBudget.dataset.player }) };
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
-    if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfT('badMaxPayback') };
+    if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfSaid('badMaxPayback') };
     // The smallest gain worth showing (src/whatif/minGain.mjs: its unit and default): empty = the default.
     const minGainPct = (0,_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__.parseMinGain)(document.getElementById('inputWhatIfMinGain').value);
-    if (minGainPct === null) return { message: whatIfT('badMinGain') };
+    if (minGainPct === null) return { message: whatIfSaid('badMinGain') };
     // The guild's shrine level: empty = the game's maximum, else a whole number of 0 or more (the search's --shrine-cap).
     const shrineCap = document.getElementById('inputWhatIfShrineCap').value.trim();
-    if (shrineCap !== '' && !(Number.isInteger(Number(shrineCap)) && Number(shrineCap) >= 0)) return { message: whatIfT('badShrineCap') };
+    if (shrineCap !== '' && !(Number.isInteger(Number(shrineCap)) && Number(shrineCap) >= 0)) return { message: whatIfSaid('badShrineCap') };
     const levers = [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => i.value);
-    if (!levers.length) return { message: whatIfT('noLevers') };
+    if (!levers.length) return { message: whatIfSaid('noLevers') };
     const exports = {};
     for (const slot of slots) { const kept = whatIfKeptExport(slot.name); if (kept) exports[slot.name] = kept; }
     const names = slots.map((s) => s.name);
-    if (new Set(names).size !== names.length) return { message: whatIfT('sameNames') };
+    if (new Set(names).size !== names.length) return { message: whatIfSaid('sameNames') };
     return { params: { slots, goal: document.getElementById('selectWhatIfGoal').value, budgets, levers, exports, maxPayback, shrineCap, minGainPct,
         zone: document.getElementById('selectWhatIfZone').value, tier: document.getElementById('selectWhatIfTier').value } };
 }
@@ -10710,18 +10732,18 @@ async function whatIfPostSearch() {
     whatIfClearResult();
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
-    whatIfMessage(whatIfT('fetchingPrices'));
+    whatIfMessage(whatIfSaid('fetchingPrices'));
     const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.searchRequest)(read.params, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__.fetchMarketplace)());
-    if (request.error) { whatIfMessage(whatIfT('pricesFailed', { error: request.error })); return; }
+    if (request.error) { whatIfMessage(whatIfSaid('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
         const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         // whatIf.sentKey: the settings this search was started with, so a stop of it offers Resume while they stay the same.
         if (ok) { whatIf.sentKey = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.settingsKey)(read.params); whatIfWatch(answer.id); }
-        else if (answer.id) { whatIf.sentKey = null; whatIfMessage(whatIfT('alreadyRunning')); whatIfWatch(answer.id); }
-        else whatIfMessage(answer.error || whatIfT('runnerError'));
-    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+        else if (answer.id) { whatIf.sentKey = null; whatIfMessage(whatIfSaid('alreadyRunning')); whatIfWatch(answer.id); }
+        else whatIfMessage(answer.error || whatIfSaid('runnerError'));
+    } catch (err) { whatIfMessage(whatIfSaid('runnerGone')); }
 }
 
 async function whatIfStopOrResume() {
@@ -10731,14 +10753,14 @@ async function whatIfStopOrResume() {
     const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfDrawProgress(); whatIfMessage(message); };
     try {
         const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.stop(whatIf.searchId), { method: 'POST' });
-        if (!ok) { failed(body.error || whatIfT('runnerError')); return; }
+        if (!ok) { failed(body.error || whatIfSaid('runnerError')); return; }
         if (body.state) { whatIfShowStatus(body); if (body.state === 'running') whatIfWatch(whatIf.searchId); return; }
         // The runner answers at once ({ stopping } or { resumed }); the change itself shows at the poll that sees it.
         // A resume is a new optimizer process: its report is asked for again from version 0 (the runner may have been restarted since the stop).
         if (resuming) whatIf.partialVersion = 0;
         if (resuming || !whatIf.watch) whatIfWatch(whatIf.searchId);
         whatIfPollSoon();
-    } catch (err) { failed(whatIfT('runnerGone')); }
+    } catch (err) { failed(whatIfSaid('runnerGone')); }
 }
 
 // "Earlier searches": the runner's list (finished and stopped searches, one list), kept in whatIf.earlier so a language change redraws it.
@@ -10777,19 +10799,19 @@ async function whatIfLoadResult() {
             whatIfShowResult(body, whatIf.earlier.find((r) => r.id === id)?.stopped ? 'stopped' : false, true);
             whatIf.rounds = []; whatIf.roundsFor = id; whatIf.roundsLoaded = null; whatIfDrawCharts(); whatIfLoadRounds(id); // its chart, from its rounds.jsonl
         }
-        else whatIfMessage(body.error || whatIfT('runnerError'));
-    } catch (err) { whatIfMessage(whatIfT('runnerGone')); }
+        else whatIfMessage(body.error || whatIfSaid('runnerError'));
+    } catch (err) { whatIfMessage(whatIfSaid('runnerGone')); }
 }
 
 function whatIfApply(key) {
     const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.opsFor)(whatIf.result, key);
     const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.applyToSlots)(whatIfSlots(false), ops);
-    if (out.missing) { whatIfMessage(whatIfT('missingPlayer', { names: out.missing.join(', ') })); return; }
+    if (out.missing) { whatIfMessage(whatIfSaid('missingPlayer', { names: out.missing.join(', ') })); return; }
     for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
     updateNextPlayer(currentPlayerTabId);
     updateState();
     updateUI();
-    whatIfMessage(whatIfT('applied'));
+    whatIfMessage(whatIfSaid('applied'));
     whatIfShowDiff();
 }
 
@@ -10813,6 +10835,9 @@ function whatIfShowButton() {
     i18next.on('loaded', on);
 }
 
+// The header's version line in the page's language (drawn when the window opens and again on a language change).
+function whatIfDrawVersion() { if (whatIf.version) document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine }); }
+
 async function initWhatIf() {
     try {
         const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.version);
@@ -10824,8 +10849,7 @@ async function initWhatIf() {
     (0,_whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_44__.attachTips)(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
     // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
-        document.getElementById('whatIfVersion').textContent = whatIfT('version', { runner: whatIf.version.runner, engine: whatIf.version.engine });
-        whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); whatIfDrawSearchButton(); });
+        whatIfDrawVersion(); whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); whatIfDrawSearchButton(); });
     document.getElementById('buttonWhatIfEditSetup').addEventListener('click', () => { whatIf.setupOpen = !whatIf.setupOpen; whatIfShowSetup(); });
     document.getElementById('whatIfPlayers').addEventListener('change', () => { whatIfRenderSetup(); whatIfCheckPlayers(); });
     document.getElementById('buttonWhatIfSearch').addEventListener('click', whatIfSearchButton);
@@ -10840,8 +10864,8 @@ async function initWhatIf() {
         const pressed = { key: button.dataset.whatifPart, mode: button.dataset.whatifDone };
         whatIf.pressed = pressed; whatIfDrawProgress(); // the press shows at once (both disabled), and stays in every redraw until the stage ends
         const failed = (message) => { if (whatIf.pressed === pressed) whatIf.pressed = null; whatIfMessage(message); whatIfDrawProgress(); };
-        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfT('runnerError')); else whatIfPollSoon(); }
-        catch (err) { failed(whatIfT('runnerGone')); }
+        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfSaid('runnerError')); else whatIfPollSoon(); }
+        catch (err) { failed(whatIfSaid('runnerGone')); }
     });
     // A fold toggle (data-whatif-more) in the result or in the setup warning opens or closes its bodies.
     const fold = (event) => {
@@ -10861,7 +10885,7 @@ async function initWhatIf() {
     document.getElementById('whatIfDiff').addEventListener('click', fold);
     // Every part of the window is drawn again in the new language: the state badge and the Start / Stop button, the progress table, the rounds, the result, the charts.
     i18next.on('languageChanged', () => {
-        whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); whatIfDrawSearchButton(); whatIfDrawProgress();
+        whatIfDrawVersion(); whatIfDrawMessage(); whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); whatIfDrawSearchButton(); whatIfDrawProgress();
         if (whatIf.round) (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_43__.morphInto)(document.getElementById('whatIfRounds'), (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderRounds)(whatIf.round, whatIfT, whatIfNames()));
         if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded);
         whatIfDrawCharts();
@@ -11927,4 +11951,4 @@ restoreImportedGroup();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.f37ba198.js.map
+//# sourceMappingURL=bundle.2682ae7a.js.map

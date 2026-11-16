@@ -166,7 +166,9 @@
             "then": "then",
             "gameDefault": "game default ({{x}})",
             "drop": "drop {{x}}",
-            "add": "add {{x}}"
+            "add": "add {{x}}",
+            "kept": "trigger kept",
+            "copied": "trigger copied from {{x}}"
         },
         "button": "What-if",
         "title": "What-if",

@@ -487,6 +487,7 @@ const NAME_TABLES = {
     combatTriggerDependencyNames: '/combat_trigger_dependencies/',
     combatTriggerConditionNames: '/combat_trigger_conditions/',
     actionNames: '/actions/', // the zone: "combat/fly"
+    itemCategoryPluralNames: '/item_categories/', // a drinks filling: "Drinks: ..."
     houseRoomNames: '/house_rooms/', // the "where the page differs" warning holds room hrids
     guildShrineNames: '/guild_shrines/', // a shrine change: "force 2 -> 3"
     combatTriggerComparatorNames: '/combat_trigger_comparators/', // and trigger terms as JSON
@@ -518,6 +519,18 @@ const swap = (text, tables, names) => text.replace(SLUG, (id) => {
     for (const table of tables) { const name = names.get(table, id); if (name !== null) return name; }
     return typeof names.words?.[id] === 'string' ? names.words[id] : id;
 });
+const FILL_EN = { kept: 'trigger kept', copied: 'trigger copied from {x}' };
+const FILL_NOTE = /(\(trigger kept\)|\(trigger copied from [^)]*\))/;
+function fillShown(kind, parts, names) {
+    const word = (kind === 'food' ? names.get('itemCategoryNames', 'food') : names.get('itemCategoryPluralNames', 'drink')) ?? kind;
+    const w = { ...FILL_EN, ...(names.words?.trig || {}) };
+    const shown = parts.split(FILL_NOTE).map((s, i) => {
+        if (i % 2 === 0) return swap(s, ITEMS_ETC, names).replace(/ -> /g, ' → '); // the window's arrow, as the tables draw it
+        if (s === '(trigger kept)') return '(' + w.kept + ')';
+        return '(' + w.copied.replace('{x}', swap(s.slice('(trigger copied from '.length, -1), ITEMS_ETC, names)) + ')';
+    }).join('');
+    return word + ': ' + shown;
+}
 // A desc with every game id replaced by its name; an id with no name stays. `players` are the names the result
 // holds: the player name leads the desc and is never touched. Trigger descs ("<owner> trigger: <terms>") read the
 // owner as an item or ability and the terms as trigger dependency and condition (a condition can share an id with an ability).
@@ -531,6 +544,10 @@ export function localizeDesc(desc, names, players = [], dropPlayer = null) {
     const rest = text.slice(skip);
     const room = names.rooms.find(([en]) => rest.startsWith(en + ' '));
     if (room) return head + room[1] + rest.slice(room[0].length);
+    // A food or drinks filling ("food: a -> b (trigger kept), empty -> c (trigger copied from a)", foodfill.mjs / drinkfill.mjs): the game's
+    // words for food and drinks, the slot changes with their names and the window's arrow, the trigger notes in the window's words (the tables and the charts' labels).
+    const fill = /^(food|drinks): /.exec(rest);
+    if (fill) return head + fillShown(fill[1], rest.slice(fill[0].length), names);
     const at = rest.indexOf(' trigger: ');
     // Two trigger changes of one owner in a row ("<change>; then <player> <owner> trigger: <change>"): each part is worded alone.
     const then = rest.indexOf(`; ${TRIG_EN.then} `);

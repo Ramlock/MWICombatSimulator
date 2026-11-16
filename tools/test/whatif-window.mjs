@@ -332,6 +332,12 @@ try {
     await js(`(() => { document.getElementById('inputWhatIfMaxPayback').value = '-5'; return true; })()`);
     await js(`(document.querySelector('#whatIfBudgets input').value = '1000000', document.getElementById('buttonWhatIfSearch').click(), true)`);
     check('a payback limit that is not a number of days is refused', await until(`document.getElementById('whatIfMessage').textContent.includes('payback limit')`) && received === null);
+    // The message line follows a live language change (whatIfDrawMessage words its key again).
+    const msgEn = await js(`document.getElementById('whatIfMessage').textContent`);
+    await js(`i18next.changeLanguage('zh').then(() => true)`);
+    const msgZh = await js(`({ shown: document.getElementById('whatIfMessage').textContent, want: i18next.t('common:whatIf.badMaxPayback') })`);
+    await js(`i18next.changeLanguage('en').then(() => true)`);
+    check('the message line follows a live language change (zh, then back to en)', msgZh.shown === msgZh.want && msgZh.want !== msgEn && (await js(`document.getElementById('whatIfMessage').textContent`)) === msgEn, JSON.stringify({ msgEn, msgZh }));
     await js(`(() => { document.getElementById('inputWhatIfMaxPayback').value = '365'; document.querySelector('#whatIfBudgets input').value = '1000000'; return true; })()`);
     // The market snapshot: the page's fetch of marketplace.json is answered here (no network for it in the test).
     await js(`(() => { const f = window.fetch; window.__mpCalls = 0; window.fetch = (u, o) => { if (!String(u).includes('marketplace.json')) return f(u, o); window.__mpCalls++;
@@ -402,7 +408,7 @@ try {
     {
         const row = (id, net, half, seeds, extra = {}) => ({ id, desc: 'Magic ' + id, player: 'Player 1', cost: 0, status: 'contending', seeds: 40, readingSeeds: seeds, tooFew: false, reading: net * 2, low: net * 2 - half, high: net * 2 + half, buyerNet: net, netLow: net - half, netHigh: net + half, payback: null, ...extra });
         const rec = (stage, n, leaders, key = 'Player 1:free') => ({ round: n, stage, simHours: 100 * n, coverage: 0.99, candidates: { total: 8, contending: 6, paused: 2, refuted: 0, locked: 0 }, pools: [{ key, size: 8, contending: 6, paused: 2, sortedBy: 'buyerNet', leaders }] });
-        const foodsRecs = [1, 2, 3, 4, 5].map((n) => rec('foods', n, [row('a', 1000 + 20 * n, 400 - 40 * n, 8), row('b', 700 + 10 * n, 450 - 50 * n, 8), row('c', 300 + 30 * n, 500 - 60 * n, 8), row('d', 200, 300, 8, { status: 'paused' })]));
+        const foodsRecs = [1, 2, 3, 4, 5].map((n) => rec('foods', n, [row('a', 1000 + 20 * n, 400 - 40 * n, 8), row('b', 700 + 10 * n, 450 - 50 * n, 8), row('c', 300 + 30 * n, 500 - 60 * n, 8, { desc: 'Player 1 food: blueberry_donut -> strawberry_donut, apple_gummy -> orange_gummy (trigger kept)' }), row('d', 200, 300, 8, { status: 'paused', desc: 'Player 1 drinks: empty -> wisdom_coffee' })]));
         const screenRecs = [rec('screen', 1, [row('a', 50, 30, 8)], 'free')];
         const canvasInk = (stage, pool) => js(`(() => { const c = document.querySelector('#whatIfCharts .whatif-chart[data-stage="${stage}"][data-pool="${pool}"] canvas'); if (!c) return -1; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; })()`);
         check('chart: nothing is drawn before a round record arrives (no empty canvas)', await js(`document.querySelectorAll('#whatIfCharts canvas').length === 0`));
@@ -442,6 +448,24 @@ try {
         live = { partial: { ...foodsOnly, setups: result.setups, endedByUser: { 'greedy step 2': 0, foods: 5 } }, version: 4.05 }; // (above the version the window has seen, below the later ones: the later live reports and rounds still arrive)
         check('chart: a stage ended before its first round finished shows the note and no canvas; a stage ended after round 5 still draws its chart', await until(`[...document.querySelectorAll('#whatIfCharts .whatif-chart-stagehead')].some((e) => /ended before its first round finished/.test(e.textContent))`) && await js(`!document.querySelector('#whatIfCharts [data-stage="greedy step 2"] canvas') && !!document.querySelector('#whatIfCharts .whatif-chart[data-stage="foods"] canvas')`));
         await shot('whatIfModal', 'whatif-chart.png');
+        // A live language change with the charts on screen: every chart's x and y titles and the header's version line follow it.
+        const titles = () => js(`[...document.querySelectorAll('#whatIfCharts .whatif-chart canvas')].map((c) => { const s = Chart.getChart(c).options.scales; return [s.x.title.text, s.y.title.text]; })`);
+        const enTitles = await titles();
+        for (const lng of ['zh', 'pt']) {
+            await js(`i18next.changeLanguage('${lng}').then(() => true)`);
+            await new Promise((r) => setTimeout(r, 300));
+            const now = await titles(), round = await js(`i18next.t('common:whatIf.chart.round')`), version = await js(`document.getElementById('whatIfVersion').textContent`);
+            check(`chart (${lng}): after a live language change every chart's x title reads "${round}", its y title is renewed, and the header's version line is in the new language`, now.length === enTitles.length && now.length >= 2 && round !== 'Round' && now.every(([x, y], i) => x === round && y !== enTitles[i][1]) && version === await js(`i18next.t('common:whatIf.version', { runner: 'test-runner', engine: 'test-engine' })`) && !version.startsWith('Runner'), JSON.stringify({ enTitles, now, version }));
+        }
+        await js(`i18next.changeLanguage('en').then(() => true)`);
+        check('chart (en): back in English the x titles read "Round" again', (await titles()).every(([x]) => x === 'Round'));
+        // A foods line's and a drinks line's label (the tooltip's title) is worded by the window: the game's words for food and drinks, the item names and the window's arrow, never the runner's "food:", "drinks:" or "->".
+        for (const lng of ['pt', 'zh', 'en']) {
+            await js(`i18next.changeLanguage('${lng}').then(() => true)`);
+            await new Promise((r) => setTimeout(r, 300));
+            const lab = await js(`(() => { const ch = Chart.getChart(document.querySelector('#whatIfCharts .whatif-chart[data-stage="foods"] canvas')); const of = (id) => [...new Set(ch.data.datasets.filter((d) => d.id === id).map((d) => d.label))]; return { c: of('c'), d: of('d'), food: i18next.t('itemCategoryNames./item_categories/food'), drinks: i18next.t('itemCategoryPluralNames./item_categories/drink'), donut: i18next.t('itemNames./items/strawberry_donut'), coffee: i18next.t('itemNames./items/wisdom_coffee') }; })()`);
+            check(`chart (${lng}): a foods line's and a drinks line's label read in the page's language, with no "food:", "drinks:" or "->"`, lab.c.length >= 1 && lab.d.length >= 1 && lab.c.every((x) => x.startsWith(lab.food + ': ') && x.includes(lab.donut) && x.includes('→')) && lab.d.every((x) => x.startsWith(lab.drinks + ': ') && x.includes(lab.coffee)) && [...lab.c, ...lab.d].every((x) => !/food:|drinks:|->/.test(x)), JSON.stringify(lab));
+        }
         live = { ...liveBeforeChart, version: 4.1 }; // the report from before, sent again above the chart's own (4.05) and below the next round (4.3)
         await js(`(() => { const m = document.getElementById('whatIfModal'); m.scrollTop = 0; m.querySelector('.modal-body').scrollTop = 0; return true; })()`); // the hover checks above scrolled the window down to the chart: back to the top for the checks after
     }
