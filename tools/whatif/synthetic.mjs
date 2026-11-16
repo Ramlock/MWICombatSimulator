@@ -13,7 +13,10 @@
 //   effects   [{ match: { op, player, slot|index, delta|item ... }, loot, supplies, searchBonus, noiseSd, note }]: what one op of a task changes, the first match wins, an op
 //             that matches none changes nothing. loot = the party's loot per day; supplies = that op's player's own consumables per day (negative = saves);
 //             searchBonus = extra loot per day on the search seeds only (1..confirmOffset): a change that looks better in the search than on fresh seeds;
-//             noiseSd = extra sd (50 h) in quadrature. A task's ops add up (the chain stacks).
+//             noiseSd = extra sd (50 h) in quadrature; lootPerLevel = loot per day per level of the op's `delta` (an abilityLevel op of any size), up to
+//             kneeDelta levels when given. A task's ops add up (the chain stacks).
+//   model.abilityUses (optional) { <player>: { <ability hrid>: casts per day } }: each player's abilityUsesPerDay in every checkpoint; without it the
+//             checkpoints carry none (a run recorded before the casts were counted).
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
@@ -42,11 +45,11 @@ export function checkpointFor(scenario, task, h, confirmOffset = 10000) {
     const eff = task.ops.map((op) => effectOf(scenario, op));
     const search = task.seed <= confirmOffset;
     const sdLoot50 = Math.sqrt(m.lootSd50 ** 2 + eff.reduce((a, e) => a + (e?.noiseSd ?? 0) ** 2, 0));
-    const loot = m.lootPerDay + eff.reduce((a, e) => a + (e?.loot ?? 0) + (search ? (e?.searchBonus ?? 0) : 0), 0) + sdLoot50 * walk(`${m.noiseSalt ?? ''}|${task.variant}|${task.seed}|loot`, h);
+    const loot = m.lootPerDay + eff.reduce((a, e, i) => a + (e?.loot ?? 0) + (e?.lootPerLevel ?? 0) * Math.min(task.ops[i].delta ?? 0, e?.kneeDelta ?? Infinity) + (search ? (e?.searchBonus ?? 0) : 0), 0) + sdLoot50 * walk(`${m.noiseSalt ?? ''}|${task.variant}|${task.seed}|loot`, h);
     const players = {};
     for (const n of names) {
         const delta = task.ops.reduce((a, op, i) => a + (op.player === n ? (eff[i]?.supplies ?? 0) : 0), 0);
-        players[n] = { consumablesPerDay: Math.max(0, m.supplies[n] + delta + m.suppliesSd50 * walk(`${m.noiseSalt ?? ''}|${task.variant}|${task.seed}|sup|${n}`, h)) };
+        players[n] = { consumablesPerDay: Math.max(0, m.supplies[n] + delta + m.suppliesSd50 * walk(`${m.noiseSalt ?? ''}|${task.variant}|${task.seed}|sup|${n}`, h)), ...(m.abilityUses?.[n] ? { abilityUsesPerDay: { ...m.abilityUses[n] } } : {}) };
     }
     const consumables = Object.values(players).reduce((a, p) => a + p.consumablesPerDay, 0);
     return { simHours: h, players, party: { profitAfterTaxPerDay: loot - consumables, consumablesPerDay: consumables, expPerHour: m.expPerHour, deathsPerHour: m.deathsPerHour }, encountersPerHour: m.encountersPerHour };

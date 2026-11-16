@@ -24,6 +24,8 @@ import { tMult, dfOf, contention, eliminate, releaseTied, reopen, nearestSeparat
 import { installProbe, summarize, mergeProbes, triggerCands, localCands, effectiveTriggers, triggerText, joinTriggerDesc } from './triggers.mjs';
 import { skillCands, skillReport, parseSkillLeft } from './levers/skills.mjs';
 import { upgradeCands, LEVER_NAMES as UPGRADE_LEVERS } from './levers/houses.mjs'; // houses, abilitylevels, books (phase 3)
+import { booksForPlayer, BOOKS_FIRST_HOURS } from './books.mjs'; // the books stage: ability books and switches, judged by the measuring loop
+import { precisions } from './ladder.mjs';
 import { shrineCands, parseSteps as parseShrineSteps, parseCap as parseShrineCap } from './levers/shrines.mjs'; // guild shrines
 import { parseBudgetList, resolveBudgets, zeroSpend, affordable, pay, NO_LIMIT_TEXT } from './budgets.mjs';
 import { isDominatedSwap } from './dominated.mjs';
@@ -85,6 +87,8 @@ export async function main(settings, seams) {
     if (errorRule === 'unpaired' && firstK < 2) throw new Error('unpaired rule: at least 2 runs per variant (his pick, relaxed from 4)');
     const stages = [{ k: firstK, h: unitH }]; // the one fixed stage left: round 1, today's screen
     const fin = { k: finK, h: finH }; // the measurement of the pick checks, the confirmation and the trigger refinement
+    const booksFirstH = Number(arg('books-first-hours', BOOKS_FIRST_HOURS)); // the books stage's first block: hours per seed (books.mjs; more only where a row is unsettled, up to --confirm-hours)
+    if (!(booksFirstH > 0)) throw new Error('--books-first-hours must be above 0');
     const keep = [];
     const players = list(arg('players', null) ?? defaultPlayer(data.setups.map((s) => s.name)));
     // With no --max-up, the upgrades are every level the market sells above the worn one (+1 to +3 with no ask listed apart as no
@@ -111,7 +115,7 @@ export async function main(settings, seams) {
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };
     // `pairs` is no longer a lever (the foods and drinks race tries whole combinations): an old command line or request that names it still runs, the name is ignored.
     // `consumables`, the one lever the foods and the drinks were before they were split, is read as both (an old command line, request or saved search).
-    const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS.filter((l) => l !== 'abilitylevels' && l !== 'books') : x.trim() === 'consumables' ? ['foods', 'drinks'] : [x.trim()])).filter((x) => x !== 'pairs'));
+    const levers = new Set(String(arg('levers', 'equip')).split(',').flatMap((x) => (x === 'all' ? LEVERS : x.trim() === 'consumables' ? ['foods', 'drinks'] : [x.trim()])).filter((x) => x !== 'pairs'));
     for (const l of levers) if (!LEVERS.includes(l)) throw new Error('unknown lever ' + l + '; levers: ' + LEVERS.join(','));
     // --export: the old single character export (an object with its `name`), or a map { "<player name>": <that player's export> }.
     // Levers that need a player's export never block a search: that player is skipped by the lever (result.skippedNoExport).
@@ -167,7 +171,8 @@ export async function main(settings, seams) {
     const pricesStamp = data.pricesTimestamp;
     const pricesMeta = { pricesTimestamp: Number.isFinite(pricesStamp) ? pricesStamp : null, pricesSource: keyOptions.prices.startsWith('tools/calibration/') ? 'committed' : 'snapshot' };
     const keyOf = (ops) => hash(JSON.stringify({ s: applyOps(setups0, ops), o: keyOptions })).slice(0, 16);
-    const allHours = [...new Set([...stages.map((s) => s.h), fin.h])].sort((a, b) => a - b);
+    const BOOK_LEVERS = ['abilitylevels', 'books'], booksOn = BOOK_LEVERS.some((l) => levers.has(l)) && goal === 'profit'; // the books stage (profit goal only: its rule is the payback)
+    const allHours = [...new Set([...stages.map((s) => s.h), fin.h, ...(booksOn ? precisions({ firstHours: booksFirstH, fullHours: fin.h }).map((x) => x.h) : [])])].sort((a, b) => a - b);
     let stoppedByTime = false;
     const wallLog = []; // per run actually made in this invocation
     // Per run the record held at the start (fromRecord) that a batch took instead of making it, counted the first time it is asked for (and again for more hours):
@@ -581,13 +586,14 @@ export async function main(settings, seams) {
         }
         return out;
     }
+    const raceLevers = new Set([...levers].filter((l) => !BOOK_LEVERS.includes(l)));
     function allCandidates(setups, p) {
         if (!exportFor(p)) for (const l of ['owned', 'abilities', 'books']) if (levers.has(l)) skipNoExport(l, p);
         return [
             ...(levers.has('equip') ? candidatesFor(setups, p, openSlots) : []),
             ...(levers.has('owned') ? ownedCands(setups, p, openSlots) : []),
             ...abilityCands(setups, p, levers.has('abilities'), levers.has('order')),
-            ...upgradeCands(setups.find((x) => x.name === p), p, levers, { arg, pricer, ex: exportFor(p), onDrop: leaveOut }),
+            ...upgradeCands(setups.find((x) => x.name === p), p, raceLevers, { arg, pricer, ex: exportFor(p), onDrop: leaveOut }), // ability books and switches: the books stage alone judges them (search())
             ...(levers.has('triggers') ? triggerCands(setups.find((x) => x.name === p), p, probeStore, { ...trigOpts, user: userTrig[p] }) : []),
             ...(levers.has('skills') ? skillCands(setups, p, skillOpts) : []),
             ...(levers.has('shrines') ? shrineCands(setups.find((x) => x.name === p), p, { pricer, ...shrineOpts }) : []),
@@ -1173,6 +1179,33 @@ export async function main(settings, seams) {
                 publish(result); // snapshot 1 (foods) and 2 (drinks)
             }
         }
+        // STAGE B, the books stage (the private design's section 10, placement A): every held ability's books and every switch to a not-learned
+        // ability, each judged alone against this start (the baseline after foods and drinks) by the measuring loop and the break-even rule
+        // (books.mjs); no pick check. The rows go to result.books: they join neither the chain nor the budget (a row joining the plan would go
+        // through takeStep, the one seam). Its states run on the pick check's seeds (sureSeeds), first block at --books-first-hours.
+        result.books = []; result.booksApart = [];
+        if (booksOn) {
+            const startOps = baseOps, setupsB = applyOps(setups0, startOps), n = setups0.length;
+            const q = (cp, p) => lootOf(cp) / n - suppliesOf(cp, p); // the buyer's net of one run (buyer.mjs)
+            for (const p of players) {
+                const measure = async (ops, k, h) => {
+                    const vOps = [...startOps, ...ops], seeds = sureSeeds(k);
+                    report({ stage: 'books', candidatesLeft: 0, checking: p });
+                    if (await ensure(seeds.flatMap((seed) => [{ ops: startOps, seed, h, tag: 'books' }, { ops: vOps, seed, h, tag: 'books' }])) !== true) return null;
+                    const samples = {}, usesAll = [];
+                    for (const s of seeds) { const v = cpOf(vOps, s, h); samples[s] = q(v, p) - q(cpOf(startOps, s, h), p); usesAll.push(v.players?.[p]?.abilityUsesPerDay); }
+                    // A run recorded before the casts were counted has no abilityUsesPerDay: the casts are then unknown (null), never 0.
+                    const uses = usesAll.every((u) => u && typeof u === 'object') ? Object.fromEntries([...new Set(usesAll.flatMap(Object.keys))].map((a) => [a, usesAll.reduce((x, u) => x + (u[a] ?? 0), 0) / usesAll.length])) : null;
+                    return { samples, uses };
+                };
+                const got = await booksForPlayer({ player: p, setup: setupsB.find((x) => x.name === p), learned: exportFor(p)?.learnedAbilities ?? null, buy: (h) => pricer.buy(h, 0).cost, limit: payLimit, measure, firstHours: booksFirstH, fullHours: fin.h, switches: levers.has('books') });
+                if (!got) return stop(result);
+                const rows = levers.has('abilitylevels') ? got.rows : got.rows.filter((r) => r.kind === 'switch');
+                result.books.push(...rows); result.booksApart.push(...got.apart.filter((r) => levers.has(r.kind === 'switch' ? 'books' : 'abilitylevels')));
+                for (const r of rows) console.log(`books: ${bookRowText(r)}`);
+                publish(result);
+            }
+        }
         if (levers.has('triggers')) { report({ stage: 'probe' }); probeStore = await probeBase(baseOps); }
         const setupsBase = applyOps(setups0, baseOps);
         let cands = players.flatMap((p) => allCandidates(setupsBase, p));
@@ -1405,6 +1438,11 @@ export async function main(settings, seams) {
         outSink.partial(snapshot(result));
     }
     const endedMd = (n, skip) => (skip ? `ended by you during round ${n + 1}, its finished runs kept` : `ended by you after round ${n}`); // result.endedByUser: the rounds the stage finished; a Skip ends the round in flight
+    const abilityName = (h) => short(h).replaceAll('_', ' ');
+    const bookChangeText = (r) => (r.kind === 'switch' ? `ability ${r.slot + 1}: ${r.was ? `${abilityName(r.was.ability)} ${r.was.level}` : 'empty'} -> learn ${abilityName(r.ability)}${r.dayOne != null ? ` (day one ${fmt(r.dayOne)} ± ${fmt(r.dayOneSe)})` : ''}` : `${abilityName(r.ability)} ${r.from}`);
+    const bookLevelsText = (r) => (r.kind === 'switch' && !(r.to >= 1) ? 'no switch' : r.to === r.from && r.kind !== 'switch' ? 'none' : `${r.kind === 'switch' ? `learn to ${r.to}` : `to ${r.to}`}${r.upTo > r.to ? `, up to ${r.upTo}` : ''}`);
+    const bookMarkText = (r) => (r.mark === 'notEven' ? `not even: the gain stops between ${r.knee.from} and ${r.knee.to}` : r.mark === 'assumed' ? 'evenness assumed' : r.mark === 'even' ? 'even' : '-');
+    const bookRowText = (r) => `${r.player} ${bookChangeText(r)}: ${bookLevelsText(r)}, cost ${fmt(r.cost)}, payback ${r.payback == null ? '-' : r.payback.toFixed(1)} days, ${bookMarkText(r)}, ${r.states} states`;
     const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
     const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
 
@@ -1476,6 +1514,12 @@ export async function main(settings, seams) {
         L.push(...skillLines);
         if (result.overBudget.length) { L.push('', '## Priced, over budget, not ranked', ''); for (const a of result.overBudget) L.push(`- ${a.player}, ${a.desc}: ${a.costBound === 'upper' ? '≤ ' : ''}${fmt(a.cost)}`); }
         if (result.apart.length) { L.push('', '## Unknown cost, not ranked', ''); for (const a of result.apart) L.push(`- ${a.desc}: ${a.note}`); }
+        if (result.books?.length || result.booksApart?.length) {
+            L.push('', '## Ability books and switches (each alone against the baseline after foods and drinks)', '', '| Player | Change | Levels | Cost | Payback days | Gain per level per day | Evenness | Seeds x hours, states |', '|---|---|---|---|---|---|---|---|');
+            for (const r of result.books) L.push(`| ${r.player} | ${bookChangeText(r)} | ${bookLevelsText(r)} | ${r.costBound === 'upper' ? '≤ ' : ''}${fmt(r.cost)} | ${r.payback == null ? '-' : r.payback.toFixed(1)} | ${fmt(r.perLevel)} (${fmt(r.perLevelLow)} to ${fmt(r.perLevelHigh)}) | ${bookMarkText(r)} | ${r.seeds} x ${r.hours ?? fin.h} h, ${r.states} |`);
+            L.push('', 'Levels: the levels bought that pay back at the low end of the gain per level; "up to" the high end\'s, when the range leaves some unsettled. A switch\'s first book teaches the ability at level 1; its day-one gain (the new ability at level 1 against the one it replaces) is in the change. Evenness: "even" (the steps agree and could have disagreed), "evenness assumed" (the check could not have failed: the gain is about the size of its error), "not even" (the gain stops between the two levels named; nothing past the first is recommended).');
+            for (const a of result.booksApart || []) L.push(`- ${a.player}, ${bookChangeText(a)}: not judged, ${a.note}`);
+        }
         const t = result.timing;
         L.push('', `Timing: ${t.wallMinutes.toFixed(1)} min wall this call, ${t.coreHoursAllRuns.toFixed(2)} core-hours over all cached runs (${t.simHoursAllRuns} sim h, ${t.secondsPerSimHour?.toFixed(2)} s per sim hour).`);
         const where = outSink.final(snapshot(result), L.join('\n') + '\n'); // result.json and result.md
