@@ -1213,6 +1213,7 @@ class CombatSimulator extends EventTarget {
             } else {
                 source.abilityManaCosts.set(ability.hrid, ability.manaCost);
             }
+            source.abilityUses.set(ability.hrid, (source.abilityUses.get(ability.hrid) ?? 0) + 1); // one per cast, beside its mana (the what-if's level clock)
         }
 
         source.combatDetails.currentManapoints -= ability.manaCost;

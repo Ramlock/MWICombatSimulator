@@ -10,6 +10,7 @@ Documents upstream `testing` at commit `95db2f6` of `https://github.com/shykai/M
 - `buffs-and-modifiers.md`: every modifier source, its data file, reader and affected stats; the full house-room trace.
 - `talismans.md`: the talisman module: the `talismans` field, the modifier table, the one setup step (`applyTalismans`) and its two call sites.
 - `whatif-window.md`: the What-if window the local what-if runner serves: its files, the runner's interface, what it reads from a result, Apply; its "get the runner" state on a page with no runner.
+- `payback.md`: the payback as a break-even day (`src/whatif/payback.mjs`): the one payback function, the level clock, the evenness check, the stopping level, and the ability use counter it reads.
 - `runner-zip.md`: the runner downloads: `WhatIfRunner.exe` for Windows (one file, a Node single executable application) and the zip for Linux (build scripts, pinned Node, the exe's entry and unpack folder, the release steps).
 - `release-script.md`: `tools/release/release.ps1`, the one command that runs the fixed steps of a runner release (build, tests, release, download check, push, Pages, live page); its dry run and its test seam.
 - `test-loop.md`: `tools/test/run-tests.mjs`, the one way to run the test files (one log each, one line per file, under HeavyRun).

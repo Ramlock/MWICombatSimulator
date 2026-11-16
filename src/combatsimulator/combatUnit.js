@@ -34,6 +34,7 @@ class CombatUnit {
     dropTable = [];
     rareDropTable = [];
     abilityManaCosts = new Map();
+    abilityUses = new Map(); // casts per ability hrid, counted on the same line as abilityManaCosts (combatSimulator.js tryUseAbility)
 
     // Calculated combat stats including temporary buffs
     combatDetails = {

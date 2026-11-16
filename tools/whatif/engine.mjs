@@ -196,6 +196,8 @@ export function metrics(snap, names, prices) {
             expPerHour: xp / simHours,
             expPerHourBySkill: Object.fromEntries(Object.entries(snap.experienceGained[ph] || {}).map(([k, v]) => [k, v / simHours])),
             deathsPerHour: (snap.deaths[ph] || 0) / simHours,
+            // Casts per day of each ability (hrid -> casts / day), the level clock's uses per day (src/whatif/payback.mjs).
+            abilityUsesPerDay: Object.fromEntries(Object.entries(snap.abilityUses?.[ph] || {}).map(([k, v]) => [k, perDay(v)])),
         };
         players[name] = p;
         for (const k of Object.keys(party)) party[k] += p[k]; // expPerHourBySkill stays per player
@@ -224,8 +226,9 @@ function extraBuffsFor({ comdrop = 0, comexp = 0, moopass = false }) {
 
 function snapshot(sim) {
     const r = sim.simResult;
-    for (const p of sim.players) r.setDropRateMultipliers(p);
+    for (const p of sim.players) { r.setDropRateMultipliers(p); r.setManaUsed(p); }
     return structuredClone({
+        abilityUses: r.abilityUses,
         simulatedTime: sim.simulationTime,
         lastEncounterFinishTime: r.lastEncounterFinishTime,
         encounters: r.encounters,

@@ -29,6 +29,7 @@ class SimResult {
         // Per player hrid, the player's ability hrids in slot order, so the panel lists the holds in that order.
         this.abilityOrder = {};
         this.manaUsed = {};
+        this.abilityUses = {}; // per player hrid, per ability hrid: casts (beside manaUsed; setManaUsed fills both)
         this.timeSpentAlive = [];
         this.bossSpawns = [];
         this.hitpointsSpent = {};
@@ -248,6 +249,7 @@ class SimResult {
         for (let [key, value] of unit.abilityManaCosts.entries()) {
             this.manaUsed[unit.hrid][key] = value;
         }
+        this.abilityUses[unit.hrid] = Object.fromEntries(unit.abilityUses ?? []);
     }
 
     addHitpointsSpent(unit, source, amount) {
