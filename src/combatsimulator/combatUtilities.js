@@ -50,7 +50,9 @@ class CombatUtilities {
 
     // attack: an object shared by every target of one attack (Overkill: the same attack's later targets do not spend its own store);
     // null = this call is an attack of its own. isParry: the call is a parry's counterattack.
-    static processAttack(source, target, abilityEffect = null, attack = null, isParry = false) {
+    // echo: Echo's repeat of an ability hit (talisman), { strength, roll }: the damage roll times strength; roll = an earlier
+    // attackResult whose damage roll and crit it takes instead of rolling its own (ECHO_OWN_DAMAGE_ROLL off), null = its own.
+    static processAttack(source, target, abilityEffect = null, attack = null, isParry = false, echo = null) {
         let combatStyle = abilityEffect
             ? abilityEffect.combatStyleHrid
             : source.combatDetails.combatStats.combatStyleHrid;
@@ -171,7 +173,9 @@ class CombatUtilities {
         let sourceMinDamage = sourceDamageMultiplier * (1 + baseDamageFlat + armorDamageRatioFlat);
         let sourceMaxDamage = sourceDamageMultiplier * (baseDamageRatio * sourceAutoAttackMaxDamage + baseDamageFlat + armorDamageRatioFlat);
 
-        if (Math.random() < critChance) {
+        if (echo?.roll) {
+            isCrit = echo.roll.isCrit;
+        } else if (Math.random() < critChance) {
             sourceMaxDamage = sourceMaxDamage * (1 + bonusCritDamage);
             sourceMinDamage = sourceMaxDamage;
             isCrit = true;
@@ -179,7 +183,8 @@ class CombatUtilities {
         // Shatter (talisman, from the in-game text): a crit's penetration for this hit only.
         sourcePenetration = shatterPenetration(source, sourcePenetration, isCrit, !!abilityEffect);
 
-        let damageRoll = CombatUtilities.randomInt(sourceMinDamage, sourceMaxDamage);
+        let damageRoll = echo?.roll ? echo.roll.damageRollRaw : CombatUtilities.randomInt(sourceMinDamage, sourceMaxDamage);
+        const damageRollRaw = damageRoll;
         damageRoll *= (1 + source.combatDetails.combatStats.taskDamage);
         damageRoll *= (1 + target.combatDetails.combatStats.damageTaken);
         // Smite (talisman, from the in-game text): more damage to a boss.
@@ -190,6 +195,8 @@ class CombatUtilities {
         } else {
             damageRoll *= (1 + source.combatDetails.combatStats.abilityDamage);
         }
+        // Echo (talisman): the repeat's roll at its strength (half), before armor.
+        if (echo) damageRoll *= echo.strength;
 
         let damageDone = 0;
         let hitDamageDone = 0; // damageDone without Overkill's true damage: what life steal, HP drain and mana leech take
@@ -322,10 +329,11 @@ class CombatUtilities {
             manaLeechMana = source.addManapoints(Math.floor(source.combatDetails.combatStats.manaLeech * hitDamageDone));
         }
 
-        return { damageDone, hitDamageDone, didHit, thornDamageDone, thornType, retaliationDamageDone, lifeStealHeal, hpDrain, manaLeechMana, isCrit};
+        return { damageDone, hitDamageDone, didHit, thornDamageDone, thornType, retaliationDamageDone, lifeStealHeal, hpDrain, manaLeechMana, isCrit, damageRollRaw };
     }
 
-    static processHeal(source, abilityEffect, target) {
+    // strength: a factor on the heal roll (Echo's repeat, talisman), floored to whole HP.
+    static processHeal(source, abilityEffect, target, strength = 1) {
         if (abilityEffect.combatStyleHrid != "/combat_styles/magic") {
             throw new Error("Heal ability effect not supported for combat style: " + abilityEffect.combatStyleHrid);
         }
@@ -340,6 +348,7 @@ class CombatUtilities {
         let maxHeal = healingAmplify * (baseHealRatio * magicMaxDamage + baseHealFlat);
 
         let heal = this.randomInt(minHeal, maxHeal);
+        if (strength !== 1) heal = Math.floor(heal * strength);
         let amountHealed = target.addHitpoints(heal);
 
         return amountHealed;

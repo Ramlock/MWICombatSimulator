@@ -6,10 +6,10 @@
 // and the engine stats it maps to (the names player.js sums from equipment). A talisman line is a plain gear stat: the
 // player adds it to that sum (Player.talismanStats, set by simSetup applyTalismans).
 // Damage Taken is a gear stat like the others: combatUnit.js adds it to the buffs' damage_taken.
-// Four of the five unique modifiers (Smite, Shatter, Fortify, Overkill) are built from their in-game text, NOT checked against
-// fights: their line value lands in Player.talismanStats under the modifier's id (no gear stat of that name exists, so
-// Player.updateCombatDetails leaves it alone) and the engine reads it through the helpers at the bottom of this file
-// (combatUtilities.js processAttack, combatSimulator.js). Echo has no effect (not simulated).
+// The five unique modifiers: their line value lands in Player.talismanStats under the modifier's id (no gear stat of that name
+// exists, so Player.updateCombatDetails leaves it alone) and the engine reads it through the helpers at the bottom of this file
+// (combatUtilities.js processAttack, combatSimulator.js). Smite, Shatter, Fortify and Overkill are built from their in-game
+// text, NOT checked against fights; Echo is built from a test-server recording (combatSimulator.js tryUseAbility / processEcho).
 
 // ---- Unique modifiers: the open questions the in-game text leaves, one named setting each ----
 // Each default is the plainest reading of the text; flip it here once a recording answers it. docs/codebase/talismans.md lists them.
@@ -46,6 +46,29 @@ export const UNIQUE_SETTINGS = {
     OVERKILL_EXCESS_AFTER_MITIGATION: true,
     // A parry's counterattack is a direct attack (it may spend the store and its kill may fill it).
     OVERKILL_PARRY_IS_DIRECT: true,
+    // Echo ("On ability cast, X% chance to repeat the ability's damage or healing at half strength."). Checked against a
+    // test-server recording; the status of each default is in docs/codebase/talismans.md.
+    // The repeat's strength, a factor on its damage roll (before armor) and on its heal roll. Verified: half.
+    ECHO_STRENGTH: 0.5,
+    // true = the repeat rolls its own damage (then halved); false = it takes the original's roll on that target (crit included) at half.
+    ECHO_OWN_DAMAGE_ROLL: true,
+    // The repeat strikes a target the original missed (true) or only those the original landed on (false). Verified: true.
+    ECHO_ON_MISSED_TARGETS: true,
+    // The repeat applies the ability's own non-damage parts again on a hit: its debuffs, stun, blind and silence.
+    ECHO_REPEATS_ABILITY_EFFECTS: false,
+    // The repeat's hit starts a damage over time of its own (an ability with one).
+    ECHO_REPEAT_STARTS_DOT: false,
+    // The repeat sets off what any of the source's attacks sets off, beyond thorns and retaliation (always, in processAttack):
+    // Curse, Fury, the target's Weaken, the target's Fortify.
+    ECHO_TRIGGERS_ON_HIT_EFFECTS: true,
+    // A repeat rolls Echo again (a chain); false = one roll per cast.
+    ECHO_CAN_REPEAT_ITSELF: false,
+    // The repeat also repeats a Blaze that came with the cast (Bloom is never repeated: verified).
+    ECHO_REPEATS_BLAZE: false,
+    // A heal ability's repeat heals the targets the cast healed (true) or picks its target again (false; same for self and all allies).
+    ECHO_HEAL_SAME_TARGETS: true,
+    // For Overkill the repeat is part of the cast's attack (it does not spend a store the cast's own kills filled); false = an attack of its own.
+    ECHO_SAME_ATTACK_FOR_OVERKILL: true,
 };
 // Fixed by the text itself.
 export const FORTIFY_MAX_STACKS = 4;
@@ -54,7 +77,7 @@ export const FORTIFY_DURATION = 5e9; // 5 s in the engine's nanoseconds
 // An effect on an engine combat stat: summed like a gear stat.
 const stat = (name) => ({ stat: name });
 
-// id -> { name, grades: [G1..G6], effects: [...] } ; a `unique: true` entry's effect is its own id, read by the engine (Echo: none).
+// id -> { name, grades: [G1..G6], effects: [...] } ; a `unique: true` entry's effect is its own id, read by the engine.
 export const TALISMAN_MODIFIERS = {
     auto_attack_damage: { name: 'Auto Attack Damage', grades: [0.012, 0.018, 0.024, 0.03, 0.036, 0.048], effects: [stat('autoAttackDamage')] },
     ability_damage: { name: 'Ability Damage', grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [stat('abilityDamage')] },
@@ -100,11 +123,11 @@ export const TALISMAN_MODIFIERS = {
     melee_experience: { name: 'Melee Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('meleeExperience')] },
     ranged_experience: { name: 'Ranged Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('rangedExperience')] },
     magic_experience: { name: 'Magic Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('magicExperience')] },
-    // Unique modifiers: from the in-game text, not checked against fights; the engine reads each by its id (helpers below).
-    // Echo: no effect (not simulated).
+    // Unique modifiers: the engine reads each by its id (helpers below). Echo from a test-server recording; the other four from
+    // the in-game text, not checked against fights.
     smite: { name: 'Smite', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [stat('smite')] },
     overkill: { name: 'Overkill', unique: true, grades: [0.15, 0.225, 0.3, 0.375, 0.45, 0.6], effects: [stat('overkill')] },
-    echo: { name: 'Echo', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [] },
+    echo: { name: 'Echo', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [stat('echo')] },
     shatter: { name: 'Shatter', unique: true, grades: [0.04, 0.06, 0.08, 0.1, 0.12, 0.16], effects: [stat('shatter')] },
     fortify: { name: 'Fortify', unique: true, grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [stat('fortify')] },
 };
@@ -114,7 +137,7 @@ const scaleByPower = (value, power) => value * (1 + power); // checked against t
 
 // A player's talismans -> the engine effects of every line, in line order.
 // talismans: { power, lines: [{ modifier, grade }] }   power: the belt's Talisman Power as a fraction (0.2 = +20 %), default 0;
-// modifier: a TALISMAN_MODIFIERS id; grade: 1..6. Returns [{ modifier, stat, value }]; Echo gives none. Talisman power scales
+// modifier: a TALISMAN_MODIFIERS id; grade: 1..6. Returns [{ modifier, stat, value }]. Talisman power scales
 // every line the same way, the unique ones included.
 // An unknown modifier or a grade outside 1..6 throws.
 export function talismanEffects(talismans) {
@@ -137,7 +160,7 @@ export function talismanStats(talismans) {
     return stats;
 }
 
-// ---- The unique modifiers in the engine (from the in-game text, not checked against fights) ----
+// ---- The unique modifiers in the engine (Echo from a recording; the other four from the in-game text, not checked against fights) ----
 // A unit's value of a unique modifier: its summed line value (Player.talismanStats), 0 for a monster or a player without it.
 export const uniqueValue = (unit, id) => unit?.talismanStats?.[id] ?? 0;
 
@@ -206,4 +229,10 @@ export function overkillStore(unit, excess, attack) {
     const prev = unit.overkillStore;
     const amount = v * excess + (UNIQUE_SETTINGS.OVERKILL_KILLS_ADD_UP && prev ? prev.amount : 0);
     unit.overkillStore = { amount, attack: attack ?? null };
+}
+
+// Echo: the one roll of an ability cast at the unit's line value; no random call for a unit without the line.
+export function echoProcs(unit) {
+    const v = uniqueValue(unit, 'echo');
+    return v > 0 && Math.random() < v;
 }
