@@ -22,6 +22,10 @@ export const TALISMAN_NAME_KEYS = {
     ranged_experience: 'combatStats.rangedExperience', magic_experience: 'combatStats.magicExperience',
 };
 
+// The unique modifiers the engine simulates from their in-game text, not checked against fights (src/combatsimulator/talismans.js):
+// their lines carry a mark, and the block one note under the list (common:talismans.fromText). Echo is not simulated: no mark.
+export const FROM_TEXT_MODIFIERS = ['smite', 'shatter', 'fortify', 'overkill'];
+
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // The power as the game shows it: a fraction, 0.224 reads "+22.4%".
 export const powerText = (power) => '+' + String(Math.round((Number(power) || 0) * 1000) / 10) + '%';
@@ -36,9 +40,12 @@ export function talismanViewHtml(talismans, t) {
         const name = TALISMAN_MODIFIERS[l.modifier]?.name ?? String(l.modifier);
         const key = TALISMAN_NAME_KEYS[l.modifier] ?? (TALISMAN_MODIFIERS[l.modifier] ? `common:talismans.names.${l.modifier}` : null);
         const label = key ? `<span data-i18n="${esc(key)}">${esc(tr(key, name))}</span>` : `<span>${esc(name)}</span>`;
-        return `<li class="talisman-line">${label} <span class="talisman-grade">G${esc(l.grade)}</span></li>`;
+        const mark = FROM_TEXT_MODIFIERS.includes(l.modifier) ? '<span class="talisman-from-text-mark">*</span>' : '';
+        return `<li class="talisman-line">${label} <span class="talisman-grade">G${esc(l.grade)}</span>${mark}</li>`;
     }).join('');
+    const note = lines.some((l) => FROM_TEXT_MODIFIERS.includes(l.modifier))
+        ? `<div class="talisman-from-text">* <span data-i18n="common:talismans.fromText">${esc(tr('common:talismans.fromText', 'Simulated from the in-game text, not checked against fights'))}</span></div>` : '';
     return `<div class="col-md-2 col-form-label" data-i18n="common:talismans.title">${esc(tr('common:talismans.title', 'Talismans'))}</div>`
-        + `<div class="col-md-10"><ul class="talisman-lines">${items}</ul>`
+        + `<div class="col-md-10"><ul class="talisman-lines">${items}</ul>${note}`
         + `<div class="talisman-power"><span data-i18n="common:talismans.power">${esc(tr('common:talismans.power', 'Talisman Power'))}</span> ${esc(powerText(talismans.power))}</div></div>`;
 }

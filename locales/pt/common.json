@@ -8,6 +8,7 @@
     "talismans": {
         "title": "Talismãs",
         "power": "Poder de talismã",
+        "fromText": "Simulado a partir do texto do jogo, não conferido em combates",
         "names": {
             "melee_accuracy": "Precisão corpo a corpo",
             "melee_damage": "Dano corpo a corpo",

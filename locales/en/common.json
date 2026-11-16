@@ -8,6 +8,7 @@
     "talismans": {
         "title": "Talismans",
         "power": "Talisman Power",
+        "fromText": "Simulated from the in-game text, not checked against fights",
         "names": {
             "melee_accuracy": "Melee Accuracy",
             "melee_damage": "Melee Damage",
