@@ -1,6 +1,6 @@
 # The payback as a break-even day
 
-Every payback figure in the fork comes from one function, `payback` in `src/whatif/payback.mjs`. The window (`src/whatif/panel.mjs`) and the search (`tools/whatif/core.mjs`, `optimize.mjs`, `sure.mjs`, `rounds.mjs`) read it through `paybackDays` and `overPaybackLimit`, which are its no-lead case. The same file holds the level clock, the evenness check and the stopping level. Its tests: `tools/test/whatif-payback.mjs` (and the payback lines of `tools/test/whatif-sure.mjs`).
+Every payback figure in the fork comes from one function, `payback` in `src/whatif/payback.mjs`. The window (`src/whatif/panel.mjs`) and the search (`tools/whatif/core.mjs`, `optimize.mjs`, `sure.mjs`, `rounds.mjs`) read it through `paybackDays` and `overPaybackLimit`, which are its no-lead case. The same file holds the level clock, the evenness check and the stopping level. The search's books stage (below) measures with `tools/whatif/ladder.mjs` and builds its rows in `tools/whatif/books.mjs`. Tests: `tools/test/whatif-payback.mjs` (and the payback lines of `tools/test/whatif-sure.mjs`), `tools/test/whatif-ladder.mjs`, `tools/test/whatif-books.mjs`.
 
 The rule it implements:
 
@@ -25,8 +25,8 @@ The game's experience table is `tools/whatif/levelExperienceTable.json` (`table[
 
 `payback(change, { table, maxDays })`
 
-- `change = { cost, gain, leads: [{ gainPerLevel, with: clock, without: clock }] }`. `gain` is the day-one gain per day (0 for books alone; negative for a switch that loses at first). Each lead is one ability or skill: its lead on a day is `levelOn(with) − levelOn(without)`, read at the middle of the day (day `n`, counted from 0, is read at `n + 0.5`, as the books report does), so half a level ahead gives nothing.
-- `maxDays`: the most days looked at (default: no end). The 5-year horizon and the Payback limit are the caller's.
+- `change = { cost, gain, leads: [{ gainPerLevel, knee?, with: clock, without: clock }] }`. `gain` is the day-one gain per day (0 for books alone; negative for a switch that loses at first). Each lead is one ability or skill: its lead on a day is `levelOn(with) − levelOn(without)`, read at the middle of the day (day `n`, counted from 0, is read at `n + 0.5`, as the books report does), so half a level ahead gives nothing. A lead's `knee` (a level, optional) is where the gain stops: a level past it counts as the knee itself, on both sides.
+- `maxDays`: the most days looked at (default: no end). The Payback limit is the caller's; with none, the search stops at the horizon, `HORIZON_DAYS` (5 years).
 - Returns the payback in days, or `null`: no cost (0 or not a number), a gain or gain per level that is not a number, or a summed difference that never covers the cost within `maxDays`.
 - The figure is the exact crossing point, each day's difference accruing evenly through that day. For a change with no lead it is `cost / gain` exactly, today's figure; with a lead, its ceiling is the first whole day on which the summed difference covers the cost: the books report's break-even day (the test holds the report's `breakEven` and compares, on 48 made-up inputs). **The design's "payback day" is the ceiling of what `payback` returns**; the limit is checked on the figure itself, as before.
 - How it walks: the daily difference changes only on a day one of the clocks changes level, so it walks from level change to level change (at most 199 per clock), adding the difference over each stretch, and finds the crossing inside the stretch where it falls. When no clock moves again (no XP coming in, or level 200 reached) the last stretch has no end: a difference above 0 still crosses, one at or below 0 never does. A no-lead change is one stretch from day 0.
@@ -36,9 +36,10 @@ The game's experience table is `tools/whatif/levelExperienceTable.json` (`table[
 
 `evenness(steps, { margin = 2 })`
 
-- `steps`: the measured steps of one ability or skill, ascending: `[{ levels, gain, se }]` (+10, +20, +40 ...; the gain per day against today and its standard error).
-- Each step is checked against the one before: the earlier gain against the later gain scaled to the earlier step's levels (the +10 gain against half the +20 gain, then each doubling against the last), even when the difference is within `margin` (twice) its standard error, `sqrt(se₁² + (se₂ · L₁/L₂)²)` (the two errors taken as independent). **When the two steps share seeds, this check is more lenient than a paired one** (the true error of the difference is smaller); the caller that wires the steps (part 2) reads this first. The first step that fails ends the check; nothing past it is read.
-- Returns `{ perLevel, lastEven, flagged, pairs }`: the gain per level is the last even step's gain over its levels (the largest even step, the least noisy); `flagged` is true when a step failed ("for us to rethink our strategy"); `pairs` lists each check (`from`, `to`, `diff`, `seDiff`, `even`). One step gives its gain over its levels with no check made; no step gives `perLevel: null`.
+- `steps`: the measured steps of one ability or skill, ascending: `[{ levels, gain, se, samples? }]` (+10, +20, +40 ...; the gain per day against the start, its standard error, and optionally the per-seed gains).
+- Each step is checked against the one before: the earlier gain against the later gain scaled to the earlier step's levels (`a − k·b`, `k` = the earlier levels over the later), even when within `margin` (2) errors of their difference. When both steps carry samples on two or more common seeds (the books stage runs every state of one ability on the same seeds), the difference is paired: per seed `a − k·b`, its mean and `sd / √n`. Otherwise the two errors are taken as independent. The first step that fails ends the check.
+- A pair that could not have failed is `assumed`, not even: both flat shapes (all of the later gain inside the earlier step, and none of it) would also have passed.
+- Returns `{ perLevel, perLevelSe, lastEven, flagged, pairs, mark, knee }`: the gain per level and its error from the last even step; `mark` is `notEven` (a step failed), `even` (some pair passed that could have failed) or `assumed`; `knee` is `{ from, to }` when flagged: the last even step and the failed one, the gain stops between them.
 
 ## The stopping level
 
@@ -46,7 +47,27 @@ The game's experience table is `tools/whatif/levelExperienceTable.json` (`table[
 
 - Levels one at a time while the next level alone still pays back within `limit` (the Payback limit, or the horizon when there is none); the top level is the only other end.
 - `changeAt(level)` gives the change of having `level` instead of today (as `payback` takes it; its leads in the same order at every level, with the same `without` clocks). The next level alone is the change from `n` to `n + 1`: the difference in cost and day-one gain, and each lead's `with` at `n + 1` against its `with` at `n`, judged by `payback` with `maxDays = limit`.
-- Returns `{ level, levels, cost, payback, pastMeasured }`: where the recommendation stops (`from` when not one level pays back), how many levels, the whole change's cost and payback, and whether the level lies past `measuredTo` (today's level plus the largest measured step), so the search knows to measure further. Which further states to run is the search's (part 2).
+- Returns `{ level, levels, cost, payback, pastMeasured }`: where the recommendation stops (`from` when not one level pays back), how many levels, the whole change's cost and payback, and whether the level lies past `measuredTo` (today's level plus the largest measured step), so the search knows to measure further. The next level alone keeps the leads' knees.
+
+## The measuring loop (`tools/whatif/ladder.mjs`)
+
+One loop for books, switches and later skills; it knows nothing of what a level costs. The caller gives `measure(levels, k, h)` (a state on `k` seeds of `h` hours) and `stopAt(perLevel, knee, end)` (the levels the recommendation reaches at that gain per level, through `stopOf`, which is `stoppingLevel`).
+
+- **Precisions** (`precisions({ firstHours, fullHours })`): the first block is 16 seeds (`SURE_BLOCK`) of `firstHours`, the hours doubled up to `fullHours` (the pick check's, `--confirm-hours`), then 16 seeds more at a time up to 64 (`SURE_MAX`). A row moves to the next precision only while it has unsettled levels and no bigger step is left.
+- **States**: +10 and +20 first (`firstSteps`, fewer near the top); then double the largest step while not flagged and the centre's stop lies past it or some level is unsettled.
+- **Settled levels**: `stopAt` runs at the range's low end, centre and high end (`perLevel ± 2·perLevelSe`). Levels up to the low end's stop are settled in (the recommendation, `levels`), past the high end's stop settled out, between them unsettled (`upTo`). No unsettled level: no more runs, however noisy the gain.
+- **Knee**: a failed pair sets a fence at its failed step; the fence never rises, so a later noisy pass cannot carry the walk past a knee once found. The loop halves between the last even step and the fence only when the knee matters (the high end's stop with the gain running up to the fence would pass the last even step), until the gap is under what the noise can tell (`max(2, 2·se / perLevel)` levels). The recommendation never passes the last even step.
+- `MAX_STATES` (24) is a guard only.
+- The changes: `booksChangeAt` (books on a held ability: one lead, today's casts bringing the ability up either way) and `switchChangeAt` (a new ability: the day-one gain, the new ability's lead from level 1, and the old ability's levels given up as a lead below 0).
+
+## The books stage (`tools/whatif/books.mjs`, `core.mjs`)
+
+- Runs under `--levers abilitylevels` (books on held abilities) and `--levers books` (switches too; `all` includes both), profit goal only, after foods and drinks and before the triggers probe. Each row is judged alone against that start by the loop; there is no pick check and no "too small" rule. The rows go to `result.books` (and `result.booksApart`, not judged, with the reason) and a `result.md` section "Ability books and switches"; they join neither the race, the chain nor the budget.
+- `--books-first-hours` (default `BOOKS_FIRST_HOURS`, 75): the first block's hours. A shorter first block costs more states per row but far fewer core-hours, since most rows settle on it.
+- Held abilities first: their gain per level is what a switch gives up. A switch is one row per not-learned ability of the player's style that meets its requirements, per open slot of its kind; its day-one state (the new ability at level 1) is the ladder's start, and the day-one gain's range enters the ends, so a switch whose favourable end does not pay back is settled out after its first block (`to: 0`, no payback).
+- A row's payback is `payback()` of its change at the recommended level, at the centre gain per level; the rows carry no figure of their own.
+- Casts a day missing from the runs (a record from before they were counted) are never read as zero: the rows are listed apart with "casts a day unknown", and none of their states is run.
+
 
 ## The use counter
 

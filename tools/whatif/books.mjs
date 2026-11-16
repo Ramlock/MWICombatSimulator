@@ -13,7 +13,7 @@ import abilityDetailMap from '../../src/combatsimulator/data/abilityDetailMap.js
 import itemDetailMap from '../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
 import { playerFit, abilityMisfit } from './stylefit.mjs';
 
-// The first block's hours per seed (--books-first-hours): set from the measured table in the batch 1 report.
+// The first block's hours per seed (--books-first-hours), a quarter of the pick check's: on the measured noise by run length it cut the stage's core-hours by more than half against 300 h, with the same recommendations; shorter blocks saved little more for more states per row.
 export const BOOKS_FIRST_HOURS = 75;
 
 const short = (h) => String(h).split('/').pop();
