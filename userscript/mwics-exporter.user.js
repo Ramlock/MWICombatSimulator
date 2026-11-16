@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.13.0
+// @version      0.13.1
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -1093,7 +1093,7 @@
     // An encounter is held back until SINK.DELAY later ones have closed: heal series credit a consume record up to 4 encounters late.
     // The note an export carries for healed.bySource (the game gives no source per heal, so one update's gain is never split).
     const HEALED_NOTE = "bloom: HP gained in updates of casts whose ability does not heal by itself. An ability that heals by itself (Quick Aid, Life Drain) holds all HP gained in its cast's update, the Bloom heal on that cast included.";
-    const SINK = { DELAY: 4, BATCH_RECORDS: 64, BATCH_BYTES: 900 * 1024, MAX_QUEUE: 2000, MAX_SENT: 5000, RETRY_MIN_MS: 2000, RETRY_MAX_MS: 60000, WINDOW_MS: 600000, IDLE_MS: 90000, FORMAT_VERSION: 1 };
+    const SINK = { DELAY: 4, BATCH_RECORDS: 64, BATCH_BYTES: 900 * 1024, MAX_QUEUE: 2000, MAX_SENT: 5000, RETRY_MIN_MS: 2000, RETRY_MAX_MS: 60000, LOST_MS: 300000, WINDOW_MS: 600000, IDLE_MS: 90000, FORMAT_VERSION: 1 };
     const encKey = (e) => 'enc:' + e.startedAt + ':' + e.battleId;
     const winKeyOf = (w) => 'win:' + w.startedAt + '#' + w.battles + '.' + w.buffEvents.length + (w.open ? '' : '.c');
 
@@ -1105,7 +1105,7 @@
         const pre = server === 'live' ? '' : server + ':';
         const st = {
             sent: new Set(deps.sent || []), order: (deps.sent || []).slice(), queued: new Set(), queue: [], maxRecords: SINK.BATCH_RECORDS,
-            retryMs: SINK.RETRY_MIN_MS, flushing: false, timerSet: false, idleSet: false, lastActivity: 0, sig: '', lastWin: new Map(),
+            retryMs: SINK.RETRY_MIN_MS, flushing: false, pending: null, timerSet: false, idleSet: false, lastActivity: 0, sig: '', lastWin: new Map(),
             stats: { accepted: 0, duplicate: 0, rejected: 0, failed: 0, dropped: 0, lastStatus: null },
         };
 
@@ -1158,12 +1158,15 @@
             return out;
         }
 
+        // By key, not by position: the queue may have changed while the batch was out (a late answer, a drop at MAX_QUEUE, another tab's keys).
         function markSent(batch) {
+            const done = new Set();
             for (const r of batch) {
+                done.add(r.key);
                 st.queued.delete(r.key);
                 if (!st.sent.has(r.key)) { st.sent.add(r.key); st.order.push(r.key); }
             }
-            st.queue.splice(0, batch.length);
+            st.queue = st.queue.filter((r) => !done.has(r.key));
             while (st.order.length > SINK.MAX_SENT) st.sent.delete(st.order.shift());
             if (deps.saveSent) adoptSent(deps.saveSent(st.order));
         }
@@ -1177,8 +1180,44 @@
             st.queue = st.queue.filter((r) => { if (!st.sent.has(r.key)) return true; st.queued.delete(r.key); return false; });
         }
 
+        function countAnswer(res) {
+            try { const b = JSON.parse(res.text); st.stats.accepted += b.accepted | 0; st.stats.duplicate += b.duplicate | 0; st.stats.rejected += b.rejected | 0; } catch { /* counts only */ }
+        }
+
+        // The watchdog gave up on a batch but its answer may still come (a background tab handles the watchdog and the answer at the same wake,
+        // in either order). The batch stays pending: nothing is sent until its answer comes or SINK.LOST_MS passes; an ok answer marks its records
+        // sent by key, even after that bound.
+        function awaitLate(batch, late, startedAt) {
+            const p = { batch };
+            st.pending = p;
+            deps.setTimer(() => {
+                if (st.pending !== p) return;
+                st.pending = null;
+                st.stats.failed++;
+                deps.log('send failed: no answer ' + SINK.LOST_MS + ' ms after the watchdog, queued=' + st.queue.length);
+                scheduleRetry();
+            }, SINK.LOST_MS);
+            late.then((res) => {
+                const mine = st.pending === p;
+                if (mine) st.pending = null;
+                if (res && res.ok) {
+                    countAnswer(res);
+                    markSent(batch);
+                    deps.log('late answer counted: ' + batch.length + ' records marked sent, ' + (deps.now() - startedAt) + ' ms after the send' + (mine ? '' : ', after the bound'));
+                    if (!mine) return;
+                    st.retryMs = SINK.RETRY_MIN_MS;
+                    if (st.queue.length) flush();
+                    return;
+                }
+                if (!mine) return;
+                st.stats.failed++;
+                deps.log('send failed status=' + (res ? res.status : 'none') + ' (late) queued=' + st.queue.length);
+                scheduleRetry();
+            });
+        }
+
         async function flush() {
-            if (st.flushing || !deps.enabled()) return;
+            if (st.flushing || st.pending || !deps.enabled()) return;
             st.flushing = true;
             try {
                 while (st.queue.length) {
@@ -1186,10 +1225,12 @@
                     if (!st.queue.length) break;
                     const batch = takeBatch();
                     let res;
+                    const startedAt = deps.now();
                     try { res = await deps.post({ v: SINK.FORMAT_VERSION, server, records: batch }); } catch { res = { ok: false, status: 0 }; }
                     st.stats.lastStatus = res ? res.status : 0;
+                    if (res && res.timedOut && res.late && typeof res.late.then === 'function') { awaitLate(batch, res.late, startedAt); return; }
                     if (res && res.ok) {
-                        try { const b = JSON.parse(res.text); st.stats.accepted += b.accepted | 0; st.stats.duplicate += b.duplicate | 0; st.stats.rejected += b.rejected | 0; } catch { /* counts only */ }
+                        countAnswer(res);
                         markSent(batch);
                         st.retryMs = SINK.RETRY_MIN_MS;
                         continue;
@@ -1295,13 +1336,19 @@
     }
 
     // A request whose callback never comes (the script manager lost it) would stop every later send for good: after ms with no callback
-    // it counts as failed (status 0) and the caller's retry takes over; a late callback is ignored. start(done) issues the request.
+    // it counts as failed (status 0, timedOut) and the caller's retry takes over. start(done) issues the request.
+    // A callback that comes after the watchdog (a background tab handles both at the same wake, in either order) resolves the result's
+    // late promise with the real answer, so a caller that waits for it (the sink) can still count it; a caller that does not just ignores it.
     const REQUEST_WATCHDOG_MS = 30000;
     function guardRequest(start, ms, setTimer) {
         return new Promise((resolve) => {
-            let settled = false;
-            const done = (r) => { if (!settled) { settled = true; resolve(r); } };
-            setTimer(() => done({ ok: false, status: 0, timedOut: true }), ms);
+            let settled = false, lateDone = null;
+            const late = new Promise((r) => { lateDone = r; });
+            const done = (r) => {
+                if (!settled) { settled = true; resolve(r); return; }
+                if (lateDone) { const f = lateDone; lateDone = null; f(r); }
+            };
+            setTimer(() => { if (!settled) { settled = true; resolve({ ok: false, status: 0, timedOut: true, late }); } else lateDone = null; }, ms);
             try { start(done); } catch { done({ ok: false, status: 0 }); }
         });
     }
@@ -1378,7 +1425,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData(), server: SERVER });
-    const VERSION = '0.13.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.13.1'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = serverKey('mwicsSinkSent', SERVER), DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1417,7 +1464,7 @@
         },
         now: () => Date.now(),
         setTimer: (fn, ms) => setTimeout(fn, ms),
-        log: (text) => console.debug('[MWI Combat Tracker] ' + text),
+        log: (text) => console.debug('[MWI Combat Tracker] ' + new Date().toISOString() + ' ' + text),
     });
     // No paste: with no token the script asks the helper for it (GET /token; loopback and a script manager only, the helper refuses anything else).
     // The ask is made once per page load, and again at each backoff retry only while the token is still empty. The warning toast shows only when the ask failed.
