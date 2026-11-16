@@ -1,3 +1,5 @@
+import { smiteMultiplier, shatterPenetration, overkillSpend, overkillStore, uniqueValue, UNIQUE_SETTINGS } from "./talismans";
+
 class CombatUtilities {
     static getTarget(enemies) {
         if (!enemies) {
@@ -46,7 +48,9 @@ class CombatUtilities {
         }
     }
 
-    static processAttack(source, target, abilityEffect = null) {
+    // attack: an object shared by every target of one attack (Overkill: the same attack's later targets do not spend its own store);
+    // null = this call is an attack of its own. isParry: the call is a parry's counterattack.
+    static processAttack(source, target, abilityEffect = null, attack = null, isParry = false) {
         let combatStyle = abilityEffect
             ? abilityEffect.combatStyleHrid
             : source.combatDetails.combatStats.combatStyleHrid;
@@ -172,10 +176,15 @@ class CombatUtilities {
             sourceMinDamage = sourceMaxDamage;
             isCrit = true;
         }
+        // Shatter (talisman, from the in-game text): a crit's penetration for this hit only.
+        sourcePenetration = shatterPenetration(source, sourcePenetration, isCrit, !!abilityEffect);
 
         let damageRoll = CombatUtilities.randomInt(sourceMinDamage, sourceMaxDamage);
         damageRoll *= (1 + source.combatDetails.combatStats.taskDamage);
         damageRoll *= (1 + target.combatDetails.combatStats.damageTaken);
+        // Smite (talisman, from the in-game text): more damage to a boss.
+        const smite = smiteMultiplier(source, target);
+        if (smite !== 1) damageRoll *= smite;
         if (!abilityEffect) {
             damageRoll += damageRoll * source.combatDetails.combatStats.autoAttackDamage;
         } else {
@@ -183,6 +192,7 @@ class CombatUtilities {
         }
 
         let damageDone = 0;
+        let hitDamageDone = 0; // damageDone without Overkill's true damage: what life steal, HP drain and mana leech take
         let thornDamageDone = 0;
 
         let didHit = false;
@@ -200,8 +210,19 @@ class CombatUtilities {
             }
 
             let mitigatedDamage = Math.ceil(targetDamageTakenRatio * damageRoll);
-            damageDone = Math.min(mitigatedDamage, target.combatDetails.currentHitpoints);
+            const hpBefore = target.combatDetails.currentHitpoints;
+            hitDamageDone = Math.min(mitigatedDamage, hpBefore);
+            damageDone = hitDamageDone;
+            // Overkill (talisman, from the in-game text): a direct attack's first landed hit adds the stored true damage; a kill fills the store.
+            const direct = !isParry || UNIQUE_SETTINGS.OVERKILL_PARRY_IS_DIRECT;
+            const trueDamage = direct ? overkillSpend(source, attack) : 0;
+            if (trueDamage > 0) damageDone += Math.min(trueDamage, hpBefore - hitDamageDone);
             target.combatDetails.currentHitpoints -= damageDone;
+            if (direct && hpBefore > 0 && target.combatDetails.currentHitpoints <= 0 && uniqueValue(source, 'overkill')
+                && (abilityEffect?.targetType !== 'allEnemies' || UNIQUE_SETTINGS.OVERKILL_AREA_KILLS)) {
+                const dealt = UNIQUE_SETTINGS.OVERKILL_EXCESS_AFTER_MITIGATION ? mitigatedDamage : damageRoll;
+                overkillStore(source, dealt + trueDamage - hpBefore, attack);
+            }
         }
 
         if (targetThornPower > 0.0 && targetResistance > -99.0) {
@@ -226,10 +247,20 @@ class CombatUtilities {
                 * (1.0 + targetResistance / 100.0)
                 * targetThornPower);
 
+            // Smite (talisman): the thorns a player deals to a boss.
+            if (UNIQUE_SETTINGS.SMITE_ON_REFLECT) {
+                const smiteThorns = smiteMultiplier(target, source);
+                if (smiteThorns !== 1) thornsDamageRoll *= smiteThorns;
+            }
+
             let mitigatedThornsDamage = Math.ceil(sourceDamageTakenRatio * thornsDamageRoll);
 
+            const thornsHpBefore = source.combatDetails.currentHitpoints;
             thornDamageDone = Math.min(mitigatedThornsDamage, source.combatDetails.currentHitpoints);
             source.combatDetails.currentHitpoints -= thornDamageDone;
+            if (UNIQUE_SETTINGS.OVERKILL_REFLECT_KILLS && thornsHpBefore > 0 && source.combatDetails.currentHitpoints <= 0) {
+                overkillStore(target, (UNIQUE_SETTINGS.OVERKILL_EXCESS_AFTER_MITIGATION ? mitigatedThornsDamage : thornsDamageRoll) - thornsHpBefore, null);
+            }
         }
 
         let retaliationDamageDone = 0;
@@ -260,29 +291,38 @@ class CombatUtilities {
                 let retaliationMaxDamage = retaliationDamageMultiplier * target.combatDetails.combatStats.retaliation * (target.combatDetails.defensiveMaxDamage + premitigatedDamage);
 
                 let retaliationDamageRoll = CombatUtilities.randomInt(retaliationMinDamage, retaliationMaxDamage);
+                // Smite (talisman): the retaliation a player deals to a boss.
+                if (UNIQUE_SETTINGS.SMITE_ON_REFLECT) {
+                    const smiteRetaliation = smiteMultiplier(target, source);
+                    if (smiteRetaliation !== 1) retaliationDamageRoll *= smiteRetaliation;
+                }
                 let mitigatedRetaliationDamage = Math.ceil(sourceDamageTakenRatio * retaliationDamageRoll);
+                const retaliationHpBefore = source.combatDetails.currentHitpoints;
                 retaliationDamageDone = Math.min(mitigatedRetaliationDamage, source.combatDetails.currentHitpoints);
                 source.combatDetails.currentHitpoints -= retaliationDamageDone;
+                if (UNIQUE_SETTINGS.OVERKILL_REFLECT_KILLS && retaliationHpBefore > 0 && source.combatDetails.currentHitpoints <= 0) {
+                    overkillStore(target, (UNIQUE_SETTINGS.OVERKILL_EXCESS_AFTER_MITIGATION ? mitigatedRetaliationDamage : retaliationDamageRoll) - retaliationHpBefore, null);
+                }
             }
         }
 
         let lifeStealHeal = 0;
         if (!abilityEffect && didHit && source.combatDetails.combatStats.lifeSteal > 0) {
-            lifeStealHeal = source.addHitpoints(Math.floor(source.combatDetails.combatStats.lifeSteal * damageDone));
+            lifeStealHeal = source.addHitpoints(Math.floor(source.combatDetails.combatStats.lifeSteal * hitDamageDone));
         }
 
         let hpDrain = 0;
         if (abilityEffect && didHit && abilityEffect.hpDrainRatio > 0) {
             let healingAmplify = 1 + source.combatDetails.combatStats.healingAmplify;
-            hpDrain = source.addHitpoints(Math.floor(abilityEffect.hpDrainRatio * damageDone * healingAmplify));
+            hpDrain = source.addHitpoints(Math.floor(abilityEffect.hpDrainRatio * hitDamageDone * healingAmplify));
         }
 
         let manaLeechMana = 0;
         if (!abilityEffect && didHit && source.combatDetails.combatStats.manaLeech > 0) {
-            manaLeechMana = source.addManapoints(Math.floor(source.combatDetails.combatStats.manaLeech * damageDone));
+            manaLeechMana = source.addManapoints(Math.floor(source.combatDetails.combatStats.manaLeech * hitDamageDone));
         }
 
-        return { damageDone, didHit, thornDamageDone, thornType, retaliationDamageDone, lifeStealHeal, hpDrain, manaLeechMana, isCrit};
+        return { damageDone, hitDamageDone, didHit, thornDamageDone, thornType, retaliationDamageDone, lifeStealHeal, hpDrain, manaLeechMana, isCrit};
     }
 
     static processHeal(source, abilityEffect, target) {

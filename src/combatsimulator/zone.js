@@ -1,6 +1,9 @@
 import actionDetailMap from "./data/actionDetailMap.json";
 import Monster from "./monster";
 
+// How a monster was spawned, for what keys on a boss (Smite, talismans.js isBoss): the zone's boss encounter, or a dungeon's fixed wave.
+const markSpawn = (monster, flag) => { monster[flag] = true; return monster; };
+
 class Zone {
     constructor(hrid, difficultyTier) {
         this.hrid = hrid;
@@ -22,7 +25,7 @@ class Zone {
 
         if (this.monsterSpawnInfo.bossSpawns && this.encountersKilled == this.monsterSpawnInfo.battlesPerBoss) {
             this.encountersKilled = 1;
-            return this.monsterSpawnInfo.bossSpawns.map((monster) => new Monster(monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier));
+            return this.monsterSpawnInfo.bossSpawns.map((monster) => markSpawn(new Monster(monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier), 'spawnedAsBoss'));
         }
 
         let totalWeight = this.monsterSpawnInfo.randomSpawnInfo.spawns.reduce((prev, cur) => prev + cur.rate, 0);
@@ -67,7 +70,7 @@ class Zone {
         if (this.dungeonSpawnInfo.fixedSpawnsMap.hasOwnProperty(this.encountersKilled.toString())) {
             let currentMonsters = this.dungeonSpawnInfo.fixedSpawnsMap[(this.encountersKilled).toString()];
             this.encountersKilled++;
-            return currentMonsters.map((monster) => new Monster(monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier));
+            return currentMonsters.map((monster) => markSpawn(new Monster(monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier), 'spawnedInFixedWave'));
         } else {
             let monsterSpawns = {};
             const waveKeys = Object.keys(this.dungeonSpawnInfo.randomSpawnInfoMap).map(Number).sort((a, b) => a - b);
