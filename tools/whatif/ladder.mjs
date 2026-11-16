@@ -7,7 +7,12 @@
 //   evenness check (payback.mjs evenness) takes their difference paired.
 // - The gain per level carries its range (± margin errors over the step's levels). stopAt runs at the centre and both ends: levels up to
 //   the low end's stop are settled in, past the high end's stop settled out, between them unsettled.
-// - A failed pair is the knee (9.1 point 8): halve between the last even step and the failed one (a state at the middle, checked by the
+// - A failed pair is a knee only once confirmed: both its states measured again at the next precision, and the pair failing there too
+//   (a pair fails on noise alone in about one row in five over a row's few pairs); with no precision left a failure counts at once. A
+//   failure that could not change the recommendation (the same stops at both ends of the range with the knee, at the last even step's
+//   gain per level, and without it, at the failed step's) is not measured again (a row with no unsettled level gets no more runs) and is no knee: the walk stops below it, the
+//   recommendation is the same either way, the row is not marked "not even" and has no knee; its pair is kept with confirmed: false.
+// - A knee (9.1 point 8): halve between the last even step and the failed one (a state at the middle, checked by the
 //   same evenness walk) until the gap is narrower than the noise can tell apart (margin errors of the last even step over its gain per
 //   level, and never under 2 levels); the recommendation reaches at most the last even step; stopAt counts a level's gain only below it.
 // - Not flagged, and the centre's stop past the largest step, or unsettled levels: the next state at double the largest step, up to the
@@ -76,26 +81,48 @@ export async function measureLadder({ room, measure, stopAt, margin = 2, block =
     const empty = { steps: [], seeds: 0, hours: null, perLevel: null, perLevelLow: null, perLevelHigh: null, mark: null, knee: null, stops: { low: 0, centre: 0, high: 0 }, levels: 0, upTo: 0, measuredTo: 0, runs: [] };
     if (!(room >= 1)) return empty;
     const at = new Map(), runs = [];
-    let prec = 0, fence = Infinity, failed = null; // fence: the lowest step a pair ever failed at; a knee once found is kept (below)
+    let prec = 0, fence = Infinity, failed = null, confirmed = false; // fence: the lowest step a failed pair stops the walk at; a knee once found is kept (below)
+    const failedAt = new Map(); // a failed step's levels -> the precisions its pair failed at
     const run = async (levels) => { const { k, h } = plan[prec], s = await measure(levels, k, h); if (s === null) return false; at.set(levels, s); runs.push({ levels, seeds: k, hours: h ?? null }); return true; };
-    // The walk over the steps below the fence; a failed pair lowers the fence to its failed step. The fence never rises: a halving state
-    // or more seeds on the last even step re-judge only the steps below it, so a later noisy pass between the halves cannot carry the
-    // walk past a knee once found.
+    // The walk over the steps below the fence. A failed pair is a suspect (returned, to be measured again at the next precision) until it
+    // has failed at two precisions, or at the last one; then it lowers the fence to its failed step. The fence never rises: a halving
+    // state or more seeds on the last even step re-judge only the steps below it, so a later noisy pass between the halves cannot carry
+    // the walk past a knee once found.
     const judge = () => {
         for (;;) {
             const steps = [...at.values()].filter((s) => s.levels < fence).sort((a, b) => a.levels - b.levels), ev = evenness(steps, { margin });
-            if (!ev.flagged) return { steps, ev };
-            fence = ev.knee.to; failed = ev.pairs.at(-1);
+            if (!ev.flagged) return { steps, ev, suspect: null };
+            const seen = failedAt.get(ev.knee.to) ?? new Set();
+            seen.add(prec); failedAt.set(ev.knee.to, seen);
+            if (seen.size < 2 && prec < plan.length - 1) return { steps, ev, suspect: ev.knee };
+            fence = ev.knee.to; failed = ev.pairs.at(-1); confirmed = true;
         }
     };
     for (const l of firstSteps(room)) if (!await run(l)) return null;
     for (let guard = 0; ; guard++) {
-        const { steps, ev } = judge(), flagged = fence < Infinity;
+        const { steps, ev, suspect } = judge();
+        if (suspect) {
+            // It matters when the two readings stop elsewhere at either end of the range: the knee's (the last even step's gain per level,
+            // the gain stopping there) and no knee's (the failed step's gain per level, going on: the earlier step may be the one that read
+            // low). A knee changes a stop below it too: it caps the levels casting brings later.
+            const f = at.get(suspect.to);
+            const matters = [-1, 1].some((sg) => { const end = sg < 0 ? 'low' : 'high';
+                return stopAt(ev.perLevel + sg * margin * ev.perLevelSe, suspect.from, end) !== stopAt((f.gain + sg * margin * f.se) / f.levels, null, end); });
+            if (matters && guard < MAX_STATES) { // confirm the failed pair: both its states again, at the next precision
+                prec++;
+                if (!await run(suspect.from) || !await run(suspect.to)) return null;
+                continue;
+            }
+            fence = suspect.to; confirmed = matters; failed = { ...ev.pairs.at(-1), confirmed }; // the guard spent (it matters): it counts as it is
+            continue;
+        }
+        const flagged = fence < Infinity;
         const last = ev.lastEven, largest = steps.at(-1).levels, knee = flagged ? { from: last.levels, to: fence } : null;
         const tell = Math.max(2, ev.perLevel > 0 ? margin * last.se / ev.perLevel : Infinity);
-        // The knee's place matters only when a stop could pass the last even step: at the range's favourable end with the gain going on up to the
-        // failed step. Otherwise no halving (no unsettled level, no more runs).
-        const kneeMatters = flagged && stopAt(ev.perLevel + margin * ev.perLevelSe, knee.to, 'high') > knee.from;
+        // The knee's place matters only when the stops differ with the knee at either end of its bracket, at either end of the range (a knee
+        // changes a stop below it too: it caps the levels casting brings later). Otherwise no halving (no unsettled level, no more runs).
+        const kneeMatters = flagged && confirmed && [-1, 1].some((sg) => { const end = sg < 0 ? 'low' : 'high', p = ev.perLevel + sg * margin * ev.perLevelSe;
+            return stopAt(p, knee.to, end) !== stopAt(p, knee.from, end); });
         if (guard < MAX_STATES && kneeMatters && knee.to - knee.from > tell) {
             if (!await run(Math.round((knee.from + knee.to) / 2))) return null;
             continue;
@@ -114,7 +141,7 @@ export async function measureLadder({ room, measure, stopAt, margin = 2, block =
             continue;
         }
         const levels = Math.min(stops.low, measuredTo), upTo = Math.max(levels, Math.min(stops.high, measuredTo));
-        const mark = flagged ? 'notEven' : ev.mark, pairs = flagged ? [...ev.pairs, failed] : ev.pairs;
-        return { steps: steps.map((s) => ({ levels: s.levels, gain: s.gain, se: s.se, seeds: s.samples ? Object.keys(s.samples).length : null })), seeds: plan[prec].k, hours: plan[prec].h ?? null, perLevel: ev.perLevel, perLevelLow: ends.low, perLevelHigh: ends.high, mark, knee, pairs, stops, levels, upTo, measuredTo, runs };
+        const mark = flagged && confirmed ? 'notEven' : ev.mark, pairs = flagged ? [...ev.pairs, failed] : ev.pairs;
+        return { steps: steps.map((s) => ({ levels: s.levels, gain: s.gain, se: s.se, seeds: s.samples ? Object.keys(s.samples).length : null })), seeds: plan[prec].k, hours: plan[prec].h ?? null, perLevel: ev.perLevel, perLevelLow: ends.low, perLevelHigh: ends.high, mark, knee: confirmed ? knee : null, pairs, stops, levels, upTo, measuredTo, runs };
     }
 }

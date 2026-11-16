@@ -4,7 +4,7 @@
 import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
 import levelTable from '../whatif/levelExperienceTable.json' with { type: 'json' };
 import { payback, evenness, levelAt, HORIZON_DAYS } from '../../src/whatif/payback.mjs';
-import { measureLadder, firstSteps, booksChangeAt, switchChangeAt, stopOf } from '../whatif/ladder.mjs';
+import { measureLadder, firstSteps, booksChangeAt, switchChangeAt, stopOf, precisions } from '../whatif/ladder.mjs';
 
 const XP = levelTable.table, TOP = XP.length;
 let fails = 0;
@@ -93,13 +93,27 @@ const stopLinear = (factor, room) => (p, knee) => Math.max(0, Math.min(room, kne
     check(runsOf(r5) === '10@16 20@16' && r5.levels === 0 && r5.upTo === 0, 'loop: no unsettled level, no more runs, however noisy (no end of the range pays back)', runsOf(r5));
     const r6 = await measureLadder({ room: 40, measure: noisy.measure, stopAt: stopLinear(30 / 7.7e3, 40) });
     check(runsOf(r6) === '10@16 20@16 40@16 40@32 40@48 40@64' && r6.levels < r6.upTo && r6.seeds === 64, 'loop: unsettled levels are narrowed by a bigger step first, then by seeds on the largest step up to the ceiling, then shown as a range', `${runsOf(r6)} ${r6.levels}..${r6.upTo}`);
+
+    // A failed pair is a knee only when it fails again at the next precision (both its states measured again there).
+    const hrs = (r) => r.runs.map((x) => `${x.levels}@${x.seeds}x${x.hours}`).join(' ');
+    const schedule = precisions({ firstHours: 75, fullHours: 300 }), even = synth({ perLevel: 30e3, sigma: 5e3, salt: 31 });
+    const once = async (levels, k, h) => { const m = await even.measure(levels, k); if (levels !== 20 || h !== 75) return m; const samples = Object.fromEntries(Object.entries(m.samples).map(([s, g]) => [s, g + 200e3])); return { ...m, gain: m.gain + 200e3, samples }; };
+    const r7 = await measureLadder({ room: 150, measure: once, stopAt: stopLinear(15 / 30e3, 150), schedule });
+    check(r7.mark !== 'notEven' && !r7.knee && hrs(r7).startsWith('10@16x75 20@16x75 10@16x150 20@16x150'), 'loop: an even gain whose pair fails once (a noisy first block) is measured again at the next precision, passes there, and is not "not even"', `${hrs(r7)} ${r7.mark}`);
+    const r8 = await measureLadder({ room: 150, measure: synth({ perLevel: 30e3, knee: 15, sigma: 5e3, salt: 32 }).measure, stopAt: stopLinear(100 / 30e3, 150), schedule });
+    check(r8.mark === 'notEven' && r8.knee && r8.knee.from <= 15 && 15 <= r8.knee.to && hrs(r8).startsWith('10@16x75 20@16x75 10@16x150 20@16x150') && r8.levels <= r8.knee.from, 'loop: a real knee fails again at the next precision, is confirmed, and is halved toward; the knee lies inside its bracket', `${hrs(r8)} ${JSON.stringify(r8.knee)}`);
+    const r9 = await measureLadder({ room: 150, measure: once, stopAt: stopLinear(15 / 30e3, 150), schedule: [{ k: 16, h: 75 }] });
+    check(r9.mark === 'notEven' && r9.knee?.to <= 20 && hrs(r9).startsWith('10@16x75 20@16x75') && !/x150/.test(hrs(r9)), 'loop: with no precision left, a failed pair counts as a knee at once', hrs(r9));
 }
 
 // ---- Section 9.1 point 7: a noisy even gain, a clear even one, one that flattens; with books priced and payback() deciding ----
 // "If it works", over 300 noise draws each (one draw is one search): the settled-in levels pass the stop the true gain gives in almost
 // no draw (an even gain) and never by more than the noise can tell apart (a flattening one: the knee is located only to within margin
 // errors over the gain per level); every flattening one is marked not even. The share of even gains marked not even (a pair failing on
-// noise alone) is printed, and only guarded against getting worse.
+// noise alone; a failed pair counts only once it fails again at the next precision) is printed, and only guarded against getting worse.
+// The guards are the rates over 2000 draws (salts 1000 to 2999) with some headroom: past the true stop about 1%, the range reaching it
+// about 97%, not even about 7.5%; a flattening gain passes its knee in about 31% of draws, by at most 3 levels (the knee is placed only
+// as closely as the noise allows; docs/codebase/payback.md).
 {
     const from = 50, xpNow = XP[from - 1] + 1000, perDay = 50, bookXp = 500, DRAWS = 300;
     const nBooks = (L) => Math.max(0, Math.ceil((XP[L - 1] - xpNow) / bookXp - 1e-9));
@@ -112,20 +126,20 @@ const stopLinear = (factor, room) => (p, knee) => Math.max(0, Math.min(room, kne
     ];
     for (const [name, spec, unitCost] of cases) {
         const stopAt = stopFn(shape(unitCost), 365), truth = stopAt(spec.perLevel, spec.knee ?? null);
-        const t = { notEven: 0, over: 0, overBy: 0, reach: 0, bigger: 0, states: 0 };
+        const t = { notEven: 0, unconfirmed: 0, over: 0, overBy: 0, reach: 0, bigger: 0, states: 0 };
         for (let salt = 100; salt < 100 + DRAWS; salt++) {
             const r = await measureLadder({ room: TOP - from, measure: synth({ ...spec, salt }).measure, stopAt });
             if (salt === 100) console.log(`  ${name}, one draw: ${JSON.stringify({ runs: runsOf(r), mark: r.mark, knee: r.knee, levels: r.levels, upTo: r.upTo, truth })}`);
-            t.notEven += r.mark === 'notEven'; t.over += r.levels > truth; t.overBy = Math.max(t.overBy, r.levels - truth);
-            t.reach += r.upTo >= truth || r.upTo === r.measuredTo; t.bigger += r.runs.some((x) => x.levels > 20) || (r.knee && r.knee.to <= 20) || (r.stops.low === r.stops.high && r.stops.centre <= 20); t.states += r.runs.length;
+            t.notEven += r.mark === 'notEven'; t.unconfirmed += r.mark !== 'notEven' && r.pairs.some((q) => q.confirmed === false); t.over += r.levels > truth; t.overBy = Math.max(t.overBy, r.levels - truth);
+            t.reach += r.upTo >= truth || r.upTo === r.measuredTo; t.bigger += r.runs.some((x) => x.levels > 20) || (r.knee && r.knee.to <= 20) || r.pairs.some((q) => q.confirmed === false && q.to <= 20) || (r.stops.low === r.stops.high && r.stops.centre <= 20); t.states += r.runs.length;
         }
         console.log(`  ${name}: ${JSON.stringify({ ...t, states: +(t.states / DRAWS).toFixed(1), truth })} of ${DRAWS}`);
         if (!spec.knee) {
-            check(t.over <= DRAWS * 0.01 && t.reach >= DRAWS * 0.98, `9.1: ${name}: the settled-in levels pass the true gain's stop (${truth}) in at most 1% of draws (${t.over}), the range reaches it in 98% (${t.reach})`);
-            check(t.notEven <= DRAWS * 0.3, `9.1: ${name}: marked not even on noise alone in ${t.notEven} of ${DRAWS} (guard: at most 30%)`);
+            check(t.over <= DRAWS * 0.02 && t.reach >= DRAWS * 0.95, `9.1: ${name}: the settled-in levels pass the true gain's stop (${truth}) in at most 2% of draws (${t.over}), the range reaches it in 95% (${t.reach})`);
+            check(t.notEven <= DRAWS * 0.12, `9.1: ${name}: marked not even on noise alone in ${t.notEven} of ${DRAWS} (guard: at most 12%)`);
         }
         if (name.startsWith('noisy')) check(t.bigger === DRAWS, `9.1: ${name}: a bigger step is measured to narrow the range in every draw whose +10 and +20 pass and leave levels unsettled`);
-        if (spec.knee) check(t.notEven === DRAWS && t.over <= DRAWS * 0.2 && t.overBy <= 3, `9.1: ${name}: always not even; the settled-in levels pass the knee in at most 20% of draws (${t.over}), by at most 3 levels (${t.overBy})`);
+        if (spec.knee) check(t.notEven + t.unconfirmed === DRAWS && t.over <= DRAWS * 0.36 && t.overBy <= 3, `9.1: ${name}: not even in every draw (${t.notEven}) but those whose failed pair could not change the recommendation (${t.unconfirmed}, not measured again, no knee); the settled-in levels pass the knee in at most 36% of draws (${t.over}), by at most 3 levels (${t.overBy})`);
     }
 }
 
