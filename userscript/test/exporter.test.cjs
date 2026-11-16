@@ -1,6 +1,6 @@
 // Node test for userscript/mwics-exporter.user.js on a made-up init_character_data fixture (no real player's data).
 // Run: node userscript/test/exporter.test.cjs
-// Checks: all toggles on gives all ten kinds; each toggle off drops only its kind; the setup part goes through the sim's own
+// Checks: all toggles on gives all eleven kinds; each toggle off drops only its kind; the setup part goes through the sim's own
 // solo import (doSoloImport in src/main.js, extracted from the source text and run against a stub document) unchanged.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -50,6 +50,7 @@ const fixture = {
     characterAchievements: [{ achievementHrid: '/achievements/defeat_shoebill', isCompleted: true }, { achievementHrid: '/achievements/total_level_250', isCompleted: false }],
     characterGuildBuffMap: { '/guild_buffs/force_combat': { level: 3 }, '/guild_buffs/tempo_combat': { level: 5 } },
     guildBuildingLevelMap: { '/guild_shrines/force': 4, '/guild_shrines/tempo': 2 },
+    characterTalismans: [{ id: 1, talismanTypeHrid: '/talisman_types/synthetic', modifiers: [{ hrid: '/talisman_modifiers/synthetic_a', grade: 2 }], pendingModifiers: null, lockedModifierHrid: '', slotIndex: 0 }],
 };
 
 // Which top-level keys (and player sub-keys) each kind owns.
@@ -63,6 +64,7 @@ const OWNS = {
     skillLevels: ['player.attackLevel'],
     learnedAbilities: ['learnedAbilities'],
     inventory: ['inventory'],
+    talismanInventory: ['talismanInventory'],
     coin: ['coin'],
 };
 const has = (obj, p) => { let o = obj; for (const k of p.split('.')) { if (o == null || !(k in o)) return false; o = o[k]; } return true; };
@@ -140,7 +142,7 @@ const WRITES = {
     equippedAbilities: [['selectAbility_0', '/abilities/mystic_aura'], ['inputAbilityLevel_1', '20']],
     houseRooms: [['[data-house-hrid="/house_rooms/dojo"]', 4]],
     achievements: [['[data-achievement-hrid="/achievements/defeat_shoebill"]', true, 'checked'], ['[data-achievement-hrid="/achievements/total_level_250"]', false, 'checked']],
-    guildBuffs: [], learnedAbilities: [], inventory: [], coin: [],
+    guildBuffs: [], learnedAbilities: [], inventory: [], talismanInventory: [], coin: [],
 };
 const checkKind = (r, key, imported) => {
     for (const [id, value, prop = 'value'] of WRITES[key]) assert.equal(r.els[id]?.[prop] ?? PRIOR, imported ? value : PRIOR, `${key} ${imported ? 'on' : 'off'}: ${id}.${prop}`);

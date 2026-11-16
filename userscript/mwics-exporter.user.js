@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.12.0
+// @version      0.13.0
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -44,6 +44,7 @@
         { key: 'skillLevels', label: 'Skill levels' },
         { key: 'learnedAbilities', label: 'Learned abilities with XP' },
         { key: 'inventory', label: 'Inventory' },
+        { key: 'talismanInventory', label: 'Talisman inventory' },
         { key: 'coin', label: 'Liquid Coin' },
     ];
     // The slots the sim imports (the skilling tool slots, /item_locations/*_tool, stay out).
@@ -180,6 +181,11 @@
         if (on.inventory) {
             out.inventory = (characterObj.characterItems || []).filter((i) => i.itemLocationHrid === INVENTORY && i.itemHrid !== COIN).map((i) => ({ itemHrid: i.itemHrid, enhancementLevel: i.enhancementLevel || 0, count: i.count || 0 }));
         }
+        // Every talisman the character owns, equipped or not (talismanInventory: see talismanInventory). No talisman data, or an empty list: no field.
+        if (on.talismanInventory) {
+            const ti = talismanInventory(characterObj, clientObj, tal);
+            if (ti) out.talismanInventory = ti;
+        }
         if (on.coin) {
             const coin = (characterObj.characterItems || []).find((i) => i.itemLocationHrid === INVENTORY && i.itemHrid === COIN);
             out.coin = coin?.count || 0;
@@ -244,7 +250,7 @@
     // ctx: { characterObj (init_character_data), clientObj, toggles, members (trimBattle result), profiles (trimProfile results),
     // ownExport, fightStart }. fightStart (ms, fightStartOf of the last battle start): a member's profile seen before it is old.
     // ownExport (the snapshot for the simulator page only, never the clipboard copy): the user's own slot also carries
-    // the inventory and the learned abilities, as the character export writes them (the page keeps them for the What-if searches
+    // the inventory, the talisman inventory and the learned abilities, as the character export writes them (the page keeps them for the What-if searches
     // and never puts them in a sim slot). Coin is never in it, and no other member has either.
     // Returns { group, slots: [{ slot, name, self, have[], missing[], seen?, old? }] }, or null when no slot has any data. A member slot
     // whose profile was opened carries seen (the profile's time, ms) and, in the export, profileSeen (the same time, ISO; the simulator's import
@@ -252,7 +258,7 @@
     // 'abilities' (its abilities differ from the battle start's); absent when it is not.
     function buildGroupExport(ctx) {
         const base = { ...defaultToggles(), ...(ctx.toggles || {}) };
-        const on = { ...base, learnedAbilities: ctx.ownExport ? !!base.learnedAbilities : false, inventory: ctx.ownExport ? !!base.inventory : false, coin: false };
+        const on = { ...base, learnedAbilities: ctx.ownExport ? !!base.learnedAbilities : false, inventory: ctx.ownExport ? !!base.inventory : false, talismanInventory: ctx.ownExport ? !!base.talismanInventory : false, coin: false };
         const co = ctx.characterObj || null, client = ctx.clientObj || null;
         const selfId = co?.character?.id ?? null;
         const profiles = ctx.profiles || [];
@@ -557,13 +563,30 @@
     // (a roll not accepted yet) are not part of the talisman and are left out. A value the client data does not give is null, never guessed.
     function talismanLines(list, clientObj) {
         const detail = (clientObj && clientObj.talismanModifierDetailMap) || {};
-        return (list || []).filter(talismanSlotted).sort((a, b) => a.slotIndex - b.slotIndex).map((t) => ({
-            id: t.id, type: t.talismanTypeHrid || null, slotIndex: t.slotIndex, locked: t.lockedModifierHrid || '',
-            lines: (t.modifiers || []).map((m) => {
-                const d = detail[m.hrid], gv = d && Array.isArray(d.gradeValues) ? d.gradeValues[m.grade - 1] : undefined;
-                return { hrid: m.hrid, grade: m.grade, value: typeof gv === 'number' ? gv : null, locked: !!t.lockedModifierHrid && t.lockedModifierHrid === m.hrid, unique: d && d.groupHrid ? String(d.groupHrid).endsWith('/special') : null };
-            }),
-        }));
+        return (list || []).filter(talismanSlotted).sort((a, b) => a.slotIndex - b.slotIndex).map((t) => talismanRead(t, detail));
+    }
+    // One talisman of the game's list read into { id, type, slotIndex, locked, lines } (talismanLines' record), the one reader of a talisman's lines.
+    // withPending: also pending, the roll waiting to be accepted, read line by line the same way, when the game holds one (absent otherwise).
+    function talismanRead(t, detail, withPending) {
+        const line = (m) => {
+            const d = detail[m.hrid], gv = d && Array.isArray(d.gradeValues) ? d.gradeValues[m.grade - 1] : undefined;
+            return { hrid: m.hrid, grade: m.grade, value: typeof gv === 'number' ? gv : null, locked: !!t.lockedModifierHrid && t.lockedModifierHrid === m.hrid, unique: d && d.groupHrid ? String(d.groupHrid).endsWith('/special') : null };
+        };
+        const r = { id: t.id, type: t.talismanTypeHrid || null, slotIndex: t.slotIndex, locked: t.lockedModifierHrid || '', lines: (t.modifiers || []).map(line) };
+        if (withPending && Array.isArray(t.pendingModifiers) && t.pendingModifiers.length) r.pending = t.pendingModifiers.map(line);
+        return r;
+    }
+    // The character export's talismanInventory: every talisman the character owns, equipped or not, the equipped ones first in slot order, then the
+    // others in the game's order. Each is talismanRead's record with equipped (slotIndex above 0) and slotIndex 0 when it is not equipped, and pending
+    // (a roll waiting to be accepted, never among lines) when the game holds one. null when there is no list or it is empty. tal: as buildExport's.
+    function talismanInventory(characterObj, clientObj, tal) {
+        const list = tal && tal.seen ? tal.list : characterObj && characterObj.characterTalismans;
+        if (!Array.isArray(list)) return null;
+        const detail = (clientObj && clientObj.talismanModifierDetailMap) || {};
+        const all = list.filter((t) => t && typeof t === 'object');
+        const on = all.filter(talismanSlotted).sort((a, b) => a.slotIndex - b.slotIndex), off = all.filter((t) => !talismanSlotted(t));
+        const out = [...on, ...off].map((t) => { const equipped = talismanSlotted(t); return { ...talismanRead(t, detail, true), slotIndex: equipped ? Number(t.slotIndex) : 0, equipped }; });
+        return out.length ? out : null;
     }
     // The simulator's talisman field from the game's talisman list: every line of every slotted talisman, in slot order, as { modifier: the
     // modifier id (the hrid's last part), grade }, and the talisman power (a fraction, 0.2 = +20 %) when the game gave one. null when there is
@@ -1336,7 +1359,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, abilityKey, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, talismanInventory, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, abilityKey, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1355,7 +1378,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData(), server: SERVER });
-    const VERSION = '0.12.0'; // keep equal to @version (a test checks it)
+    const VERSION = '0.13.0'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = serverKey('mwicsSinkSent', SERVER), DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }

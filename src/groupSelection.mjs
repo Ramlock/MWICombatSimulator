@@ -5,9 +5,10 @@
 
 const SLOT_COUNT = 5;
 
-// The own character's export fields a party import may carry in its slot (the userscript's character export writes the same two).
-// They are for the What-if window's kept export, never for the sim slot.
-export const OWN_EXPORT_FIELDS = ['inventory', 'learnedAbilities'];
+// The own character's export fields a party import may carry in its slot (the userscript's character export writes the same ones).
+// They are for the What-if window's kept export, never for the sim slot. talismanInventory (every talisman owned, userscript 0.13.0) is kept
+// with the export and read by nothing yet; the simulator's equipped talismans field stays in the slot.
+export const OWN_EXPORT_FIELDS = ['inventory', 'learnedAbilities', 'talismanInventory'];
 
 // Takes OWN_EXPORT_FIELDS out of one slot (an object, or the JSON text of one). Returns the slot without them (the very same value
 // when it carried none) and the export they make up (the slot's name beside them, as a character export has it), or null.
