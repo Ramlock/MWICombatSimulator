@@ -146,7 +146,7 @@
         .whatif-summary .whatif-chips { flex: 1; }
         /* display: flex here, not Bootstrap's d-flex: its !important would beat the "get the runner" rule above and show the toolbar with no runner. */
         .whatif-toolbar { display: flex; padding-bottom: .5rem; border-bottom: 1px solid #495057; }
-        #whatIfLevers { display: grid; grid-template-columns: repeat(4, max-content); gap: .3rem 1.75rem; }
+        #whatIfLevers { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; gap: .3rem 1.75rem; }
         #whatIfLevers .form-check { display: flex; align-items: center; }
         #whatIfLevers .form-check-input { margin-right: .4rem; }
         #whatIfLevers .form-check:has(input:disabled)::after { content: attr(data-off); margin-left: .4rem; font-size: .72rem; padding: 0 .5rem; border-radius: 1rem; background: #343a40; border: 1px solid #495057; color: #adb5bd; white-space: nowrap; }

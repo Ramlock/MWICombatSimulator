@@ -589,9 +589,10 @@ const confirmedPayback = (v) => (typeof v === 'number' && v > 0 ? v : null);
 const MONTH_DAYS = 365.25 / 12;
 export function paybackText(days, t, plain = false) {
     if (typeof days !== 'number' || !Number.isFinite(days)) return '—';
-    const n = plain ? plainNum : num, one = (x) => Math.round(x * 10) / 10;
+    // The number is plain text, never a data-num span: the page re-renders those with its own digits (45 days would read 45.0).
+    const n = plainNum, one = (x) => Math.round(x * 10) / 10;
     if (days > HORIZON_DAYS) {
-        const over = t('payback.over', { n: n(Math.round(HORIZON_DAYS / 365)) });
+        const over = t('payback.over', { n: plainNum(Math.round(HORIZON_DAYS / 365)) });
         return plain ? over : esc(over) + help(esc(t('payback.overTip')));
     }
     if (days < 60) { const d = Math.ceil(days); return plural(t, 'payback.days', d, { n: n(d) }); }
