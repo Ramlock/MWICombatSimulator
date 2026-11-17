@@ -8,6 +8,7 @@
     "talismans": {
         "title": "符石",
         "power": "符石威力",
+        "fromText": "依据游戏内说明模拟，未经实战核对",
         "names": {
             "melee_accuracy": "近战精准度",
             "melee_damage": "近战伤害",

@@ -22,6 +22,7 @@ import AwaitCooldownEvent from "./events/awaitCooldownEvent";
 import Monster from "./monster";
 import Ability from "./ability";
 import { scaleConsumableBuff, scaleAbilityBuff } from "./buffScaling";
+import { fortifyBuffs, overkillStore, uniqueValue, UNIQUE_SETTINGS, FORTIFY_DURATION } from "./talismans";
 
 const ONE_SECOND = 1e9;
 const HOT_TICK_INTERVAL = 5 * ONE_SECOND;
@@ -461,6 +462,7 @@ class CombatSimulator extends EventTarget {
         }
 
         const aliveTargets = targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0);
+        const attack = {}; // one attack for every target it reaches (Overkill)
 
         for (let i = 0; i < aliveTargets.length; i++) {
             let target = aliveTargets[i];
@@ -487,7 +489,8 @@ class CombatSimulator extends EventTarget {
                 source = parryTarget;
             }
 
-            let attackResult = CombatUtilities.processAttack(source, target);
+            let attackResult = CombatUtilities.processAttack(source, target, null, parryTarget ? null : attack, !!parryTarget);
+            this.applyFortify(target, attackResult);
             if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
                 const log = this.generateCombatLog(source, "autoAttack", target, attackResult);
                 this.addToWipeLogs(log);
@@ -707,6 +710,7 @@ class CombatSimulator extends EventTarget {
             this.simResult.addEncounterEnd();
             this.simResult.lastEncounterFinishTime = this.simulationTime;
             this.players.forEach((player) => this.simResult.closeTriggerHolds(player, this.simulationTime));
+            if (!UNIQUE_SETTINGS.OVERKILL_CARRIES_ACROSS_FIGHTS) this.players.forEach((player) => { player.overkillStore = null; });
             // console.log("All enemies died");
 
             encounterEnded = true;
@@ -912,9 +916,14 @@ class CombatSimulator extends EventTarget {
 
     processDamageOverTimeTickEvent(event) {
         let tickDamage = CombatUtilities.calculateTickValue(event.damage, event.totalTicks, event.currentTick);
-        let damage = Math.min(tickDamage, event.target.combatDetails.currentHitpoints);
+        const hpBefore = event.target.combatDetails.currentHitpoints;
+        let damage = Math.min(tickDamage, hpBefore);
 
         event.target.combatDetails.currentHitpoints -= damage;
+        // Overkill (talisman, from the in-game text): a tick's kill fills the store only with OVERKILL_DOT_KILLS.
+        if (UNIQUE_SETTINGS.OVERKILL_DOT_KILLS && hpBefore > 0 && event.target.combatDetails.currentHitpoints <= 0 && uniqueValue(event.sourceRef, 'overkill')) {
+            overkillStore(event.sourceRef, tickDamage - hpBefore, null);
+        }
         this.simResult.addAttack(event.sourceRef, event.target, "damageOverTime", damage);
 
         if (this.zone?.isDungeon && event.target.isPlayer) {
@@ -984,6 +993,16 @@ class CombatSimulator extends EventTarget {
 
         let regenTickEvent = new RegenTickEvent(this.simulationTime + REGEN_TICK_INTERVAL);
         this.eventQueue.addEvent(regenTickEvent);
+    }
+
+    // Fortify (talisman, from the in-game text): a unit hit by an attack gains a stack; its run-out is checked by its own event.
+    applyFortify(target, attackResult) {
+        if (!uniqueValue(target, 'fortify') || target.combatDetails.currentHitpoints <= 0) return;
+        if (!attackResult.didHit && !UNIQUE_SETTINGS.FORTIFY_ON_MISS) return;
+        const buffs = fortifyBuffs(target, this.simulationTime);
+        if (!buffs.length) return;
+        target.addBuffs(buffs, this.simulationTime);
+        this.eventQueue.addEvent(new CheckBuffExpirationEvent(this.simulationTime + FORTIFY_DURATION, target));
     }
 
     processCheckBuffExpirationEvent(event) {
@@ -1340,6 +1359,7 @@ class CombatSimulator extends EventTarget {
         }
 
         let avoidTarget = [];
+        const attack = {}; // one attack for every target it reaches (Overkill)
 
         let isSkipParry = false;
 
@@ -1354,7 +1374,8 @@ class CombatSimulator extends EventTarget {
                 let tempTarget = source;
                 let tempSource = parryTarget;
 
-                let attackResult = CombatUtilities.processAttack(tempSource, tempTarget);
+                let attackResult = CombatUtilities.processAttack(tempSource, tempTarget, null, null, true);
+                this.applyFortify(tempTarget, attackResult);
 
                 this.simResult.addAttack(
                     tempSource,
@@ -1419,7 +1440,8 @@ class CombatSimulator extends EventTarget {
                     break;
                 }
 
-                let attackResult = CombatUtilities.processAttack(source, target, abilityEffect);
+                let attackResult = CombatUtilities.processAttack(source, target, abilityEffect, attack);
+                this.applyFortify(target, attackResult);
 
                 if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
                     const log = this.generateCombatLog(source, ability.hrid, target, attackResult);
@@ -1446,7 +1468,7 @@ class CombatSimulator extends EventTarget {
                         this.simulationTime + DOT_TICK_INTERVAL,
                         source,
                         target,
-                        attackResult.damageDone * abilityEffect.damageOverTimeRatio,
+                        attackResult.hitDamageDone * abilityEffect.damageOverTimeRatio,
                         abilityEffect.damageOverTimeDuration / DOT_TICK_INTERVAL,
                         1, abilityEffect.combatStyleHrid
                     );

@@ -31,7 +31,9 @@ const ids = Object.keys(T.TALISMAN_MODIFIERS), mods = Object.values(T.TALISMAN_M
 const UNIQUE = ['smite', 'overkill', 'echo', 'shatter', 'fortify'];
 check(ids.length === 48 && ids.filter((i) => !T.TALISMAN_MODIFIERS[i].unique).length === 43, 'table: 43 combat modifiers plus 5 unique', String(ids.length));
 check(same(ids.filter((i) => T.TALISMAN_MODIFIERS[i].unique).sort(), [...UNIQUE].sort()), 'table: the unique ones are Smite, Overkill, Echo, Shatter, Fortify');
-check(UNIQUE.every((i) => T.TALISMAN_MODIFIERS[i].effects.length === 0), 'table: a unique modifier has no effect');
+check(T.TALISMAN_MODIFIERS.echo.effects.length === 0, 'table: Echo has no effect');
+const BUILT = ['smite', 'shatter', 'fortify', 'overkill'];
+check(BUILT.every((i) => same(T.TALISMAN_MODIFIERS[i].effects, [{ stat: i }])), 'table: Smite, Shatter, Fortify and Overkill each have one effect under their own id');
 check(mods.every((m) => m.grades.length === 6 && m.grades.every(Number.isFinite)), 'table: six numeric grade values each');
 check(mods.filter((m) => !m.unique).every((m) => m.effects.length >= 1), 'table: every non-unique modifier has an effect');
 // The game's grades follow one shared curve times [1, 1.5, 2, 2.5, 3, 4] of G1.
@@ -44,9 +46,10 @@ check(g('armor_penetration', 1) === 0.02 && g('armor_penetration', 3) === 0.04 &
 check(mods.every((m) => m.effects.every((e) => Object.keys(e).join() === 'stat')), 'table: an effect is only a stat name (every line is a gear stat, no buff)');
 // Every stat named in the table is one the player sums from equipment.
 const playerSrc = readFileSync(path.join(root, 'src/combatsimulator/player.js'), 'utf8');
-const stats = [...new Set(mods.flatMap((m) => m.effects).map((e) => e.stat))];
+const stats = [...new Set(mods.filter((m) => !m.unique).flatMap((m) => m.effects).map((e) => e.stat))];
 const unsummed = stats.filter((s) => !playerSrc.includes('"' + s + '"'));
 check(unsummed.length === 0, 'table: every stat is one the player sums', unsummed.join(','));
+check(BUILT.every((i) => !playerSrc.includes('"' + i + '"')), 'table: the unique ids are no gear stat the player sums (the engine reads them from talismanStats)');
 
 // ---- The functions on a mocked talisman ----
 check(same(T.talismanEffects(undefined), []) && same(T.talismanEffects({}), []) && same(T.talismanEffects({ lines: [] }), []), 'effects: none for no talismans');
@@ -60,7 +63,8 @@ check(same(T.talismanEffects({ lines: mock.lines }), eff) && same(T.talismanEffe
 check(Math.abs(T.talismanEffects({ power: 0.4, lines: [{ modifier: 'armor', grade: 3 }] })[0].value - 5.6) < 1e-9, 'effects: talisman power scales the grade value by (1 + power)');
 check(throws(() => T.talismanEffects({ lines: [{ modifier: 'nope', grade: 1 }] })), 'effects: an unknown modifier throws');
 for (const bad of [0, 7, 1.5, '3', null, undefined]) check(throws(() => T.talismanEffects({ lines: [{ modifier: 'armor', grade: bad }] })), `effects: grade ${JSON.stringify(bad)} throws`);
-check(same(T.talismanEffects({ lines: [{ modifier: 'fortify', grade: 4 }, { modifier: 'smite', grade: 1 }] }), []), 'effects: unique modifiers give no effect');
+check(same(T.talismanEffects({ lines: [{ modifier: 'fortify', grade: 4 }, { modifier: 'smite', grade: 1 }, { modifier: 'echo', grade: 2 }] }), [{ modifier: 'fortify', stat: 'fortify', value: 0.025 }, { modifier: 'smite', stat: 'smite', value: 0.03 }]), 'effects: Fortify G4 is 0.025 and Smite G1 0.03 under their ids, Echo gives none');
+check(Math.abs(T.talismanStats({ power: 0.5, lines: [{ modifier: 'overkill', grade: 2 }] }).overkill - 0.3375) < 1e-12, 'effects: talisman power scales a unique line like the others');
 check(T.talismanEffects({ lines: [{ modifier: 'threat_reduction', grade: 2 }] })[0].value === -6, 'effects: Reduced Threat is negative');
 check(same(T.talismanStats(mock), { armor: 4, waterAmplify: 0.01, natureAmplify: 0.01, fireAmplify: 0.01, autoAttackDamage: 0.018 }), 'stats: the mocked talisman as five gear stats');
 const sum = T.talismanStats({ lines: [{ modifier: 'ranged_damage', grade: 2 }, { modifier: 'ranged_damage', grade: 1 }] });
@@ -101,7 +105,7 @@ check(Math.abs(withT.combatDetails.totalArmor - (base.combatDetails.totalArmor +
 check(Math.abs(withT.combatDetails.combatStats.combatExperience - (base.combatDetails.combatStats.combatExperience + 0.04)) < 1e-9, 'setup: Combat Experience G6 adds 0.04 on top of the Moo Pass buff');
 check(extra.length === 1 && extra[0].typeHrid === '/buff_types/wisdom' && withT.extraBuffs === extra, 'setup: the extra buffs are untouched');
 check(same(atZero(mkDto()).combatDetails, base.combatDetails), 'setup: another player built after it has no talisman stats');
-check(same(atZero(withTal([{ modifier: 'echo', grade: 6 }, { modifier: 'fortify', grade: 1 }])).combatDetails, base.combatDetails), 'setup: unique modifiers only, nothing changes');
+check(same(atZero(withTal([{ modifier: 'echo', grade: 6 }, { modifier: 'fortify', grade: 1 }])).combatDetails, base.combatDetails), 'setup: unique modifiers change no combat stat');
 check(same(atZero(withTal([], 0.2)).combatDetails, base.combatDetails), 'setup: a power with no lines, nothing changes');
 check(createSimPlayer(withTal([{ modifier: 'armor', grade: 1 }]), zone, labyrinth, undefined).talismanStats.armor === 2, 'setup: talismans work when no extra buffs are given');
 // A talisman stat adds to the gear's own: same stat from a worn item and a talisman.
@@ -114,7 +118,7 @@ for (const id of ids) {
     const p = atZero(withTal([{ modifier: id, grade: 6 }]));
     (!same(p.combatDetails, base.combatDetails) ? movers : idle).push(id);
 }
-check(same(idle.sort(), [...UNIQUE].sort()) && movers.length === 43, 'engine: all 43 combat modifiers change the player at G6, the five unique ones do not', idle.join(','));
+check(same(idle.sort(), [...UNIQUE].sort()) && movers.length === 43, 'engine: all 43 combat modifiers change the player at G6, the five unique ones change no combat stat', idle.join(','));
 
 // ---- A gear stat gives the same player as the buff it replaces ----
 // The 18 modifiers that have a buff type of the same bonus, checked on a bare player with no other
@@ -193,5 +197,131 @@ check(same(seen, { armor: 8, criticalRate: 0.024, damageTaken: -0.02 }), 'engine
 const { pageSetups } = await import(pathToFileURL(path.join(root, 'src/whatif/panel.mjs')).href);
 const fromPage = (extra) => pageSetups([{ id: '1', name: 'P', json: JSON.stringify(gen(extra)) }])[0];
 check(await runOf(fromPage({ talismans: TAL })) === eTal && await runOf(fromPage()) === eBase, 'engine: a what-if run from a page-shaped setup counts its talismans, and without the field equals the run with none');
+
+// ---- The four unique modifiers in the engine (from the in-game text) ----
+// Direct calls of CombatUtilities.processAttack with Math.random fixed at R: every roll is the same, so two calls differ only by the talisman.
+const { default: CombatUtilities } = await import(src('combatsimulator/combatUtilities.js'));
+const { default: Monster } = await import(src('combatsimulator/monster.js'));
+const S = T.UNIQUE_SETTINGS, DEFAULTS = { ...S };
+const withRandom = (r, fn) => { const real = Math.random; Math.random = () => r; try { return fn(); } finally { Math.random = real; } };
+const actionMap = JSON.parse(readFileSync(path.join(root, 'src/combatsimulator/data/actionDetailMap.json'), 'utf8'));
+const bossZone = Object.entries(actionMap).find(([, a]) => a.combatZoneInfo && !a.combatZoneInfo.isDungeon && a.combatZoneInfo.fightInfo?.bossSpawns?.length)[0];
+const BOSS_HRID = actionMap[bossZone].combatZoneInfo.fightInfo.bossSpawns[0].combatMonsterHrid;
+const mkMonster = (flags = {}, hp) => { const m = new Monster(BOSS_HRID, 0); Object.assign(m, flags); m.reset(0); if (hp !== undefined) m.combatDetails.currentHitpoints = hp; return m; };
+// Every player carries Critical Rate G6 (0.024 > R = 0.01): each hit is a crit, so its roll is the maximum, not the minimum.
+const pl = (lines) => atZero(withTal([{ modifier: 'critical_rate', grade: 6 }, ...lines], 0));
+const hit = (p, m, r = 0.01, ae = null, attack = null) => withRandom(r, () => CombatUtilities.processAttack(p, m, ae, attack));
+
+// Defaults are the plainest reading of the text.
+check(same(DEFAULTS, { SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES: true, SMITE_ON_REFLECT: true, SHATTER_ADDS_TO_PENETRATION: true, SHATTER_ON_ABILITIES: true, FORTIFY_NEW_STACK_RESTARTS_ALL: true, FORTIFY_ON_MISS: false, OVERKILL_CARRIES_ACROSS_FIGHTS: true, OVERKILL_KILLS_ADD_UP: true, OVERKILL_AREA_KILLS: true, OVERKILL_DOT_KILLS: false, OVERKILL_REFLECT_KILLS: false, OVERKILL_EXCESS_AFTER_MITIGATION: true, OVERKILL_PARRY_IS_DIRECT: true }), 'unique: the open-question settings and their defaults');
+check(T.FORTIFY_MAX_STACKS === 4 && T.FORTIFY_DURATION === 5e9, 'unique: Fortify stacks up to 4 for 5 s');
+
+// The zone marks its boss encounter, and a dungeon's fixed waves.
+const bz = new Zone(bossZone, 0); bz.encountersKilled = bz.monsterSpawnInfo.battlesPerBoss;
+const bossWave = bz.getRandomEncounter(), plainWave = bz.getRandomEncounter();
+check(bossWave.length > 0 && bossWave.every((m) => m.spawnedAsBoss === true && T.isBoss(m)) && plainWave.every((m) => !m.spawnedAsBoss && !T.isBoss(m)), 'smite: the zone boss encounter is a boss, a plain encounter is not');
+const dz = new Zone('/actions/combat/chimerical_den', 0); dz.encountersKilled = 5;
+const fixed = dz.getNextWave();
+check(fixed.length > 0 && fixed.every((m) => m.spawnedInFixedWave === true && T.isBoss(m)), 'smite: a dungeon fixed wave counts as bosses (SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES)');
+S.SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES = false; check(!T.isBoss(fixed[0]), 'smite: with the setting off a fixed wave is no boss'); S.SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES = true;
+
+// Smite: more damage to a boss, none to another monster.
+{
+    const sm = pl([{ modifier: 'smite', grade: 6 }]), none = pl([]);
+    const a = hit(sm, mkMonster({ spawnedAsBoss: true })), b = hit(none, mkMonster({ spawnedAsBoss: true }));
+    const c = hit(sm, mkMonster()), d = hit(none, mkMonster());
+    check(a.didHit && b.didHit && a.damageDone > b.damageDone && Math.abs(a.damageDone / b.damageDone - 1.12) < 0.02, 'smite: G6 deals about 12 % more to a boss', `${b.damageDone} -> ${a.damageDone}`);
+    check(c.damageDone === d.damageDone && c.damageDone > 0, 'smite: no change on a monster that is not a boss');
+}
+
+// Shatter: a crit gains penetration, a plain hit does not.
+{
+    const sh = pl([{ modifier: 'shatter', grade: 6 }]), noSh = pl([]);
+    const m0 = mkMonster(); const resist = m0.combatDetails.totalNatureResistance;
+    const a = hit(sh, mkMonster()), b = hit(noSh, mkMonster());
+    check(resist > 0 && a.isCrit && b.isCrit && a.damageDone > b.damageDone, 'shatter: a crit deals more through the target\'s resistance', `${b.damageDone} -> ${a.damageDone}, resist ${resist}`);
+    const plainSh = pl([{ modifier: 'shatter', grade: 6 }]), plainNone = pl([]);
+    const e = hit(plainSh, mkMonster(), 0.5), f = hit(plainNone, mkMonster(), 0.5);
+    check(!e.isCrit && !f.isCrit && e.didHit && e.damageDone === f.damageDone, 'shatter: a plain hit is unchanged');
+    check(Math.abs(T.shatterPenetration(sh, 0.1, true, false) - 0.26) < 1e-12 && T.shatterPenetration(sh, 0.1, false, false) === 0.1, 'shatter: G6 adds 0.16 to a crit\'s penetration (SHATTER_ADDS_TO_PENETRATION)');
+    check(Math.abs(T.shatterPenetration(sh, 0.1, true, true) - 0.26) < 1e-12, 'shatter: an ability\'s crit too (SHATTER_ON_ABILITIES)');
+}
+
+// Fortify: a stack per landed hit, at most 4, gone 5 s after the last (all stacks restart together).
+{
+    const { default: CombatSimulator } = await import(src('combatsimulator/combatSimulator.js'));
+    const fo = pl([{ modifier: 'fortify', grade: 4 }]);
+    const baseArmor = fo.combatDetails.totalArmor, baseFire = fo.combatDetails.totalFireResistance;
+    const events = [];
+    const sim = { simulationTime: 0, eventQueue: { addEvent: (e) => events.push(e) } };
+    const applyAt = (t, didHit = true) => { sim.simulationTime = t; CombatSimulator.prototype.applyFortify.call(sim, fo, { didHit }); };
+    applyAt(1e9);
+    check(T.fortifyStacks(fo, 1e9) === 1 && Math.abs(fo.combatDetails.totalArmor - baseArmor * 1.025) < 1e-9 && Math.abs(fo.combatDetails.totalFireResistance - baseFire * 1.025) < 1e-9, 'fortify: one hit gives 2.5 % armor and resistances', `${baseArmor} -> ${fo.combatDetails.totalArmor}`);
+    for (let i = 2; i <= 6; i++) applyAt(i * 1e9);
+    check(T.fortifyStacks(fo, 6e9) === 4 && Math.abs(fo.combatDetails.totalArmor - baseArmor * 1.1) < 1e-9, 'fortify: six hits reach 4 stacks, never 5 (+10 %)');
+    applyAt(7e9, false);
+    check(T.fortifyStacks(fo, 7e9) === 4 && events.length === 6, 'fortify: a missed attack adds nothing and schedules nothing (FORTIFY_ON_MISS)');
+    check(events.every((e, i) => e.time === (i + 1) * 1e9 + 5e9), 'fortify: each stack schedules its run-out check 5 s later', events.map((e) => e.time).join(','));
+    fo.removeExpiredBuffs(10.9e9);
+    check(T.fortifyStacks(fo, 10.9e9) === 4, 'fortify: still on 4.9 s after the last hit (a new stack restarted all)');
+    fo.removeExpiredBuffs(11e9);
+    check(T.fortifyStacks(fo, 11e9) === 0 && fo.combatDetails.totalArmor === baseArmor && fo.combatDetails.totalFireResistance === baseFire, 'fortify: gone 5 s after the last hit');
+    // Each stack its own timer (the other setting): the first stack runs out alone.
+    S.FORTIFY_NEW_STACK_RESTARTS_ALL = false;
+    applyAt(20e9); applyAt(22e9);
+    fo.removeExpiredBuffs(25e9);
+    const own = T.fortifyStacks(fo, 25e9);
+    S.FORTIFY_NEW_STACK_RESTARTS_ALL = true;
+    check(own === 1, 'fortify: with own timers, the first stack runs out 5 s after its own hit', String(own));
+    const plain = pl([]); sim.simulationTime = 0; CombatSimulator.prototype.applyFortify.call(sim, plain, { didHit: true });
+    check(T.fortifyStacks(plain, 0) === 0 && Object.keys(plain.combatBuffs).every((k) => !k.includes('fortify')), 'fortify: nothing for a player without it');
+}
+
+// Overkill: a kill stores value x excess; the next landed direct attack's first target takes it once as true damage.
+{
+    const ok = pl([{ modifier: 'overkill', grade: 2 }]), none = pl([]);
+    const full = hit(none, mkMonster()).damageDone; // the same roll on a monster with full HP: the hit's damage
+    const k = hit(ok, mkMonster({}, 10), 0.01, null, {});
+    check(full > 10 && k.damageDone === 10 && Math.abs(ok.overkillStore.amount - 0.225 * (full - 10)) < 1e-9, 'overkill: a kill stores 22.5 % of the excess', `${ok.overkillStore?.amount} vs ${0.225 * (full - 10)}`);
+    const stored = Math.floor(ok.overkillStore.amount);
+    const miss = hit(ok, mkMonster(), 0.999999, null, {});
+    check(!miss.didHit && ok.overkillStore?.amount > 0, 'overkill: a missed attack keeps the store');
+    const n = hit(ok, mkMonster(), 0.01, null, {});
+    check(n.damageDone === full + stored && n.hitDamageDone === full && ok.overkillStore === null, 'overkill: the next landed attack adds it as true damage and the store empties', `${n.damageDone} vs ${full}+${stored}`);
+    const again = hit(ok, mkMonster(), 0.01, null, {});
+    check(again.damageDone === full, 'overkill: spent once');
+    // The same attack's later targets do not spend the store it filled; two kills in it add up (OVERKILL_KILLS_ADD_UP).
+    const A = {};
+    hit(ok, mkMonster({}, 10), 0.01, null, A); hit(ok, mkMonster({}, 20), 0.01, null, A);
+    check(Math.abs(ok.overkillStore.amount - 0.225 * (2 * full - 30)) < 1e-9, 'overkill: two kills in one attack add up');
+    const same2 = hit(ok, mkMonster(), 0.01, null, A);
+    check(same2.damageDone === full && ok.overkillStore.amount > 0, 'overkill: the attack that filled the store does not spend it');
+    ok.overkillStore = null;
+    S.OVERKILL_KILLS_ADD_UP = false;
+    const B = {}; hit(ok, mkMonster({}, 10), 0.01, null, B); hit(ok, mkMonster({}, 20), 0.01, null, B);
+    S.OVERKILL_KILLS_ADD_UP = true;
+    check(Math.abs(ok.overkillStore.amount - 0.225 * (full - 20)) < 1e-9, 'overkill: with the setting off the later kill overwrites');
+    ok.overkillStore = null;
+    // An area ability's kill counts (OVERKILL_AREA_KILLS); a parry's counterattack is direct (OVERKILL_PARRY_IS_DIRECT).
+    const area = { combatStyleHrid: ok.combatDetails.combatStats.combatStyleHrid, damageType: ok.combatDetails.combatStats.damageType, targetType: 'allEnemies', bonusAccuracyRatio: 0, damageFlat: 0, damageRatio: 1, armorDamageRatio: 0 };
+    hit(ok, mkMonster({}, 1), 0.01, area, {});
+    check(ok.overkillStore?.amount > 0, 'overkill: an area ability\'s kill fills the store');
+    ok.overkillStore = null;
+    withRandom(0.01, () => CombatUtilities.processAttack(ok, mkMonster({}, 10), null, null, true));
+    check(ok.overkillStore?.amount > 0, 'overkill: a parry\'s kill fills the store');
+    // The true damage ignores armor, crit and Smite; no store for a player without it.
+    ok.overkillStore = { amount: 50.7, attack: null };
+    const boss = hit(ok, mkMonster({ spawnedAsBoss: true }), 0.01, null, {});
+    check(boss.damageDone - boss.hitDamageDone === 50, 'overkill: the stored amount lands as is (floored), with no armor or multiplier');
+    hit(none, mkMonster({}, 10), 0.01, null, {});
+    check(!none.overkillStore, 'overkill: nothing stored for a player without it');
+}
+for (const [k, v] of Object.entries(DEFAULTS)) S[k] = v;
+
+// The page's simulation and the what-if engine get the four by the same path: a run with them differs from one without.
+const U = { power: 0, lines: [{ modifier: 'smite', grade: 6 }, { modifier: 'shatter', grade: 6 }, { modifier: 'fortify', grade: 6 }, { modifier: 'overkill', grade: 6 }] };
+const viaU = await run((z) => createSimPlayer(withTal(U.lines, 0), z, null, buildExtraBuffs(EXTRA)));
+check(viaU !== viaOld, 'run: the four unique modifiers change a 10 minute simulation');
+check(await runOf(gen({ talismans: U })) !== eBase, 'engine: the four unique modifiers change the what-if run');
 console.log(fails === 0 ? 'PASS: talismans.' : `FAIL: ${fails} problems.`);
 process.exit(fails === 0 ? 0 : 1);
