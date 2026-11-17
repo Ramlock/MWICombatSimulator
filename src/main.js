@@ -16,6 +16,7 @@ import { isPlanetZone } from "./zones.mjs";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
+import { rolledDrops, expectedDrops } from "./combatsimulator/lootPricing.js";
 import { cellValue, parseNumber, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers, alignNumberColumns } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
@@ -1984,102 +1985,10 @@ function manipulateSimResultsDataForDisplay(simResults) {
     return displaySimResults;
 }
 
-function fidDropAmount(dropAmount) {
-  if (Number.isInteger(dropAmount)) return dropAmount;
-
-  const intPart   = Math.floor(dropAmount);
-  const fracPart  = dropAmount - intPart;
-  return Math.random() < fracPart ? intPart + 1 : intPart;
-}
-
+// The player's drops of the run: totalDropMap rolled kill by kill, noRngTotalDropMap the expected amounts. Each kill is
+// priced with the multipliers the player had at it (src/combatsimulator/lootPricing.js).
 function calcDropMaps(simResult, playerToDisplay) {
-    let dropRateMultiplier = simResult.dropRateMultiplier[playerToDisplay];
-    let rareFindMultiplier = simResult.rareFindMultiplier[playerToDisplay];
-    let combatDropQuantity = simResult.combatDropQuantity[playerToDisplay];
-    let debuffOnLevelGap = simResult.debuffOnLevelGap[playerToDisplay];
-
-    let numberOfPlayers = simResult.numberOfPlayers;
-    let monsters = Object.keys(simResult.deaths)
-        .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
-        .sort();
-
-    const totalDropMap = new Map();
-    const noRngTotalDropMap = new Map();
-    for (const monster of monsters) {
-        const dropMap = new Map();
-        const rareDropMap = new Map();
-        if (combatMonsterDetailMap[monster].dropTable) {
-            for (const drop of combatMonsterDetailMap[monster].dropTable) {
-                if (drop.minDifficultyTier > simResult.difficultyTier) {
-                    continue;
-                }
-
-                let multiplier = 1.0 + 0.1 * simResult.difficultyTier;
-                let dropRate = Math.min(1.0, multiplier * (drop.dropRate + (drop.dropRatePerDifficultyTier ?? 0) * simResult.difficultyTier));
-                if (dropRate <= 0) continue;
-
-                dropMap.set(drop.itemHrid, { "dropRate": Math.min(1.0, dropRate * dropRateMultiplier), "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
-            }
-            if (combatMonsterDetailMap[monster].rareDropTable)
-                for (const drop of combatMonsterDetailMap[monster].rareDropTable) {
-                    if (drop.minDifficultyTier > simResult.difficultyTier) {
-                        continue;
-                    }
-                    rareDropMap.set(drop.itemHrid, { "dropRate": drop.dropRate * rareFindMultiplier, "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
-                }
-
-            for (let dropObject of dropMap.values()) {
-                dropObject.noRngDropAmount += simResult.deaths[monster] * dropObject.dropRate * ((dropObject.dropMax + dropObject.dropMin) / 2) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity) / numberOfPlayers;
-
-            }
-            for (let dropObject of rareDropMap.values()) {
-                dropObject.noRngDropAmount += simResult.deaths[monster] * dropObject.dropRate * ((dropObject.dropMax + dropObject.dropMin) / 2) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity) / numberOfPlayers;
-            }
-
-            for (let i = 0; i < simResult.deaths[monster]; i++) {
-                for (let dropObject of dropMap.values()) {
-                    let chance = Math.random();
-                    if (chance <= dropObject.dropRate / numberOfPlayers) {
-                        let amount = Math.floor(Math.random() * (dropObject.dropMax - dropObject.dropMin + 1) + dropObject.dropMin) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity);
-                        dropObject.number = dropObject.number + fidDropAmount(amount);
-                    }
-                }
-                for (let dropObject of rareDropMap.values()) {
-                    let chance = Math.random();
-                    if (chance <= dropObject.dropRate / numberOfPlayers) {
-                        let amount = Math.floor(Math.random() * (dropObject.dropMax - dropObject.dropMin + 1) + dropObject.dropMin) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity);
-                        dropObject.number = dropObject.number + fidDropAmount(amount);
-                    }
-                }
-            }
-            for (let [name, dropObject] of dropMap.entries()) {
-                if (totalDropMap.has(name)) {
-                    totalDropMap.set(name, totalDropMap.get(name) + dropObject.number);
-                } else {
-                    totalDropMap.set(name, dropObject.number);
-                }
-                if (noRngTotalDropMap.has(name)) {
-                    noRngTotalDropMap.set(name, noRngTotalDropMap.get(name) + dropObject.noRngDropAmount);
-                } else {
-                    noRngTotalDropMap.set(name, dropObject.noRngDropAmount);
-                }
-            }
-            for (let [name, dropObject] of rareDropMap.entries()) {
-                if (totalDropMap.has(name)) {
-                    totalDropMap.set(name, totalDropMap.get(name) + dropObject.number);
-                } else {
-                    totalDropMap.set(name, dropObject.number);
-                }
-                if (noRngTotalDropMap.has(name)) {
-                    noRngTotalDropMap.set(name, noRngTotalDropMap.get(name) + dropObject.noRngDropAmount);
-                } else {
-                    noRngTotalDropMap.set(name, dropObject.noRngDropAmount);
-                }
-            }
-        }
-    }
-
-    return { totalDropMap, noRngTotalDropMap };
+    return { totalDropMap: rolledDrops(simResult, playerToDisplay), noRngTotalDropMap: expectedDrops(simResult, playerToDisplay) };
 }
 
 function getDropProfit(simResult, playerToDisplay) {

@@ -13,6 +13,10 @@ class SimResult {
         this.dropRateMultiplier = {};
         this.rareFindMultiplier = {};
         this.combatDropQuantity = {};
+        // Per player hrid, the monster kills grouped by the multipliers the player had at each kill (see addDeath):
+        // { "<dropRate>|<rareFind>|<dropQuantity>": { dropRate, rareFind, dropQuantity, deaths: { monsterHrid: kills } } }.
+        // Loot is priced from it (src/combatsimulator/lootPricing.js).
+        this.killMultipliers = {};
         this.playerRanOutOfMana = {
             "player1": false,
             "player2": false,
@@ -67,12 +71,31 @@ class SimResult {
         });
     }
     
-    addDeath(unit) {
+    // players: the party at that instant. A monster's death is recorded against each player's multipliers as they stand
+    // now (killMultipliers), so its loot is priced with them.
+    addDeath(unit, players) {
         if (!this.deaths[unit.hrid]) {
             this.deaths[unit.hrid] = 0;
         }
 
         this.deaths[unit.hrid] += 1;
+
+        if (!unit.isPlayer && players) {
+            for (const player of players) {
+                this.addKillMultipliers(player, unit.hrid);
+            }
+        }
+    }
+
+    addKillMultipliers(player, monsterHrid) {
+        const stats = player.combatDetails.combatStats;
+        const dropRate = 1 + stats.combatDropRate;
+        const rareFind = 1 + stats.combatRareFind;
+        const dropQuantity = stats.combatDropQuantity;
+        const byPlayer = this.killMultipliers[player.hrid] ??= {};
+        const key = dropRate + "|" + rareFind + "|" + dropQuantity;
+        const group = byPlayer[key] ??= { dropRate, rareFind, dropQuantity, deaths: {} };
+        group.deaths[monsterHrid] = (group.deaths[monsterHrid] ?? 0) + 1;
     }
 
     updateTimeSpentAlive(name, alive, time) {
@@ -221,25 +244,33 @@ class SimResult {
         this.manapointsGained[unit.hrid][source] += amount;
     }
 
+    // The player's drop rate, rare find and drop quantity multipliers as one figure each: their mean over the player's
+    // monster kills (killMultipliers), or the player's current ones when there was no kill. Loot is not priced from these
+    // (src/combatsimulator/lootPricing.js prices each group of kills); they are what the run's kills were made under, on average.
     setDropRateMultipliers(unit) {
-        if (!this.dropRateMultiplier[unit.hrid]) {
-            this.dropRateMultiplier[unit.hrid] = {};
+        const groups = Object.values(this.killMultipliers[unit.hrid] ?? {});
+        let kills = 0, dropRate = 0, rareFind = 0, dropQuantity = 0;
+        for (const g of groups) {
+            const n = Object.values(g.deaths).reduce((a, b) => a + b, 0);
+            kills += n;
+            dropRate += g.dropRate * n;
+            rareFind += g.rareFind * n;
+            dropQuantity += g.dropQuantity * n;
         }
-        this.dropRateMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatDropRate;
+        if (groups.length == 1) {
+            this.dropRateMultiplier[unit.hrid] = groups[0].dropRate;
+            this.rareFindMultiplier[unit.hrid] = groups[0].rareFind;
+            this.combatDropQuantity[unit.hrid] = groups[0].dropQuantity;
+        } else if (kills > 0) {
+            this.dropRateMultiplier[unit.hrid] = dropRate / kills;
+            this.rareFindMultiplier[unit.hrid] = rareFind / kills;
+            this.combatDropQuantity[unit.hrid] = dropQuantity / kills;
+        } else {
+            this.dropRateMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatDropRate;
+            this.rareFindMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatRareFind;
+            this.combatDropQuantity[unit.hrid] = unit.combatDetails.combatStats.combatDropQuantity;
+        }
 
-        if (!this.rareFindMultiplier[unit.hrid]) {
-            this.rareFindMultiplier[unit.hrid] = {};
-        }
-        this.rareFindMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatRareFind;
-
-        if (!this.combatDropQuantity[unit.hrid]) {
-            this.combatDropQuantity[unit.hrid] = {};
-        }
-        this.combatDropQuantity[unit.hrid] = unit.combatDetails.combatStats.combatDropQuantity;
-
-        if (!this.debuffOnLevelGap[unit.hrid]) {
-            this.debuffOnLevelGap[unit.hrid] = {};
-        }
         this.debuffOnLevelGap[unit.hrid] = unit.debuffOnLevelGap;
     }
 

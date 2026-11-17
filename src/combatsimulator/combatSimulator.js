@@ -628,7 +628,7 @@ class CombatSimulator extends EventTarget {
 
             if (target.combatDetails.currentHitpoints == 0) {
                 this.eventQueue.clearEventsForUnit(target);
-                this.simResult.addDeath(target);
+                this.simResult.addDeath(target, this.players);
                 if (!target.isPlayer) {
                     this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
                 }
@@ -640,7 +640,7 @@ class CombatSimulator extends EventTarget {
                 (attackResult.thornDamageDone != 0 || attackResult.retaliationDamageDone != 0)
             ) {
                 this.eventQueue.clearEventsForUnit(source);
-                this.simResult.addDeath(source);
+                this.simResult.addDeath(source, this.players);
                 if (!source.isPlayer) {
                     this.simResult.updateTimeSpentAlive(source.hrid, false, this.simulationTime);
                 }
@@ -940,7 +940,7 @@ class CombatSimulator extends EventTarget {
 
         if (event.target.combatDetails.currentHitpoints == 0) {
             this.eventQueue.clearEventsForUnit(event.target);
-            this.simResult.addDeath(event.target);
+            this.simResult.addDeath(event.target, this.players);
             if (!event.target.isPlayer) {
                 this.simResult.updateTimeSpentAlive(event.target.hrid, false, this.simulationTime);
             }
@@ -1288,7 +1288,7 @@ class CombatSimulator extends EventTarget {
         // Could die from reflect damage
         if (source.combatDetails.currentHitpoints == 0) {
             this.eventQueue.clearEventsForUnit(source);
-            this.simResult.addDeath(source);
+            this.simResult.addDeath(source, this.players);
             if (!source.isPlayer) {
                 this.simResult.updateTimeSpentAlive(source.hrid, false, this.simulationTime);
             }
@@ -1380,7 +1380,7 @@ class CombatSimulator extends EventTarget {
 
                 if (tempTarget.combatDetails.currentHitpoints == 0) {
                     this.eventQueue.clearEventsForUnit(tempTarget);
-                    this.simResult.addDeath(tempTarget);
+                    this.simResult.addDeath(tempTarget, this.players);
                     if (!tempTarget.isPlayer) {
                         this.simResult.updateTimeSpentAlive(tempTarget.hrid, false, this.simulationTime);
                     }
@@ -1392,7 +1392,7 @@ class CombatSimulator extends EventTarget {
                     (attackResult.thornDamageDone != 0 || attackResult.retaliationDamageDone != 0)
                 ) {
                     this.eventQueue.clearEventsForUnit(tempSource);
-                    this.simResult.addDeath(tempSource);
+                    this.simResult.addDeath(tempSource, this.players);
                     if (!tempSource.isPlayer) {
                         this.simResult.updateTimeSpentAlive(tempSource.hrid, false, this.simulationTime);
                     }
@@ -1607,7 +1607,7 @@ class CombatSimulator extends EventTarget {
 
                 if (target.combatDetails.currentHitpoints == 0) {
                     this.eventQueue.clearEventsForUnit(target);
-                    this.simResult.addDeath(target);
+                    this.simResult.addDeath(target, this.players);
                     if (!target.isPlayer) {
                         this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
                     }

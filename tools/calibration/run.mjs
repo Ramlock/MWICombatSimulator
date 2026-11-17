@@ -57,7 +57,7 @@ const { default: CombatSimulator } = await import(src('combatsimulator/combatSim
 const { default: Player } = await import(src('combatsimulator/player.js'));
 const { default: Zone } = await import(src('combatsimulator/zone.js'));
 const { default: itemDetailMap } = await import(src('combatsimulator/data/itemDetailMap.json'));
-const { default: combatMonsterDetailMap } = await import(src('combatsimulator/data/combatMonsterDetailMap.json'));
+const { expectedDrops } = await import(src('combatsimulator/lootPricing.js')); // expected ("No RNG") drops, as the page
 const { default: openableLootDropMap } = await import(src('combatsimulator/data/openableLootDropMap.json'));
 
 const ONE_HOUR = 3600 * 1e9;
@@ -131,39 +131,12 @@ function panelDropValue(hrid) {
     return a > 0 ? a : 0;
 }
 
-// src/main.js:1982-2070 calcDropMaps, expected ("No RNG") part only.
-function noRngDrops(playerHrid) {
-    const dropRateMultiplier = r.dropRateMultiplier[playerHrid];
-    const rareFindMultiplier = r.rareFindMultiplier[playerHrid];
-    const cdq = r.combatDropQuantity[playerHrid];
-    const gap = r.debuffOnLevelGap[playerHrid];
-    const n = r.numberOfPlayers;
-    const out = new Map();
-    const add = (k, v) => out.set(k, (out.get(k) || 0) + v);
-    for (const m of Object.keys(r.deaths).filter((e) => !/^player\d$/.test(e))) {
-        const md = combatMonsterDetailMap[m];
-        if (!md.dropTable) continue;
-        for (const d of md.dropTable) {
-            if (d.minDifficultyTier > r.difficultyTier) continue;
-            let rate = Math.min(1, (1 + 0.1 * r.difficultyTier) * (d.dropRate + (d.dropRatePerDifficultyTier ?? 0) * r.difficultyTier));
-            if (rate <= 0) continue;
-            rate = Math.min(1, rate * dropRateMultiplier);
-            add(d.itemHrid, r.deaths[m] * rate * (d.maxCount + d.minCount) / 2 * (1 + gap) * (1 + cdq) / n);
-        }
-        for (const d of md.rareDropTable || []) {
-            if (d.minDifficultyTier > r.difficultyTier) continue;
-            add(d.itemHrid, r.deaths[m] * d.dropRate * rareFindMultiplier * (d.maxCount + d.minCount) / 2 * (1 + gap) * (1 + cdq) / n);
-        }
-    }
-    return out;
-}
-
 const hoursForRates = (r.lastEncounterFinishTime > 0 ? r.lastEncounterFinishTime : r.simulatedTime) / ONE_HOUR; // src/main.js:2252-2257
 const simHours = r.simulatedTime / ONE_HOUR;
 const results = {};
 dtos.forEach((d, i) => {
     const ph = d.hrid;
-    const drops = noRngDrops(ph);
+    const drops = expectedDrops(r, ph);
     let uiRevenue = 0, panelIncome = 0;
     const dropRows = [];
     for (const [hrid, amt] of drops) {
