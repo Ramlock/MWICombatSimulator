@@ -82,6 +82,7 @@ check(applyOps([setup], one.ops)[0].abilities[Number(one.id.match(/ability(\d)/)
 const dropsB = [], bAll = H.bookCands(setup, 'P', { buy: flat, learned, levels: [1], onDrop: (e) => dropsB.push(e) });
 check(bAll.length > 0 && !bAll.some((c) => /book:(cleave|poke|water_strike|fireball|berserk|frenzy|aqua_arrow)@/.test(c.id)), 'books: a nature mage is never offered another style\'s or element\'s ability, nor a physical self buff');
 check(bAll.some((c) => /book:(heal|minor_heal)@/.test(c.id)) && bAll.some((c) => /book:(fierce_aura|mystic_aura|speed_aura)@/.test(c.id)), 'books: heals and auras stay');
+check(!bAll.some((c) => /book:(taunt|provoke|spike_shell|retribution|elusiveness)@/.test(c.id)) && bAll.some((c) => /book:toughness@/.test(c.id)), 'books: a player holding no tank buff is offered none (rule T); Toughness stays');
 check(dropsB.length > 0 && dropsB.some((e) => /learn cleave 1$/.test(e.desc) && e.bound.styles.includes('slash') && e.wants.element === 'nature') && dropsB.every((e) => e.player === 'P' && e.to.ability && e.id.includes('=book:')), 'books: every dropped book goes to onDrop with why (bound) and what the player wants');
 const meleeSetup = { ...setup, player: { ...setup.player, equipment: [{ itemLocationHrid: '/item_locations/main_hand', itemHrid: '/items/cheese_sword', enhancementLevel: 0 }] } };
 const dropsL = [], alMelee = H.abilityLevelCands(meleeSetup, 'P', { steps: [1], buy: flat, onDrop: (e) => dropsL.push(e) });

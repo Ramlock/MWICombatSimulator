@@ -87,8 +87,24 @@ check(S.abilityMisfit(A('berserk'), fire)?.buffs?.join() === 'physical_amplify' 
 check(S.abilityMisfit(A('berserk'), melee) === null && S.abilityMisfit(A('frenzy'), ranger) === null, 'Berserk and Frenzy stay for melee and ranged');
 check(S.abilityMisfit(A('elemental_affinity'), melee) !== null && S.abilityMisfit(A('elemental_affinity'), ranger) === null && S.abilityMisfit(A('elemental_affinity'), fire) === null, 'Elemental Affinity: dropped for a melee player, kept for a ranger and a mage');
 const everyone = [melee, sword, spear, bare, ranger, fire, water, nature];
-const neutralAbilities = ['minor_heal', 'heal', 'quick_aid', 'rejuvenate', 'revive', 'taunt', 'provoke', 'toughness', 'elusiveness', 'precision', 'spike_shell', 'retribution', 'vampirism', 'insanity', 'invincible', 'fierce_aura', 'mystic_aura', 'speed_aura', 'guardian_aura', 'critical_aura'].filter((n) => abilities[A(n)]);
-check(neutralAbilities.length >= 18 && neutralAbilities.every((n) => everyone.every((f) => S.abilityMisfit(A(n), f) === null)), 'heals, auras and buffs with no damage stay for everyone (' + neutralAbilities.length + ')');
+const neutralAbilities = ['revive', 'toughness', 'precision', 'vampirism', 'insanity', 'invincible', 'fierce_aura', 'mystic_aura', 'speed_aura', 'guardian_aura', 'critical_aura'].filter((n) => abilities[A(n)]);
+check(neutralAbilities.length >= 10 && neutralAbilities.every((n) => everyone.every((f) => S.abilityMisfit(A(n), f) === null)), 'auras and buffs with no damage, no heal and not a tank buff stay for everyone (' + neutralAbilities.length + '): Toughness and Invincible included');
+
+// Rule H: a heal with no damage is for a mage only (the owner's pick "Drop both", 2026-11-17).
+const heals = Object.keys(abilities).filter((h) => abilities[h].abilityEffects?.some((e) => e.effectType.endsWith('/heal')) && !abilities[h].abilityEffects.some((e) => e.effectType.endsWith('/damage'))).map((h) => h.split('/').pop()).sort();
+check(heals.join() === 'heal,minor_heal,quick_aid,rejuvenate', 'the heals, read from the data: ' + heals.join());
+check(heals.every((n) => [melee, sword, spear, bare, ranger].every((f) => S.abilityMisfit(A(n), f)?.heal === true)), 'a melee or ranged player is not offered a heal');
+check(heals.every((n) => [fire, water, nature].every((f) => S.abilityMisfit(A(n), f) === null)), 'every mage keeps the heals');
+
+// Rule T: a tank buff (threat, thorns, retaliation, evasion only) is for a player who holds one now.
+const tanks = Object.keys(abilities).filter((h) => S.isTankBuff(abilities[h])).map((h) => h.split('/').pop()).sort();
+check(tanks.join() === 'elusiveness,provoke,retribution,spike_shell,taunt', 'the tank buffs, read from the data: ' + tanks.join());
+check(['toughness', 'invincible', 'guardian_aura'].every((n) => !S.isTankBuff(abilities[A(n)])), 'Toughness, Invincible and Guardian Aura are no tank buffs (armor and resistances; an aura targets allies)');
+check(tanks.every((n) => everyone.every((f) => f.tank === false && S.abilityMisfit(A(n), f)?.tank?.length > 0)), 'a player holding no tank buff is not offered one, whatever his style');
+const withTaunt = (w) => ({ ...setupOf(w), abilities: [{ abilityHrid: A('fireball'), level: 10 }, { abilityHrid: A('taunt'), level: 5 }] });
+const tankMelee = S.playerFit(withTaunt(weapon('slash')), items), tankMage = S.playerFit(withTaunt(weapon('magic', 'fire')), items);
+check(tankMelee.tank === true && tanks.every((n) => S.abilityMisfit(A(n), tankMelee) === null), 'a player holding Taunt is offered every tank buff');
+check(tankMage.tank === true && tanks.every((n) => S.abilityMisfit(A(n), tankMage) === null) && S.playerFit({ ...setupOf(weapon('slash')), abilities: [{ abilityHrid: A('toughness'), level: 5 }] }, items).tank === false, 'a mage holding Taunt keeps them too; holding Toughness alone does not count');
 
 // The optimizer: one filter at both call sites (market swaps, owned items), after the cheap checks, the list in result.json.
 const core = readFileSync(path.join(root, 'tools/whatif/core.mjs'), 'utf8');

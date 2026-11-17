@@ -29,6 +29,10 @@
 //      helps everyone. What the player deals: his weapon's damage type, the damage type of every ability D keeps for him,
 //      and auto attacks unless he is a mage. So a mage drops a physical amplify or attack speed buff, a melee player an
 //      elemental amplify buff, and a ranged player keeps it (his style's abilities deal elemental damage).
+//   H. a heal (a heal effect and no damage effect), for a player who is not a mage (the owner's pick, 2026-11-17: "Drop both").
+//   T. a tank buff (a self buff with no damage effect, every boost of which is threat, thorns, retaliation or evasion), for a
+//      player who holds none now (`fit.tank`: the owner's "for a damage dealer", read as holding no tank buff; inferred, the
+//      same pick). A buff with another boost (armor, resistances) is no tank buff here.
 //
 // The player's style is the one the engine reads from his weapon (drinkfill.mjs combatStyleOf), `kind` its raw style
 // (stab|slash|smash|ranged|magic); his element is his weapon's damageType when he is a mage, else null. Pure functions.
@@ -58,8 +62,9 @@ export function boundsOf(item) {
     return { styles: [...styles].sort(), elements: [...elements].sort() };
 }
 
-// The player's { style, element, kind } from his setup.
+// The player's { style, element, kind, tank } from his setup (tank: he holds a tank buff now, rule T).
 export function playerFit(setup, items) {
+    const tank = (setup?.abilities || []).some((a) => a?.abilityHrid && isTankBuff(abilityDetailMap[a.abilityHrid]));
     const kind = weaponStyleOf(setup, items), style = group(kind);
     let element = null;
     if (style === 'magic') {
@@ -69,7 +74,7 @@ export function playerFit(setup, items) {
             if (d && short(d) !== 'physical') { element = short(d); break; }
         }
     }
-    return { style, element, kind };
+    return { style, element, kind, tank };
 }
 
 // Rule P: the negative stats of the player's own style (and, for a mage, of his element) the piece carries.
@@ -143,10 +148,30 @@ function buffMisfit(det, fit) {
     return { styles: [], elements: [], buffs: [...new Set(boosts.map((b) => short(b.typeHrid)))].sort() };
 }
 
+// Rule H on one ability: null, or { heal: true } when it heals, deals no damage and the player is not a mage.
+function healMisfit(det, fit) {
+    if (fit.style === 'magic' || damageEffects(det).length || !(det?.abilityEffects || []).some((e) => short(e.effectType) === 'heal')) return null;
+    return { styles: [], elements: [], heal: true };
+}
+// Whether an ability is a tank buff (rule T): a self buff with no damage effect, every boost of which is threat, thorns, retaliation or evasion.
+const TANK_BOOST = /^(threat|retaliation|evasion|[a-z]+_thorns)$/;
+function tankBoosts(det) {
+    const effects = det?.abilityEffects || [];
+    if (!effects.length || damageEffects(det).length || !effects.every((e) => e.targetType === 'self' && short(e.effectType) === 'buff')) return null;
+    const boosts = effects.flatMap((e) => e.buffs || []).map((b) => short(b.typeHrid));
+    return boosts.length && boosts.every((b) => TANK_BOOST.test(b)) ? [...new Set(boosts)].sort() : null;
+}
+export const isTankBuff = (det) => tankBoosts(det) != null;
+// Rule T on one ability: null, or { tank: [boost types] } when it is a tank buff and the player holds none now.
+function tankMisfit(det, fit) {
+    const boosts = !fit.tank && tankBoosts(det);
+    return boosts ? { styles: [], elements: [], tank: boosts } : null;
+}
+
 // null when the ability fits the player; else why it is kept out: { styles, elements } of its damage (rule D), or
-// { styles: [], elements: [], buffs } (rule B). `ability` is an ability hrid or its detail.
+// { styles: [], elements: [] } with `buffs` (rule B), `heal: true` (rule H) or `tank` (rule T). `ability` is an ability hrid or its detail.
 export function abilityMisfit(ability, fit) {
     const det = typeof ability === 'string' ? abilityDetailMap[ability] : ability;
     if (!det) return null;
-    return damageMisfit(det, fit) || buffMisfit(det, fit);
+    return damageMisfit(det, fit) || buffMisfit(det, fit) || healMisfit(det, fit) || tankMisfit(det, fit);
 }
