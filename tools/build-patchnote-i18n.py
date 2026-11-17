@@ -8,6 +8,14 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = json.load(open(os.path.join(root, 'patchNote.json'), encoding='utf-8'))
 
 ZH = {
+    "2026-11-17": [
+        "战利品现在按每次击杀时各玩家的掉落率计算，而不是按模拟结束时的数值；模拟在掉落增益失效时结束（例如全队阵亡时）不会再低估整场模拟的战利品",
+        "符石：制裁、破甲、坚守和过量伤害现在会被模拟，依据游戏内的说明，尚未用实战核对；页面以星号标出",
+        "符石：回响现在会被模拟",
+        "假设分析：一轮运行完成后，“仍在竞争”“暂时搁置”和“已排除”的数量立即对得上，第一轮的表格也会立即去掉已排除的改动",
+        "假设分析：改动的运行次数不足时，回本天数与增益一样显示为横线",
+        "假设分析：已完成阶段的图表不再显示“运行中”，也不再提示数值尚未出现",
+    ],
     "2026-11-15": [
         "假设分析：有配置的玩家在打开窗口时默认勾选",
         "假设分析：触发条件的改动完整显示为中文和葡萄牙语",
@@ -240,6 +248,14 @@ EN = [
 ]
 
 PT = [
+    [
+        "O loot agora é calculado com a Taxa de Itens de Combate de cada jogador em cada abate, e não no fim da simulação; uma simulação que termina com um bônus de drop desligado (com o grupo morto, por exemplo) não subestima mais o loot da simulação inteira",
+        "Talismãs: Castigo, Estilhaçar, Fortificar e Dano excedente agora são simulados, a partir do texto do jogo e ainda sem conferência em lutas reais; a página os marca com uma estrela",
+        "Talismãs: Eco agora é simulado",
+        "E se: Na disputa, Em espera e Descartadas fecham a conta assim que as execuções de uma rodada terminam, e a tabela da primeira rodada tira na hora as mudanças descartadas",
+        "E se: Dias de retorno mostram um traço até a mudança ter execuções suficientes, como o ganho",
+        "E se: o gráfico de uma etapa concluída não diz mais que está em andamento nem que os valores ainda virão",
+    ],
     [
         "E se: jogadores com configuração começam marcados ao abrir a janela",
         "E se: mudanças de gatilho aparecem inteiras em português e chinês",

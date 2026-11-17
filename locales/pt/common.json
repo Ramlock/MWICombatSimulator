@@ -8,6 +8,7 @@
     "talismans": {
         "title": "Talismãs",
         "power": "Poder de talismã",
+        "fromText": "Simulado a partir do texto do jogo, não conferido em combates",
         "names": {
             "melee_accuracy": "Precisão corpo a corpo",
             "melee_damage": "Dano corpo a corpo",
@@ -360,6 +361,7 @@
             "running": "em andamento",
             "firstLook": "Primeiro olhar: valores das primeiras execuções, ainda sem linhas.",
             "noFigures": "Nenhuma mudança tem ainda as {{n}} execuções novas que um valor exige.",
+            "noFiguresEnded": "Nenhuma mudança teve as {{n}} execuções novas que um valor exige.",
             "noRounds": "{{stage}}: encerrada antes de a primeira rodada terminar, então não há gráfico.",
             "tipFigure": "{{value}} [{{low}}, {{high}}] · rodada {{round}}",
             "tipFigureOne": "{{value}} · rodada {{round}}",

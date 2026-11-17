@@ -796,7 +796,7 @@ export async function main(settings, seams) {
         const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1)); };
         const pools = new Map(); let have = 0, total = 0;
         for (const [built, c] of cands.entries()) {
-            if (c.refuted) continue;
+            if (c.refuted || c.out) continue; // the rows still standing: a change the cut ruled out (eliminate: c.out) leaves the table at the cut
             total++;
             const key = poolKey(c, byPlayer), pool = pools.get(key) || pools.set(key, { size: 0, rows: [] }).get(key);
             pool.size++;
@@ -950,6 +950,12 @@ export async function main(settings, seams) {
             const barsNow = barsOf(base, maxK * baseMult);
             const standing = eliminate(cands.filter((c) => !c.refuted && !(byPlayer && lockedBy.has(c.player))), { goal, mult: pauseMult, byPlayer, bars: barsNow, payLimit, order: players });
             const cont = contention(active.filter((c) => !c.out), { K: leadersK, mult: pauseMult, goal, byPlayer, rank: rankFirst, order: players });
+            // The progress row and the table follow the cut at once, not after the leaders' check below (which may take minutes): "In the running" and
+            // "Set aside" are this round's counts from here (so they add up with "Ruled out", counted live), with the pool nearest to ending (rounds.mjs
+            // nearestSeparation: the rounds it still needs to separate its top two); round 1's first look goes out again with only the changes still standing.
+            stageCont = { contending: cont.contending, paused: cont.paused, separate: nearestSeparation(standing, { goal, mult: pauseMult, rounds: stageRound }) };
+            report();
+            if (first) outSink.round(firstLook(cands, base, byPlayer, stage, stageRound));
             // A pool's last candidate standing is read even when it is not among the K best by rank (it is the one that can be locked).
             const leaders = [...new Set([...cont.pools.flatMap((p) => p.leaders), ...standing.filter((p) => !p.noChange && p.changes.length === 1).map((p) => p.changes[0])])];
             // The reading phase runs only for the leaders that need it (needsReading); a round where none does has no reading phase (no wait, no phase shown).
@@ -1001,9 +1007,7 @@ export async function main(settings, seams) {
                     return { key: p.key, size: p.size, contending: p.contending, paused: p.paused, line: Number.isFinite(p.line) ? p.line : null, rangeWidth: w, ...(was !== null ? { rangeWidthPrev: was } : {}), ...order, leaders: lr };
                 }) };
             lastRound = rec;
-            // The pool nearest to ending (two or three changes standing): the rounds it still needs to separate its top two, for the stage row (rounds.mjs nearestSeparation).
-            stageCont = { contending: cont.contending, paused: cont.paused, separate: nearestSeparation(standing, { goal, mult: pauseMult, rounds: stageRound }) };
-            report(); // the progress row takes the round record's counts now, not the first look's
+            report(); // the progress row takes the leaders' check's outcome (a leader its check left out is ruled out from here)
             outSink.round(rec);
             onRound?.(rec, live);
             const top = rec.pools.map((p) => { const l = p.leaders[0]; return l ? `${p.key} ${l.desc.slice(0, 48)} ${l.tooFew ? `(${l.readingSeeds} reading seeds, too few)` : `${fmt(l.reading)} [${fmt(l.low)}, ${fmt(l.high)}] n=${l.readingSeeds}`}` : `${p.key} none`; }).join('; ');

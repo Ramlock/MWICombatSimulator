@@ -4,7 +4,8 @@
 // steps 1 to 11 in order, and the outward calls come after the built-file tests, in the order release, uploads, push; (2) a failure
 // at each of steps 1 to 10 stops there: exit 1, nothing of the later steps called, the DONE / NOT DONE lists split at that step;
 // (3) a second run with the same commit after a failed push skips the build, the tests, the release and the uploads, and pushes;
-// a third run pushes nothing; (4) -DryRun makes no outward call and logs steps 4, 5 and 8 as skipped; (5) the script's REAL Invoke-Api
+// a third run pushes nothing; (4) -DryRun makes no outward call and logs steps 4, 5 and 8 as skipped; (6) the .built and .tested marks hold
+// the built files' SHA-256, so an exe damaged after its mark is built and tested again; (5) the script's REAL Invoke-Api
 // and Test-CommitOnRemote, under Windows PowerShell 5.1 with 'Stop', against a fake gh and git first on PATH (no network, no token
 // read): a second seam replaces only Get-Token, calls the two real functions, writes what each returned or threw, and exits before
 // the flow. A 404 on stderr with exit 1 returns $null; another failure throws with gh's message; a success returns the parsed JSON
@@ -102,6 +103,16 @@ try {
     const stepText = (n) => d.out.split(/STEP /).find((s) => s.startsWith(`${n} `)) || '';
     check([4, 5, 8].every((n) => /SKIPPED \(dry run\)/.test(stepText(n))) && /RESULT \(dry run\)/.test(d.out) && idx(d.calls, /^Build-Runner/) >= 0 && idx(d.calls, /^Test-RunnerExe/) >= 0,
         '4: -DryRun builds and tests, and logs steps 4, 5 and 8 as skipped', d.out);
+
+    // (6) The marks hold the built files' SHA-256: a run on intact files keeps the build and its tests; an exe damaged after its mark is built and tested again.
+    const c6 = newCommit(), out6 = path.join(os.tmpdir(), 'mwi-release-' + c6.slice(0, 7));
+    const f6 = run(c6, { dry: true }), kept6 = run(c6, { dry: true });
+    fs.writeFileSync(path.join(out6, 'WhatIfRunner.exe'), 'ex\0');
+    const g6 = run(c6, { dry: true }), iBuild = idx(g6.calls, /^Build-Runner/);
+    check(f6.code === 0 && kept6.code === 0 && idx(kept6.calls, /^Build-Runner/) < 0 && idx(kept6.calls, /^Test-RunnerZip/) < 0 && /already built in .*: kept/.test(kept6.out) && /already tested: kept/.test(kept6.out),
+        '6: a run on intact built files keeps the build and its tests', kept6.out);
+    check(g6.code === 0 && iBuild >= 0 && idx(g6.calls, /^Test-RunnerZip/) > iBuild && /do not match their mark: built again/.test(g6.out),
+        '6: an exe damaged after its mark is built again and tested again', g6.out);
 
     // (5) The real Invoke-Api and Test-CommitOnRemote, against a fake gh and git.
     const bin = path.join(work, 'bin'), argsLog = path.join(work, 'native-args.log'), result = path.join(work, 'native-result.json');

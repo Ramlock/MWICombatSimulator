@@ -20,7 +20,7 @@ const { default: Player } = await import(src('combatsimulator/player.js'));
 const { default: Zone } = await import(src('combatsimulator/zone.js'));
 const { applyTalismans } = await import(src('simSetup.js'));
 const { default: itemDetailMap } = await import(src('combatsimulator/data/itemDetailMap.json'));
-const { default: combatMonsterDetailMap } = await import(src('combatsimulator/data/combatMonsterDetailMap.json'));
+const { expectedDrops } = await import(src('combatsimulator/lootPricing.js')); // expected ("No RNG") drops, as the page
 const { default: openableLootDropMap } = await import(src('combatsimulator/data/openableLootDropMap.json'));
 
 export const ONE_HOUR = 3600 * 1e9;
@@ -148,33 +148,6 @@ function dropValue(prices, hrid) {
     return { pre: v, post: v * (1 - MARKET_TAX) };
 }
 
-// Expected ("No RNG") drops, src/main.js:1982-2070 (tools/calibration/run.mjs:139-166).
-function noRngDrops(snap, playerHrid) {
-    const dropRateMultiplier = snap.dropRateMultiplier[playerHrid];
-    const rareFindMultiplier = snap.rareFindMultiplier[playerHrid];
-    const cdq = snap.combatDropQuantity[playerHrid];
-    const gap = snap.debuffOnLevelGap[playerHrid];
-    const n = snap.numberOfPlayers;
-    const out = new Map();
-    const add = (k, v) => out.set(k, (out.get(k) || 0) + v);
-    for (const m of Object.keys(snap.deaths).filter((e) => !/^player\d$/.test(e))) {
-        const md = combatMonsterDetailMap[m];
-        if (!md.dropTable) continue;
-        for (const d of md.dropTable) {
-            if (d.minDifficultyTier > snap.difficultyTier) continue;
-            let rate = Math.min(1, (1 + 0.1 * snap.difficultyTier) * (d.dropRate + (d.dropRatePerDifficultyTier ?? 0) * snap.difficultyTier));
-            if (rate <= 0) continue;
-            rate = Math.min(1, rate * dropRateMultiplier);
-            add(d.itemHrid, snap.deaths[m] * rate * (d.maxCount + d.minCount) / 2 * (1 + gap) * (1 + cdq) / n);
-        }
-        for (const d of md.rareDropTable || []) {
-            if (d.minDifficultyTier > snap.difficultyTier) continue;
-            add(d.itemHrid, snap.deaths[m] * d.dropRate * rareFindMultiplier * (d.maxCount + d.minCount) / 2 * (1 + gap) * (1 + cdq) / n);
-        }
-    }
-    return out;
-}
-
 // Per-player and party metrics from one snapshot. Consumables at ask (500 when no ask), as the panel.
 export function metrics(snap, names, prices) {
     const simHours = snap.simulatedTime / ONE_HOUR;
@@ -185,7 +158,7 @@ export function metrics(snap, names, prices) {
     names.forEach((name, i) => {
         const ph = 'player' + (i + 1);
         let pre = 0, post = 0, cons = 0;
-        for (const [hrid, amt] of noRngDrops(snap, ph)) { const v = dropValue(prices, hrid); pre += v.pre * amt; post += v.post * amt; }
+        for (const [hrid, amt] of expectedDrops(snap, ph)) { const v = dropValue(prices, hrid); pre += v.pre * amt; post += v.post * amt; }
         for (const [hrid, n] of Object.entries(snap.consumablesUsed[ph] || {})) cons += (prices[hrid]?.ask > 0 ? prices[hrid].ask : 500) * n;
         const xp = Object.values(snap.experienceGained[ph] || {}).reduce((a, b) => a + b, 0);
         const p = {
@@ -238,6 +211,7 @@ function snapshot(sim) {
         dropRateMultiplier: r.dropRateMultiplier,
         rareFindMultiplier: r.rareFindMultiplier,
         combatDropQuantity: r.combatDropQuantity,
+        killMultipliers: r.killMultipliers,
         debuffOnLevelGap: r.debuffOnLevelGap,
         numberOfPlayers: r.numberOfPlayers,
         difficultyTier: r.difficultyTier,

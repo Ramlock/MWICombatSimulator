@@ -2,6 +2,7 @@
 // ({ zone, tier, kind }) next to the slots. Generic fixtures, a fake page; the real page is covered by tools/test/group-selection-page.mjs.
 // Usage: node tools/test/group-selection.mjs   Exit code 0 on pass, 1 on fail.
 import { splitGroupImport, applyGroupSelection } from '../../src/groupSelection.mjs';
+import { parseExport } from '../../src/whatif/panel.mjs';
 
 let failed = 0;
 const check = (name, cond, extra = '') => { console.log((cond ? 'ok   ' : 'FAIL ') + name + (cond ? '' : ' ' + extra)); if (!cond) failed++; };
@@ -38,6 +39,13 @@ const ownText = splitGroupImport({ 1: JSON.stringify(ownSlot), 2: JSON.stringify
 check('split: a slot given as text is cut the same way; one without the fields stays the very same text', ownText.slots['1'] === JSON.stringify({ name: 'Ayla', player: { attackLevel: 1 } }) && ownText.slots['2'] === JSON.stringify(slot) && same(Object.keys(ownText.exports), ['1']));
 const onlyAbil = splitGroupImport({ 1: { name: 'Ayla', learnedAbilities: [], inventory: 'junk' } });
 check('split: one list is enough; a field that is not a list is dropped from the slot and kept nowhere', same(onlyAbil.exports['1'], { name: 'Ayla', learnedAbilities: [] }) && !('inventory' in onlyAbil.slots['1']));
+// The talisman inventory (userscript 0.13.0) leaves the slot and is kept with the export, through the paste's own parse; the equipped talismans stay in the slot.
+const talInv = [{ id: 1, type: '/talisman_types/synth_type', slotIndex: 0, locked: '', lines: [{ hrid: '/talisman_modifiers/synth_a', grade: 2, value: null, locked: false, unique: null }], equipped: false }];
+const eqTal = { power: 0.1, lines: [{ modifier: 'synth_a', grade: 2 }] };
+const withTal = splitGroupImport({ 1: { ...ownSlot, talismans: eqTal, talismanInventory: talInv } });
+check('split: the talisman inventory leaves the slot and comes out with the export; the equipped talismans field stays in the slot as it was', same(withTal.slots['1'], { name: 'Ayla', player: { attackLevel: 1 }, talismans: eqTal }) && same(withTal.exports['1'].talismanInventory, talInv));
+const keptTal = parseExport(JSON.stringify(withTal.exports['1']));
+check('split: the export the page keeps (its paste parse) holds the talisman inventory', keptTal.ok && same(keptTal.data.talismanInventory, talInv));
 check('split: a slot that is not an object passes through', splitGroupImport({ 1: 'not json' }).slots['1'] === 'not json' && same(splitGroupImport({ 1: null }).exports, {}));
 
 // The userscript's Copy group output goes back through the page's paste

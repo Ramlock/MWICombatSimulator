@@ -84,6 +84,14 @@ export function datasetsOf(model, { t, format, labelOf, layout }) {
 }
 
 // Puts `kids` in `parent` in that order; a parent that already holds exactly them is left alone (a canvas moved in the DOM is laid out again).
+// Which stages of a chart history have ended (their chart says no figure is to come): any stage but the running one while the search runs (stages run
+// in order), every stage of a finished search, and every stage before the last of a stopped one (the last may run on after Resume).
+// history: buildHistory's result; running: the stage that runs now (or null); live: the search runs; done: the search has finished. Returns stage -> bool.
+export function endedStages(history, { running = null, live = false, done = false } = {}) {
+    const last = history.stages[history.stages.length - 1]?.stage;
+    return (stage) => stage !== running && (live || done || stage !== last);
+}
+
 const setChildren = (parent, kids) => { if (parent.childNodes.length !== kids.length || kids.some((k, i) => parent.childNodes[i] !== k)) parent.replaceChildren(...kids); };
 
 // The host: `container` gets one block per stage and pool, kept across updates (a canvas is never recreated while its pool is shown).
@@ -127,7 +135,7 @@ export function createChartHost(container, opts) {
         const empty = model.mode === 'empty';
         box.hidden = empty;
         note.hidden = !(empty || block.firstLook);
-        note.textContent = empty ? t('chart.noFigures', { n: FIGURE_MIN_SEEDS }) : block.firstLook ? t('chart.firstLook') : '';
+        note.textContent = empty ? t(block.ended ? 'chart.noFiguresEnded' : 'chart.noFigures', { n: FIGURE_MIN_SEEDS }) : block.firstLook ? t('chart.firstLook') : ''; // an ended stage: no figure is to come
         if (empty) { block.pulseOff(); return; }
         block.xMax = model.xMax; // read by the x axis' tick labels (also while the chart is being built)
         if (!block.chart) build(block);
@@ -189,7 +197,7 @@ export function createChartHost(container, opts) {
     }
 
     return {
-        // history: buildHistory's result. ctx: { running (the stage name that runs now, or null), flying (candidate ids with a run in flight), endedByUser (result.endedByUser) }.
+        // history: buildHistory's result. ctx: { running (the stage name that runs now, or null), ended (stage name -> true when the stage has ended), flying (candidate ids with a run in flight), endedByUser (result.endedByUser) }.
         update(history, ctx = {}) {
             const flying = new Set(ctx.flying || []), wanted = new Set(), order = [];
             const rows = history.stages.map((s) => ({ ...s, note: null }));
@@ -206,7 +214,7 @@ export function createChartHost(container, opts) {
                 const kids = [head];
                 for (const pool of s.pools) {
                     const block = blockFor(stageEl, s.stage, pool);
-                    block.pool = pool; block.flying = running ? flying : new Set(); block.firstLook = s.firstLook;
+                    block.pool = pool; block.flying = running ? flying : new Set(); block.firstLook = s.firstLook; block.ended = !running && !!ctx.ended?.(s.stage);
                     block.title.textContent = (pool.player ? pool.player + ' · ' : '') + t('rounds.pool.' + pool.kind);
                     const hadChart = !!block.chart;
                     draw(block, hadChart);

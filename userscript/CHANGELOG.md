@@ -4,6 +4,14 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.13.1 (2026-11-16)
+
+- Sending to the helper from a game tab in the background no longer sends the same fights again and again. A background tab can handle the helper's answer only after the script has given up waiting for it (30 s); that late answer now still counts, and a batch whose answer is still due is not sent again. A request that never gets an answer is sent again after 5 minutes, so nothing is lost. The browser console notes each late answer counted. Nothing else changes.
+
+### 0.13.0 (2026-11-16)
+
+- "Copy character export" and your own slot of the party for the simulator page ("Import party from game") also carry your whole talisman inventory: every talisman you own, equipped or not, with its slot, each line with its grade and value, the locked line, and a roll waiting to be accepted (kept apart from the talisman's own lines). A new switch in Settings, "Talisman inventory", beside "Inventory", turns it off. Other party members' talismans cannot be seen, so their slots carry none. The simulator keeps it with your inventory and does not use it yet; the equipped talismans it counts are unchanged.
+
 ### 0.12.0 (2026-11-15)
 
 - The party copy says how old each member's profile is: "slot 2: complete, profile opened 3 h ago". A profile opened before the current fight began, or whose abilities differ from the fight's, is marked "OLD profile" (never "complete"), and the notice asks you to open that member's profile in the game, then copy again. Levels, gear, triggers, house rooms, achievements and guild buffs of other members come only from their profile as you last opened it; abilities, food and drinks are always taken from the fight. The same notice shows on the simulator page's "Import party from game".

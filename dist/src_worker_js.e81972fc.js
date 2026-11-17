@@ -387,6 +387,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _monster__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./monster */ "./src/combatsimulator/monster.js");
 /* harmony import */ var _ability__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./ability */ "./src/combatsimulator/ability.js");
 /* harmony import */ var _buffScaling__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./buffScaling */ "./src/combatsimulator/buffScaling.js");
+/* harmony import */ var _talismans__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./talismans */ "./src/combatsimulator/talismans.js");
+
 
 
 
@@ -850,6 +852,7 @@ class CombatSimulator extends EventTarget {
         }
 
         const aliveTargets = targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0);
+        const attack = {}; // one attack for every target it reaches (Overkill)
 
         for (let i = 0; i < aliveTargets.length; i++) {
             let target = aliveTargets[i];
@@ -876,7 +879,8 @@ class CombatSimulator extends EventTarget {
                 source = parryTarget;
             }
 
-            let attackResult = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processAttack(source, target);
+            let attackResult = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processAttack(source, target, null, parryTarget ? null : attack, !!parryTarget);
+            this.applyFortify(target, attackResult);
             if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
                 const log = this.generateCombatLog(source, "autoAttack", target, attackResult);
                 this.addToWipeLogs(log);
@@ -1017,7 +1021,7 @@ class CombatSimulator extends EventTarget {
 
             if (target.combatDetails.currentHitpoints == 0) {
                 this.eventQueue.clearEventsForUnit(target);
-                this.simResult.addDeath(target);
+                this.simResult.addDeath(target, this.players);
                 if (!target.isPlayer) {
                     this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
                 }
@@ -1029,7 +1033,7 @@ class CombatSimulator extends EventTarget {
                 (attackResult.thornDamageDone != 0 || attackResult.retaliationDamageDone != 0)
             ) {
                 this.eventQueue.clearEventsForUnit(source);
-                this.simResult.addDeath(source);
+                this.simResult.addDeath(source, this.players);
                 if (!source.isPlayer) {
                     this.simResult.updateTimeSpentAlive(source.hrid, false, this.simulationTime);
                 }
@@ -1096,6 +1100,7 @@ class CombatSimulator extends EventTarget {
             this.simResult.addEncounterEnd();
             this.simResult.lastEncounterFinishTime = this.simulationTime;
             this.players.forEach((player) => this.simResult.closeTriggerHolds(player, this.simulationTime));
+            if (!_talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.OVERKILL_CARRIES_ACROSS_FIGHTS) this.players.forEach((player) => { player.overkillStore = null; });
             // console.log("All enemies died");
 
             encounterEnded = true;
@@ -1301,9 +1306,14 @@ class CombatSimulator extends EventTarget {
 
     processDamageOverTimeTickEvent(event) {
         let tickDamage = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].calculateTickValue(event.damage, event.totalTicks, event.currentTick);
-        let damage = Math.min(tickDamage, event.target.combatDetails.currentHitpoints);
+        const hpBefore = event.target.combatDetails.currentHitpoints;
+        let damage = Math.min(tickDamage, hpBefore);
 
         event.target.combatDetails.currentHitpoints -= damage;
+        // Overkill (talisman, from the in-game text): a tick's kill fills the store only with OVERKILL_DOT_KILLS.
+        if (_talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.OVERKILL_DOT_KILLS && hpBefore > 0 && event.target.combatDetails.currentHitpoints <= 0 && (0,_talismans__WEBPACK_IMPORTED_MODULE_24__.uniqueValue)(event.sourceRef, 'overkill')) {
+            (0,_talismans__WEBPACK_IMPORTED_MODULE_24__.overkillStore)(event.sourceRef, tickDamage - hpBefore, null);
+        }
         this.simResult.addAttack(event.sourceRef, event.target, "damageOverTime", damage);
 
         if (this.zone?.isDungeon && event.target.isPlayer) {
@@ -1329,7 +1339,7 @@ class CombatSimulator extends EventTarget {
 
         if (event.target.combatDetails.currentHitpoints == 0) {
             this.eventQueue.clearEventsForUnit(event.target);
-            this.simResult.addDeath(event.target);
+            this.simResult.addDeath(event.target, this.players);
             if (!event.target.isPlayer) {
                 this.simResult.updateTimeSpentAlive(event.target.hrid, false, this.simulationTime);
             }
@@ -1373,6 +1383,16 @@ class CombatSimulator extends EventTarget {
 
         let regenTickEvent = new _events_regenTickEvent__WEBPACK_IMPORTED_MODULE_10__["default"](this.simulationTime + REGEN_TICK_INTERVAL);
         this.eventQueue.addEvent(regenTickEvent);
+    }
+
+    // Fortify (talisman, from the in-game text): a unit hit by an attack gains a stack; its run-out is checked by its own event.
+    applyFortify(target, attackResult) {
+        if (!(0,_talismans__WEBPACK_IMPORTED_MODULE_24__.uniqueValue)(target, 'fortify') || target.combatDetails.currentHitpoints <= 0) return;
+        if (!attackResult.didHit && !_talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.FORTIFY_ON_MISS) return;
+        const buffs = (0,_talismans__WEBPACK_IMPORTED_MODULE_24__.fortifyBuffs)(target, this.simulationTime);
+        if (!buffs.length) return;
+        target.addBuffs(buffs, this.simulationTime);
+        this.eventQueue.addEvent(new _events_checkBuffExpirationEvent__WEBPACK_IMPORTED_MODULE_3__["default"](this.simulationTime + _talismans__WEBPACK_IMPORTED_MODULE_24__.FORTIFY_DURATION, target));
     }
 
     processCheckBuffExpirationEvent(event) {
@@ -1622,26 +1642,34 @@ class CombatSimulator extends EventTarget {
 
         let todoAbilities = [ability];
 
+        let blazeAbility = null;
         if (source.combatDetails.combatStats.blaze > 0 && Math.random() < source.combatDetails.combatStats.blaze) {
-            todoAbilities.push(new _ability__WEBPACK_IMPORTED_MODULE_22__["default"]("blaze"));
+            blazeAbility = new _ability__WEBPACK_IMPORTED_MODULE_22__["default"]("blaze");
+            todoAbilities.push(blazeAbility);
         }
 
         if (source.combatDetails.combatStats.bloom > 0 && Math.random() < source.combatDetails.combatStats.bloom) {
             todoAbilities.push(new _ability__WEBPACK_IMPORTED_MODULE_22__["default"]("bloom"));
         }
 
+        const echoPlan = []; // the cast's damage and heal effects, for Echo (processEcho); Bloom never, Blaze by ECHO_REPEATS_BLAZE
         for (const todoAbility of todoAbilities) {
+            const echoable = todoAbility === ability || (todoAbility === blazeAbility && _talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.ECHO_REPEATS_BLAZE);
             for (const abilityEffect of todoAbility.abilityEffects) {
                 switch (abilityEffect.effectType) {
                     case "/ability_effect_types/buff":
                         this.processAbilityBuffEffect(source, todoAbility, abilityEffect);
                         break;
-                    case "/ability_effect_types/damage":
-                        this.processAbilityDamageEffect(source, todoAbility, abilityEffect);
+                    case "/ability_effect_types/damage": {
+                        const done = this.processAbilityDamageEffect(source, todoAbility, abilityEffect);
+                        if (echoable && done) echoPlan.push({ ability: todoAbility, abilityEffect, attack: done.attack, struck: done.struck });
                         break;
-                    case "/ability_effect_types/heal":
-                        this.processAbilityHealEffect(source, todoAbility, abilityEffect);
+                    }
+                    case "/ability_effect_types/heal": {
+                        const healed = this.processAbilityHealEffect(source, todoAbility, abilityEffect);
+                        if (echoable) echoPlan.push({ ability: todoAbility, abilityEffect, healed });
                         break;
+                    }
                     case "/ability_effect_types/spend_hp":
                         this.processAbilitySpendHpEffect(source, todoAbility, abilityEffect);
                         break;
@@ -1658,6 +1686,8 @@ class CombatSimulator extends EventTarget {
                 }
             }
         }
+
+        this.processEcho(source, echoPlan);
 
         if (source.combatDetails.combatStats.ripple > 0 && Math.random() < source.combatDetails.combatStats.ripple) {
             let manapointsAdded = source.addManapoints(10);
@@ -1677,7 +1707,7 @@ class CombatSimulator extends EventTarget {
         // Could die from reflect damage
         if (source.combatDetails.currentHitpoints == 0) {
             this.eventQueue.clearEventsForUnit(source);
-            this.simResult.addDeath(source);
+            this.simResult.addDeath(source, this.players);
             if (!source.isPlayer) {
                 this.simResult.updateTimeSpentAlive(source.hrid, false, this.simulationTime);
             }
@@ -1729,6 +1759,8 @@ class CombatSimulator extends EventTarget {
         }
 
         let avoidTarget = [];
+        const attack = {}; // one attack for every target it reaches (Overkill)
+        const struck = []; // { target, attackResult } of every target the effect attacked, hit or miss (Echo repeats on them)
 
         let isSkipParry = false;
 
@@ -1743,7 +1775,8 @@ class CombatSimulator extends EventTarget {
                 let tempTarget = source;
                 let tempSource = parryTarget;
 
-                let attackResult = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processAttack(tempSource, tempTarget);
+                let attackResult = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processAttack(tempSource, tempTarget, null, null, true);
+                this.applyFortify(tempTarget, attackResult);
 
                 this.simResult.addAttack(
                     tempSource,
@@ -1769,7 +1802,7 @@ class CombatSimulator extends EventTarget {
 
                 if (tempTarget.combatDetails.currentHitpoints == 0) {
                     this.eventQueue.clearEventsForUnit(tempTarget);
-                    this.simResult.addDeath(tempTarget);
+                    this.simResult.addDeath(tempTarget, this.players);
                     if (!tempTarget.isPlayer) {
                         this.simResult.updateTimeSpentAlive(tempTarget.hrid, false, this.simulationTime);
                     }
@@ -1781,7 +1814,7 @@ class CombatSimulator extends EventTarget {
                     (attackResult.thornDamageDone != 0 || attackResult.retaliationDamageDone != 0)
                 ) {
                     this.eventQueue.clearEventsForUnit(tempSource);
-                    this.simResult.addDeath(tempSource);
+                    this.simResult.addDeath(tempSource, this.players);
                     if (!tempSource.isPlayer) {
                         this.simResult.updateTimeSpentAlive(tempSource.hrid, false, this.simulationTime);
                     }
@@ -1808,201 +1841,8 @@ class CombatSimulator extends EventTarget {
                     break;
                 }
 
-                let attackResult = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processAttack(source, target, abilityEffect);
-
-                if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
-                    const log = this.generateCombatLog(source, ability.hrid, target, attackResult);
-                    this.addToWipeLogs(log);
-                }
-
-                if (attackResult.hpDrain > 0) {
-                    this.simResult.addHitpointsGained(source, ability.hrid, attackResult.hpDrain);
-                }
-
-                if (attackResult.didHit && abilityEffect.buffs) {
-                    for (const buff of abilityEffect.buffs) {
-                        target.addBuff(buff, this.simulationTime);
-                        let checkBuffExpirationEvent = new _events_checkBuffExpirationEvent__WEBPACK_IMPORTED_MODULE_3__["default"](
-                            this.simulationTime + buff.duration,
-                            target
-                        );
-                        this.eventQueue.addEvent(checkBuffExpirationEvent);
-                    }
-                }
-
-                if (abilityEffect.damageOverTimeRatio > 0 && attackResult.damageDone > 0) {
-                    let damageOverTimeEvent = new _events_damageOverTimeEvent__WEBPACK_IMPORTED_MODULE_2__["default"](
-                        this.simulationTime + DOT_TICK_INTERVAL,
-                        source,
-                        target,
-                        attackResult.damageDone * abilityEffect.damageOverTimeRatio,
-                        abilityEffect.damageOverTimeDuration / DOT_TICK_INTERVAL,
-                        1, abilityEffect.combatStyleHrid
-                    );
-                    this.eventQueue.addEvent(damageOverTimeEvent);
-                }
-
-                if (attackResult.didHit && abilityEffect.stunChance > 0 && Math.random() < (abilityEffect.stunChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
-                    target.isStunned = true;
-                    target.stunExpireTime = this.simulationTime + abilityEffect.stunDuration;
-                    this.eventQueue.clearMatching((event) => (event.type == _events_autoAttackEvent__WEBPACK_IMPORTED_MODULE_1__["default"].type || event.type == _events_abilityCastEndEvent__WEBPACK_IMPORTED_MODULE_19__["default"].type || event.type == _events_stunExpirationEvent__WEBPACK_IMPORTED_MODULE_11__["default"].type) && event.source == target);
-                    let stunExpirationEvent = new _events_stunExpirationEvent__WEBPACK_IMPORTED_MODULE_11__["default"](target.stunExpireTime, target);
-                    this.eventQueue.addEvent(stunExpirationEvent);
-                }
-
-                if (attackResult.didHit && abilityEffect.blindChance > 0 && Math.random() < (abilityEffect.blindChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
-                    target.isBlinded = true;
-                    target.blindExpireTime = this.simulationTime + abilityEffect.blindDuration;
-                    this.eventQueue.clearMatching((event) => event.type == _events_blindExpirationEvent__WEBPACK_IMPORTED_MODULE_12__["default"].type && event.source == target)
-                    if (this.eventQueue.clearMatching((event) => event.type == _events_autoAttackEvent__WEBPACK_IMPORTED_MODULE_1__["default"].type && event.source == target)) {
-                        // console.log("Blind " + (this.simulationTime / 1000000000));
-                        this.addNextAttackEvent(target);
-                    }
-                    let blindExpirationEvent = new _events_blindExpirationEvent__WEBPACK_IMPORTED_MODULE_12__["default"](target.blindExpireTime, target);
-                    this.eventQueue.addEvent(blindExpirationEvent);
-                }
-
-                if (attackResult.didHit && abilityEffect.silenceChance > 0 && Math.random() < (abilityEffect.silenceChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
-                    target.isSilenced = true;
-                    target.silenceExpireTime = this.simulationTime + abilityEffect.silenceDuration;
-                    this.eventQueue.clearMatching((event) => event.type == _events_silenceExpirationEvent__WEBPACK_IMPORTED_MODULE_13__["default"].type && event.source == target)
-                    if (this.eventQueue.clearMatching((event) => event.type == _events_abilityCastEndEvent__WEBPACK_IMPORTED_MODULE_19__["default"].type && event.source == target)) {
-                        // console.log("Silence " + (this.simulationTime / 1000000000));
-                        this.addNextAttackEvent(target);
-                    }
-                    let silenceExpirationEvent = new _events_silenceExpirationEvent__WEBPACK_IMPORTED_MODULE_13__["default"](target.silenceExpireTime, target);
-                    this.eventQueue.addEvent(silenceExpirationEvent);
-                }
-
-                if (attackResult.didHit && source.combatDetails.combatStats.curse > 0) {
-                    const curseExpireTime = 15000000000;
-                    let currentCurseEvent = this.eventQueue.getMatching((event) => event.type == _events_curseExpirationEvent__WEBPACK_IMPORTED_MODULE_14__["default"].type && event.source == target);
-                    let currentCurseAmount = 0;
-                    if (currentCurseEvent) currentCurseAmount = currentCurseEvent.curseAmount;
-                    this.eventQueue.clearMatching((event) => event.type == _events_curseExpirationEvent__WEBPACK_IMPORTED_MODULE_14__["default"].type && event.source == target);
-
-                    let curseExpirationEvent = new _events_curseExpirationEvent__WEBPACK_IMPORTED_MODULE_14__["default"](this.simulationTime + curseExpireTime, currentCurseAmount, target);
-                    const curseBuff = {
-                        "uniqueHrid": "/buff_uniques/curse",
-                        "typeHrid": "/buff_types/damage_taken",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": source.combatDetails.combatStats.curse * curseExpirationEvent.curseAmount,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": curseExpireTime
-                    };
-                    target.addBuff(curseBuff, this.simulationTime);
-                    this.eventQueue.addEvent(curseExpirationEvent);
-                }
-
-                if (source.combatDetails.combatStats.fury > 0) {
-                    let currentFuryEvent = this.eventQueue.getMatching((event) => event.type == _events_furyExpirationEvent__WEBPACK_IMPORTED_MODULE_16__["default"].type && event.source == source);
-                    this.eventQueue.clearMatching((event) => event.type == _events_furyExpirationEvent__WEBPACK_IMPORTED_MODULE_16__["default"].type && event.source == source);
-
-                    const furyExpireTime = 15000000000;
-                    const maxFuryStack = 5;
-
-                    let furyAmount = 0;
-                    if (currentFuryEvent) furyAmount = currentFuryEvent.furyAmount;
-
-                    if (attackResult.didHit) {
-                        furyAmount = Math.min(furyAmount + 1, maxFuryStack);
-                    } else {
-                        furyAmount = furyAmount / 2;
-                    }
-
-                    const furyAccuracyBuf = {
-                        "uniqueHrid": "/buff_uniques/fury_accuracy",
-                        "typeHrid": "/buff_types/fury_accuracy",
-                        "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": furyExpireTime
-                    };
-                    const furyDamageBuf = {
-                        "uniqueHrid": "/buff_uniques/fury_damage",
-                        "typeHrid": "/buff_types/fury_damage",
-                        "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": furyExpireTime
-                    };
-
-                    if (furyAmount > 0) {
-                        let furyExpirationEvent = new _events_furyExpirationEvent__WEBPACK_IMPORTED_MODULE_16__["default"](this.simulationTime + furyExpireTime, furyAmount, source);
-                        this.eventQueue.addEvent(furyExpirationEvent);
-
-                        source.addBuffs([furyAccuracyBuf, furyDamageBuf], this.simulationTime);
-                        // source.addBuff(furyAccuracyBuf, this.simulationTime);
-                        // source.addBuff(furyDamageBuf, this.simulationTime);
-                    }
-                    else {
-                        source.removeBuffs([furyAccuracyBuf, furyDamageBuf]);
-                        // source.removeBuff(furyAccuracyBuf);
-                        // source.removeBuff(furyDamageBuf);
-                    }
-                }
-
-                if (target.combatDetails.combatStats.weaken > 0) {
-                    const weakenExpireTime = 15000000000;
-                    source.weakenExpireTime = this.simulationTime + weakenExpireTime;
-                    let currentWeakenEvent = this.eventQueue.getMatching((event) => event.type == _events_weakenExpirationEvent__WEBPACK_IMPORTED_MODULE_15__["default"].type && event.source == source);
-                    let weakenAmount = 0;
-                    if (currentWeakenEvent)
-                        weakenAmount = currentWeakenEvent.weakenAmount;
-                    this.eventQueue.clearMatching((event) => event.type == _events_weakenExpirationEvent__WEBPACK_IMPORTED_MODULE_15__["default"].type && event.source == source);
-                    let weakenExpirationEvent = new _events_weakenExpirationEvent__WEBPACK_IMPORTED_MODULE_15__["default"](this.simulationTime + weakenExpireTime, weakenAmount, source);
-                    const weakenBuff = {
-                        "uniqueHrid": "/buff_uniques/weaken",
-                        "typeHrid": "/buff_types/damage",
-                        "ratioBoost": -1 * target.combatDetails.combatStats.weaken * weakenExpirationEvent.weakenAmount,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": weakenExpireTime
-                    };
-                    source.addBuff(weakenBuff, this.simulationTime);
-                    this.eventQueue.addEvent(weakenExpirationEvent);
-                }
-
-                this.simResult.addAttack(
-                    source,
-                    target,
-                    ability.hrid,
-                    attackResult.didHit ? attackResult.damageDone : "miss"
-                );
-
-                if (attackResult.thornDamageDone > 0) {
-                    this.simResult.addAttack(target, source, attackResult.thornType, attackResult.thornDamageDone);
-                }
-                if (this.zone?.isDungeon && attackResult.thornDamageDone > 0 && source.isPlayer) {
-                    const log = this.buildCombatLog(target, attackResult.thornType, source, attackResult.thornDamageDone);
-                    this.addToWipeLogs(log);
-                }
-
-                if (target.combatDetails.combatStats.retaliation > 0) {
-                    this.simResult.addAttack(target, source, "retaliation", attackResult.retaliationDamageDone > 0 ? attackResult.retaliationDamageDone : "miss");
-                }
-                if (this.zone?.isDungeon && attackResult.retaliationDamageDone > 0 && source.isPlayer) {
-                    const log = this.buildCombatLog(target, "retaliation", source, attackResult.retaliationDamageDone);
-                    this.addToWipeLogs(log);
-                }
-
-                if (target.combatDetails.currentHitpoints == 0) {
-                    this.eventQueue.clearEventsForUnit(target);
-                    this.simResult.addDeath(target);
-                    if (!target.isPlayer) {
-                        this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
-                    }
-                    // console.log(target.hrid, "died");
-                }
-
+                let attackResult = this.processAbilityHit(source, ability, abilityEffect, target, attack);
+                struck.push({ target, attackResult });
 
                 if (attackResult.didHit && abilityEffect.pierceChance > Math.random()) {
                     continue;
@@ -2018,18 +1858,231 @@ class CombatSimulator extends EventTarget {
                 break;
             }
         }
+        return { attack, struck };
     }
 
-    processAbilityHealEffect(source, ability, abilityEffect) {
+    // One target of an ability's damage effect: the attack and everything it sets off. The cast's own hit (echo null) and Echo's
+    // repeat (echo = { strength, roll }, processEcho) both come here, so the repeat sets off the engine's own per-hit code.
+    processAbilityHit(source, ability, abilityEffect, target, attack, echo = null) {
+        // The repeat applies the ability's non-damage parts, its damage over time and the gear's on-hit effects only as the settings say.
+        const parts = !echo || _talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.ECHO_REPEATS_ABILITY_EFFECTS;
+        const dot = !echo || _talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.ECHO_REPEAT_STARTS_DOT;
+        const onHit = !echo || _talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS.ECHO_TRIGGERS_ON_HIT_EFFECTS;
+        let attackResult = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processAttack(source, target, abilityEffect, attack, false, echo);
+        if (onHit) this.applyFortify(target, attackResult);
+
+        if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
+            const log = this.generateCombatLog(source, ability.hrid, target, attackResult);
+            this.addToWipeLogs(log);
+        }
+
+        if (attackResult.hpDrain > 0) {
+            this.simResult.addHitpointsGained(source, ability.hrid, attackResult.hpDrain);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.buffs) {
+            for (const buff of abilityEffect.buffs) {
+                target.addBuff(buff, this.simulationTime);
+                let checkBuffExpirationEvent = new _events_checkBuffExpirationEvent__WEBPACK_IMPORTED_MODULE_3__["default"](
+                    this.simulationTime + buff.duration,
+                    target
+                );
+                this.eventQueue.addEvent(checkBuffExpirationEvent);
+            }
+        }
+
+        if (dot && abilityEffect.damageOverTimeRatio > 0 && attackResult.damageDone > 0) {
+            let damageOverTimeEvent = new _events_damageOverTimeEvent__WEBPACK_IMPORTED_MODULE_2__["default"](
+                this.simulationTime + DOT_TICK_INTERVAL,
+                source,
+                target,
+                attackResult.hitDamageDone * abilityEffect.damageOverTimeRatio,
+                abilityEffect.damageOverTimeDuration / DOT_TICK_INTERVAL,
+                1, abilityEffect.combatStyleHrid
+            );
+            this.eventQueue.addEvent(damageOverTimeEvent);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.stunChance > 0 && Math.random() < (abilityEffect.stunChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
+            target.isStunned = true;
+            target.stunExpireTime = this.simulationTime + abilityEffect.stunDuration;
+            this.eventQueue.clearMatching((event) => (event.type == _events_autoAttackEvent__WEBPACK_IMPORTED_MODULE_1__["default"].type || event.type == _events_abilityCastEndEvent__WEBPACK_IMPORTED_MODULE_19__["default"].type || event.type == _events_stunExpirationEvent__WEBPACK_IMPORTED_MODULE_11__["default"].type) && event.source == target);
+            let stunExpirationEvent = new _events_stunExpirationEvent__WEBPACK_IMPORTED_MODULE_11__["default"](target.stunExpireTime, target);
+            this.eventQueue.addEvent(stunExpirationEvent);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.blindChance > 0 && Math.random() < (abilityEffect.blindChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
+            target.isBlinded = true;
+            target.blindExpireTime = this.simulationTime + abilityEffect.blindDuration;
+            this.eventQueue.clearMatching((event) => event.type == _events_blindExpirationEvent__WEBPACK_IMPORTED_MODULE_12__["default"].type && event.source == target)
+            if (this.eventQueue.clearMatching((event) => event.type == _events_autoAttackEvent__WEBPACK_IMPORTED_MODULE_1__["default"].type && event.source == target)) {
+                // console.log("Blind " + (this.simulationTime / 1000000000));
+                this.addNextAttackEvent(target);
+            }
+            let blindExpirationEvent = new _events_blindExpirationEvent__WEBPACK_IMPORTED_MODULE_12__["default"](target.blindExpireTime, target);
+            this.eventQueue.addEvent(blindExpirationEvent);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.silenceChance > 0 && Math.random() < (abilityEffect.silenceChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
+            target.isSilenced = true;
+            target.silenceExpireTime = this.simulationTime + abilityEffect.silenceDuration;
+            this.eventQueue.clearMatching((event) => event.type == _events_silenceExpirationEvent__WEBPACK_IMPORTED_MODULE_13__["default"].type && event.source == target)
+            if (this.eventQueue.clearMatching((event) => event.type == _events_abilityCastEndEvent__WEBPACK_IMPORTED_MODULE_19__["default"].type && event.source == target)) {
+                // console.log("Silence " + (this.simulationTime / 1000000000));
+                this.addNextAttackEvent(target);
+            }
+            let silenceExpirationEvent = new _events_silenceExpirationEvent__WEBPACK_IMPORTED_MODULE_13__["default"](target.silenceExpireTime, target);
+            this.eventQueue.addEvent(silenceExpirationEvent);
+        }
+
+        if (onHit && attackResult.didHit && source.combatDetails.combatStats.curse > 0) {
+            const curseExpireTime = 15000000000;
+            let currentCurseEvent = this.eventQueue.getMatching((event) => event.type == _events_curseExpirationEvent__WEBPACK_IMPORTED_MODULE_14__["default"].type && event.source == target);
+            let currentCurseAmount = 0;
+            if (currentCurseEvent) currentCurseAmount = currentCurseEvent.curseAmount;
+            this.eventQueue.clearMatching((event) => event.type == _events_curseExpirationEvent__WEBPACK_IMPORTED_MODULE_14__["default"].type && event.source == target);
+
+            let curseExpirationEvent = new _events_curseExpirationEvent__WEBPACK_IMPORTED_MODULE_14__["default"](this.simulationTime + curseExpireTime, currentCurseAmount, target);
+            const curseBuff = {
+                "uniqueHrid": "/buff_uniques/curse",
+                "typeHrid": "/buff_types/damage_taken",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": source.combatDetails.combatStats.curse * curseExpirationEvent.curseAmount,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": curseExpireTime
+            };
+            target.addBuff(curseBuff, this.simulationTime);
+            this.eventQueue.addEvent(curseExpirationEvent);
+        }
+
+        if (onHit && source.combatDetails.combatStats.fury > 0) {
+            let currentFuryEvent = this.eventQueue.getMatching((event) => event.type == _events_furyExpirationEvent__WEBPACK_IMPORTED_MODULE_16__["default"].type && event.source == source);
+            this.eventQueue.clearMatching((event) => event.type == _events_furyExpirationEvent__WEBPACK_IMPORTED_MODULE_16__["default"].type && event.source == source);
+
+            const furyExpireTime = 15000000000;
+            const maxFuryStack = 5;
+
+            let furyAmount = 0;
+            if (currentFuryEvent) furyAmount = currentFuryEvent.furyAmount;
+
+            if (attackResult.didHit) {
+                furyAmount = Math.min(furyAmount + 1, maxFuryStack);
+            } else {
+                furyAmount = furyAmount / 2;
+            }
+
+            const furyAccuracyBuf = {
+                "uniqueHrid": "/buff_uniques/fury_accuracy",
+                "typeHrid": "/buff_types/fury_accuracy",
+                "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": furyExpireTime
+            };
+            const furyDamageBuf = {
+                "uniqueHrid": "/buff_uniques/fury_damage",
+                "typeHrid": "/buff_types/fury_damage",
+                "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": furyExpireTime
+            };
+
+            if (furyAmount > 0) {
+                let furyExpirationEvent = new _events_furyExpirationEvent__WEBPACK_IMPORTED_MODULE_16__["default"](this.simulationTime + furyExpireTime, furyAmount, source);
+                this.eventQueue.addEvent(furyExpirationEvent);
+
+                source.addBuffs([furyAccuracyBuf, furyDamageBuf], this.simulationTime);
+                // source.addBuff(furyAccuracyBuf, this.simulationTime);
+                // source.addBuff(furyDamageBuf, this.simulationTime);
+            }
+            else {
+                source.removeBuffs([furyAccuracyBuf, furyDamageBuf]);
+                // source.removeBuff(furyAccuracyBuf);
+                // source.removeBuff(furyDamageBuf);
+            }
+        }
+
+        if (onHit && target.combatDetails.combatStats.weaken > 0) {
+            const weakenExpireTime = 15000000000;
+            source.weakenExpireTime = this.simulationTime + weakenExpireTime;
+            let currentWeakenEvent = this.eventQueue.getMatching((event) => event.type == _events_weakenExpirationEvent__WEBPACK_IMPORTED_MODULE_15__["default"].type && event.source == source);
+            let weakenAmount = 0;
+            if (currentWeakenEvent)
+                weakenAmount = currentWeakenEvent.weakenAmount;
+            this.eventQueue.clearMatching((event) => event.type == _events_weakenExpirationEvent__WEBPACK_IMPORTED_MODULE_15__["default"].type && event.source == source);
+            let weakenExpirationEvent = new _events_weakenExpirationEvent__WEBPACK_IMPORTED_MODULE_15__["default"](this.simulationTime + weakenExpireTime, weakenAmount, source);
+            const weakenBuff = {
+                "uniqueHrid": "/buff_uniques/weaken",
+                "typeHrid": "/buff_types/damage",
+                "ratioBoost": -1 * target.combatDetails.combatStats.weaken * weakenExpirationEvent.weakenAmount,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": weakenExpireTime
+            };
+            source.addBuff(weakenBuff, this.simulationTime);
+            this.eventQueue.addEvent(weakenExpirationEvent);
+        }
+
+        this.simResult.addAttack(
+            source,
+            target,
+            ability.hrid,
+            attackResult.didHit ? attackResult.damageDone : "miss"
+        );
+
+        if (attackResult.thornDamageDone > 0) {
+            this.simResult.addAttack(target, source, attackResult.thornType, attackResult.thornDamageDone);
+        }
+        if (this.zone?.isDungeon && attackResult.thornDamageDone > 0 && source.isPlayer) {
+            const log = this.buildCombatLog(target, attackResult.thornType, source, attackResult.thornDamageDone);
+            this.addToWipeLogs(log);
+        }
+
+        if (target.combatDetails.combatStats.retaliation > 0) {
+            this.simResult.addAttack(target, source, "retaliation", attackResult.retaliationDamageDone > 0 ? attackResult.retaliationDamageDone : "miss");
+        }
+        if (this.zone?.isDungeon && attackResult.retaliationDamageDone > 0 && source.isPlayer) {
+            const log = this.buildCombatLog(target, "retaliation", source, attackResult.retaliationDamageDone);
+            this.addToWipeLogs(log);
+        }
+
+        if (target.combatDetails.currentHitpoints == 0) {
+            this.eventQueue.clearEventsForUnit(target);
+            this.simResult.addDeath(target, this.players);
+            if (!target.isPlayer) {
+                this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
+            }
+            // console.log(target.hrid, "died");
+        }
+        return attackResult;
+    }
+
+    // Returns the units it healed (Echo repeats on them). strength: a factor on the heal roll (Echo's repeat); onlyTargets: heal
+    // these, still alive, instead of choosing (Echo's repeat with ECHO_HEAL_SAME_TARGETS).
+    processAbilityHealEffect(source, ability, abilityEffect, strength = 1, onlyTargets = null) {
+        const healOne = (target) => {
+            let amountHealed = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processHeal(source, abilityEffect, target, strength);
+
+            this.simResult.addHitpointsGained(target, ability.hrid, amountHealed);
+            return target;
+        };
+
+        if (onlyTargets) {
+            return onlyTargets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0).map(healOne);
+        }
 
         if (abilityEffect.targetType == "allAllies") {
             let targets = source.isPlayer ? this.players : this.enemies;
-            for (const target of targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0)) {
-                let amountHealed = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processHeal(source, abilityEffect, target);
-
-                this.simResult.addHitpointsGained(target, ability.hrid, amountHealed);
-            }
-            return;
+            return targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0).map(healOne);
         }
 
         if (abilityEffect.targetType == "lowestHpAlly") {
@@ -2048,21 +2101,44 @@ class CombatSimulator extends EventTarget {
                 }
             }
 
-            if (healTarget) {
-                let amountHealed = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processHeal(source, abilityEffect, healTarget);
-
-                this.simResult.addHitpointsGained(healTarget, ability.hrid, amountHealed);
-            }
-            return;
+            return healTarget ? [healOne(healTarget)] : [];
         }
 
         if (abilityEffect.targetType != "self") {
             throw new Error("Unsupported target type for heal ability effect: " + ability.hrid);
         }
 
-        let amountHealed = _combatUtilities__WEBPACK_IMPORTED_MODULE_0__["default"].processHeal(source, abilityEffect, source);
+        return [healOne(source)];
+    }
 
-        this.simResult.addHitpointsGained(source, ability.hrid, amountHealed);
+    // Echo (talisman, from a test-server recording): one roll per ability cast, made only when the cast struck or healed a target
+    // that is still alive (no random call for a unit without the line). On a success the cast's damage and heal effects come once
+    // more at ECHO_STRENGTH, on the targets the cast struck (each with its own hit, crit and damage roll, through processAbilityHit)
+    // or healed. Not a cast: no mana, no cooldown, not through tryUseAbility, no Blaze, Bloom or Ripple roll.
+    // plan: [{ ability, abilityEffect, attack, struck }] for a damage effect, [{ ability, abilityEffect, healed }] for a heal effect.
+    processEcho(source, plan) {
+        if (!plan.length || !(0,_talismans__WEBPACK_IMPORTED_MODULE_24__.uniqueValue)(source, 'echo')) return;
+        const S = _talismans__WEBPACK_IMPORTED_MODULE_24__.UNIQUE_SETTINGS;
+        const live = (unit) => !!unit && unit.combatDetails.currentHitpoints > 0;
+        for (let round = 0; round < 100 && (round === 0 || S.ECHO_CAN_REPEAT_ITSELF); round++) {
+            if (!live(source)) return;
+            const steps = plan.map((p) => p.healed
+                ? { ...p, targets: S.ECHO_HEAL_SAME_TARGETS ? p.healed.filter(live) : null }
+                : { ...p, struck: p.struck.filter((s) => live(s.target) && (S.ECHO_ON_MISSED_TARGETS || s.attackResult.didHit)) })
+                .filter((p) => (p.healed ? p.targets === null || p.targets.length > 0 : p.struck.length > 0));
+            if (!steps.length || !(0,_talismans__WEBPACK_IMPORTED_MODULE_24__.echoProcs)(source)) return;
+            plan = steps.map((p) => {
+                if (p.healed) return { ...p, healed: this.processAbilityHealEffect(source, p.ability, p.abilityEffect, S.ECHO_STRENGTH, p.targets) };
+                const attack = S.ECHO_SAME_ATTACK_FOR_OVERKILL ? p.attack : {};
+                const struck = [];
+                for (const { target, attackResult } of p.struck) {
+                    if (!live(target)) continue;
+                    const echo = { strength: S.ECHO_STRENGTH, roll: S.ECHO_OWN_DAMAGE_ROLL ? null : attackResult };
+                    struck.push({ target, attackResult: this.processAbilityHit(source, p.ability, p.abilityEffect, target, attack, echo) });
+                }
+                return { ...p, struck };
+            });
+        }
     }
 
     processAbilityReviveEffect(source, ability, abilityEffect) {
@@ -2774,6 +2850,9 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
+/* harmony import */ var _talismans__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./talismans */ "./src/combatsimulator/talismans.js");
+
+
 class CombatUtilities {
     static getTarget(enemies) {
         if (!enemies) {
@@ -2822,7 +2901,11 @@ class CombatUtilities {
         }
     }
 
-    static processAttack(source, target, abilityEffect = null) {
+    // attack: an object shared by every target of one attack (Overkill: the same attack's later targets do not spend its own store);
+    // null = this call is an attack of its own. isParry: the call is a parry's counterattack.
+    // echo: Echo's repeat of an ability hit (talisman), { strength, roll }: the damage roll times strength; roll = an earlier
+    // attackResult whose damage roll and crit it takes instead of rolling its own (ECHO_OWN_DAMAGE_ROLL off), null = its own.
+    static processAttack(source, target, abilityEffect = null, attack = null, isParry = false, echo = null) {
         let combatStyle = abilityEffect
             ? abilityEffect.combatStyleHrid
             : source.combatDetails.combatStats.combatStyleHrid;
@@ -2943,22 +3026,33 @@ class CombatUtilities {
         let sourceMinDamage = sourceDamageMultiplier * (1 + baseDamageFlat + armorDamageRatioFlat);
         let sourceMaxDamage = sourceDamageMultiplier * (baseDamageRatio * sourceAutoAttackMaxDamage + baseDamageFlat + armorDamageRatioFlat);
 
-        if (Math.random() < critChance) {
+        if (echo?.roll) {
+            isCrit = echo.roll.isCrit;
+        } else if (Math.random() < critChance) {
             sourceMaxDamage = sourceMaxDamage * (1 + bonusCritDamage);
             sourceMinDamage = sourceMaxDamage;
             isCrit = true;
         }
+        // Shatter (talisman, from the in-game text): a crit's penetration for this hit only.
+        sourcePenetration = (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.shatterPenetration)(source, sourcePenetration, isCrit, !!abilityEffect);
 
-        let damageRoll = CombatUtilities.randomInt(sourceMinDamage, sourceMaxDamage);
+        let damageRoll = echo?.roll ? echo.roll.damageRollRaw : CombatUtilities.randomInt(sourceMinDamage, sourceMaxDamage);
+        const damageRollRaw = damageRoll;
         damageRoll *= (1 + source.combatDetails.combatStats.taskDamage);
         damageRoll *= (1 + target.combatDetails.combatStats.damageTaken);
+        // Smite (talisman, from the in-game text): more damage to a boss.
+        const smite = (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.smiteMultiplier)(source, target);
+        if (smite !== 1) damageRoll *= smite;
         if (!abilityEffect) {
             damageRoll += damageRoll * source.combatDetails.combatStats.autoAttackDamage;
         } else {
             damageRoll *= (1 + source.combatDetails.combatStats.abilityDamage);
         }
+        // Echo (talisman): the repeat's roll at its strength (half), before armor.
+        if (echo) damageRoll *= echo.strength;
 
         let damageDone = 0;
+        let hitDamageDone = 0; // damageDone without Overkill's true damage: what life steal, HP drain and mana leech take
         let thornDamageDone = 0;
 
         let didHit = false;
@@ -2976,8 +3070,19 @@ class CombatUtilities {
             }
 
             let mitigatedDamage = Math.ceil(targetDamageTakenRatio * damageRoll);
-            damageDone = Math.min(mitigatedDamage, target.combatDetails.currentHitpoints);
+            const hpBefore = target.combatDetails.currentHitpoints;
+            hitDamageDone = Math.min(mitigatedDamage, hpBefore);
+            damageDone = hitDamageDone;
+            // Overkill (talisman, from the in-game text): a direct attack's first landed hit adds the stored true damage; a kill fills the store.
+            const direct = !isParry || _talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_PARRY_IS_DIRECT;
+            const trueDamage = direct ? (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.overkillSpend)(source, attack) : 0;
+            if (trueDamage > 0) damageDone += Math.min(trueDamage, hpBefore - hitDamageDone);
             target.combatDetails.currentHitpoints -= damageDone;
+            if (direct && hpBefore > 0 && target.combatDetails.currentHitpoints <= 0 && (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.uniqueValue)(source, 'overkill')
+                && (abilityEffect?.targetType !== 'allEnemies' || _talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_AREA_KILLS)) {
+                const dealt = _talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_EXCESS_AFTER_MITIGATION ? mitigatedDamage : damageRoll;
+                (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.overkillStore)(source, dealt + trueDamage - hpBefore, attack);
+            }
         }
 
         if (targetThornPower > 0.0 && targetResistance > -99.0) {
@@ -3002,10 +3107,20 @@ class CombatUtilities {
                 * (1.0 + targetResistance / 100.0)
                 * targetThornPower);
 
+            // Smite (talisman): the thorns a player deals to a boss.
+            if (_talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.SMITE_ON_REFLECT) {
+                const smiteThorns = (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.smiteMultiplier)(target, source);
+                if (smiteThorns !== 1) thornsDamageRoll *= smiteThorns;
+            }
+
             let mitigatedThornsDamage = Math.ceil(sourceDamageTakenRatio * thornsDamageRoll);
 
+            const thornsHpBefore = source.combatDetails.currentHitpoints;
             thornDamageDone = Math.min(mitigatedThornsDamage, source.combatDetails.currentHitpoints);
             source.combatDetails.currentHitpoints -= thornDamageDone;
+            if (_talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_REFLECT_KILLS && thornsHpBefore > 0 && source.combatDetails.currentHitpoints <= 0) {
+                (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.overkillStore)(target, (_talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_EXCESS_AFTER_MITIGATION ? mitigatedThornsDamage : thornsDamageRoll) - thornsHpBefore, null);
+            }
         }
 
         let retaliationDamageDone = 0;
@@ -3036,32 +3151,42 @@ class CombatUtilities {
                 let retaliationMaxDamage = retaliationDamageMultiplier * target.combatDetails.combatStats.retaliation * (target.combatDetails.defensiveMaxDamage + premitigatedDamage);
 
                 let retaliationDamageRoll = CombatUtilities.randomInt(retaliationMinDamage, retaliationMaxDamage);
+                // Smite (talisman): the retaliation a player deals to a boss.
+                if (_talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.SMITE_ON_REFLECT) {
+                    const smiteRetaliation = (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.smiteMultiplier)(target, source);
+                    if (smiteRetaliation !== 1) retaliationDamageRoll *= smiteRetaliation;
+                }
                 let mitigatedRetaliationDamage = Math.ceil(sourceDamageTakenRatio * retaliationDamageRoll);
+                const retaliationHpBefore = source.combatDetails.currentHitpoints;
                 retaliationDamageDone = Math.min(mitigatedRetaliationDamage, source.combatDetails.currentHitpoints);
                 source.combatDetails.currentHitpoints -= retaliationDamageDone;
+                if (_talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_REFLECT_KILLS && retaliationHpBefore > 0 && source.combatDetails.currentHitpoints <= 0) {
+                    (0,_talismans__WEBPACK_IMPORTED_MODULE_0__.overkillStore)(target, (_talismans__WEBPACK_IMPORTED_MODULE_0__.UNIQUE_SETTINGS.OVERKILL_EXCESS_AFTER_MITIGATION ? mitigatedRetaliationDamage : retaliationDamageRoll) - retaliationHpBefore, null);
+                }
             }
         }
 
         let lifeStealHeal = 0;
         if (!abilityEffect && didHit && source.combatDetails.combatStats.lifeSteal > 0) {
-            lifeStealHeal = source.addHitpoints(Math.floor(source.combatDetails.combatStats.lifeSteal * damageDone));
+            lifeStealHeal = source.addHitpoints(Math.floor(source.combatDetails.combatStats.lifeSteal * hitDamageDone));
         }
 
         let hpDrain = 0;
         if (abilityEffect && didHit && abilityEffect.hpDrainRatio > 0) {
             let healingAmplify = 1 + source.combatDetails.combatStats.healingAmplify;
-            hpDrain = source.addHitpoints(Math.floor(abilityEffect.hpDrainRatio * damageDone * healingAmplify));
+            hpDrain = source.addHitpoints(Math.floor(abilityEffect.hpDrainRatio * hitDamageDone * healingAmplify));
         }
 
         let manaLeechMana = 0;
         if (!abilityEffect && didHit && source.combatDetails.combatStats.manaLeech > 0) {
-            manaLeechMana = source.addManapoints(Math.floor(source.combatDetails.combatStats.manaLeech * damageDone));
+            manaLeechMana = source.addManapoints(Math.floor(source.combatDetails.combatStats.manaLeech * hitDamageDone));
         }
 
-        return { damageDone, didHit, thornDamageDone, thornType, retaliationDamageDone, lifeStealHeal, hpDrain, manaLeechMana, isCrit};
+        return { damageDone, hitDamageDone, didHit, thornDamageDone, thornType, retaliationDamageDone, lifeStealHeal, hpDrain, manaLeechMana, isCrit, damageRollRaw };
     }
 
-    static processHeal(source, abilityEffect, target) {
+    // strength: a factor on the heal roll (Echo's repeat, talisman), floored to whole HP.
+    static processHeal(source, abilityEffect, target, strength = 1) {
         if (abilityEffect.combatStyleHrid != "/combat_styles/magic") {
             throw new Error("Heal ability effect not supported for combat style: " + abilityEffect.combatStyleHrid);
         }
@@ -3076,6 +3201,7 @@ class CombatUtilities {
         let maxHeal = healingAmplify * (baseHealRatio * magicMaxDamage + baseHealFlat);
 
         let heal = this.randomInt(minHeal, maxHeal);
+        if (strength !== 1) heal = Math.floor(heal * strength);
         let amountHealed = target.addHitpoints(heal);
 
         return amountHealed;
@@ -3695,7 +3821,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
 /* harmony export */ });
-/* harmony import */ var heap_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! heap-js */ "./node_modules/heap-js/dist/heap-js.es5.js");
+/* harmony import */ var heap_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! heap-js */ "../../../node_modules/heap-js/dist/heap-js.es5.js");
 
 
 class EventQueue {
@@ -4539,6 +4665,10 @@ class SimResult {
         this.dropRateMultiplier = {};
         this.rareFindMultiplier = {};
         this.combatDropQuantity = {};
+        // Per player hrid, the monster kills grouped by the multipliers the player had at each kill (see addDeath):
+        // { "<dropRate>|<rareFind>|<dropQuantity>": { dropRate, rareFind, dropQuantity, deaths: { monsterHrid: kills } } }.
+        // Loot is priced from it (src/combatsimulator/lootPricing.js).
+        this.killMultipliers = {};
         this.playerRanOutOfMana = {
             "player1": false,
             "player2": false,
@@ -4593,12 +4723,31 @@ class SimResult {
         });
     }
     
-    addDeath(unit) {
+    // players: the party at that instant. A monster's death is recorded against each player's multipliers as they stand
+    // now (killMultipliers), so its loot is priced with them.
+    addDeath(unit, players) {
         if (!this.deaths[unit.hrid]) {
             this.deaths[unit.hrid] = 0;
         }
 
         this.deaths[unit.hrid] += 1;
+
+        if (!unit.isPlayer && players) {
+            for (const player of players) {
+                this.addKillMultipliers(player, unit.hrid);
+            }
+        }
+    }
+
+    addKillMultipliers(player, monsterHrid) {
+        const stats = player.combatDetails.combatStats;
+        const dropRate = 1 + stats.combatDropRate;
+        const rareFind = 1 + stats.combatRareFind;
+        const dropQuantity = stats.combatDropQuantity;
+        const byPlayer = this.killMultipliers[player.hrid] ??= {};
+        const key = dropRate + "|" + rareFind + "|" + dropQuantity;
+        const group = byPlayer[key] ??= { dropRate, rareFind, dropQuantity, deaths: {} };
+        group.deaths[monsterHrid] = (group.deaths[monsterHrid] ?? 0) + 1;
     }
 
     updateTimeSpentAlive(name, alive, time) {
@@ -4747,25 +4896,33 @@ class SimResult {
         this.manapointsGained[unit.hrid][source] += amount;
     }
 
+    // The player's drop rate, rare find and drop quantity multipliers as one figure each: their mean over the player's
+    // monster kills (killMultipliers), or the player's current ones when there was no kill. Loot is not priced from these
+    // (src/combatsimulator/lootPricing.js prices each group of kills); they are what the run's kills were made under, on average.
     setDropRateMultipliers(unit) {
-        if (!this.dropRateMultiplier[unit.hrid]) {
-            this.dropRateMultiplier[unit.hrid] = {};
+        const groups = Object.values(this.killMultipliers[unit.hrid] ?? {});
+        let kills = 0, dropRate = 0, rareFind = 0, dropQuantity = 0;
+        for (const g of groups) {
+            const n = Object.values(g.deaths).reduce((a, b) => a + b, 0);
+            kills += n;
+            dropRate += g.dropRate * n;
+            rareFind += g.rareFind * n;
+            dropQuantity += g.dropQuantity * n;
         }
-        this.dropRateMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatDropRate;
+        if (groups.length == 1) {
+            this.dropRateMultiplier[unit.hrid] = groups[0].dropRate;
+            this.rareFindMultiplier[unit.hrid] = groups[0].rareFind;
+            this.combatDropQuantity[unit.hrid] = groups[0].dropQuantity;
+        } else if (kills > 0) {
+            this.dropRateMultiplier[unit.hrid] = dropRate / kills;
+            this.rareFindMultiplier[unit.hrid] = rareFind / kills;
+            this.combatDropQuantity[unit.hrid] = dropQuantity / kills;
+        } else {
+            this.dropRateMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatDropRate;
+            this.rareFindMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatRareFind;
+            this.combatDropQuantity[unit.hrid] = unit.combatDetails.combatStats.combatDropQuantity;
+        }
 
-        if (!this.rareFindMultiplier[unit.hrid]) {
-            this.rareFindMultiplier[unit.hrid] = {};
-        }
-        this.rareFindMultiplier[unit.hrid] = 1 + unit.combatDetails.combatStats.combatRareFind;
-
-        if (!this.combatDropQuantity[unit.hrid]) {
-            this.combatDropQuantity[unit.hrid] = {};
-        }
-        this.combatDropQuantity[unit.hrid] = unit.combatDetails.combatStats.combatDropQuantity;
-
-        if (!this.debuffOnLevelGap[unit.hrid]) {
-            this.debuffOnLevelGap[unit.hrid] = {};
-        }
         this.debuffOnLevelGap[unit.hrid] = unit.debuffOnLevelGap;
     }
 
@@ -4907,9 +5064,21 @@ class SimResult {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   FORTIFY_DURATION: () => (/* binding */ FORTIFY_DURATION),
+/* harmony export */   FORTIFY_MAX_STACKS: () => (/* binding */ FORTIFY_MAX_STACKS),
 /* harmony export */   TALISMAN_MODIFIERS: () => (/* binding */ TALISMAN_MODIFIERS),
+/* harmony export */   UNIQUE_SETTINGS: () => (/* binding */ UNIQUE_SETTINGS),
+/* harmony export */   echoProcs: () => (/* binding */ echoProcs),
+/* harmony export */   fortifyBuffs: () => (/* binding */ fortifyBuffs),
+/* harmony export */   fortifyStacks: () => (/* binding */ fortifyStacks),
+/* harmony export */   isBoss: () => (/* binding */ isBoss),
+/* harmony export */   overkillSpend: () => (/* binding */ overkillSpend),
+/* harmony export */   overkillStore: () => (/* binding */ overkillStore),
+/* harmony export */   shatterPenetration: () => (/* binding */ shatterPenetration),
+/* harmony export */   smiteMultiplier: () => (/* binding */ smiteMultiplier),
 /* harmony export */   talismanEffects: () => (/* binding */ talismanEffects),
-/* harmony export */   talismanStats: () => (/* binding */ talismanStats)
+/* harmony export */   talismanStats: () => (/* binding */ talismanStats),
+/* harmony export */   uniqueValue: () => (/* binding */ uniqueValue)
 /* harmony export */ });
 // Talismans for the combat engine: the modifier table (game client data) and the one function that turns a player's
 // talisman lines into engine effects. This is the only file with talisman logic; the setup reads it in one place
@@ -4919,12 +5088,78 @@ __webpack_require__.r(__webpack_exports__);
 // and the engine stats it maps to (the names player.js sums from equipment). A talisman line is a plain gear stat: the
 // player adds it to that sum (Player.talismanStats, set by simSetup applyTalismans).
 // Damage Taken is a gear stat like the others: combatUnit.js adds it to the buffs' damage_taken.
-// The five unique modifiers are listed as known and have no effect (not simulated).
+// The five unique modifiers: their line value lands in Player.talismanStats under the modifier's id (no gear stat of that name
+// exists, so Player.updateCombatDetails leaves it alone) and the engine reads it through the helpers at the bottom of this file
+// (combatUtilities.js processAttack, combatSimulator.js). Smite, Shatter, Fortify and Overkill are built from their in-game
+// text, NOT checked against fights; Echo is built from a test-server recording (combatSimulator.js tryUseAbility / processEcho).
+
+// ---- Unique modifiers: the open questions the in-game text leaves, one named setting each ----
+// Each default is the plainest reading of the text; flip it here once a recording answers it. docs/codebase/talismans.md lists them.
+const UNIQUE_SETTINGS = {
+    // Smite ("Deals X% more damage to bosses."). A boss is a monster the zone spawned as its boss (the boss encounter every
+    // battlesPerBoss); with this on, also every monster of a dungeon's fixed waves (the waves the engine reports as boss waves).
+    SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES: true,
+    // Smite on the thorns and retaliation the player deals to a boss (damage over time needs no setting: it is a share of the
+    // hit's damage, which already carries Smite).
+    SMITE_ON_REFLECT: true,
+    // Shatter ("Critical hits gain X% armor and resistance penetration."): true = added to the hit's penetration;
+    // false = multiplied in, (1 + penetration) x (1 + X) - 1.
+    SHATTER_ADDS_TO_PENETRATION: true,
+    // Shatter on an ability's crit as well as an auto attack's.
+    SHATTER_ON_ABILITIES: true,
+    // Fortify ("When hit, gain X% armor and resistances for 5s, stacking up to 4 times."): true = a new stack restarts the
+    // timer of all stacks (as the engine's Fury does); false = each stack runs its own 5 s (a fifth hit renews the oldest).
+    FORTIFY_NEW_STACK_RESTARTS_ALL: true,
+    // Fortify on an attack that missed the player (dodged): false = only a landed attack is "hit".
+    FORTIFY_ON_MISS: false,
+    // Overkill ("On a killing blow, stores X% of the excess damage and adds it as true damage to the first target of your next
+    // successful direct attack."): the store carries across encounters, waves and deaths (the text names no expiry);
+    // false = it empties at each encounter's end.
+    OVERKILL_CARRIES_ACROSS_FIGHTS: true,
+    // Two kills before the next landed attack: true = their stores add up; false = the later one overwrites.
+    OVERKILL_KILLS_ADD_UP: true,
+    // A kill by an area ability (every target) counts as a killing blow.
+    OVERKILL_AREA_KILLS: true,
+    // A kill by a damage-over-time tick counts as a killing blow.
+    OVERKILL_DOT_KILLS: false,
+    // A kill by the player's thorns or retaliation counts as a killing blow.
+    OVERKILL_REFLECT_KILLS: false,
+    // Excess damage is the hit's damage after armor or resistance, beyond the target's HP; false = the raw roll before it.
+    OVERKILL_EXCESS_AFTER_MITIGATION: true,
+    // A parry's counterattack is a direct attack (it may spend the store and its kill may fill it).
+    OVERKILL_PARRY_IS_DIRECT: true,
+    // Echo ("On ability cast, X% chance to repeat the ability's damage or healing at half strength."). Checked against a
+    // test-server recording; the status of each default is in docs/codebase/talismans.md.
+    // The repeat's strength, a factor on its damage roll (before armor) and on its heal roll. Verified: half.
+    ECHO_STRENGTH: 0.5,
+    // true = the repeat rolls its own damage (then halved); false = it takes the original's roll on that target (crit included) at half.
+    ECHO_OWN_DAMAGE_ROLL: true,
+    // The repeat strikes a target the original missed (true) or only those the original landed on (false). Verified: true.
+    ECHO_ON_MISSED_TARGETS: true,
+    // The repeat applies the ability's own non-damage parts again on a hit: its debuffs, stun, blind and silence.
+    ECHO_REPEATS_ABILITY_EFFECTS: false,
+    // The repeat's hit starts a damage over time of its own (an ability with one).
+    ECHO_REPEAT_STARTS_DOT: false,
+    // The repeat sets off what any of the source's attacks sets off, beyond thorns and retaliation (always, in processAttack):
+    // Curse, Fury, the target's Weaken, the target's Fortify.
+    ECHO_TRIGGERS_ON_HIT_EFFECTS: true,
+    // A repeat rolls Echo again (a chain); false = one roll per cast.
+    ECHO_CAN_REPEAT_ITSELF: false,
+    // The repeat also repeats a Blaze that came with the cast (Bloom is never repeated: verified).
+    ECHO_REPEATS_BLAZE: false,
+    // A heal ability's repeat heals the targets the cast healed (true) or picks its target again (false; same for self and all allies).
+    ECHO_HEAL_SAME_TARGETS: true,
+    // For Overkill the repeat is part of the cast's attack (it does not spend a store the cast's own kills filled); false = an attack of its own.
+    ECHO_SAME_ATTACK_FOR_OVERKILL: true,
+};
+// Fixed by the text itself.
+const FORTIFY_MAX_STACKS = 4;
+const FORTIFY_DURATION = 5e9; // 5 s in the engine's nanoseconds
 
 // An effect on an engine combat stat: summed like a gear stat.
 const stat = (name) => ({ stat: name });
 
-// id -> { name, grades: [G1..G6], effects: [...] } ; `unique: true` entries have no effects.
+// id -> { name, grades: [G1..G6], effects: [...] } ; a `unique: true` entry's effect is its own id, read by the engine.
 const TALISMAN_MODIFIERS = {
     auto_attack_damage: { name: 'Auto Attack Damage', grades: [0.012, 0.018, 0.024, 0.03, 0.036, 0.048], effects: [stat('autoAttackDamage')] },
     ability_damage: { name: 'Ability Damage', grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [stat('abilityDamage')] },
@@ -4970,12 +5205,13 @@ const TALISMAN_MODIFIERS = {
     melee_experience: { name: 'Melee Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('meleeExperience')] },
     ranged_experience: { name: 'Ranged Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('rangedExperience')] },
     magic_experience: { name: 'Magic Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('magicExperience')] },
-    // Unique modifiers: known, no effect here (the engine has no code for them).
-    smite: { name: 'Smite', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [] },
-    overkill: { name: 'Overkill', unique: true, grades: [0.15, 0.225, 0.3, 0.375, 0.45, 0.6], effects: [] },
-    echo: { name: 'Echo', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [] },
-    shatter: { name: 'Shatter', unique: true, grades: [0.04, 0.06, 0.08, 0.1, 0.12, 0.16], effects: [] },
-    fortify: { name: 'Fortify', unique: true, grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [] },
+    // Unique modifiers: the engine reads each by its id (helpers below). Echo from a test-server recording; the other four from
+    // the in-game text, not checked against fights.
+    smite: { name: 'Smite', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [stat('smite')] },
+    overkill: { name: 'Overkill', unique: true, grades: [0.15, 0.225, 0.3, 0.375, 0.45, 0.6], effects: [stat('overkill')] },
+    echo: { name: 'Echo', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [stat('echo')] },
+    shatter: { name: 'Shatter', unique: true, grades: [0.04, 0.06, 0.08, 0.1, 0.12, 0.16], effects: [stat('shatter')] },
+    fortify: { name: 'Fortify', unique: true, grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [stat('fortify')] },
 };
 
 // How talisman power scales a grade value. ONE line, the only place the formula lives.
@@ -4983,7 +5219,8 @@ const scaleByPower = (value, power) => value * (1 + power); // checked against t
 
 // A player's talismans -> the engine effects of every line, in line order.
 // talismans: { power, lines: [{ modifier, grade }] }   power: the belt's Talisman Power as a fraction (0.2 = +20 %), default 0;
-// modifier: a TALISMAN_MODIFIERS id; grade: 1..6. Returns [{ modifier, stat, value }]; unique modifiers give none.
+// modifier: a TALISMAN_MODIFIERS id; grade: 1..6. Returns [{ modifier, stat, value }]. Talisman power scales
+// every line the same way, the unique ones included.
 // An unknown modifier or a grade outside 1..6 throws.
 function talismanEffects(talismans) {
     const power = talismans?.power ?? 0;
@@ -5003,6 +5240,83 @@ function talismanStats(talismans) {
     const stats = {};
     for (const e of talismanEffects(talismans)) stats[e.stat] = (stats[e.stat] ?? 0) + e.value;
     return stats;
+}
+
+// ---- The unique modifiers in the engine (Echo from a recording; the other four from the in-game text, not checked against fights) ----
+// A unit's value of a unique modifier: its summed line value (Player.talismanStats), 0 for a monster or a player without it.
+const uniqueValue = (unit, id) => unit?.talismanStats?.[id] ?? 0;
+
+// Smite: is this unit a boss. Zone sets spawnedAsBoss / spawnedInFixedWave (zone.js) when it spawns a monster.
+const isBoss = (unit) => !!unit && !unit.isPlayer && (unit.spawnedAsBoss === true || (UNIQUE_SETTINGS.SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES && unit.spawnedInFixedWave === true));
+
+// Smite: the damage multiplier of source on target (1 when it does not apply).
+function smiteMultiplier(source, target) {
+    const v = uniqueValue(source, 'smite');
+    return v && isBoss(target) ? 1 + v : 1;
+}
+
+// Shatter: a critical hit's penetration (one damage type's, armor or that element's), for that hit only.
+function shatterPenetration(source, penetration, isCrit, isAbility) {
+    const v = uniqueValue(source, 'shatter');
+    if (!v || !isCrit || (isAbility && !UNIQUE_SETTINGS.SHATTER_ON_ABILITIES)) return penetration;
+    return UNIQUE_SETTINGS.SHATTER_ADDS_TO_PENETRATION ? penetration + v : (1 + penetration) * (1 + v) - 1;
+}
+
+// Fortify: the buffs the unit gains when hit at time `now` (to pass to addBuffs at `now`), [] when it has no Fortify. One buff per
+// armor and resistance type (a ratio boost: a share of the base value, as every % armor buff in the engine); `stacks` on the buff.
+const FORTIFY_TYPES = ['armor', 'water_resistance', 'nature_resistance', 'fire_resistance'];
+const fortifyHrid = (type, slot) => `/buff_uniques/talisman_fortify_${type}` + (slot === undefined ? '' : `_${slot}`);
+const live = (buff, now) => !!buff && buff.startTime + buff.duration > now;
+function fortifyBuffs(unit, now) {
+    const v = uniqueValue(unit, 'fortify');
+    if (!v) return [];
+    const buffs = unit.combatBuffs ?? {};
+    const make = (type, slot, stacks) => ({ uniqueHrid: fortifyHrid(type, slot), typeHrid: `/buff_types/${type}`, ratioBoost: stacks * v, flatBoost: 0, duration: FORTIFY_DURATION, stacks });
+    if (UNIQUE_SETTINGS.FORTIFY_NEW_STACK_RESTARTS_ALL) {
+        const cur = buffs[fortifyHrid('armor')];
+        const stacks = live(cur, now) ? Math.min((cur.stacks ?? 1) + 1, FORTIFY_MAX_STACKS) : 1;
+        return FORTIFY_TYPES.map((t) => make(t, undefined, stacks));
+    }
+    // Each stack its own buff and timer: a free (absent or run-out) slot, else the oldest.
+    let slot = -1, oldest = Infinity;
+    for (let i = 0; i < FORTIFY_MAX_STACKS; i++) {
+        const b = buffs[fortifyHrid('armor', i)];
+        if (!live(b, now)) { slot = i; break; }
+        if (b.startTime < oldest) { oldest = b.startTime; slot = i; }
+    }
+    return FORTIFY_TYPES.map((t) => make(t, slot, 1));
+}
+// Fortify: the unit's live stacks at `now` (for tests and display).
+function fortifyStacks(unit, now) {
+    const buffs = unit?.combatBuffs ?? {};
+    if (UNIQUE_SETTINGS.FORTIFY_NEW_STACK_RESTARTS_ALL) { const b = buffs[fortifyHrid('armor')]; return live(b, now) ? b.stacks : 0; }
+    let n = 0;
+    for (let i = 0; i < FORTIFY_MAX_STACKS; i++) if (live(buffs[fortifyHrid('armor', i)], now)) n++;
+    return n;
+}
+
+// Overkill: the store lives on the unit ({ amount, attack }: `attack` is the attack that filled it, so the same attack's later
+// targets do not spend it). An attack is any object shared by the targets of one attack; null = a call of its own.
+// The true damage the unit's landed hit of `attack` adds (its whole store, floored to whole HP), and the store empties; 0 when none.
+function overkillSpend(unit, attack) {
+    const s = unit?.overkillStore;
+    if (!s || !(s.amount > 0) || (attack && s.attack === attack)) return 0;
+    unit.overkillStore = null;
+    return Math.floor(s.amount);
+}
+// Overkill: a killing blow of `unit` in `attack` with `excess` damage beyond the target's HP fills the store.
+function overkillStore(unit, excess, attack) {
+    const v = uniqueValue(unit, 'overkill');
+    if (!v || !(excess > 0)) return;
+    const prev = unit.overkillStore;
+    const amount = v * excess + (UNIQUE_SETTINGS.OVERKILL_KILLS_ADD_UP && prev ? prev.amount : 0);
+    unit.overkillStore = { amount, attack: attack ?? null };
+}
+
+// Echo: the one roll of an ability cast at the unit's line value; no random call for a unit without the line.
+function echoProcs(unit) {
+    const v = uniqueValue(unit, 'echo');
+    return v > 0 && Math.random() < v;
 }
 
 
@@ -5226,6 +5540,9 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
+// How a monster was spawned, for what keys on a boss (Smite, talismans.js isBoss): the zone's boss encounter, or a dungeon's fixed wave.
+const markSpawn = (monster, flag) => { monster[flag] = true; return monster; };
+
 class Zone {
     constructor(hrid, difficultyTier) {
         this.hrid = hrid;
@@ -5247,7 +5564,7 @@ class Zone {
 
         if (this.monsterSpawnInfo.bossSpawns && this.encountersKilled == this.monsterSpawnInfo.battlesPerBoss) {
             this.encountersKilled = 1;
-            return this.monsterSpawnInfo.bossSpawns.map((monster) => new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier));
+            return this.monsterSpawnInfo.bossSpawns.map((monster) => markSpawn(new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier), 'spawnedAsBoss'));
         }
 
         let totalWeight = this.monsterSpawnInfo.randomSpawnInfo.spawns.reduce((prev, cur) => prev + cur.rate, 0);
@@ -5292,7 +5609,7 @@ class Zone {
         if (this.dungeonSpawnInfo.fixedSpawnsMap.hasOwnProperty(this.encountersKilled.toString())) {
             let currentMonsters = this.dungeonSpawnInfo.fixedSpawnsMap[(this.encountersKilled).toString()];
             this.encountersKilled++;
-            return currentMonsters.map((monster) => new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier));
+            return currentMonsters.map((monster) => markSpawn(new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier), 'spawnedInFixedWave'));
         } else {
             let monsterSpawns = {};
             const waveKeys = Object.keys(this.dungeonSpawnInfo.randomSpawnInfoMap).map(Number).sort((a, b) => a - b);
@@ -5748,4 +6065,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"/buff_uniques/labyrinth_upgrade_atta
 /***/ })
 
 }]);
-//# sourceMappingURL=src_worker_js.f8d8f0b3.js.map
+//# sourceMappingURL=src_worker_js.e81972fc.js.map

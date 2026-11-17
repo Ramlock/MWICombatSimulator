@@ -16,6 +16,7 @@ import { isPlanetZone } from "./zones.mjs";
 import { getCombatStatsPanelValues } from "./combatStatsPanel.js";
 import { summarizeTriggerHolds } from "./combatsimulator/triggerHolds.js";
 import { hasHold, heldPopupHtml } from "./combatsimulator/heldPopup.js";
+import { rolledDrops, expectedDrops } from "./combatsimulator/lootPricing.js";
 import { cellValue, parseNumber, formatNumber, formatUnit, percentSign, percentFixedHtml, exactNumber, exactUnit, numberHtml, percentHtml, setNumberText, setNumberFormatSettings, refreshFormattedNumbers, alignNumberColumns } from "./numberFormat.js";
 import combatTriggerDependencyDetailMap from "./combatsimulator/data/combatTriggerDependencyDetailMap.json";
 import combatTriggerConditionDetailMap from "./combatsimulator/data/combatTriggerConditionDetailMap.json";
@@ -39,7 +40,7 @@ import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { parseMinGain, MIN_GAIN_PCT as WHATIF_MIN_GAIN_PCT } from './whatif/minGain.mjs';
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData, stageLabel as whatIfStageLabel, localizeDesc as whatIfLocalizeDesc } from "./whatif/panel.mjs";
 import { buildHistory as whatIfBuildHistory } from "./whatif/history.mjs";
-import { createChartHost as whatIfCreateCharts } from "./whatif/chartView.mjs";
+import { createChartHost as whatIfCreateCharts, endedStages as whatIfEndedStages } from "./whatif/chartView.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import { talismanViewHtml } from "./talismanView.mjs";
 import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
@@ -1984,102 +1985,10 @@ function manipulateSimResultsDataForDisplay(simResults) {
     return displaySimResults;
 }
 
-function fidDropAmount(dropAmount) {
-  if (Number.isInteger(dropAmount)) return dropAmount;
-
-  const intPart   = Math.floor(dropAmount);
-  const fracPart  = dropAmount - intPart;
-  return Math.random() < fracPart ? intPart + 1 : intPart;
-}
-
+// The player's drops of the run: totalDropMap rolled kill by kill, noRngTotalDropMap the expected amounts. Each kill is
+// priced with the multipliers the player had at it (src/combatsimulator/lootPricing.js).
 function calcDropMaps(simResult, playerToDisplay) {
-    let dropRateMultiplier = simResult.dropRateMultiplier[playerToDisplay];
-    let rareFindMultiplier = simResult.rareFindMultiplier[playerToDisplay];
-    let combatDropQuantity = simResult.combatDropQuantity[playerToDisplay];
-    let debuffOnLevelGap = simResult.debuffOnLevelGap[playerToDisplay];
-
-    let numberOfPlayers = simResult.numberOfPlayers;
-    let monsters = Object.keys(simResult.deaths)
-        .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
-        .sort();
-
-    const totalDropMap = new Map();
-    const noRngTotalDropMap = new Map();
-    for (const monster of monsters) {
-        const dropMap = new Map();
-        const rareDropMap = new Map();
-        if (combatMonsterDetailMap[monster].dropTable) {
-            for (const drop of combatMonsterDetailMap[monster].dropTable) {
-                if (drop.minDifficultyTier > simResult.difficultyTier) {
-                    continue;
-                }
-
-                let multiplier = 1.0 + 0.1 * simResult.difficultyTier;
-                let dropRate = Math.min(1.0, multiplier * (drop.dropRate + (drop.dropRatePerDifficultyTier ?? 0) * simResult.difficultyTier));
-                if (dropRate <= 0) continue;
-
-                dropMap.set(drop.itemHrid, { "dropRate": Math.min(1.0, dropRate * dropRateMultiplier), "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
-            }
-            if (combatMonsterDetailMap[monster].rareDropTable)
-                for (const drop of combatMonsterDetailMap[monster].rareDropTable) {
-                    if (drop.minDifficultyTier > simResult.difficultyTier) {
-                        continue;
-                    }
-                    rareDropMap.set(drop.itemHrid, { "dropRate": drop.dropRate * rareFindMultiplier, "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
-                }
-
-            for (let dropObject of dropMap.values()) {
-                dropObject.noRngDropAmount += simResult.deaths[monster] * dropObject.dropRate * ((dropObject.dropMax + dropObject.dropMin) / 2) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity) / numberOfPlayers;
-
-            }
-            for (let dropObject of rareDropMap.values()) {
-                dropObject.noRngDropAmount += simResult.deaths[monster] * dropObject.dropRate * ((dropObject.dropMax + dropObject.dropMin) / 2) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity) / numberOfPlayers;
-            }
-
-            for (let i = 0; i < simResult.deaths[monster]; i++) {
-                for (let dropObject of dropMap.values()) {
-                    let chance = Math.random();
-                    if (chance <= dropObject.dropRate / numberOfPlayers) {
-                        let amount = Math.floor(Math.random() * (dropObject.dropMax - dropObject.dropMin + 1) + dropObject.dropMin) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity);
-                        dropObject.number = dropObject.number + fidDropAmount(amount);
-                    }
-                }
-                for (let dropObject of rareDropMap.values()) {
-                    let chance = Math.random();
-                    if (chance <= dropObject.dropRate / numberOfPlayers) {
-                        let amount = Math.floor(Math.random() * (dropObject.dropMax - dropObject.dropMin + 1) + dropObject.dropMin) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity);
-                        dropObject.number = dropObject.number + fidDropAmount(amount);
-                    }
-                }
-            }
-            for (let [name, dropObject] of dropMap.entries()) {
-                if (totalDropMap.has(name)) {
-                    totalDropMap.set(name, totalDropMap.get(name) + dropObject.number);
-                } else {
-                    totalDropMap.set(name, dropObject.number);
-                }
-                if (noRngTotalDropMap.has(name)) {
-                    noRngTotalDropMap.set(name, noRngTotalDropMap.get(name) + dropObject.noRngDropAmount);
-                } else {
-                    noRngTotalDropMap.set(name, dropObject.noRngDropAmount);
-                }
-            }
-            for (let [name, dropObject] of rareDropMap.entries()) {
-                if (totalDropMap.has(name)) {
-                    totalDropMap.set(name, totalDropMap.get(name) + dropObject.number);
-                } else {
-                    totalDropMap.set(name, dropObject.number);
-                }
-                if (noRngTotalDropMap.has(name)) {
-                    noRngTotalDropMap.set(name, noRngTotalDropMap.get(name) + dropObject.noRngDropAmount);
-                } else {
-                    noRngTotalDropMap.set(name, dropObject.noRngDropAmount);
-                }
-            }
-        }
-    }
-
-    return { totalDropMap, noRngTotalDropMap };
+    return { totalDropMap: rolledDrops(simResult, playerToDisplay), noRngTotalDropMap: expectedDrops(simResult, playerToDisplay) };
 }
 
 function getDropProfit(simResult, playerToDisplay) {
@@ -4150,7 +4059,11 @@ function whatIfDrawChartsNow() {
         });
     }
     const progress = live ? whatIf.status?.progress : null;
-    whatIf.charts.update(whatIfBuildHistory(whatIf.rounds, { firstLook: first }), { running: live ? progress?.stage ?? null : null, flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
+    // The stage that runs now: the progress' stage, unless its end mark (stageEnded) names it. An ended race stage stays the progress' stage through
+    // what follows it under its name (its pick checks, the base runs of a search that picked nothing); its progress row reads Done, so its chart does too.
+    const running = progress && progress.stageEnded !== progress.stage ? progress.stage ?? null : null;
+    const history = whatIfBuildHistory(whatIf.rounds, { firstLook: first });
+    whatIf.charts.update(history, { running, ended: whatIfEndedStages(history, { running, live, done: whatIf.state === 'done' }), flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
 }
 
 // The round records of a search the window did not watch run (an earlier search, or one finished before the window looked): fetched once per search id.

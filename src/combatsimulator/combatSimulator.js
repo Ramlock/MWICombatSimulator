@@ -22,6 +22,7 @@ import AwaitCooldownEvent from "./events/awaitCooldownEvent";
 import Monster from "./monster";
 import Ability from "./ability";
 import { scaleConsumableBuff, scaleAbilityBuff } from "./buffScaling";
+import { fortifyBuffs, overkillStore, uniqueValue, echoProcs, UNIQUE_SETTINGS, FORTIFY_DURATION } from "./talismans";
 
 const ONE_SECOND = 1e9;
 const HOT_TICK_INTERVAL = 5 * ONE_SECOND;
@@ -461,6 +462,7 @@ class CombatSimulator extends EventTarget {
         }
 
         const aliveTargets = targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0);
+        const attack = {}; // one attack for every target it reaches (Overkill)
 
         for (let i = 0; i < aliveTargets.length; i++) {
             let target = aliveTargets[i];
@@ -487,7 +489,8 @@ class CombatSimulator extends EventTarget {
                 source = parryTarget;
             }
 
-            let attackResult = CombatUtilities.processAttack(source, target);
+            let attackResult = CombatUtilities.processAttack(source, target, null, parryTarget ? null : attack, !!parryTarget);
+            this.applyFortify(target, attackResult);
             if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
                 const log = this.generateCombatLog(source, "autoAttack", target, attackResult);
                 this.addToWipeLogs(log);
@@ -628,7 +631,7 @@ class CombatSimulator extends EventTarget {
 
             if (target.combatDetails.currentHitpoints == 0) {
                 this.eventQueue.clearEventsForUnit(target);
-                this.simResult.addDeath(target);
+                this.simResult.addDeath(target, this.players);
                 if (!target.isPlayer) {
                     this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
                 }
@@ -640,7 +643,7 @@ class CombatSimulator extends EventTarget {
                 (attackResult.thornDamageDone != 0 || attackResult.retaliationDamageDone != 0)
             ) {
                 this.eventQueue.clearEventsForUnit(source);
-                this.simResult.addDeath(source);
+                this.simResult.addDeath(source, this.players);
                 if (!source.isPlayer) {
                     this.simResult.updateTimeSpentAlive(source.hrid, false, this.simulationTime);
                 }
@@ -707,6 +710,7 @@ class CombatSimulator extends EventTarget {
             this.simResult.addEncounterEnd();
             this.simResult.lastEncounterFinishTime = this.simulationTime;
             this.players.forEach((player) => this.simResult.closeTriggerHolds(player, this.simulationTime));
+            if (!UNIQUE_SETTINGS.OVERKILL_CARRIES_ACROSS_FIGHTS) this.players.forEach((player) => { player.overkillStore = null; });
             // console.log("All enemies died");
 
             encounterEnded = true;
@@ -912,9 +916,14 @@ class CombatSimulator extends EventTarget {
 
     processDamageOverTimeTickEvent(event) {
         let tickDamage = CombatUtilities.calculateTickValue(event.damage, event.totalTicks, event.currentTick);
-        let damage = Math.min(tickDamage, event.target.combatDetails.currentHitpoints);
+        const hpBefore = event.target.combatDetails.currentHitpoints;
+        let damage = Math.min(tickDamage, hpBefore);
 
         event.target.combatDetails.currentHitpoints -= damage;
+        // Overkill (talisman, from the in-game text): a tick's kill fills the store only with OVERKILL_DOT_KILLS.
+        if (UNIQUE_SETTINGS.OVERKILL_DOT_KILLS && hpBefore > 0 && event.target.combatDetails.currentHitpoints <= 0 && uniqueValue(event.sourceRef, 'overkill')) {
+            overkillStore(event.sourceRef, tickDamage - hpBefore, null);
+        }
         this.simResult.addAttack(event.sourceRef, event.target, "damageOverTime", damage);
 
         if (this.zone?.isDungeon && event.target.isPlayer) {
@@ -940,7 +949,7 @@ class CombatSimulator extends EventTarget {
 
         if (event.target.combatDetails.currentHitpoints == 0) {
             this.eventQueue.clearEventsForUnit(event.target);
-            this.simResult.addDeath(event.target);
+            this.simResult.addDeath(event.target, this.players);
             if (!event.target.isPlayer) {
                 this.simResult.updateTimeSpentAlive(event.target.hrid, false, this.simulationTime);
             }
@@ -984,6 +993,16 @@ class CombatSimulator extends EventTarget {
 
         let regenTickEvent = new RegenTickEvent(this.simulationTime + REGEN_TICK_INTERVAL);
         this.eventQueue.addEvent(regenTickEvent);
+    }
+
+    // Fortify (talisman, from the in-game text): a unit hit by an attack gains a stack; its run-out is checked by its own event.
+    applyFortify(target, attackResult) {
+        if (!uniqueValue(target, 'fortify') || target.combatDetails.currentHitpoints <= 0) return;
+        if (!attackResult.didHit && !UNIQUE_SETTINGS.FORTIFY_ON_MISS) return;
+        const buffs = fortifyBuffs(target, this.simulationTime);
+        if (!buffs.length) return;
+        target.addBuffs(buffs, this.simulationTime);
+        this.eventQueue.addEvent(new CheckBuffExpirationEvent(this.simulationTime + FORTIFY_DURATION, target));
     }
 
     processCheckBuffExpirationEvent(event) {
@@ -1234,26 +1253,34 @@ class CombatSimulator extends EventTarget {
 
         let todoAbilities = [ability];
 
+        let blazeAbility = null;
         if (source.combatDetails.combatStats.blaze > 0 && Math.random() < source.combatDetails.combatStats.blaze) {
-            todoAbilities.push(new Ability("blaze"));
+            blazeAbility = new Ability("blaze");
+            todoAbilities.push(blazeAbility);
         }
 
         if (source.combatDetails.combatStats.bloom > 0 && Math.random() < source.combatDetails.combatStats.bloom) {
             todoAbilities.push(new Ability("bloom"));
         }
 
+        const echoPlan = []; // the cast's damage and heal effects, for Echo (processEcho); Bloom never, Blaze by ECHO_REPEATS_BLAZE
         for (const todoAbility of todoAbilities) {
+            const echoable = todoAbility === ability || (todoAbility === blazeAbility && UNIQUE_SETTINGS.ECHO_REPEATS_BLAZE);
             for (const abilityEffect of todoAbility.abilityEffects) {
                 switch (abilityEffect.effectType) {
                     case "/ability_effect_types/buff":
                         this.processAbilityBuffEffect(source, todoAbility, abilityEffect);
                         break;
-                    case "/ability_effect_types/damage":
-                        this.processAbilityDamageEffect(source, todoAbility, abilityEffect);
+                    case "/ability_effect_types/damage": {
+                        const done = this.processAbilityDamageEffect(source, todoAbility, abilityEffect);
+                        if (echoable && done) echoPlan.push({ ability: todoAbility, abilityEffect, attack: done.attack, struck: done.struck });
                         break;
-                    case "/ability_effect_types/heal":
-                        this.processAbilityHealEffect(source, todoAbility, abilityEffect);
+                    }
+                    case "/ability_effect_types/heal": {
+                        const healed = this.processAbilityHealEffect(source, todoAbility, abilityEffect);
+                        if (echoable) echoPlan.push({ ability: todoAbility, abilityEffect, healed });
                         break;
+                    }
                     case "/ability_effect_types/spend_hp":
                         this.processAbilitySpendHpEffect(source, todoAbility, abilityEffect);
                         break;
@@ -1270,6 +1297,8 @@ class CombatSimulator extends EventTarget {
                 }
             }
         }
+
+        this.processEcho(source, echoPlan);
 
         if (source.combatDetails.combatStats.ripple > 0 && Math.random() < source.combatDetails.combatStats.ripple) {
             let manapointsAdded = source.addManapoints(10);
@@ -1289,7 +1318,7 @@ class CombatSimulator extends EventTarget {
         // Could die from reflect damage
         if (source.combatDetails.currentHitpoints == 0) {
             this.eventQueue.clearEventsForUnit(source);
-            this.simResult.addDeath(source);
+            this.simResult.addDeath(source, this.players);
             if (!source.isPlayer) {
                 this.simResult.updateTimeSpentAlive(source.hrid, false, this.simulationTime);
             }
@@ -1341,6 +1370,8 @@ class CombatSimulator extends EventTarget {
         }
 
         let avoidTarget = [];
+        const attack = {}; // one attack for every target it reaches (Overkill)
+        const struck = []; // { target, attackResult } of every target the effect attacked, hit or miss (Echo repeats on them)
 
         let isSkipParry = false;
 
@@ -1355,7 +1386,8 @@ class CombatSimulator extends EventTarget {
                 let tempTarget = source;
                 let tempSource = parryTarget;
 
-                let attackResult = CombatUtilities.processAttack(tempSource, tempTarget);
+                let attackResult = CombatUtilities.processAttack(tempSource, tempTarget, null, null, true);
+                this.applyFortify(tempTarget, attackResult);
 
                 this.simResult.addAttack(
                     tempSource,
@@ -1381,7 +1413,7 @@ class CombatSimulator extends EventTarget {
 
                 if (tempTarget.combatDetails.currentHitpoints == 0) {
                     this.eventQueue.clearEventsForUnit(tempTarget);
-                    this.simResult.addDeath(tempTarget);
+                    this.simResult.addDeath(tempTarget, this.players);
                     if (!tempTarget.isPlayer) {
                         this.simResult.updateTimeSpentAlive(tempTarget.hrid, false, this.simulationTime);
                     }
@@ -1393,7 +1425,7 @@ class CombatSimulator extends EventTarget {
                     (attackResult.thornDamageDone != 0 || attackResult.retaliationDamageDone != 0)
                 ) {
                     this.eventQueue.clearEventsForUnit(tempSource);
-                    this.simResult.addDeath(tempSource);
+                    this.simResult.addDeath(tempSource, this.players);
                     if (!tempSource.isPlayer) {
                         this.simResult.updateTimeSpentAlive(tempSource.hrid, false, this.simulationTime);
                     }
@@ -1420,201 +1452,8 @@ class CombatSimulator extends EventTarget {
                     break;
                 }
 
-                let attackResult = CombatUtilities.processAttack(source, target, abilityEffect);
-
-                if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
-                    const log = this.generateCombatLog(source, ability.hrid, target, attackResult);
-                    this.addToWipeLogs(log);
-                }
-
-                if (attackResult.hpDrain > 0) {
-                    this.simResult.addHitpointsGained(source, ability.hrid, attackResult.hpDrain);
-                }
-
-                if (attackResult.didHit && abilityEffect.buffs) {
-                    for (const buff of abilityEffect.buffs) {
-                        target.addBuff(buff, this.simulationTime);
-                        let checkBuffExpirationEvent = new CheckBuffExpirationEvent(
-                            this.simulationTime + buff.duration,
-                            target
-                        );
-                        this.eventQueue.addEvent(checkBuffExpirationEvent);
-                    }
-                }
-
-                if (abilityEffect.damageOverTimeRatio > 0 && attackResult.damageDone > 0) {
-                    let damageOverTimeEvent = new DamageOverTimeEvent(
-                        this.simulationTime + DOT_TICK_INTERVAL,
-                        source,
-                        target,
-                        attackResult.damageDone * abilityEffect.damageOverTimeRatio,
-                        abilityEffect.damageOverTimeDuration / DOT_TICK_INTERVAL,
-                        1, abilityEffect.combatStyleHrid
-                    );
-                    this.eventQueue.addEvent(damageOverTimeEvent);
-                }
-
-                if (attackResult.didHit && abilityEffect.stunChance > 0 && Math.random() < (abilityEffect.stunChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
-                    target.isStunned = true;
-                    target.stunExpireTime = this.simulationTime + abilityEffect.stunDuration;
-                    this.eventQueue.clearMatching((event) => (event.type == AutoAttackEvent.type || event.type == AbilityCastEndEvent.type || event.type == StunExpirationEvent.type) && event.source == target);
-                    let stunExpirationEvent = new StunExpirationEvent(target.stunExpireTime, target);
-                    this.eventQueue.addEvent(stunExpirationEvent);
-                }
-
-                if (attackResult.didHit && abilityEffect.blindChance > 0 && Math.random() < (abilityEffect.blindChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
-                    target.isBlinded = true;
-                    target.blindExpireTime = this.simulationTime + abilityEffect.blindDuration;
-                    this.eventQueue.clearMatching((event) => event.type == BlindExpirationEvent.type && event.source == target)
-                    if (this.eventQueue.clearMatching((event) => event.type == AutoAttackEvent.type && event.source == target)) {
-                        // console.log("Blind " + (this.simulationTime / 1000000000));
-                        this.addNextAttackEvent(target);
-                    }
-                    let blindExpirationEvent = new BlindExpirationEvent(target.blindExpireTime, target);
-                    this.eventQueue.addEvent(blindExpirationEvent);
-                }
-
-                if (attackResult.didHit && abilityEffect.silenceChance > 0 && Math.random() < (abilityEffect.silenceChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
-                    target.isSilenced = true;
-                    target.silenceExpireTime = this.simulationTime + abilityEffect.silenceDuration;
-                    this.eventQueue.clearMatching((event) => event.type == SilenceExpirationEvent.type && event.source == target)
-                    if (this.eventQueue.clearMatching((event) => event.type == AbilityCastEndEvent.type && event.source == target)) {
-                        // console.log("Silence " + (this.simulationTime / 1000000000));
-                        this.addNextAttackEvent(target);
-                    }
-                    let silenceExpirationEvent = new SilenceExpirationEvent(target.silenceExpireTime, target);
-                    this.eventQueue.addEvent(silenceExpirationEvent);
-                }
-
-                if (attackResult.didHit && source.combatDetails.combatStats.curse > 0) {
-                    const curseExpireTime = 15000000000;
-                    let currentCurseEvent = this.eventQueue.getMatching((event) => event.type == CurseExpirationEvent.type && event.source == target);
-                    let currentCurseAmount = 0;
-                    if (currentCurseEvent) currentCurseAmount = currentCurseEvent.curseAmount;
-                    this.eventQueue.clearMatching((event) => event.type == CurseExpirationEvent.type && event.source == target);
-
-                    let curseExpirationEvent = new CurseExpirationEvent(this.simulationTime + curseExpireTime, currentCurseAmount, target);
-                    const curseBuff = {
-                        "uniqueHrid": "/buff_uniques/curse",
-                        "typeHrid": "/buff_types/damage_taken",
-                        "ratioBoost": 0,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": source.combatDetails.combatStats.curse * curseExpirationEvent.curseAmount,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": curseExpireTime
-                    };
-                    target.addBuff(curseBuff, this.simulationTime);
-                    this.eventQueue.addEvent(curseExpirationEvent);
-                }
-
-                if (source.combatDetails.combatStats.fury > 0) {
-                    let currentFuryEvent = this.eventQueue.getMatching((event) => event.type == FuryExpirationEvent.type && event.source == source);
-                    this.eventQueue.clearMatching((event) => event.type == FuryExpirationEvent.type && event.source == source);
-
-                    const furyExpireTime = 15000000000;
-                    const maxFuryStack = 5;
-
-                    let furyAmount = 0;
-                    if (currentFuryEvent) furyAmount = currentFuryEvent.furyAmount;
-
-                    if (attackResult.didHit) {
-                        furyAmount = Math.min(furyAmount + 1, maxFuryStack);
-                    } else {
-                        furyAmount = furyAmount / 2;
-                    }
-
-                    const furyAccuracyBuf = {
-                        "uniqueHrid": "/buff_uniques/fury_accuracy",
-                        "typeHrid": "/buff_types/fury_accuracy",
-                        "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": furyExpireTime
-                    };
-                    const furyDamageBuf = {
-                        "uniqueHrid": "/buff_uniques/fury_damage",
-                        "typeHrid": "/buff_types/fury_damage",
-                        "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": furyExpireTime
-                    };
-
-                    if (furyAmount > 0) {
-                        let furyExpirationEvent = new FuryExpirationEvent(this.simulationTime + furyExpireTime, furyAmount, source);
-                        this.eventQueue.addEvent(furyExpirationEvent);
-
-                        source.addBuffs([furyAccuracyBuf, furyDamageBuf], this.simulationTime);
-                        // source.addBuff(furyAccuracyBuf, this.simulationTime);
-                        // source.addBuff(furyDamageBuf, this.simulationTime);
-                    }
-                    else {
-                        source.removeBuffs([furyAccuracyBuf, furyDamageBuf]);
-                        // source.removeBuff(furyAccuracyBuf);
-                        // source.removeBuff(furyDamageBuf);
-                    }
-                }
-
-                if (target.combatDetails.combatStats.weaken > 0) {
-                    const weakenExpireTime = 15000000000;
-                    source.weakenExpireTime = this.simulationTime + weakenExpireTime;
-                    let currentWeakenEvent = this.eventQueue.getMatching((event) => event.type == WeakenExpirationEvent.type && event.source == source);
-                    let weakenAmount = 0;
-                    if (currentWeakenEvent)
-                        weakenAmount = currentWeakenEvent.weakenAmount;
-                    this.eventQueue.clearMatching((event) => event.type == WeakenExpirationEvent.type && event.source == source);
-                    let weakenExpirationEvent = new WeakenExpirationEvent(this.simulationTime + weakenExpireTime, weakenAmount, source);
-                    const weakenBuff = {
-                        "uniqueHrid": "/buff_uniques/weaken",
-                        "typeHrid": "/buff_types/damage",
-                        "ratioBoost": -1 * target.combatDetails.combatStats.weaken * weakenExpirationEvent.weakenAmount,
-                        "ratioBoostLevelBonus": 0,
-                        "flatBoost": 0,
-                        "flatBoostLevelBonus": 0,
-                        "startTime": "0001-01-01T00:00:00Z",
-                        "duration": weakenExpireTime
-                    };
-                    source.addBuff(weakenBuff, this.simulationTime);
-                    this.eventQueue.addEvent(weakenExpirationEvent);
-                }
-
-                this.simResult.addAttack(
-                    source,
-                    target,
-                    ability.hrid,
-                    attackResult.didHit ? attackResult.damageDone : "miss"
-                );
-
-                if (attackResult.thornDamageDone > 0) {
-                    this.simResult.addAttack(target, source, attackResult.thornType, attackResult.thornDamageDone);
-                }
-                if (this.zone?.isDungeon && attackResult.thornDamageDone > 0 && source.isPlayer) {
-                    const log = this.buildCombatLog(target, attackResult.thornType, source, attackResult.thornDamageDone);
-                    this.addToWipeLogs(log);
-                }
-
-                if (target.combatDetails.combatStats.retaliation > 0) {
-                    this.simResult.addAttack(target, source, "retaliation", attackResult.retaliationDamageDone > 0 ? attackResult.retaliationDamageDone : "miss");
-                }
-                if (this.zone?.isDungeon && attackResult.retaliationDamageDone > 0 && source.isPlayer) {
-                    const log = this.buildCombatLog(target, "retaliation", source, attackResult.retaliationDamageDone);
-                    this.addToWipeLogs(log);
-                }
-
-                if (target.combatDetails.currentHitpoints == 0) {
-                    this.eventQueue.clearEventsForUnit(target);
-                    this.simResult.addDeath(target);
-                    if (!target.isPlayer) {
-                        this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
-                    }
-                    // console.log(target.hrid, "died");
-                }
-
+                let attackResult = this.processAbilityHit(source, ability, abilityEffect, target, attack);
+                struck.push({ target, attackResult });
 
                 if (attackResult.didHit && abilityEffect.pierceChance > Math.random()) {
                     continue;
@@ -1630,18 +1469,231 @@ class CombatSimulator extends EventTarget {
                 break;
             }
         }
+        return { attack, struck };
     }
 
-    processAbilityHealEffect(source, ability, abilityEffect) {
+    // One target of an ability's damage effect: the attack and everything it sets off. The cast's own hit (echo null) and Echo's
+    // repeat (echo = { strength, roll }, processEcho) both come here, so the repeat sets off the engine's own per-hit code.
+    processAbilityHit(source, ability, abilityEffect, target, attack, echo = null) {
+        // The repeat applies the ability's non-damage parts, its damage over time and the gear's on-hit effects only as the settings say.
+        const parts = !echo || UNIQUE_SETTINGS.ECHO_REPEATS_ABILITY_EFFECTS;
+        const dot = !echo || UNIQUE_SETTINGS.ECHO_REPEAT_STARTS_DOT;
+        const onHit = !echo || UNIQUE_SETTINGS.ECHO_TRIGGERS_ON_HIT_EFFECTS;
+        let attackResult = CombatUtilities.processAttack(source, target, abilityEffect, attack, false, echo);
+        if (onHit) this.applyFortify(target, attackResult);
+
+        if (this.zone?.isDungeon && target.isPlayer && attackResult.didHit && attackResult.damageDone > 0) {
+            const log = this.generateCombatLog(source, ability.hrid, target, attackResult);
+            this.addToWipeLogs(log);
+        }
+
+        if (attackResult.hpDrain > 0) {
+            this.simResult.addHitpointsGained(source, ability.hrid, attackResult.hpDrain);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.buffs) {
+            for (const buff of abilityEffect.buffs) {
+                target.addBuff(buff, this.simulationTime);
+                let checkBuffExpirationEvent = new CheckBuffExpirationEvent(
+                    this.simulationTime + buff.duration,
+                    target
+                );
+                this.eventQueue.addEvent(checkBuffExpirationEvent);
+            }
+        }
+
+        if (dot && abilityEffect.damageOverTimeRatio > 0 && attackResult.damageDone > 0) {
+            let damageOverTimeEvent = new DamageOverTimeEvent(
+                this.simulationTime + DOT_TICK_INTERVAL,
+                source,
+                target,
+                attackResult.hitDamageDone * abilityEffect.damageOverTimeRatio,
+                abilityEffect.damageOverTimeDuration / DOT_TICK_INTERVAL,
+                1, abilityEffect.combatStyleHrid
+            );
+            this.eventQueue.addEvent(damageOverTimeEvent);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.stunChance > 0 && Math.random() < (abilityEffect.stunChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
+            target.isStunned = true;
+            target.stunExpireTime = this.simulationTime + abilityEffect.stunDuration;
+            this.eventQueue.clearMatching((event) => (event.type == AutoAttackEvent.type || event.type == AbilityCastEndEvent.type || event.type == StunExpirationEvent.type) && event.source == target);
+            let stunExpirationEvent = new StunExpirationEvent(target.stunExpireTime, target);
+            this.eventQueue.addEvent(stunExpirationEvent);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.blindChance > 0 && Math.random() < (abilityEffect.blindChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
+            target.isBlinded = true;
+            target.blindExpireTime = this.simulationTime + abilityEffect.blindDuration;
+            this.eventQueue.clearMatching((event) => event.type == BlindExpirationEvent.type && event.source == target)
+            if (this.eventQueue.clearMatching((event) => event.type == AutoAttackEvent.type && event.source == target)) {
+                // console.log("Blind " + (this.simulationTime / 1000000000));
+                this.addNextAttackEvent(target);
+            }
+            let blindExpirationEvent = new BlindExpirationEvent(target.blindExpireTime, target);
+            this.eventQueue.addEvent(blindExpirationEvent);
+        }
+
+        if (parts && attackResult.didHit && abilityEffect.silenceChance > 0 && Math.random() < (abilityEffect.silenceChance * 100 / (100 + target.combatDetails.combatStats.tenacity))) {
+            target.isSilenced = true;
+            target.silenceExpireTime = this.simulationTime + abilityEffect.silenceDuration;
+            this.eventQueue.clearMatching((event) => event.type == SilenceExpirationEvent.type && event.source == target)
+            if (this.eventQueue.clearMatching((event) => event.type == AbilityCastEndEvent.type && event.source == target)) {
+                // console.log("Silence " + (this.simulationTime / 1000000000));
+                this.addNextAttackEvent(target);
+            }
+            let silenceExpirationEvent = new SilenceExpirationEvent(target.silenceExpireTime, target);
+            this.eventQueue.addEvent(silenceExpirationEvent);
+        }
+
+        if (onHit && attackResult.didHit && source.combatDetails.combatStats.curse > 0) {
+            const curseExpireTime = 15000000000;
+            let currentCurseEvent = this.eventQueue.getMatching((event) => event.type == CurseExpirationEvent.type && event.source == target);
+            let currentCurseAmount = 0;
+            if (currentCurseEvent) currentCurseAmount = currentCurseEvent.curseAmount;
+            this.eventQueue.clearMatching((event) => event.type == CurseExpirationEvent.type && event.source == target);
+
+            let curseExpirationEvent = new CurseExpirationEvent(this.simulationTime + curseExpireTime, currentCurseAmount, target);
+            const curseBuff = {
+                "uniqueHrid": "/buff_uniques/curse",
+                "typeHrid": "/buff_types/damage_taken",
+                "ratioBoost": 0,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": source.combatDetails.combatStats.curse * curseExpirationEvent.curseAmount,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": curseExpireTime
+            };
+            target.addBuff(curseBuff, this.simulationTime);
+            this.eventQueue.addEvent(curseExpirationEvent);
+        }
+
+        if (onHit && source.combatDetails.combatStats.fury > 0) {
+            let currentFuryEvent = this.eventQueue.getMatching((event) => event.type == FuryExpirationEvent.type && event.source == source);
+            this.eventQueue.clearMatching((event) => event.type == FuryExpirationEvent.type && event.source == source);
+
+            const furyExpireTime = 15000000000;
+            const maxFuryStack = 5;
+
+            let furyAmount = 0;
+            if (currentFuryEvent) furyAmount = currentFuryEvent.furyAmount;
+
+            if (attackResult.didHit) {
+                furyAmount = Math.min(furyAmount + 1, maxFuryStack);
+            } else {
+                furyAmount = furyAmount / 2;
+            }
+
+            const furyAccuracyBuf = {
+                "uniqueHrid": "/buff_uniques/fury_accuracy",
+                "typeHrid": "/buff_types/fury_accuracy",
+                "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": furyExpireTime
+            };
+            const furyDamageBuf = {
+                "uniqueHrid": "/buff_uniques/fury_damage",
+                "typeHrid": "/buff_types/fury_damage",
+                "ratioBoost": furyAmount * source.combatDetails.combatStats.fury,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": furyExpireTime
+            };
+
+            if (furyAmount > 0) {
+                let furyExpirationEvent = new FuryExpirationEvent(this.simulationTime + furyExpireTime, furyAmount, source);
+                this.eventQueue.addEvent(furyExpirationEvent);
+
+                source.addBuffs([furyAccuracyBuf, furyDamageBuf], this.simulationTime);
+                // source.addBuff(furyAccuracyBuf, this.simulationTime);
+                // source.addBuff(furyDamageBuf, this.simulationTime);
+            }
+            else {
+                source.removeBuffs([furyAccuracyBuf, furyDamageBuf]);
+                // source.removeBuff(furyAccuracyBuf);
+                // source.removeBuff(furyDamageBuf);
+            }
+        }
+
+        if (onHit && target.combatDetails.combatStats.weaken > 0) {
+            const weakenExpireTime = 15000000000;
+            source.weakenExpireTime = this.simulationTime + weakenExpireTime;
+            let currentWeakenEvent = this.eventQueue.getMatching((event) => event.type == WeakenExpirationEvent.type && event.source == source);
+            let weakenAmount = 0;
+            if (currentWeakenEvent)
+                weakenAmount = currentWeakenEvent.weakenAmount;
+            this.eventQueue.clearMatching((event) => event.type == WeakenExpirationEvent.type && event.source == source);
+            let weakenExpirationEvent = new WeakenExpirationEvent(this.simulationTime + weakenExpireTime, weakenAmount, source);
+            const weakenBuff = {
+                "uniqueHrid": "/buff_uniques/weaken",
+                "typeHrid": "/buff_types/damage",
+                "ratioBoost": -1 * target.combatDetails.combatStats.weaken * weakenExpirationEvent.weakenAmount,
+                "ratioBoostLevelBonus": 0,
+                "flatBoost": 0,
+                "flatBoostLevelBonus": 0,
+                "startTime": "0001-01-01T00:00:00Z",
+                "duration": weakenExpireTime
+            };
+            source.addBuff(weakenBuff, this.simulationTime);
+            this.eventQueue.addEvent(weakenExpirationEvent);
+        }
+
+        this.simResult.addAttack(
+            source,
+            target,
+            ability.hrid,
+            attackResult.didHit ? attackResult.damageDone : "miss"
+        );
+
+        if (attackResult.thornDamageDone > 0) {
+            this.simResult.addAttack(target, source, attackResult.thornType, attackResult.thornDamageDone);
+        }
+        if (this.zone?.isDungeon && attackResult.thornDamageDone > 0 && source.isPlayer) {
+            const log = this.buildCombatLog(target, attackResult.thornType, source, attackResult.thornDamageDone);
+            this.addToWipeLogs(log);
+        }
+
+        if (target.combatDetails.combatStats.retaliation > 0) {
+            this.simResult.addAttack(target, source, "retaliation", attackResult.retaliationDamageDone > 0 ? attackResult.retaliationDamageDone : "miss");
+        }
+        if (this.zone?.isDungeon && attackResult.retaliationDamageDone > 0 && source.isPlayer) {
+            const log = this.buildCombatLog(target, "retaliation", source, attackResult.retaliationDamageDone);
+            this.addToWipeLogs(log);
+        }
+
+        if (target.combatDetails.currentHitpoints == 0) {
+            this.eventQueue.clearEventsForUnit(target);
+            this.simResult.addDeath(target, this.players);
+            if (!target.isPlayer) {
+                this.simResult.updateTimeSpentAlive(target.hrid, false, this.simulationTime);
+            }
+            // console.log(target.hrid, "died");
+        }
+        return attackResult;
+    }
+
+    // Returns the units it healed (Echo repeats on them). strength: a factor on the heal roll (Echo's repeat); onlyTargets: heal
+    // these, still alive, instead of choosing (Echo's repeat with ECHO_HEAL_SAME_TARGETS).
+    processAbilityHealEffect(source, ability, abilityEffect, strength = 1, onlyTargets = null) {
+        const healOne = (target) => {
+            let amountHealed = CombatUtilities.processHeal(source, abilityEffect, target, strength);
+
+            this.simResult.addHitpointsGained(target, ability.hrid, amountHealed);
+            return target;
+        };
+
+        if (onlyTargets) {
+            return onlyTargets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0).map(healOne);
+        }
 
         if (abilityEffect.targetType == "allAllies") {
             let targets = source.isPlayer ? this.players : this.enemies;
-            for (const target of targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0)) {
-                let amountHealed = CombatUtilities.processHeal(source, abilityEffect, target);
-
-                this.simResult.addHitpointsGained(target, ability.hrid, amountHealed);
-            }
-            return;
+            return targets.filter((unit) => unit && unit.combatDetails.currentHitpoints > 0).map(healOne);
         }
 
         if (abilityEffect.targetType == "lowestHpAlly") {
@@ -1660,21 +1712,44 @@ class CombatSimulator extends EventTarget {
                 }
             }
 
-            if (healTarget) {
-                let amountHealed = CombatUtilities.processHeal(source, abilityEffect, healTarget);
-
-                this.simResult.addHitpointsGained(healTarget, ability.hrid, amountHealed);
-            }
-            return;
+            return healTarget ? [healOne(healTarget)] : [];
         }
 
         if (abilityEffect.targetType != "self") {
             throw new Error("Unsupported target type for heal ability effect: " + ability.hrid);
         }
 
-        let amountHealed = CombatUtilities.processHeal(source, abilityEffect, source);
+        return [healOne(source)];
+    }
 
-        this.simResult.addHitpointsGained(source, ability.hrid, amountHealed);
+    // Echo (talisman, from a test-server recording): one roll per ability cast, made only when the cast struck or healed a target
+    // that is still alive (no random call for a unit without the line). On a success the cast's damage and heal effects come once
+    // more at ECHO_STRENGTH, on the targets the cast struck (each with its own hit, crit and damage roll, through processAbilityHit)
+    // or healed. Not a cast: no mana, no cooldown, not through tryUseAbility, no Blaze, Bloom or Ripple roll.
+    // plan: [{ ability, abilityEffect, attack, struck }] for a damage effect, [{ ability, abilityEffect, healed }] for a heal effect.
+    processEcho(source, plan) {
+        if (!plan.length || !uniqueValue(source, 'echo')) return;
+        const S = UNIQUE_SETTINGS;
+        const live = (unit) => !!unit && unit.combatDetails.currentHitpoints > 0;
+        for (let round = 0; round < 100 && (round === 0 || S.ECHO_CAN_REPEAT_ITSELF); round++) {
+            if (!live(source)) return;
+            const steps = plan.map((p) => p.healed
+                ? { ...p, targets: S.ECHO_HEAL_SAME_TARGETS ? p.healed.filter(live) : null }
+                : { ...p, struck: p.struck.filter((s) => live(s.target) && (S.ECHO_ON_MISSED_TARGETS || s.attackResult.didHit)) })
+                .filter((p) => (p.healed ? p.targets === null || p.targets.length > 0 : p.struck.length > 0));
+            if (!steps.length || !echoProcs(source)) return;
+            plan = steps.map((p) => {
+                if (p.healed) return { ...p, healed: this.processAbilityHealEffect(source, p.ability, p.abilityEffect, S.ECHO_STRENGTH, p.targets) };
+                const attack = S.ECHO_SAME_ATTACK_FOR_OVERKILL ? p.attack : {};
+                const struck = [];
+                for (const { target, attackResult } of p.struck) {
+                    if (!live(target)) continue;
+                    const echo = { strength: S.ECHO_STRENGTH, roll: S.ECHO_OWN_DAMAGE_ROLL ? null : attackResult };
+                    struck.push({ target, attackResult: this.processAbilityHit(source, p.ability, p.abilityEffect, target, attack, echo) });
+                }
+                return { ...p, struck };
+            });
+        }
     }
 
     processAbilityReviveEffect(source, ability, abilityEffect) {

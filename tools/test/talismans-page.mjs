@@ -31,7 +31,25 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
 
-const TALISMANS = { power: 0.2, lines: [{ modifier: 'magic_damage', grade: 3 }, { modifier: 'armor', grade: 2 }, { modifier: 'echo', grade: 1 }, { modifier: 'melee_accuracy', grade: 4 }] };
+// The view itself (src/talismanView.mjs), with the page's strings of each language: a line of Smite, Shatter, Fortify or Overkill carries the mark,
+// and the block one note under the list (from the in-game text, not checked against fights); Echo and every other line carry none.
+const { talismanViewHtml } = await import(new URL('../../src/talismanView.mjs', import.meta.url).href);
+const NOTE = { en: 'Simulated from the in-game text, not checked against fights', pt: 'Simulado a partir do texto do jogo, não conferido em combates', zh: '依据游戏内说明模拟，未经实战核对' };
+for (const l of ['en', 'pt', 'zh']) {
+    const strings = JSON.parse(fs.readFileSync(path.join(root, 'locales', l, 'common.json'), 'utf8'));
+    const t = (key) => { if (!key.startsWith('common:')) return key; const v = key.slice(7).split('.').reduce((o, k) => o?.[k], strings); return typeof v === 'string' ? v : key; };
+    const marks = (html) => (html.match(/talisman-from-text-mark/g) || []).length;
+    for (const m of ['smite', 'shatter', 'fortify', 'overkill']) {
+        const html = talismanViewHtml({ lines: [{ modifier: 'armor', grade: 1 }, { modifier: m, grade: 2 }] }, t);
+        check(`${l}: a ${m} line carries the mark and the block the note`, marks(html) === 1 && /G2<\/span><span class="talisman-from-text-mark">\*<\/span>/.test(html) && html.includes(`data-i18n="common:talismans.fromText">${NOTE[l]}</span>`), html);
+    }
+    const none = talismanViewHtml({ lines: [{ modifier: 'echo', grade: 1 }, { modifier: 'magic_damage', grade: 3 }] }, t);
+    check(`${l}: Echo and a plain line carry no mark and no note`, marks(none) === 0 && !none.includes('talisman-from-text'), none);
+    const all = talismanViewHtml({ lines: ['smite', 'shatter', 'fortify', 'overkill', 'echo'].map((modifier) => ({ modifier, grade: 1 })) }, t);
+    check(`${l}: four such lines, four marks and one note`, marks(all) === 4 && (all.match(/common:talismans\.fromText/g) || []).length === 1);
+}
+
+const TALISMANS = { power: 0.2, lines: [{ modifier: 'magic_damage', grade: 3 }, { modifier: 'armor', grade: 2 }, { modifier: 'echo', grade: 1 }, { modifier: 'melee_accuracy', grade: 4 }, { modifier: 'smite', grade: 2 }] };
 const slot = (n) => ({ player: { attackLevel: 40 + n, magicLevel: 50, equipment: [] }, name: 'Player ' + n });
 const group = { 1: { ...slot(1), talismans: TALISMANS }, 2: slot(2), 3: slot(3), selected: [1, 2, 3] };
 
@@ -69,6 +87,8 @@ try {
     let v = await view();
     check('Player 1 shows the block, read-only (no input or control)', v && !v.hidden && v.inputs === 0, JSON.stringify(v));
     check('en: each line\'s name and grade and the talisman power', v && /Magic Damage G3/.test(v.text) && /Armor G2/.test(v.text) && /Echo G1/.test(v.text) && /Melee Accuracy G4/.test(v.text) && /Talisman Power \+20%/.test(v.text), v?.text);
+    check('en: Smite carries the mark and the block the note; Echo none', v && /Smite G2\*/.test(v.text) && /Echo G1(?!\*)/.test(v.text) && v.text.includes('* ' + NOTE.en), v?.text);
+    check('the note wraps in the block (no horizontal overflow of the block)', await js(`(() => { const b = document.getElementById('talismanView'); return b.scrollWidth <= b.clientWidth; })()`));
     check('the page is dark', await js(`document.body.classList.contains('dark-mode')`));
     check('no horizontal scroll on the page', await js(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`));
     await shot('talismans-en');
@@ -76,10 +96,12 @@ try {
     await lang('pt');
     v = await view();
     check('pt: the game words for every line and the label (Dano mágico, Armadura, Eco, Precisão corpo a corpo, Talismãs, Poder de talismã)', v && /Dano mágico G3/.test(v.text) && /Armadura G2/.test(v.text) && /Eco G1/.test(v.text) && /Precisão corpo a corpo G4/.test(v.text) && /Talismãs/.test(v.text) && /Poder de talismã \+20%/.test(v.text) && !/Echo|Melee|Talisman/.test(v.text), v?.text);
+    check('pt: the note in Portuguese, on Castigo', v && /Castigo G2\*/.test(v.text) && v.text.includes('* ' + NOTE.pt) && !v.text.includes(NOTE.en), v?.text);
     await shot('talismans-pt');
     await lang('zh');
     v = await view();
     check('zh: the game words for every line and the label (魔法伤害, 护甲, 回响, 近战精准度, 符石, 符石威力)', v && /魔法伤害 G3/.test(v.text) && /护甲 G2/.test(v.text) && /回响 G1/.test(v.text) && /近战精准度 G4/.test(v.text) && /符石/.test(v.text) && /符石威力 \+20%/.test(v.text) && !/[A-Za-z]{3,}/.test(v.text), v?.text);
+    check('zh: the note in Chinese, on 制裁', v && /制裁 G2\*/.test(v.text) && v.text.includes('* ' + NOTE.zh), v?.text);
     await shot('talismans-zh');
     await lang('en');
 

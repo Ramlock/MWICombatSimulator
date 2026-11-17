@@ -63,6 +63,7 @@ Getting the rest from the HTML would mean opening panels, which is pressing butt
 - **New keys**, not read by today's import:
   - `learnedAbilities`: `[{abilityHrid, level, experience}]`, every learned ability, from `characterAbilities`.
   - `inventory`: `[{itemHrid, enhancementLevel, count}]`, every inventory entry except Coin.
+  - `talismanInventory` (userscript 0.13.0): every talisman owned, equipped or not, from `characterTalismans`; its shape is in `toolasha-loot-tracker.md`, "The talisman inventory in the character export".
   - `coin`: a number, the inventory's `/items/coin` `count`.
 - The data is as of the page's last load: the script reads only `init_character_data`, so a change made since (an item bought, gear swapped) shows after a reload.
 - The sim's solo import (`doSoloImport`) leaves a kind missing from the JSON as the sim already holds it, so an export with some kinds switched off still imports (batch 3; the party import, `updateNextPlayer`, is not changed yet).

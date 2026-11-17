@@ -8,6 +8,7 @@
     "talismans": {
         "title": "符石",
         "power": "符石威力",
+        "fromText": "依据游戏内说明模拟，未经实战核对",
         "names": {
             "melee_accuracy": "近战精准度",
             "melee_damage": "近战伤害",
@@ -361,6 +362,7 @@
             "running": "运行中",
             "firstLook": "初步结果：来自最初几次运行的数值，尚无折线。",
             "noFigures": "目前没有任何更改具备数值所需的 {{n}} 次新运行。",
+            "noFiguresEnded": "没有任何更改具备过数值所需的 {{n}} 次新运行。",
             "noRounds": "{{stage}}：在第一轮完成前已结束，因此没有图表。",
             "tipFigure": "{{value}} [{{low}}, {{high}}] · 第 {{round}} 轮",
             "tipFigureOne": "{{value}} · 第 {{round}} 轮",

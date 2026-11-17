@@ -134,6 +134,11 @@ $Times = [ordered]@{}
 $R = @{}
 function Skip-Outward([string]$What) { Write-Log "  SKIPPED (dry run): $What" }
 function Invoke-Outward([string]$What, [scriptblock]$Do) { if ($DryRun) { Skip-Outward $What } else { Write-Log "  $What"; & $Do } }
+# A mark (.built, .tested) holds the SHA-256 of the exe and the zip as they were when it was written; a mark counts only while both files still match it,
+# so a file damaged after its mark (a power cut during a later step zeroed an exe's tail once) is built again instead of being kept.
+function Get-BuiltHash { ($R.Exe, $R.Zip | ForEach-Object { if (Test-Path -LiteralPath $_) { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash } else { 'missing' } }) -join ' ' }
+function Test-Mark([string]$Mark) { (Test-Path -LiteralPath $Mark) -and ([IO.File]::ReadAllText($Mark).Trim() -eq (Get-BuiltHash)) }
+function Set-Mark([string]$Mark) { [IO.File]::WriteAllText($Mark, (Get-BuiltHash)) }
 
 $steps = @(
     { # 1
@@ -145,17 +150,18 @@ $steps = @(
         if (-not $w.Clean) { throw 'this worktree has uncommitted changes' }
     },
     { # 2
-        if ((Test-Path $R.Exe) -and (Test-Path $R.Zip) -and (Test-Path $R.BuiltMark)) { Write-Log "  already built in $($R.Out): kept"; return }
+        if ((Test-Path $R.Exe) -and (Test-Path $R.Zip) -and (Test-Mark $R.BuiltMark)) { Write-Log "  already built in $($R.Out): kept"; return }
+        if (Test-Path $R.BuiltMark) { Write-Log "  the built files in $($R.Out) do not match their mark: built again" }
         Remove-Item -LiteralPath $R.BuiltMark, $R.TestedMark -Force -ErrorAction SilentlyContinue
         Build-Runner $Commit $R.Exe $R.Zip
         if (-not ((Test-Path $R.Exe) -and (Test-Path $R.Zip))) { throw 'the build made no exe or no zip' }
-        New-Item -ItemType File -Force $R.BuiltMark | Out-Null
+        Set-Mark $R.BuiltMark
     },
     { # 3
-        if (Test-Path $R.TestedMark) { Write-Log '  already tested: kept'; return }
+        if (Test-Mark $R.TestedMark) { Write-Log '  already tested: kept'; return }
         Test-RunnerExe $R.Exe $R.Short
         Test-RunnerZip $R.Zip
-        New-Item -ItemType File -Force $R.TestedMark | Out-Null
+        Set-Mark $R.TestedMark
     },
     { # 4
         $rel = Get-Release $R.Tag
