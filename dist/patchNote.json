@@ -1,4 +1,17 @@
 {
+    "2026-11-17":
+    {
+        "fork": "Ramlock",
+        "notes":
+        [
+            "Loot is now priced with each player's drop rate at each kill, not at the end of the run, so a run that ends while a drop buff is off (during a wipe, for example) no longer undervalues the whole run's loot",
+            "Talismans: Smite, Shatter, Fortify and Overkill are now simulated, from their in-game text and not yet checked against real fights; the page marks them with a star",
+            "Talismans: Echo is now simulated",
+            "What-if: In the running, Set aside and Ruled out add up as soon as a round's runs are in, and the first round's table drops the ruled-out changes at once",
+            "What-if: Payback days show a dash until a change has enough runs, like its gain",
+            "What-if: a finished stage's chart no longer says it is running, or that figures are yet to come"
+        ]
+    },
     "2026-11-15":
     {
         "fork": "Ramlock",

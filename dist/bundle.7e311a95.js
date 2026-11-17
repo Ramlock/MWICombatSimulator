@@ -1537,6 +1537,126 @@ class LabyrinthUpgrade {
 
 /***/ }),
 
+/***/ "./src/combatsimulator/lootPricing.js":
+/*!********************************************!*\
+  !*** ./src/combatsimulator/lootPricing.js ***!
+  \********************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   expectedDrops: () => (/* binding */ expectedDrops),
+/* harmony export */   killGroups: () => (/* binding */ killGroups),
+/* harmony export */   killedMonsters: () => (/* binding */ killedMonsters),
+/* harmony export */   monsterDrops: () => (/* binding */ monsterDrops),
+/* harmony export */   rolledDrops: () => (/* binding */ rolledDrops)
+/* harmony export */ });
+/* harmony import */ var _data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
+
+
+// How a player's loot is priced: every monster kill with the drop rate, rare find and drop quantity the player has at that
+// kill (SimResult.addDeath records them in killMultipliers). The one place of the drop arithmetic for the page (src/main.js
+// calcDropMaps: rolledDrops and expectedDrops), tools/calibration/run.mjs and the what-if engine (tools/whatif/engine.mjs).
+
+const isPlayerHrid = (hrid) => /^player\d+$/.test(hrid);
+
+// The groups of a player's kills, one per set of multipliers they were made under:
+// [{ dropRate, rareFind, dropQuantity, deaths: { monsterHrid: kills } }]. A result without the record (an older one)
+// gives one group: its end-of-run multipliers over all its kills.
+function killGroups(simResult, playerHrid) {
+    const rec = simResult.killMultipliers?.[playerHrid];
+    if (rec) return Object.values(rec);
+    const deaths = {};
+    for (const [hrid, n] of Object.entries(simResult.deaths)) if (!isPlayerHrid(hrid)) deaths[hrid] = n;
+    return [{
+        dropRate: simResult.dropRateMultiplier[playerHrid],
+        rareFind: simResult.rareFindMultiplier[playerHrid],
+        dropQuantity: simResult.combatDropQuantity[playerHrid],
+        deaths,
+    }];
+}
+
+// The monsters killed in the run, sorted (the page's order).
+function killedMonsters(simResult) {
+    return Object.keys(simResult.deaths).filter((hrid) => !isPlayerHrid(hrid)).sort();
+}
+
+// What one kill of a monster can drop for one group of multipliers: [{ itemHrid, dropRate, dropMin, dropMax }], the drop
+// table then the rare drop table. dropRate is the party's chance per kill: a normal drop's is capped at 1 after the drop
+// rate multiplier, a rare drop's is not capped (as before).
+function monsterDrops(monsterHrid, difficultyTier, group) {
+    const md = _data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_0__[monsterHrid];
+    const out = [];
+    if (!md?.dropTable) return out;
+    for (const drop of md.dropTable) {
+        if (drop.minDifficultyTier > difficultyTier) continue;
+        const multiplier = 1.0 + 0.1 * difficultyTier;
+        const dropRate = Math.min(1.0, multiplier * (drop.dropRate + (drop.dropRatePerDifficultyTier ?? 0) * difficultyTier));
+        if (dropRate <= 0) continue;
+        out.push({ itemHrid: drop.itemHrid, dropRate: Math.min(1.0, dropRate * group.dropRate), dropMin: drop.minCount, dropMax: drop.maxCount });
+    }
+    for (const drop of md.rareDropTable || []) {
+        if (drop.minDifficultyTier > difficultyTier) continue;
+        out.push({ itemHrid: drop.itemHrid, dropRate: drop.dropRate * group.rareFind, dropMin: drop.minCount, dropMax: drop.maxCount });
+    }
+    return out;
+}
+
+// A player's expected ("No RNG") drops of the run: Map itemHrid -> amount.
+function expectedDrops(simResult, playerHrid) {
+    const gap = simResult.debuffOnLevelGap[playerHrid];
+    const n = simResult.numberOfPlayers;
+    const groups = killGroups(simResult, playerHrid);
+    const out = new Map();
+    for (const monster of killedMonsters(simResult)) {
+        for (const g of groups) {
+            const kills = g.deaths[monster];
+            if (!kills) continue;
+            for (const d of monsterDrops(monster, simResult.difficultyTier, g)) {
+                const amount = kills * d.dropRate * ((d.dropMax + d.dropMin) / 2) * (1 + gap) * (1 + g.dropQuantity) / n;
+                out.set(d.itemHrid, (out.get(d.itemHrid) ?? 0) + amount);
+            }
+        }
+    }
+    return out;
+}
+
+// A fractional amount rounds up with the chance of its fraction.
+function fidDropAmount(dropAmount, random) {
+    if (Number.isInteger(dropAmount)) return dropAmount;
+    const intPart = Math.floor(dropAmount);
+    const fracPart = dropAmount - intPart;
+    return random() < fracPart ? intPart + 1 : intPart;
+}
+
+// A player's drops of the run rolled kill by kill (the page's random drops): Map itemHrid -> amount. random: Math.random.
+function rolledDrops(simResult, playerHrid, random = Math.random) {
+    const gap = simResult.debuffOnLevelGap[playerHrid];
+    const n = simResult.numberOfPlayers;
+    const groups = killGroups(simResult, playerHrid);
+    const out = new Map();
+    for (const monster of killedMonsters(simResult)) {
+        for (const g of groups) {
+            const kills = g.deaths[monster];
+            if (!kills) continue;
+            const drops = monsterDrops(monster, simResult.difficultyTier, g);
+            for (const d of drops) if (!out.has(d.itemHrid)) out.set(d.itemHrid, 0);
+            for (let i = 0; i < kills; i++) {
+                for (const d of drops) {
+                    if (random() <= d.dropRate / n) {
+                        const amount = Math.floor(random() * (d.dropMax - d.dropMin + 1) + d.dropMin) * (1 + gap) * (1 + g.dropQuantity);
+                        out.set(d.itemHrid, out.get(d.itemHrid) + fidDropAmount(amount, random));
+                    }
+                }
+            }
+        }
+    }
+    return out;
+}
+
+
+/***/ }),
+
 /***/ "./src/combatsimulator/monster.js":
 /*!****************************************!*\
   !*** ./src/combatsimulator/monster.js ***!
@@ -1961,9 +2081,21 @@ class Player extends _combatUnit__WEBPACK_IMPORTED_MODULE_1__["default"] {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   FORTIFY_DURATION: () => (/* binding */ FORTIFY_DURATION),
+/* harmony export */   FORTIFY_MAX_STACKS: () => (/* binding */ FORTIFY_MAX_STACKS),
 /* harmony export */   TALISMAN_MODIFIERS: () => (/* binding */ TALISMAN_MODIFIERS),
+/* harmony export */   UNIQUE_SETTINGS: () => (/* binding */ UNIQUE_SETTINGS),
+/* harmony export */   echoProcs: () => (/* binding */ echoProcs),
+/* harmony export */   fortifyBuffs: () => (/* binding */ fortifyBuffs),
+/* harmony export */   fortifyStacks: () => (/* binding */ fortifyStacks),
+/* harmony export */   isBoss: () => (/* binding */ isBoss),
+/* harmony export */   overkillSpend: () => (/* binding */ overkillSpend),
+/* harmony export */   overkillStore: () => (/* binding */ overkillStore),
+/* harmony export */   shatterPenetration: () => (/* binding */ shatterPenetration),
+/* harmony export */   smiteMultiplier: () => (/* binding */ smiteMultiplier),
 /* harmony export */   talismanEffects: () => (/* binding */ talismanEffects),
-/* harmony export */   talismanStats: () => (/* binding */ talismanStats)
+/* harmony export */   talismanStats: () => (/* binding */ talismanStats),
+/* harmony export */   uniqueValue: () => (/* binding */ uniqueValue)
 /* harmony export */ });
 // Talismans for the combat engine: the modifier table (game client data) and the one function that turns a player's
 // talisman lines into engine effects. This is the only file with talisman logic; the setup reads it in one place
@@ -1973,12 +2105,78 @@ __webpack_require__.r(__webpack_exports__);
 // and the engine stats it maps to (the names player.js sums from equipment). A talisman line is a plain gear stat: the
 // player adds it to that sum (Player.talismanStats, set by simSetup applyTalismans).
 // Damage Taken is a gear stat like the others: combatUnit.js adds it to the buffs' damage_taken.
-// The five unique modifiers are listed as known and have no effect (not simulated).
+// The five unique modifiers: their line value lands in Player.talismanStats under the modifier's id (no gear stat of that name
+// exists, so Player.updateCombatDetails leaves it alone) and the engine reads it through the helpers at the bottom of this file
+// (combatUtilities.js processAttack, combatSimulator.js). Smite, Shatter, Fortify and Overkill are built from their in-game
+// text, NOT checked against fights; Echo is built from a test-server recording (combatSimulator.js tryUseAbility / processEcho).
+
+// ---- Unique modifiers: the open questions the in-game text leaves, one named setting each ----
+// Each default is the plainest reading of the text; flip it here once a recording answers it. docs/codebase/talismans.md lists them.
+const UNIQUE_SETTINGS = {
+    // Smite ("Deals X% more damage to bosses."). A boss is a monster the zone spawned as its boss (the boss encounter every
+    // battlesPerBoss); with this on, also every monster of a dungeon's fixed waves (the waves the engine reports as boss waves).
+    SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES: true,
+    // Smite on the thorns and retaliation the player deals to a boss (damage over time needs no setting: it is a share of the
+    // hit's damage, which already carries Smite).
+    SMITE_ON_REFLECT: true,
+    // Shatter ("Critical hits gain X% armor and resistance penetration."): true = added to the hit's penetration;
+    // false = multiplied in, (1 + penetration) x (1 + X) - 1.
+    SHATTER_ADDS_TO_PENETRATION: true,
+    // Shatter on an ability's crit as well as an auto attack's.
+    SHATTER_ON_ABILITIES: true,
+    // Fortify ("When hit, gain X% armor and resistances for 5s, stacking up to 4 times."): true = a new stack restarts the
+    // timer of all stacks (as the engine's Fury does); false = each stack runs its own 5 s (a fifth hit renews the oldest).
+    FORTIFY_NEW_STACK_RESTARTS_ALL: true,
+    // Fortify on an attack that missed the player (dodged): false = only a landed attack is "hit".
+    FORTIFY_ON_MISS: false,
+    // Overkill ("On a killing blow, stores X% of the excess damage and adds it as true damage to the first target of your next
+    // successful direct attack."): the store carries across encounters, waves and deaths (the text names no expiry);
+    // false = it empties at each encounter's end.
+    OVERKILL_CARRIES_ACROSS_FIGHTS: true,
+    // Two kills before the next landed attack: true = their stores add up; false = the later one overwrites.
+    OVERKILL_KILLS_ADD_UP: true,
+    // A kill by an area ability (every target) counts as a killing blow.
+    OVERKILL_AREA_KILLS: true,
+    // A kill by a damage-over-time tick counts as a killing blow.
+    OVERKILL_DOT_KILLS: false,
+    // A kill by the player's thorns or retaliation counts as a killing blow.
+    OVERKILL_REFLECT_KILLS: false,
+    // Excess damage is the hit's damage after armor or resistance, beyond the target's HP; false = the raw roll before it.
+    OVERKILL_EXCESS_AFTER_MITIGATION: true,
+    // A parry's counterattack is a direct attack (it may spend the store and its kill may fill it).
+    OVERKILL_PARRY_IS_DIRECT: true,
+    // Echo ("On ability cast, X% chance to repeat the ability's damage or healing at half strength."). Checked against a
+    // test-server recording; the status of each default is in docs/codebase/talismans.md.
+    // The repeat's strength, a factor on its damage roll (before armor) and on its heal roll. Verified: half.
+    ECHO_STRENGTH: 0.5,
+    // true = the repeat rolls its own damage (then halved); false = it takes the original's roll on that target (crit included) at half.
+    ECHO_OWN_DAMAGE_ROLL: true,
+    // The repeat strikes a target the original missed (true) or only those the original landed on (false). Verified: true.
+    ECHO_ON_MISSED_TARGETS: true,
+    // The repeat applies the ability's own non-damage parts again on a hit: its debuffs, stun, blind and silence.
+    ECHO_REPEATS_ABILITY_EFFECTS: false,
+    // The repeat's hit starts a damage over time of its own (an ability with one).
+    ECHO_REPEAT_STARTS_DOT: false,
+    // The repeat sets off what any of the source's attacks sets off, beyond thorns and retaliation (always, in processAttack):
+    // Curse, Fury, the target's Weaken, the target's Fortify.
+    ECHO_TRIGGERS_ON_HIT_EFFECTS: true,
+    // A repeat rolls Echo again (a chain); false = one roll per cast.
+    ECHO_CAN_REPEAT_ITSELF: false,
+    // The repeat also repeats a Blaze that came with the cast (Bloom is never repeated: verified).
+    ECHO_REPEATS_BLAZE: false,
+    // A heal ability's repeat heals the targets the cast healed (true) or picks its target again (false; same for self and all allies).
+    ECHO_HEAL_SAME_TARGETS: true,
+    // For Overkill the repeat is part of the cast's attack (it does not spend a store the cast's own kills filled); false = an attack of its own.
+    ECHO_SAME_ATTACK_FOR_OVERKILL: true,
+};
+// Fixed by the text itself.
+const FORTIFY_MAX_STACKS = 4;
+const FORTIFY_DURATION = 5e9; // 5 s in the engine's nanoseconds
 
 // An effect on an engine combat stat: summed like a gear stat.
 const stat = (name) => ({ stat: name });
 
-// id -> { name, grades: [G1..G6], effects: [...] } ; `unique: true` entries have no effects.
+// id -> { name, grades: [G1..G6], effects: [...] } ; a `unique: true` entry's effect is its own id, read by the engine.
 const TALISMAN_MODIFIERS = {
     auto_attack_damage: { name: 'Auto Attack Damage', grades: [0.012, 0.018, 0.024, 0.03, 0.036, 0.048], effects: [stat('autoAttackDamage')] },
     ability_damage: { name: 'Ability Damage', grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [stat('abilityDamage')] },
@@ -2024,12 +2222,13 @@ const TALISMAN_MODIFIERS = {
     melee_experience: { name: 'Melee Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('meleeExperience')] },
     ranged_experience: { name: 'Ranged Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('rangedExperience')] },
     magic_experience: { name: 'Magic Experience', grades: [0.015, 0.0225, 0.03, 0.0375, 0.045, 0.06], effects: [stat('magicExperience')] },
-    // Unique modifiers: known, no effect here (the engine has no code for them).
-    smite: { name: 'Smite', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [] },
-    overkill: { name: 'Overkill', unique: true, grades: [0.15, 0.225, 0.3, 0.375, 0.45, 0.6], effects: [] },
-    echo: { name: 'Echo', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [] },
-    shatter: { name: 'Shatter', unique: true, grades: [0.04, 0.06, 0.08, 0.1, 0.12, 0.16], effects: [] },
-    fortify: { name: 'Fortify', unique: true, grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [] },
+    // Unique modifiers: the engine reads each by its id (helpers below). Echo from a test-server recording; the other four from
+    // the in-game text, not checked against fights.
+    smite: { name: 'Smite', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [stat('smite')] },
+    overkill: { name: 'Overkill', unique: true, grades: [0.15, 0.225, 0.3, 0.375, 0.45, 0.6], effects: [stat('overkill')] },
+    echo: { name: 'Echo', unique: true, grades: [0.03, 0.045, 0.06, 0.075, 0.09, 0.12], effects: [stat('echo')] },
+    shatter: { name: 'Shatter', unique: true, grades: [0.04, 0.06, 0.08, 0.1, 0.12, 0.16], effects: [stat('shatter')] },
+    fortify: { name: 'Fortify', unique: true, grades: [0.01, 0.015, 0.02, 0.025, 0.03, 0.04], effects: [stat('fortify')] },
 };
 
 // How talisman power scales a grade value. ONE line, the only place the formula lives.
@@ -2037,7 +2236,8 @@ const scaleByPower = (value, power) => value * (1 + power); // checked against t
 
 // A player's talismans -> the engine effects of every line, in line order.
 // talismans: { power, lines: [{ modifier, grade }] }   power: the belt's Talisman Power as a fraction (0.2 = +20 %), default 0;
-// modifier: a TALISMAN_MODIFIERS id; grade: 1..6. Returns [{ modifier, stat, value }]; unique modifiers give none.
+// modifier: a TALISMAN_MODIFIERS id; grade: 1..6. Returns [{ modifier, stat, value }]. Talisman power scales
+// every line the same way, the unique ones included.
 // An unknown modifier or a grade outside 1..6 throws.
 function talismanEffects(talismans) {
     const power = talismans?.power ?? 0;
@@ -2057,6 +2257,83 @@ function talismanStats(talismans) {
     const stats = {};
     for (const e of talismanEffects(talismans)) stats[e.stat] = (stats[e.stat] ?? 0) + e.value;
     return stats;
+}
+
+// ---- The unique modifiers in the engine (Echo from a recording; the other four from the in-game text, not checked against fights) ----
+// A unit's value of a unique modifier: its summed line value (Player.talismanStats), 0 for a monster or a player without it.
+const uniqueValue = (unit, id) => unit?.talismanStats?.[id] ?? 0;
+
+// Smite: is this unit a boss. Zone sets spawnedAsBoss / spawnedInFixedWave (zone.js) when it spawns a monster.
+const isBoss = (unit) => !!unit && !unit.isPlayer && (unit.spawnedAsBoss === true || (UNIQUE_SETTINGS.SMITE_DUNGEON_FIXED_WAVES_ARE_BOSSES && unit.spawnedInFixedWave === true));
+
+// Smite: the damage multiplier of source on target (1 when it does not apply).
+function smiteMultiplier(source, target) {
+    const v = uniqueValue(source, 'smite');
+    return v && isBoss(target) ? 1 + v : 1;
+}
+
+// Shatter: a critical hit's penetration (one damage type's, armor or that element's), for that hit only.
+function shatterPenetration(source, penetration, isCrit, isAbility) {
+    const v = uniqueValue(source, 'shatter');
+    if (!v || !isCrit || (isAbility && !UNIQUE_SETTINGS.SHATTER_ON_ABILITIES)) return penetration;
+    return UNIQUE_SETTINGS.SHATTER_ADDS_TO_PENETRATION ? penetration + v : (1 + penetration) * (1 + v) - 1;
+}
+
+// Fortify: the buffs the unit gains when hit at time `now` (to pass to addBuffs at `now`), [] when it has no Fortify. One buff per
+// armor and resistance type (a ratio boost: a share of the base value, as every % armor buff in the engine); `stacks` on the buff.
+const FORTIFY_TYPES = ['armor', 'water_resistance', 'nature_resistance', 'fire_resistance'];
+const fortifyHrid = (type, slot) => `/buff_uniques/talisman_fortify_${type}` + (slot === undefined ? '' : `_${slot}`);
+const live = (buff, now) => !!buff && buff.startTime + buff.duration > now;
+function fortifyBuffs(unit, now) {
+    const v = uniqueValue(unit, 'fortify');
+    if (!v) return [];
+    const buffs = unit.combatBuffs ?? {};
+    const make = (type, slot, stacks) => ({ uniqueHrid: fortifyHrid(type, slot), typeHrid: `/buff_types/${type}`, ratioBoost: stacks * v, flatBoost: 0, duration: FORTIFY_DURATION, stacks });
+    if (UNIQUE_SETTINGS.FORTIFY_NEW_STACK_RESTARTS_ALL) {
+        const cur = buffs[fortifyHrid('armor')];
+        const stacks = live(cur, now) ? Math.min((cur.stacks ?? 1) + 1, FORTIFY_MAX_STACKS) : 1;
+        return FORTIFY_TYPES.map((t) => make(t, undefined, stacks));
+    }
+    // Each stack its own buff and timer: a free (absent or run-out) slot, else the oldest.
+    let slot = -1, oldest = Infinity;
+    for (let i = 0; i < FORTIFY_MAX_STACKS; i++) {
+        const b = buffs[fortifyHrid('armor', i)];
+        if (!live(b, now)) { slot = i; break; }
+        if (b.startTime < oldest) { oldest = b.startTime; slot = i; }
+    }
+    return FORTIFY_TYPES.map((t) => make(t, slot, 1));
+}
+// Fortify: the unit's live stacks at `now` (for tests and display).
+function fortifyStacks(unit, now) {
+    const buffs = unit?.combatBuffs ?? {};
+    if (UNIQUE_SETTINGS.FORTIFY_NEW_STACK_RESTARTS_ALL) { const b = buffs[fortifyHrid('armor')]; return live(b, now) ? b.stacks : 0; }
+    let n = 0;
+    for (let i = 0; i < FORTIFY_MAX_STACKS; i++) if (live(buffs[fortifyHrid('armor', i)], now)) n++;
+    return n;
+}
+
+// Overkill: the store lives on the unit ({ amount, attack }: `attack` is the attack that filled it, so the same attack's later
+// targets do not spend it). An attack is any object shared by the targets of one attack; null = a call of its own.
+// The true damage the unit's landed hit of `attack` adds (its whole store, floored to whole HP), and the store empties; 0 when none.
+function overkillSpend(unit, attack) {
+    const s = unit?.overkillStore;
+    if (!s || !(s.amount > 0) || (attack && s.attack === attack)) return 0;
+    unit.overkillStore = null;
+    return Math.floor(s.amount);
+}
+// Overkill: a killing blow of `unit` in `attack` with `excess` damage beyond the target's HP fills the store.
+function overkillStore(unit, excess, attack) {
+    const v = uniqueValue(unit, 'overkill');
+    if (!v || !(excess > 0)) return;
+    const prev = unit.overkillStore;
+    const amount = v * excess + (UNIQUE_SETTINGS.OVERKILL_KILLS_ADD_UP && prev ? prev.amount : 0);
+    unit.overkillStore = { amount, attack: attack ?? null };
+}
+
+// Echo: the one roll of an ability cast at the unit's line value; no random call for a unit without the line.
+function echoProcs(unit) {
+    const v = uniqueValue(unit, 'echo');
+    return v > 0 && Math.random() < v;
 }
 
 
@@ -2317,6 +2594,9 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
+// How a monster was spawned, for what keys on a boss (Smite, talismans.js isBoss): the zone's boss encounter, or a dungeon's fixed wave.
+const markSpawn = (monster, flag) => { monster[flag] = true; return monster; };
+
 class Zone {
     constructor(hrid, difficultyTier) {
         this.hrid = hrid;
@@ -2338,7 +2618,7 @@ class Zone {
 
         if (this.monsterSpawnInfo.bossSpawns && this.encountersKilled == this.monsterSpawnInfo.battlesPerBoss) {
             this.encountersKilled = 1;
-            return this.monsterSpawnInfo.bossSpawns.map((monster) => new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier));
+            return this.monsterSpawnInfo.bossSpawns.map((monster) => markSpawn(new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier), 'spawnedAsBoss'));
         }
 
         let totalWeight = this.monsterSpawnInfo.randomSpawnInfo.spawns.reduce((prev, cur) => prev + cur.rate, 0);
@@ -2383,7 +2663,7 @@ class Zone {
         if (this.dungeonSpawnInfo.fixedSpawnsMap.hasOwnProperty(this.encountersKilled.toString())) {
             let currentMonsters = this.dungeonSpawnInfo.fixedSpawnsMap[(this.encountersKilled).toString()];
             this.encountersKilled++;
-            return currentMonsters.map((monster) => new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier));
+            return currentMonsters.map((monster) => markSpawn(new _monster__WEBPACK_IMPORTED_MODULE_1__["default"](monster.combatMonsterHrid, monster.difficultyTier + this.difficultyTier), 'spawnedInFixedWave'));
         } else {
             let monsterSpawns = {};
             const waveKeys = Object.keys(this.dungeonSpawnInfo.randomSpawnInfoMap).map(Number).sort((a, b) => a - b);
@@ -3313,9 +3593,10 @@ __webpack_require__.r(__webpack_exports__);
 
 const SLOT_COUNT = 5;
 
-// The own character's export fields a party import may carry in its slot (the userscript's character export writes the same two).
-// They are for the What-if window's kept export, never for the sim slot.
-const OWN_EXPORT_FIELDS = ['inventory', 'learnedAbilities'];
+// The own character's export fields a party import may carry in its slot (the userscript's character export writes the same ones).
+// They are for the What-if window's kept export, never for the sim slot. talismanInventory (every talisman owned, userscript 0.13.0) is kept
+// with the export and read by nothing yet; the simulator's equipped talismans field stays in the slot.
+const OWN_EXPORT_FIELDS = ['inventory', 'learnedAbilities', 'talismanInventory'];
 
 // Takes OWN_EXPORT_FIELDS out of one slot (an object, or the JSON text of one). Returns the slot without them (the very same value
 // when it carried none) and the export they make up (the slot's name beside them, as a character export has it), or null.
@@ -3614,6 +3895,7 @@ function shownNames(slotJsons, tabTexts) {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   FROM_TEXT_MODIFIERS: () => (/* binding */ FROM_TEXT_MODIFIERS),
 /* harmony export */   TALISMAN_NAME_KEYS: () => (/* binding */ TALISMAN_NAME_KEYS),
 /* harmony export */   powerText: () => (/* binding */ powerText),
 /* harmony export */   talismanViewHtml: () => (/* binding */ talismanViewHtml)
@@ -3643,6 +3925,10 @@ const TALISMAN_NAME_KEYS = {
     ranged_experience: 'combatStats.rangedExperience', magic_experience: 'combatStats.magicExperience',
 };
 
+// The unique modifiers the engine simulates from their in-game text, not checked against fights (src/combatsimulator/talismans.js):
+// their lines carry a mark, and the block one note under the list (common:talismans.fromText). Echo is not simulated: no mark.
+const FROM_TEXT_MODIFIERS = ['smite', 'shatter', 'fortify', 'overkill'];
+
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // The power as the game shows it: a fraction, 0.224 reads "+22.4%".
 const powerText = (power) => '+' + String(Math.round((Number(power) || 0) * 1000) / 10) + '%';
@@ -3657,10 +3943,13 @@ function talismanViewHtml(talismans, t) {
         const name = _combatsimulator_talismans_js__WEBPACK_IMPORTED_MODULE_0__.TALISMAN_MODIFIERS[l.modifier]?.name ?? String(l.modifier);
         const key = TALISMAN_NAME_KEYS[l.modifier] ?? (_combatsimulator_talismans_js__WEBPACK_IMPORTED_MODULE_0__.TALISMAN_MODIFIERS[l.modifier] ? `common:talismans.names.${l.modifier}` : null);
         const label = key ? `<span data-i18n="${esc(key)}">${esc(tr(key, name))}</span>` : `<span>${esc(name)}</span>`;
-        return `<li class="talisman-line">${label} <span class="talisman-grade">G${esc(l.grade)}</span></li>`;
+        const mark = FROM_TEXT_MODIFIERS.includes(l.modifier) ? '<span class="talisman-from-text-mark">*</span>' : '';
+        return `<li class="talisman-line">${label} <span class="talisman-grade">G${esc(l.grade)}</span>${mark}</li>`;
     }).join('');
+    const note = lines.some((l) => FROM_TEXT_MODIFIERS.includes(l.modifier))
+        ? `<div class="talisman-from-text">* <span data-i18n="common:talismans.fromText">${esc(tr('common:talismans.fromText', 'Simulated from the in-game text, not checked against fights'))}</span></div>` : '';
     return `<div class="col-md-2 col-form-label" data-i18n="common:talismans.title">${esc(tr('common:talismans.title', 'Talismans'))}</div>`
-        + `<div class="col-md-10"><ul class="talisman-lines">${items}</ul>`
+        + `<div class="col-md-10"><ul class="talisman-lines">${items}</ul>${note}`
         + `<div class="talisman-power"><span data-i18n="common:talismans.power">${esc(tr('common:talismans.power', 'Talisman Power'))}</span> ${esc(powerText(talismans.power))}</div></div>`;
 }
 
@@ -3890,6 +4179,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   LABEL_H: () => (/* binding */ LABEL_H),
 /* harmony export */   createChartHost: () => (/* binding */ createChartHost),
 /* harmony export */   datasetsOf: () => (/* binding */ datasetsOf),
+/* harmony export */   endedStages: () => (/* binding */ endedStages),
 /* harmony export */   levelLabelY: () => (/* binding */ levelLabelY)
 /* harmony export */ });
 /* harmony import */ var _charts_base_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../charts/base.mjs */ "./src/charts/base.mjs");
@@ -3981,6 +4271,14 @@ function datasetsOf(model, { t, format, labelOf, layout }) {
 }
 
 // Puts `kids` in `parent` in that order; a parent that already holds exactly them is left alone (a canvas moved in the DOM is laid out again).
+// Which stages of a chart history have ended (their chart says no figure is to come): any stage but the running one while the search runs (stages run
+// in order), every stage of a finished search, and every stage before the last of a stopped one (the last may run on after Resume).
+// history: buildHistory's result; running: the stage that runs now (or null); live: the search runs; done: the search has finished. Returns stage -> bool.
+function endedStages(history, { running = null, live = false, done = false } = {}) {
+    const last = history.stages[history.stages.length - 1]?.stage;
+    return (stage) => stage !== running && (live || done || stage !== last);
+}
+
 const setChildren = (parent, kids) => { if (parent.childNodes.length !== kids.length || kids.some((k, i) => parent.childNodes[i] !== k)) parent.replaceChildren(...kids); };
 
 // The host: `container` gets one block per stage and pool, kept across updates (a canvas is never recreated while its pool is shown).
@@ -4024,7 +4322,7 @@ function createChartHost(container, opts) {
         const empty = model.mode === 'empty';
         box.hidden = empty;
         note.hidden = !(empty || block.firstLook);
-        note.textContent = empty ? t('chart.noFigures', { n: _figure_mjs__WEBPACK_IMPORTED_MODULE_2__.FIGURE_MIN_SEEDS }) : block.firstLook ? t('chart.firstLook') : '';
+        note.textContent = empty ? t(block.ended ? 'chart.noFiguresEnded' : 'chart.noFigures', { n: _figure_mjs__WEBPACK_IMPORTED_MODULE_2__.FIGURE_MIN_SEEDS }) : block.firstLook ? t('chart.firstLook') : ''; // an ended stage: no figure is to come
         if (empty) { block.pulseOff(); return; }
         block.xMax = model.xMax; // read by the x axis' tick labels (also while the chart is being built)
         if (!block.chart) build(block);
@@ -4086,7 +4384,7 @@ function createChartHost(container, opts) {
     }
 
     return {
-        // history: buildHistory's result. ctx: { running (the stage name that runs now, or null), flying (candidate ids with a run in flight), endedByUser (result.endedByUser) }.
+        // history: buildHistory's result. ctx: { running (the stage name that runs now, or null), ended (stage name -> true when the stage has ended), flying (candidate ids with a run in flight), endedByUser (result.endedByUser) }.
         update(history, ctx = {}) {
             const flying = new Set(ctx.flying || []), wanted = new Set(), order = [];
             const rows = history.stages.map((s) => ({ ...s, note: null }));
@@ -4103,7 +4401,7 @@ function createChartHost(container, opts) {
                 const kids = [head];
                 for (const pool of s.pools) {
                     const block = blockFor(stageEl, s.stage, pool);
-                    block.pool = pool; block.flying = running ? flying : new Set(); block.firstLook = s.firstLook;
+                    block.pool = pool; block.flying = running ? flying : new Set(); block.firstLook = s.firstLook; block.ended = !running && !!ctx.ended?.(s.stage);
                     block.title.textContent = (pool.player ? pool.player + ' · ' : '') + t('rounds.pool.' + pool.kind);
                     const hadChart = !!block.chart;
                     draw(block, hadChart);
@@ -4482,12 +4780,14 @@ function pm(v, half) {
     // A gain green, a loss red (its minus sign says it too), the error dim: as in gainCell.
     return `<span class="${v < 0 ? 'whatif-loss' : 'whatif-gain'}">${p.main}</span>${p.err === null ? '' : '<span class="whatif-pm"> ± ' + p.err + '</span>'}`;
 }
-// One table cell for the party gain or the buyer's gain, in the rounds tables and the Best tables (the one helper for both columns). `seeds`: the
-// runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than FIGURE_MIN_SEEDS: a dim "—" and a hover text.
-function pmCell(v, half, t, seeds = null) {
+// One table cell for a figure that rests on runs: the party gain, the buyer's gain (rounds tables and Best tables) and the payback of a rounds-table
+// row (the one helper for these columns). `seeds`: the runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than
+// FIGURE_MIN_SEEDS: a dim "—" and a hover text, in every such column alike.
+function figCell(html, t, seeds = null) {
     if (Number.isFinite(seeds) && seeds < _figure_mjs__WEBPACK_IMPORTED_MODULE_6__.FIGURE_MIN_SEEDS) return `<td class="num whatif-dim" title="${esc(t('rounds.needsMoreRuns'))}">—</td>`;
-    return `<td class="num">${pm(v, half)}</td>`;
+    return `<td class="num">${html}</td>`;
 }
+const pmCell = (v, half, t, seeds = null) => figCell(pm(v, half), t, seeds);
 // One figure in a line of text: "no change", or "<value> ± <error>".
 const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + marginHtml(fit(v, se), se));
 // One cell for a gain and its error, "<value> ± <error>": "no change" (the real value as title) when it reads as no change.
@@ -4852,7 +5152,7 @@ function renderRounds(round, t, names = null) {
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
             const figSeeds = (0,_figure_mjs__WEBPACK_IMPORTED_MODULE_6__.figureSeeds)(l);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(l.searchHours), fresh: (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_3__.formatNumber)(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}${figCell(l.tooFew || l.payback == null ? '—' : num(l.payback), t, figSeeds)}<td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
@@ -5720,7 +6020,7 @@ function isPlanetZone(action) {
   \*****************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）","pt":"Tradução automática por Ramlock"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]},"pt":{"title":"30/09/2026","notes":["Suporte a melhorias do Labirinto","Suporte a buffs de santuário"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]},"pt":{"title":"05/05/2026","notes":["Atualização dos dados de equipamento e dos nomes traduzidos"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]},"pt":{"title":"07/04/2026","notes":["Novos campos com as tentativas do Labirinto e a taxa de sucesso no Labirinto"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]},"pt":{"title":"05/03/2026","notes":["Otimização do desempenho da simulação relacionada à Fúria"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]},"pt":{"title":"03/03/2026","notes":["Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]},"pt":{"title":"24/02/2026","notes":["Atualização dos dados para o patch do Labirinto","Nova simulação do Labirinto, individual e em lote"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]},"pt":{"title":"01/02/2026","notes":["Corrigida a precisão do cálculo do nível de combate","Corrigido o intervalo antes de voltar ao combate depois de concluir ou falhar uma masmorra, por wangchyan","Corrigidas as durações de Maldição e Enfraquecer, por wangchyan","Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan","Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan","Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan","Corrigido Invencível não afetando direito a Tenacidade, por wangchyan","Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan","As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]},"pt":{"title":"11/01/2026","notes":["Corrigidos gatilhos que contavam por engano unidades já mortas, por wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]},"pt":{"title":"31/12/2025","notes":["Recurso experimental: gráficos de HP/MP, por wangchyan","Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan","Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan","Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]},"pt":{"title":"30/12/2025","notes":["As masmorras agora registram o tempo de conclusão mais rápido"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]},"pt":{"title":"24/12/2025","notes":["Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]},"pt":{"title":"18/12/2025","notes":["Suporte ao sistema de conquistas e seus buffs","O loot de monstros de masmorra não se aplicam mais"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]},"pt":{"title":"06/12/2025","notes":["Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]},"pt":{"title":"07/11/2025","notes":["Suporte à busca de preços pela API do site espelho chinês"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]},"pt":{"title":"14/10/2025","notes":["Corrigido o intervalo de ataque dos monstros que não escalava com o nível de Ataque"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]},"pt":{"title":"17/09/2025","notes":["Corrigida uma falha de ativação da Aura Crítica"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]},"pt":{"title":"09/09/2025","notes":["Reviver não limpa mais todos os buffs por engano","O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]},"pt":{"title":"21/08/2025","notes":["Nova simulação em lote de combate solo e as opções de monstro correspondentes","Novas opções de MooPass e de buffs comunitários, com seus efeitos","Melhoria dos atributos de equipamentos refinados","Redução dos atributos do Bispo Encantado","Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]},"pt":{"title":"20/08/2025","notes":["Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]},"pt":{"title":"19/08/2025","notes":["Incorporada a reformulação dos ramos Test e Temp","Atualização dos dados do jogo: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]},"pt":{"title":"18/08/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez","Corrigida a exibição do registro de derrota no modo escuro","Atualizada a fórmula do nível de combate","Ajustados os espinhos do Golem de Estalactite","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]},"pt":{"title":"16/08/2025","notes":["Novo botão Parar Simulação, por BKN46","Novos botões para reordenar técnicas, por BKN46","Novo registro de derrota, por TruthLight","Atualização dos atributos dos monstros","Reflexo Arcano renomeado para Retribuição","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]},"pt":{"title":"14/08/2025","notes":["Atualização dos atributos dos monstros","Ajuste dos atributos de equipamentos à distância e de magia","Ajuste do limite do dano de retaliação","Corrigidas técnicas conjuradas entre batalhas","Corrigida a lógica de decisão de conjuração de técnicas","Proporção de falta de mana mais precisa","15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]},"pt":{"title":"11/08/2025","notes":["Atualização dos atributos dos monstros","Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas","Ajuste dos valores de Golpe de Escudo e Golpe Atordoante","Ajuste do bônus de EXP de Defesa dos baluartes","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]},"pt":{"title":"08/08/2025","notes":["Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais","Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria","Ajuste dos valores da Aura Crítica","Exibição do nível de combate","Exibição da penalidade por diferença de nível","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]},"pt":{"title":"07/08/2025","notes":["Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]},"pt":{"title":"03/08/2025","notes":["A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito","Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json","Máximo de acúmulos da Fúria corrigido para 5","Ajuste de como Aparar é resolvido"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]},"pt":{"title":"31/07/2025","notes":["Atualização dos dados de itens e dos atributos dos monstros","Reformulação de Carapaça de Espinhos e Reflexo Arcano","Atualização dos valores de aprimoramento","Remoção de gatilhos quebrados","Reformulação do Enfraquecer do Baluarte de Grifo","O Aparar da Espada Régia agora se aplica aos colegas de equipe","Máximo de acúmulos do efeito Fúria corrigido para 6","O efeito Ondulante agora restaura 10 MP","A retaliação agora mostra sua taxa de acerto corretamente","Ajuste da mecânica de retaliação","Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]},"pt":{"title":"22/07/2025","notes":["A Aura Crítica agora escala com o nível de À Distância","Ajuste dos valores base das auras e de como escalam com o nível"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]},"pt":{"title":"17/07/2025","notes":["A simulação em lote permite escolher planetas","Divisão de EXP ajustada para 30% + 70%","Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente","Água, fogo e natureza agora usam a Aura Mística por padrão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]},"pt":{"title":"11/07/2025","notes":["Atualização das fórmulas de EXP dos monstros e de nível das técnicas","Atualização das fórmulas de evasão e de resistência","Poder substituído por Corpo a Corpo, com a compatibilidade correspondente","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]},"pt":{"title":"10/07/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]},"pt":{"title":"09/07/2025","notes":["Ajustes de loot e de taxas de loot","Ajustes de EXP","Ajuste de Tiro Pestilento e Perfuração","Remoção da regeneração automática dos monstros","Ajuste do gatilho do Tiro Pestilento","Uso da API oficial para buscar preços"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]},"pt":{"title":"07/07/2025","notes":["Escala dos atributos dos monstros e várias dificuldades de mapa","Ajustes das técnicas de magia; o atributo \'dano de técnica\' dos equipamentos agora faz efeito","O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração","Ajustes de itens","Precisão reformulada para usar o nível de Ataque","TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!","Reformulação da EXP e equipamento de amuleto"]}},"2026-11-15":{"from":"en","zh":{"title":"2026年11月15日","notes":["假设分析：有配置的玩家在打开窗口时默认勾选","假设分析：触发条件的改动完整显示为中文和葡萄牙语","假设分析：搜索停止时，采纳和跳过按钮暂不可用","假设分析：跳过和采纳响应更快","假设分析：强的改动不再被当作与弱得多的改动打平而被搁置，搜索不会再在仍有真正升级可选时以“无改动”结束","假设分析：装备会尝试市场上出售的每个强化等级，暂时不再用贤者之镜为等级定价","假设分析：当搜索无法区分多项各自明确有益的改动时，现在会把它们一起测试并作为一步采纳；该步列出每项改动，悬停提示显示各自的增益","区域选择器新增“仅显示星球”开关（默认开启），隐藏只对战一种怪物的战斗","假设分析：只剩少数改动时，领先者的核对一旦有了结论，搜索就不再每轮重复核对，这些轮次用时大幅减少","假设分析：鼠标停在阶段按钮上时，按钮不再闪烁","假设分析：帮助提示完整显示在最上层，不再被遮挡","假设分析：结果上方的标签排成一行，基础利润标签说明其含义，去掉成本未知标签","假设分析：新的搜索会清除窗口中之前的结果；配置差异警告为一行并显示差异数量，点击即可展开列表，触发条件以文字显示；以往的搜索也列出已停止的搜索，并标为已停止","假设分析：胜出的改动未通过核对时，仅被它淘汰的改动会重新参与竞争，搜索在没有它的情况下继续，次优改动不再丢失","假设分析：进度表每一行显示各自的核对（正在核对的改动及其运行次数）、进度条以及被核对排除的改动；恢复后已用时间继续累计，之前保留的运行会计入，列不再移动","假设分析：搜索进行时，目前看来有益的改动会列在已选改动下方，并标为尚未核对","假设分析：核对无法判定的改动会获得更多运行，每个被排除的改动都会说明原因（亏损、太小无关紧要或太小无法判断）并附上范围","假设分析：点击“采纳当前领先者”或“跳过此阶段”后，停止并继续时会保留该操作","从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）","假设分析：每个阶段的实时图表：每个领先的更改一条线，逐轮显示，最新的范围在右侧","假设分析：切换语言后整个窗口随之更新，可用的阶段按钮显示为可用，继续后的搜索在重放阶段显示其运行次数","假设分析：阶段列表的标记与所在行对齐","符石名称、符石标签和符石威力现在以游戏自己的中文和葡萄牙文显示；\\"Presets\\" 已翻译为中文","黑暗模式、数字格式和语言开关现在随页面滚动，不再遮挡结果"]},"pt":{"title":"15/11/2026","notes":["E se: jogadores com configuração começam marcados ao abrir a janela","E se: mudanças de gatilho aparecem inteiras em português e chinês","E se: Aceitar e Pular aguardam enquanto a busca para","E se: Pular e Aceitar respondem mais rápido","E se: uma mudança forte não é mais deixada de lado como empatada com uma muito mais fraca, então a busca não termina mais sem mudança enquanto uma melhoria real ainda estava na disputa","E se: os equipamentos são testados em todos os níveis de aprimoramento vendidos no mercado, e o Espelho Filosofal não é mais usado para precificar níveis por enquanto","E se: quando a busca não consegue separar várias mudanças que são, cada uma, um ganho claro, agora ela as testa juntas e as aceita como um passo; o passo lista cada mudança, com o ganho próprio de cada uma numa dica","Os seletores de zona têm a opção \\"Só planetas\\", ligada por padrão, que oculta as lutas contra um só tipo de monstro","E se: quando restam poucas mudanças, a busca não reconfere mais os líderes a cada rodada depois que a conferência deles já tem resposta, então essas rodadas levam bem menos tempo","E se: os botões da etapa não piscam mais com o ponteiro parado sobre eles","E se: as dicas de ajuda aparecem inteiras e por cima, onde quer que esteja a marca","E se: as etiquetas acima do resultado ficam numa só linha, a do lucro-base diz o que é, e a de custo desconhecido saiu","E se: uma nova busca limpa o resultado anterior da janela; o aviso de setup é uma linha com o número de diferenças, a lista abre com um clique e um gatilho aparece em palavras; Buscas anteriores também lista buscas paradas, marcadas como paradas","E se: quando uma vencedora não passa na conferência, as mudanças que só ela tinha tirado voltam à disputa e a busca segue sem ela, então a próxima melhor mudança não se perde mais","E se: cada linha da tabela de progresso mostra a própria conferência (a mudança conferida e suas execuções), uma barra de progresso e a mudança que a conferência deixou de fora; o tempo decorrido continua após retomar, as execuções já guardadas são contadas e as colunas não se movem mais","E se: durante a busca, as mudanças que parecem positivas até agora aparecem sob as mudanças escolhidas, marcadas como ainda não conferidas","E se: uma mudança que a conferência não decide recebe mais execuções, e cada mudança deixada de fora diz por quê (uma perda, pequena demais para importar ou pequena demais para saber) com sua faixa","E se: um clique em Aceitar o vencedor atual ou Pular esta etapa é mantido ao Parar e Retomar","Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)","E se: um gráfico ao vivo de cada etapa: uma linha por mudança entre as líderes, rodada a rodada, com as faixas mais recentes à direita","E se: a janela inteira acompanha a troca de idioma, os botões de etapa ativos parecem ativos e uma busca retomada mostra suas execuções nas etapas repetidas","E se: as marcas da lista de etapas ficam alinhadas com suas linhas","Nomes dos talismãs, o rótulo Talismãs e o Poder de talismã agora aparecem em chinês e português com as palavras do próprio jogo; \\"Presets\\" traduzido em chinês","Os botões de modo escuro, formato de números e idioma agora rolam com a página em vez de cobrir os resultados"]}},"2026-11-14":{"from":"en","zh":{"title":"2026年11月14日","notes":["假设分析：全新外观。一个摘要栏，每个列表都是表格，搜索运行时设置表单会折叠，还有一个立即响应的“开始 / 停止”按钮。","假设分析：会提出公会神龛升级，并列出所需的公会代币和金币成本；物品可以放入空栏位。","假设分析：不再尝试与玩家战斗风格或元素不符的改动。","假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。"]},"pt":{"title":"14/11/2026","notes":["E se: um novo visual. Uma barra de resumo, todas as listas em tabela, um formulário de configuração que se recolhe enquanto uma busca roda, e um único botão Iniciar / Parar que responde na hora.","E se: melhorias dos santuários da guilda são propostas, com o custo em Fichas de Guilda e Moedas; um item pode ir para um espaço vazio.","E se: alterações que não combinam com o estilo de combate ou o elemento de um jogador não são mais testadas.","E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite."]}},"2026-11-13":{"from":"en","zh":{"title":"2026年11月13日","notes":["假设分析：食物和饮品现在是两个独立选项，可以只搜索其中一个","假设分析：运行次数太少的数值显示为短横线，而不是数字","假设分析：“采纳当前领先者”原样采用领先者；“跳过”立即结束该部分并保留已完成的运行","假设分析：搜索结束后会显示哪些部分已运行、哪些由你结束，以及途中排除了哪些改动","假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值","导入分组现在会在刷新页面后保留，包括名称","导入技能少于四个、或特殊技能栏为空的配置，不再失败","导入配置后，导入窗口现在会自动关闭","假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器","导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位","葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行","假设分析：窗口现在也列出 Linux 步骤（尚未测试）","战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐","假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）","运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面","假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）","假设分析：从游戏导入队伍时，现在也会填入你自己角色的物品和技能（MWI Combat Tracker 0.9.3）。","假设分析：“单项改动”默认折叠；价格行仅在市场数据达到一天或更旧时显示。","假设分析：进度列表中的阶段名称更清晰。","假设分析：各明细列表各占一行，收在一个“查看详情”链接下；食物或饮料没有变化的玩家不再显示行；每个已完成的阶段占一行。","假设分析：Windows 运行器现在是单个文件 WhatIfRunner.exe：保存后双击即可，无需解压。"]},"pt":{"title":"13/11/2026","notes":["E se: Comidas e Bebidas agora são duas opções separadas, para buscar uma sem a outra","E se: um valor de poucas execuções mostra um traço em vez de um número","E se: Aceitar o vencedor atual pega o líder como está; Pular encerra a parte na hora e mantém as execuções concluídas","E se: uma busca concluída mostra quais partes rodaram, quais você encerrou e quais alterações ficaram de fora pelo caminho","E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração","Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos","Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais","Depois de importar uma configuração, a janela de importação agora fecha sozinha","E se: o botão E se na página pública explica como obter o executor","Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos","Português: o botão e a janela de conjuntos de equipamento agora se chamam \\"Conjuntos\\", e os botões não quebram mais de linha","E se: a janela agora também lista os passos para Linux (ainda não testado)","Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números","E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)","Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página","E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)","E se: importar o grupo do jogo agora também preenche os itens e as habilidades do seu próprio personagem (MWI Combat Tracker 0.9.3).","E se: \\"Cada alteração sozinha\\" começa recolhida; a linha de preços só aparece quando os dados do mercado têm um dia ou mais.","E se: nomes de etapa mais claros na lista de progresso.","E se: as listas de detalhes ocupam uma linha cada, sob um único link \\"Ver detalhes\\"; um jogador cujas comidas ou bebidas não mudam não tem linha; cada etapa concluída ocupa uma linha.","E se: o executor para Windows agora é um arquivo só, WhatIfRunner.exe: salve e dê dois cliques, nada para extrair."]}},"2026-11-12":{"from":"en","zh":{"title":"2026年11月12日","notes":["假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮","假设分析：较弱的改动会在搜索过程中被淘汰，包括回本太慢的付费改动","假设分析：尚未分出高下的一组会显示大约还需要几轮","假设分析：搜索做出的每个选择都会用新的运行重新核对；你采纳的选择按原样采用"]},"pt":{"title":"12/11/2026","notes":["E se: botões Aceitar o vencedor atual e Pular na etapa em andamento","E se: alterações fracas saem conforme a busca avança, incluindo alterações pagas com retorno lento demais","E se: um grupo que ainda não se separou mostra cerca de quantas rodadas a mais precisa","E se: toda escolha da busca é conferida de novo em execuções novas; uma escolha que você aceita é tomada como está"]}},"2026-11-10":{"from":"en","zh":{"title":"2026年11月10日","notes":["全区域结果上方新增图表：每张地图是一个点，每小时经验对每日利润，点击圆点可跳到对应行","掉落、消耗品和宝箱的价格在所选一侧没有价格时，现在先用另一侧，再用商店价格","假设分析窗口：每项改动显示队伍收益和购买者自己的收益，以及成本和回本天数","假设分析窗口：适应屏幕宽度，没有横向滚动条","假设分析：先搜索食物和饮品，显示为“最佳食物”和“最佳饮品”；“应用”会先放入它们"]},"pt":{"title":"10/11/2026","notes":["Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, EXP por hora contra lucro por dia, clique em um ponto para ir às suas linhas","Preços de drops, consumíveis e baús agora usam o outro lado e depois o preço de vendedor quando o lado escolhido não tem preço","Janela E se: cada alteração mostra o ganho do grupo e o ganho do próprio comprador, com custo e dias de retorno","Janela E se: ocupa a largura da tela, sem barra de rolagem horizontal","E se: comidas e bebidas são buscadas primeiro e mostradas como Melhores comidas e Melhores bebidas; Aplicar coloca elas primeiro"]}},"2026-11-09":{"from":"en","zh":{"title":"2026年11月9日","notes":["本地假设分析运行器的假设分析窗口：设置预算和搜索内容，可停止搜索，一键应用建议的改动","结果：“法力值耗尽”下方的“触发条件等待”显示每个技能被什么拖住","结果：“法力值耗尽比例”始终显示，取代是/否一行","导入分组时也会勾选其中的玩家，并设置其指定的区域和难度"]},"pt":{"title":"09/11/2026","notes":["Janela E se para o executor local do E se: defina um orçamento e o que buscar, pare a busca e aplique uma alteração sugerida com um clique","Resultados: Retido por gatilho, abaixo de Ficou sem mana, mostra o que segurou cada técnica","Resultados: Proporção sem mana sempre aparece, no lugar da linha Sim/Não","Importar um grupo também marca seus jogadores e define a zona e o nível que ele indica"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字缩写显示，10,000 起使用 k、M、B 和 T","右上角新增 ISO 数字开关","页面默认以黑暗模式打开","模拟器现已支持葡萄牙语","模拟速度提升约五倍"]},"pt":{"title":"08/11/2026","notes":["Os números dos resultados aparecem abreviados, com k, M, B e T a partir de 10.000","Nova chave Números ISO no canto superior direito","A página abre no modo escuro por padrão","O simulador agora está disponível em português","As simulações rodam cerca de cinco vezes mais rápido"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在会计入已装备的饮品和你自己装备的光环"]},"pt":{"title":"07/11/2026","notes":["O painel de Atributos de Combate agora conta as bebidas equipadas e as suas próprias auras equipadas"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["公会增益可从两种导出格式读取","战斗属性面板显示模拟所用的属性，包括房屋、成就以及公会和社区增益","社区经验和战斗掉落增益默认开启，等级为20，可编辑"]},"pt":{"title":"04/11/2026","notes":["Os buffs de guilda são lidos dos dois formatos de exportação","O painel de Atributos de Combate mostra os atributos que a simulação usa, incluindo cômodos da casa, conquistas e buffs de guilda e da comunidade","Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"]}}}');
+module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation by Ramlock","zh":"机器翻译（Ramlock 提供）","pt":"Tradução automática por Ramlock"},"2026年9月30日":{"from":"zh","en":{"title":"2026-09-30","notes":["Support Labyrinth upgrades","Support shrine buffs"]},"pt":{"title":"30/09/2026","notes":["Suporte a melhorias do Labirinto","Suporte a buffs de santuário"]}},"2026年5月5日":{"from":"zh","en":{"title":"2026-05-05","notes":["Update equipment data and localized names"]},"pt":{"title":"05/05/2026","notes":["Atualização dos dados de equipamento e dos nomes traduzidos"]}},"2026年4月7日":{"from":"zh","en":{"title":"2026-04-07","notes":["Add fields showing Labyrinth attempts and Labyrinth success rate"]},"pt":{"title":"07/04/2026","notes":["Novos campos com as tentativas do Labirinto e a taxa de sucesso no Labirinto"]}},"2026年3月5日":{"from":"zh","en":{"title":"2026-03-05","notes":["Optimize simulation performance related to Fury"]},"pt":{"title":"05/03/2026","notes":["Otimização do desempenho da simulação relacionada à Fúria"]}},"2026年3月3日":{"from":"zh","en":{"title":"2026-03-03","notes":["Support the personal buffs granted by Labyrinth scrolls"]},"pt":{"title":"03/03/2026","notes":["Suporte aos buffs pessoais dados pelos pergaminhos do Labirinto"]}},"2026年2月24日":{"from":"zh","en":{"title":"2026-02-24","notes":["Update data for the Labyrinth patch","Add single and batch Labyrinth simulation"]},"pt":{"title":"24/02/2026","notes":["Atualização dos dados para o patch do Labirinto","Nova simulação do Labirinto, individual e em lote"]}},"2026年2月1日":{"from":"zh","en":{"title":"2026-02-01","notes":["Fix the precision of the combat level calculation","Fix the interval before re-entering combat after a dungeon is completed or failed by wangchyan","Fix the durations of Curse and Weaken by wangchyan","Fix the trigger logic of Curse and Fury by wangchyan","Fix part of the logic of the dungeon reset on a party wipe by wangchyan","Fix some Guardian Aura and Speed Aura buffs not scaling correctly with their level by wangchyan","Fix Invincible not correctly affecting Tenacity by wangchyan","Fix units not eating and drinking first when they first enter combat by wangchyan","Combat duration statistics now count only finished battles, no longer the battle still in progress by wangchyan"]},"pt":{"title":"01/02/2026","notes":["Corrigida a precisão do cálculo do nível de combate","Corrigido o intervalo antes de voltar ao combate depois de concluir ou falhar uma masmorra, por wangchyan","Corrigidas as durações de Maldição e Enfraquecer, por wangchyan","Corrigida a lógica de ativação de Maldição e Fúria, por wangchyan","Corrigida parte da lógica de reinício da masmorra quando o grupo inteiro morre, por wangchyan","Corrigidos alguns buffs da Aura Guardiã e da Aura de Velocidade que não escalavam direito com o nível, por wangchyan","Corrigido Invencível não afetando direito a Tenacidade, por wangchyan","Corrigidas unidades que não comiam e bebiam primeiro ao entrar em combate, por wangchyan","As estatísticas de duração de combate agora contam só as batalhas terminadas, não mais a batalha em andamento, por wangchyan"]}},"2026年1月11日":{"from":"zh","en":{"title":"2026-01-11","notes":["Fix triggers wrongly counting units that have already died by wangchyan"]},"pt":{"title":"11/01/2026","notes":["Corrigidos gatilhos que contavam por engano unidades já mortas, por wangchyan"]}},"2025年12月31日":{"from":"zh","en":{"title":"2025-12-31","notes":["Experimental feature: add HP/MP charts by wangchyan","Fix defensive damage not correctly receiving damage bonuses by wangchyan","Fix Guardian Aura\'s healing bonus not taking effect by wangchyan","Fix Quick Aid and similar abilities not correctly targeting the lowest HP% ally by wangchyan"]},"pt":{"title":"31/12/2025","notes":["Recurso experimental: gráficos de HP/MP, por wangchyan","Corrigido o dano defensivo que não recebia direito os bônus de dano, por wangchyan","Corrigido o bônus de cura da Aura Guardiã que não fazia efeito, por wangchyan","Corrigidas Socorro Rápido e técnicas parecidas que não miravam direito o aliado com menor % de HP, por wangchyan"]}},"2025年12月30日":{"from":"zh","en":{"title":"2025-12-30","notes":["Dungeons now record the fastest completion time"]},"pt":{"title":"30/12/2025","notes":["As masmorras agora registram o tempo de conclusão mais rápido"]}},"2025年12月24日":{"from":"zh","en":{"title":"2025-12-24","notes":["Fix a flaw in ability selection that could cause abnormal mana shortages and similar issues"]},"pt":{"title":"24/12/2025","notes":["Corrigida uma falha na escolha de técnicas que podia causar falta anormal de mana e problemas parecidos"]}},"2025年12月18日":{"from":"zh","en":{"title":"2025-12-18","notes":["Support the achievement system and its buffs","Dungeon monster drops no longer apply"]},"pt":{"title":"18/12/2025","notes":["Suporte ao sistema de conquistas e seus buffs","O loot de monstros de masmorra não se aplicam mais"]}},"2025年12月6日":{"from":"zh","en":{"title":"2025-12-06","notes":["Fix an error caused when, after a game update, abilities with no trigger changed from [] to null"]},"pt":{"title":"06/12/2025","notes":["Corrigido um erro causado quando, depois de uma atualização do jogo, técnicas sem gatilho mudaram de [] para null"]}},"2025年11月7日":{"from":"zh","en":{"title":"2025-11-07","notes":["Support fetching prices from the CN mirror site\'s API"]},"pt":{"title":"07/11/2025","notes":["Suporte à busca de preços pela API do site espelho chinês"]}},"2025年10月14日":{"from":"zh","en":{"title":"2025-10-14","notes":["Fix monster attack interval not scaling with Attack level"]},"pt":{"title":"14/10/2025","notes":["Corrigido o intervalo de ataque dos monstros que não escalava com o nível de Ataque"]}},"2025年9月17日":{"from":"zh","en":{"title":"2025-09-17","notes":["Fix a Critical Aura trigger flaw"]},"pt":{"title":"17/09/2025","notes":["Corrigida uma falha de ativação da Aura Crítica"]}},"2025年9月9日":{"from":"zh","en":{"title":"2025-09-09","notes":["Reviving no longer wrongly clears all buffs","The wipe log now records retaliation, thorns and DoT damage"]},"pt":{"title":"09/09/2025","notes":["Reviver não limpa mais todos os buffs por engano","O registro de derrota agora registra dano de retaliação, espinhos e dano contínuo"]}},"2025年8月21日":{"from":"zh","en":{"title":"2025-08-21","notes":["Add batch simulation of solo combat and the matching monster options","Add MooPass and community buff options and their effects","Buff refined equipment stats","Nerf Enchanted Bishop stats","Game data update: init_client_info_v1.20250819.0.json"]},"pt":{"title":"21/08/2025","notes":["Nova simulação em lote de combate solo e as opções de monstro correspondentes","Novas opções de MooPass e de buffs comunitários, com seus efeitos","Melhoria dos atributos de equipamentos refinados","Redução dos atributos do Bispo Encantado","Atualização dos dados do jogo: init_client_info_v1.20250819.0.json"]}},"2025年8月20日":{"from":"zh","en":{"title":"2025-08-20","notes":["Fix possible errors in XP and drop calculations in extreme cases"]},"pt":{"title":"20/08/2025","notes":["Corrigidos possíveis erros nos cálculos de EXP e de loot em casos extremos"]}},"2025年8月19日":{"from":"zh","en":{"title":"2025-08-19","notes":["Merge the rework from the Test and Temp branches","Game data update: init_client_info_v1.20250818.0.json"]},"pt":{"title":"19/08/2025","notes":["Incorporada a reformulação dos ramos Test e Temp","Atualização dos dados do jogo: init_client_info_v1.20250818.0.json"]}},"2025年8月18日":{"from":"zh","en":{"title":"2025-08-18","notes":["Fix pierce abilities possibly hitting the same target more than once","Fix the wipe log display in dark mode","Update the combat level formula","Adjust Stalactite Golem\'s thorns","Game data update: init_client_info_v1.20250626.0_0817.json"]},"pt":{"title":"18/08/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo mais de uma vez","Corrigida a exibição do registro de derrota no modo escuro","Atualizada a fórmula do nível de combate","Ajustados os espinhos do Golem de Estalactite","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0817.json"]}},"2025年8月16日":{"from":"zh","en":{"title":"2025-08-16","notes":["Add a Stop Simulation button by BKN46","Add buttons to reorder abilities by BKN46","Add the wipe log by TruthLight","Update monster stats","Arcane Reflection renamed to Retribution","Game data update: init_client_info_v1.20250626.0_0815.json"]},"pt":{"title":"16/08/2025","notes":["Novo botão Parar Simulação, por BKN46","Novos botões para reordenar técnicas, por BKN46","Novo registro de derrota, por TruthLight","Atualização dos atributos dos monstros","Reflexo Arcano renomeado para Retribuição","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0815.json"]}},"2025年8月14日":{"from":"zh","en":{"title":"2025-08-14","notes":["Update monster stats","Adjust ranged and magic equipment stats","Adjust the cap on retaliation damage","Fix abilities being cast between battles","Fix the ability casting decision logic","More accurate mana depletion ratio","15% of Ranged XP and 12% of Magic XP now go to Attack XP","Game data update: init_client_info_v1.20250626.0_0813.json"]},"pt":{"title":"14/08/2025","notes":["Atualização dos atributos dos monstros","Ajuste dos atributos de equipamentos à distância e de magia","Ajuste do limite do dano de retaliação","Corrigidas técnicas conjuradas entre batalhas","Corrigida a lógica de decisão de conjuração de técnicas","Proporção de falta de mana mais precisa","15% da EXP de À Distância e 12% da EXP de Magia agora vão para a EXP de Ataque","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0813.json"]}},"2025年8月11日":{"from":"zh","en":{"title":"2025-08-11","notes":["Update monster stats","Update cast times of melee and physical abilities","Adjust Shield Bash and Stunning Blow values","Adjust the Defense XP bonus of bulwarks","Game data update: init_client_info_v1.20250626.0_0811.json"]},"pt":{"title":"11/08/2025","notes":["Atualização dos atributos dos monstros","Atualização dos tempos de conjuração das técnicas corpo a corpo e físicas","Ajuste dos valores de Golpe de Escudo e Golpe Atordoante","Ajuste do bônus de EXP de Defesa dos baluartes","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0811.json"]}},"2025年8月8日":{"from":"zh","en":{"title":"2025-08-08","notes":["Implement the drop and XP penalty when party members\' levels differ too much","Implement monster XP increasing with the Berserk progress percentage","Adjust Critical Aura values","Show the combat level","Show the level gap penalty","Game data update: init_client_info_v1.20250626.0_0807.json"]},"pt":{"title":"08/08/2025","notes":["Implementada a penalidade de loot e de EXP quando os níveis dos membros do grupo diferem demais","Implementado o aumento da EXP dos monstros com a porcentagem de progresso da Fúria","Ajuste dos valores da Aura Crítica","Exibição do nível de combate","Exibição da penalidade por diferença de nível","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0807.json"]}},"2025年8月7日":{"from":"zh","en":{"title":"2025-08-07","notes":["Fix abnormal quantities of some duplicated item drops in party combat by contr4l","Game data update: init_client_info_v1.20250626.0_0806.json"]},"pt":{"title":"07/08/2025","notes":["Corrigidas quantidades anormais de alguns loot de itens duplicados em combate em grupo, por contr4l","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0806.json"]}},"2025年8月3日":{"from":"zh","en":{"title":"2025-08-03","notes":["Monster Berserk mechanic and its trigger now take effect","Refined equipment update, charm values adjusted, Guardian Aura adds evasion","Game data update: init_client_info_v1.20250626.0_0802.json","Fury max stacks corrected to 5","Adjust how parry is resolved"]},"pt":{"title":"03/08/2025","notes":["A mecânica de Fúria dos monstros e seu gatilho agora fazem efeito","Atualização dos equipamentos refinados, ajuste dos valores dos amuletos, a Aura Guardiã adiciona evasão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0802.json","Máximo de acúmulos da Fúria corrigido para 5","Ajuste de como Aparar é resolvido"]}},"2025年7月31日":{"from":"zh","en":{"title":"2025-07-31","notes":["Update item data and monster stats","Rework Spike Shell and Arcane Reflection","Update enhancement values","Remove broken triggers","Rework Griffin Bulwark\'s Weaken","Regal Sword\'s parry now applies to teammates","Fury effect max stacks corrected to 6","Rippling effect now restores 10 MP","Retaliation now shows its hit rate correctly","Adjust the retaliation mechanic","Sync the changes to bulwark stats and to retaliation and thorns ability values"]},"pt":{"title":"31/07/2025","notes":["Atualização dos dados de itens e dos atributos dos monstros","Reformulação de Carapaça de Espinhos e Reflexo Arcano","Atualização dos valores de aprimoramento","Remoção de gatilhos quebrados","Reformulação do Enfraquecer do Baluarte de Grifo","O Aparar da Espada Régia agora se aplica aos colegas de equipe","Máximo de acúmulos do efeito Fúria corrigido para 6","O efeito Ondulante agora restaura 10 MP","A retaliação agora mostra sua taxa de acerto corretamente","Ajuste da mecânica de retaliação","Sincronizadas as mudanças nos atributos dos baluartes e nos valores das técnicas de retaliação e espinhos"]}},"2025年7月22日":{"from":"zh","en":{"title":"2025-07-22","notes":["Critical Aura now scales with Ranged level","Adjust aura base values and level scaling"]},"pt":{"title":"22/07/2025","notes":["A Aura Crítica agora escala com o nível de À Distância","Ajuste dos valores base das auras e de como escalam com o nível"]}},"2025年7月17日":{"from":"zh","en":{"title":"2025-07-17","notes":["Batch simulation supports selecting planets","XP split adjusted to 30% + 70%","Auras and their triggers, scaled by a percentage of the matching ability level","Water, fire and nature now default to Mystic Aura","Game data update: init_client_info_v1.20250626.0_0717.json"]},"pt":{"title":"17/07/2025","notes":["A simulação em lote permite escolher planetas","Divisão de EXP ajustada para 30% + 70%","Auras e seus gatilhos, escalados por uma porcentagem do nível da técnica correspondente","Água, fogo e natureza agora usam a Aura Mística por padrão","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0717.json"]}},"2025年7月11日":{"from":"zh","en":{"title":"2025-07-11","notes":["Update monster XP and ability level formulas","Update evasion and resistance formulas","Power replaced by Melee, with matching compatibility","Game data update: init_client_info_v1.20250626.0_0711.json"]},"pt":{"title":"11/07/2025","notes":["Atualização das fórmulas de EXP dos monstros e de nível das técnicas","Atualização das fórmulas de evasão e de resistência","Poder substituído por Corpo a Corpo, com a compatibilidade correspondente","Atualização dos dados do jogo: init_client_info_v1.20250626.0_0711.json"]}},"2025年7月10日":{"from":"zh","en":{"title":"2025-07-10","notes":["Fix pierce abilities possibly hitting the same target several times when cast by enemies"]},"pt":{"title":"10/07/2025","notes":["Corrigidas técnicas perfurantes que podiam acertar o mesmo alvo várias vezes quando conjuradas por inimigos"]}},"2025年7月9日":{"from":"zh","en":{"title":"2025-07-09","notes":["Drop and drop rate adjustments","XP adjustments","Adjust Pestilent Shot and Puncture","Remove monster auto-regeneration","Adjust the Pestilent Shot trigger","Use the official API to fetch prices"]},"pt":{"title":"09/07/2025","notes":["Ajustes de loot e de taxas de loot","Ajustes de EXP","Ajuste de Tiro Pestilento e Perfuração","Remoção da regeneração automática dos monstros","Ajuste do gatilho do Tiro Pestilento","Uso da API oficial para buscar preços"]}},"2025年7月7日":{"from":"zh","en":{"title":"2025-07-07","notes":["Monster stat scaling and multiple map difficulties","Magic ability adjustments; the \'ability damage\' affix on equipment now takes effect","Attack level and house room levels now affect cast speed","Item adjustments","Precision reworked to use Attack level","TEST: 10% of Ranged and Magic XP now goes to Attack XP!","XP rework and charm equipment"]},"pt":{"title":"07/07/2025","notes":["Escala dos atributos dos monstros e várias dificuldades de mapa","Ajustes das técnicas de magia; o atributo \'dano de técnica\' dos equipamentos agora faz efeito","O nível de Ataque e os níveis dos cômodos da casa agora afetam a velocidade de conjuração","Ajustes de itens","Precisão reformulada para usar o nível de Ataque","TESTE: 10% da EXP de À Distância e de Magia agora vão para a EXP de Ataque!","Reformulação da EXP e equipamento de amuleto"]}},"2026-11-17":{"from":"en","zh":{"title":"2026年11月17日","notes":["战利品现在按每次击杀时各玩家的掉落率计算，而不是按模拟结束时的数值；模拟在掉落增益失效时结束（例如全队阵亡时）不会再低估整场模拟的战利品","符石：制裁、破甲、坚守和过量伤害现在会被模拟，依据游戏内的说明，尚未用实战核对；页面以星号标出","符石：回响现在会被模拟","假设分析：一轮运行完成后，“仍在竞争”“暂时搁置”和“已排除”的数量立即对得上，第一轮的表格也会立即去掉已排除的改动","假设分析：改动的运行次数不足时，回本天数与增益一样显示为横线","假设分析：已完成阶段的图表不再显示“运行中”，也不再提示数值尚未出现"]},"pt":{"title":"17/11/2026","notes":["O loot agora é calculado com a Taxa de Itens de Combate de cada jogador em cada abate, e não no fim da simulação; uma simulação que termina com um bônus de drop desligado (com o grupo morto, por exemplo) não subestima mais o loot da simulação inteira","Talismãs: Castigo, Estilhaçar, Fortificar e Dano excedente agora são simulados, a partir do texto do jogo e ainda sem conferência em lutas reais; a página os marca com uma estrela","Talismãs: Eco agora é simulado","E se: Na disputa, Em espera e Descartadas fecham a conta assim que as execuções de uma rodada terminam, e a tabela da primeira rodada tira na hora as mudanças descartadas","E se: Dias de retorno mostram um traço até a mudança ter execuções suficientes, como o ganho","E se: o gráfico de uma etapa concluída não diz mais que está em andamento nem que os valores ainda virão"]}},"2026-11-15":{"from":"en","zh":{"title":"2026年11月15日","notes":["假设分析：有配置的玩家在打开窗口时默认勾选","假设分析：触发条件的改动完整显示为中文和葡萄牙语","假设分析：搜索停止时，采纳和跳过按钮暂不可用","假设分析：跳过和采纳响应更快","假设分析：强的改动不再被当作与弱得多的改动打平而被搁置，搜索不会再在仍有真正升级可选时以“无改动”结束","假设分析：装备会尝试市场上出售的每个强化等级，暂时不再用贤者之镜为等级定价","假设分析：当搜索无法区分多项各自明确有益的改动时，现在会把它们一起测试并作为一步采纳；该步列出每项改动，悬停提示显示各自的增益","区域选择器新增“仅显示星球”开关（默认开启），隐藏只对战一种怪物的战斗","假设分析：只剩少数改动时，领先者的核对一旦有了结论，搜索就不再每轮重复核对，这些轮次用时大幅减少","假设分析：鼠标停在阶段按钮上时，按钮不再闪烁","假设分析：帮助提示完整显示在最上层，不再被遮挡","假设分析：结果上方的标签排成一行，基础利润标签说明其含义，去掉成本未知标签","假设分析：新的搜索会清除窗口中之前的结果；配置差异警告为一行并显示差异数量，点击即可展开列表，触发条件以文字显示；以往的搜索也列出已停止的搜索，并标为已停止","假设分析：胜出的改动未通过核对时，仅被它淘汰的改动会重新参与竞争，搜索在没有它的情况下继续，次优改动不再丢失","假设分析：进度表每一行显示各自的核对（正在核对的改动及其运行次数）、进度条以及被核对排除的改动；恢复后已用时间继续累计，之前保留的运行会计入，列不再移动","假设分析：搜索进行时，目前看来有益的改动会列在已选改动下方，并标为尚未核对","假设分析：核对无法判定的改动会获得更多运行，每个被排除的改动都会说明原因（亏损、太小无关紧要或太小无法判断）并附上范围","假设分析：点击“采纳当前领先者”或“跳过此阶段”后，停止并继续时会保留该操作","从 MWI Combat Tracker 导入的 Talisman 会显示在该玩家的装备旁，并计入模拟和假设分析搜索（Echo 等独特效果暂未模拟）","假设分析：每个阶段的实时图表：每个领先的更改一条线，逐轮显示，最新的范围在右侧","假设分析：切换语言后整个窗口随之更新，可用的阶段按钮显示为可用，继续后的搜索在重放阶段显示其运行次数","假设分析：阶段列表的标记与所在行对齐","符石名称、符石标签和符石威力现在以游戏自己的中文和葡萄牙文显示；\\"Presets\\" 已翻译为中文","黑暗模式、数字格式和语言开关现在随页面滚动，不再遮挡结果"]},"pt":{"title":"15/11/2026","notes":["E se: jogadores com configuração começam marcados ao abrir a janela","E se: mudanças de gatilho aparecem inteiras em português e chinês","E se: Aceitar e Pular aguardam enquanto a busca para","E se: Pular e Aceitar respondem mais rápido","E se: uma mudança forte não é mais deixada de lado como empatada com uma muito mais fraca, então a busca não termina mais sem mudança enquanto uma melhoria real ainda estava na disputa","E se: os equipamentos são testados em todos os níveis de aprimoramento vendidos no mercado, e o Espelho Filosofal não é mais usado para precificar níveis por enquanto","E se: quando a busca não consegue separar várias mudanças que são, cada uma, um ganho claro, agora ela as testa juntas e as aceita como um passo; o passo lista cada mudança, com o ganho próprio de cada uma numa dica","Os seletores de zona têm a opção \\"Só planetas\\", ligada por padrão, que oculta as lutas contra um só tipo de monstro","E se: quando restam poucas mudanças, a busca não reconfere mais os líderes a cada rodada depois que a conferência deles já tem resposta, então essas rodadas levam bem menos tempo","E se: os botões da etapa não piscam mais com o ponteiro parado sobre eles","E se: as dicas de ajuda aparecem inteiras e por cima, onde quer que esteja a marca","E se: as etiquetas acima do resultado ficam numa só linha, a do lucro-base diz o que é, e a de custo desconhecido saiu","E se: uma nova busca limpa o resultado anterior da janela; o aviso de setup é uma linha com o número de diferenças, a lista abre com um clique e um gatilho aparece em palavras; Buscas anteriores também lista buscas paradas, marcadas como paradas","E se: quando uma vencedora não passa na conferência, as mudanças que só ela tinha tirado voltam à disputa e a busca segue sem ela, então a próxima melhor mudança não se perde mais","E se: cada linha da tabela de progresso mostra a própria conferência (a mudança conferida e suas execuções), uma barra de progresso e a mudança que a conferência deixou de fora; o tempo decorrido continua após retomar, as execuções já guardadas são contadas e as colunas não se movem mais","E se: durante a busca, as mudanças que parecem positivas até agora aparecem sob as mudanças escolhidas, marcadas como ainda não conferidas","E se: uma mudança que a conferência não decide recebe mais execuções, e cada mudança deixada de fora diz por quê (uma perda, pequena demais para importar ou pequena demais para saber) com sua faixa","E se: um clique em Aceitar o vencedor atual ou Pular esta etapa é mantido ao Parar e Retomar","Talismans importados do MWI Combat Tracker aparecem com o equipamento do jogador e contam na simulação e nas buscas do E se (efeitos únicos como Echo ainda não são simulados)","E se: um gráfico ao vivo de cada etapa: uma linha por mudança entre as líderes, rodada a rodada, com as faixas mais recentes à direita","E se: a janela inteira acompanha a troca de idioma, os botões de etapa ativos parecem ativos e uma busca retomada mostra suas execuções nas etapas repetidas","E se: as marcas da lista de etapas ficam alinhadas com suas linhas","Nomes dos talismãs, o rótulo Talismãs e o Poder de talismã agora aparecem em chinês e português com as palavras do próprio jogo; \\"Presets\\" traduzido em chinês","Os botões de modo escuro, formato de números e idioma agora rolam com a página em vez de cobrir os resultados"]}},"2026-11-14":{"from":"en","zh":{"title":"2026年11月14日","notes":["假设分析：全新外观。一个摘要栏，每个列表都是表格，搜索运行时设置表单会折叠，还有一个立即响应的“开始 / 停止”按钮。","假设分析：会提出公会神龛升级，并列出所需的公会代币和金币成本；物品可以放入空栏位。","假设分析：不再尝试与玩家战斗风格或元素不符的改动。","假设分析：每个有价格的行都会说明其定价方式；预算留空或为 0，以及回本期限为 0，都表示不限。"]},"pt":{"title":"14/11/2026","notes":["E se: um novo visual. Uma barra de resumo, todas as listas em tabela, um formulário de configuração que se recolhe enquanto uma busca roda, e um único botão Iniciar / Parar que responde na hora.","E se: melhorias dos santuários da guilda são propostas, com o custo em Fichas de Guilda e Moedas; um item pode ir para um espaço vazio.","E se: alterações que não combinam com o estilo de combate ou o elemento de um jogador não são mais testadas.","E se: toda linha com preço diz como foi precificada; um orçamento vazio ou 0, e um limite de retorno 0, significam sem limite."]}},"2026-11-13":{"from":"en","zh":{"title":"2026年11月13日","notes":["假设分析：食物和饮品现在是两个独立选项，可以只搜索其中一个","假设分析：运行次数太少的数值显示为短横线，而不是数字","假设分析：“采纳当前领先者”原样采用领先者；“跳过”立即结束该部分并保留已完成的运行","假设分析：搜索结束后会显示哪些部分已运行、哪些由你结束，以及途中排除了哪些改动","假设分析：“单项改动”每个设置只显示一行，而不是同一设置的多个数值","导入分组现在会在刷新页面后保留，包括名称","导入技能少于四个、或特殊技能栏为空的配置，不再失败","导入配置后，导入窗口现在会自动关闭","假设分析：公开页面上的“假设分析”按钮会说明如何获取运行器","导入带有光环的配置时，现在会选中光环，并把技能放进正确的栏位","葡萄牙语：装备套装按钮和窗口现在称为“Conjuntos”，按钮不再换行","假设分析：窗口现在也列出 Linux 步骤（尚未测试）","战斗统计：文字数值（战斗风格、伤害类型、主要训练和专注训练）现在与数字一样右对齐","假设分析：每个 ± 误差现在都与旁边数值使用相同单位（向上取整）","运行器：启动时窗口不再提示运行器已停止，再次启动时只会打开页面","假设分析：预算输入框现在接受空格、逗号以及 k、M、B、T（例如 1.5M）","假设分析：从游戏导入队伍时，现在也会填入你自己角色的物品和技能（MWI Combat Tracker 0.9.3）。","假设分析：“单项改动”默认折叠；价格行仅在市场数据达到一天或更旧时显示。","假设分析：进度列表中的阶段名称更清晰。","假设分析：各明细列表各占一行，收在一个“查看详情”链接下；食物或饮料没有变化的玩家不再显示行；每个已完成的阶段占一行。","假设分析：Windows 运行器现在是单个文件 WhatIfRunner.exe：保存后双击即可，无需解压。"]},"pt":{"title":"13/11/2026","notes":["E se: Comidas e Bebidas agora são duas opções separadas, para buscar uma sem a outra","E se: um valor de poucas execuções mostra um traço em vez de um número","E se: Aceitar o vencedor atual pega o líder como está; Pular encerra a parte na hora e mantém as execuções concluídas","E se: uma busca concluída mostra quais partes rodaram, quais você encerrou e quais alterações ficaram de fora pelo caminho","E se: Cada alteração isolada mostra uma linha por configuração, em vez de vários valores de uma configuração","Importar um grupo agora é lembrado ao recarregar a página, nomes incluídos","Importar uma configuração com menos de quatro habilidades, ou com o espaço de habilidade especial vazio, não falha mais","Depois de importar uma configuração, a janela de importação agora fecha sozinha","E se: o botão E se na página pública explica como obter o executor","Importar um perfil com aura agora seleciona a aura e coloca as habilidades nos espaços certos","Português: o botão e a janela de conjuntos de equipamento agora se chamam \\"Conjuntos\\", e os botões não quebram mais de linha","E se: a janela agora também lista os passos para Linux (ainda não testado)","Estatísticas de combate: os valores em texto (estilo de combate, tipo de dano, treino primário e de foco) agora ficam alinhados à direita, como os números","E se: cada margem ± agora é escrita na mesma unidade do valor ao lado (arredondada para cima)","Runner: a janela não diz mais que o runner parou enquanto ele está iniciando, e iniciá-lo uma segunda vez apenas abre a página","E se: o campo de orçamento agora aceita espaços, vírgulas e k, M, B, T (como 1.5M)","E se: importar o grupo do jogo agora também preenche os itens e as habilidades do seu próprio personagem (MWI Combat Tracker 0.9.3).","E se: \\"Cada alteração sozinha\\" começa recolhida; a linha de preços só aparece quando os dados do mercado têm um dia ou mais.","E se: nomes de etapa mais claros na lista de progresso.","E se: as listas de detalhes ocupam uma linha cada, sob um único link \\"Ver detalhes\\"; um jogador cujas comidas ou bebidas não mudam não tem linha; cada etapa concluída ocupa uma linha.","E se: o executor para Windows agora é um arquivo só, WhatIfRunner.exe: salve e dê dois cliques, nada para extrair."]}},"2026-11-12":{"from":"en","zh":{"title":"2026年11月12日","notes":["假设分析：正在运行的阶段新增“采纳当前领先者”和“跳过”按钮","假设分析：较弱的改动会在搜索过程中被淘汰，包括回本太慢的付费改动","假设分析：尚未分出高下的一组会显示大约还需要几轮","假设分析：搜索做出的每个选择都会用新的运行重新核对；你采纳的选择按原样采用"]},"pt":{"title":"12/11/2026","notes":["E se: botões Aceitar o vencedor atual e Pular na etapa em andamento","E se: alterações fracas saem conforme a busca avança, incluindo alterações pagas com retorno lento demais","E se: um grupo que ainda não se separou mostra cerca de quantas rodadas a mais precisa","E se: toda escolha da busca é conferida de novo em execuções novas; uma escolha que você aceita é tomada como está"]}},"2026-11-10":{"from":"en","zh":{"title":"2026年11月10日","notes":["全区域结果上方新增图表：每张地图是一个点，每小时经验对每日利润，点击圆点可跳到对应行","掉落、消耗品和宝箱的价格在所选一侧没有价格时，现在先用另一侧，再用商店价格","假设分析窗口：每项改动显示队伍收益和购买者自己的收益，以及成本和回本天数","假设分析窗口：适应屏幕宽度，没有横向滚动条","假设分析：先搜索食物和饮品，显示为“最佳食物”和“最佳饮品”；“应用”会先放入它们"]},"pt":{"title":"10/11/2026","notes":["Um gráfico acima dos resultados de todas as zonas: cada mapa é um ponto, EXP por hora contra lucro por dia, clique em um ponto para ir às suas linhas","Preços de drops, consumíveis e baús agora usam o outro lado e depois o preço de vendedor quando o lado escolhido não tem preço","Janela E se: cada alteração mostra o ganho do grupo e o ganho do próprio comprador, com custo e dias de retorno","Janela E se: ocupa a largura da tela, sem barra de rolagem horizontal","E se: comidas e bebidas são buscadas primeiro e mostradas como Melhores comidas e Melhores bebidas; Aplicar coloca elas primeiro"]}},"2026-11-09":{"from":"en","zh":{"title":"2026年11月9日","notes":["本地假设分析运行器的假设分析窗口：设置预算和搜索内容，可停止搜索，一键应用建议的改动","结果：“法力值耗尽”下方的“触发条件等待”显示每个技能被什么拖住","结果：“法力值耗尽比例”始终显示，取代是/否一行","导入分组时也会勾选其中的玩家，并设置其指定的区域和难度"]},"pt":{"title":"09/11/2026","notes":["Janela E se para o executor local do E se: defina um orçamento e o que buscar, pare a busca e aplique uma alteração sugerida com um clique","Resultados: Retido por gatilho, abaixo de Ficou sem mana, mostra o que segurou cada técnica","Resultados: Proporção sem mana sempre aparece, no lugar da linha Sim/Não","Importar um grupo também marca seus jogadores e define a zona e o nível que ele indica"]}},"2026-11-08":{"from":"en","zh":{"title":"2026年11月8日","notes":["结果中的数字缩写显示，10,000 起使用 k、M、B 和 T","右上角新增 ISO 数字开关","页面默认以黑暗模式打开","模拟器现已支持葡萄牙语","模拟速度提升约五倍"]},"pt":{"title":"08/11/2026","notes":["Os números dos resultados aparecem abreviados, com k, M, B e T a partir de 10.000","Nova chave Números ISO no canto superior direito","A página abre no modo escuro por padrão","O simulador agora está disponível em português","As simulações rodam cerca de cinco vezes mais rápido"]}},"2026-11-07":{"from":"en","zh":{"title":"2026年11月7日","notes":["战斗属性面板现在会计入已装备的饮品和你自己装备的光环"]},"pt":{"title":"07/11/2026","notes":["O painel de Atributos de Combate agora conta as bebidas equipadas e as suas próprias auras equipadas"]}},"2026-11-04":{"from":"en","zh":{"title":"2026年11月4日","notes":["公会增益可从两种导出格式读取","战斗属性面板显示模拟所用的属性，包括房屋、成就以及公会和社区增益","社区经验和战斗掉落增益默认开启，等级为20，可编辑"]},"pt":{"title":"04/11/2026","notes":["Os buffs de guilda são lidos dos dois formatos de exportação","O painel de Atributos de Combate mostra os atributos que a simulação usa, incluindo cômodos da casa, conquistas e buffs de guilda e da comunidade","Os buffs comunitários de EXP e de loot de combate vêm ligados por padrão no nível 20 e podem ser editados"]}}}');
 
 /***/ }),
 
@@ -5730,7 +6030,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"_label":{"en":"Machine translation b
   \************************/
 /***/ ((module) => {
 
-module.exports = /*#__PURE__*/JSON.parse('{"2026-11-15":{"fork":"Ramlock","notes":["What-if: players with a setup start ticked when the window opens","What-if: trigger changes read fully in Portuguese and Chinese","What-if: Accept and Skip wait while the search is stopping","What-if: Skip and Accept respond faster","What-if: a strong change is no longer set aside as tied with a much weaker one, so the search no longer ends with no change while a real upgrade was still in the running","What-if: equipment is tried at every enhancement level the market sells, and the Philosopher\'s Mirror is no longer used to price levels for now","What-if: when the search cannot tell apart several changes that are each a clear gain, it now tests them together and takes them as one step; the step lists each change, with its own gain in a tooltip","The zone pickers have a \\"Planets only\\" switch, on by default, that hides the single-monster fights","What-if: when only a few changes are left, a search no longer re-checks the leaders every round once their check has its answer, so those rounds take much less time","What-if: the stage buttons no longer flicker while the pointer rests on them","What-if: help tooltips show whole and on top, wherever the mark is","What-if: the chips above the result share one line, the base profit chip says what it is, and the unknown-cost chip is gone","What-if: a new search clears the earlier result from the window; the setup warning is one line with the number of differences, its list opens on a click, and a trigger reads as words; Earlier searches also lists stopped searches, marked as stopped","What-if: when a winner fails its check, the changes only it had put out return to the race and the search goes on without it, so the next best change is no longer lost","What-if: each row of the progress table shows its own check (the change being checked and its runs), a progress bar, and a change its check left out; elapsed time carries on after a resume, runs kept from before are counted, and the columns no longer move","What-if: while a search runs, changes that look positive so far are listed under the chosen changes, marked as not checked yet","What-if: a change the check cannot settle gets more runs, and every change left out now says why (a loss, too small to matter, or too small to tell) with its range","What-if: a press of Accept current winner or Skip this stage is kept through Stop and Resume","Talismans imported from the MWI Combat Tracker are shown with the player\'s equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)","What-if: a live chart for each stage: one line per leading change, round by round, with the latest ranges at the right","What-if: the whole window follows a language change, live stage buttons look live, and a resumed search shows its runs on replayed stages","What-if: the stage list\'s marks line up with their rows","Talisman names, the Talismans label and Talisman Power now show in Chinese and Portuguese with the game\'s own words; \\"Presets\\" is translated in Chinese","The Dark Mode, number format and language switches now scroll with the page instead of covering the results"]},"2026-11-14":{"fork":"Ramlock","notes":["What-if: a new look. One summary bar, every list a table, a setup form that folds while a search runs, and one Start / Stop button that answers at once.","What-if: guild shrine upgrades are proposed, with their cost in Guild Tokens and Coin; an item can go into an empty slot.","What-if: changes that do not fit a player\'s combat style or element are no longer tried.","What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit."]},"2026-11-13":{"fork":"Ramlock","notes":["What-if: Foods and Drinks are now two separate options, so you can search one without the other","What-if: a figure from too few runs shows a dash instead of a number","What-if: Accept current winner takes the leader as it is; Skip ends the part at once and keeps its finished runs","What-if: a finished search shows which parts ran, which you ended and which changes were left out along the way","What-if: Each change alone shows one row per setting instead of several values of one setting","Importing a group is now remembered when you reload the page, names included","Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails","After importing a setup, the import window now closes by itself","What-if: the What-if button on the public page explains how to get the runner","Importing a profile with an aura now selects the aura and puts the abilities in the right slots","Portuguese: the equipment sets button and window are now called \\"Conjuntos\\", so the buttons no longer wrap","What-if: the window now also lists Linux steps (not tested yet)","Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers","What-if: every ± margin is now written in the same unit as the figure beside it (rounded up)","Runner: the window no longer says the runner stopped when it is starting up, and starting it a second time just opens the page","What-if: the budget field now accepts spaces, commas and k, M, B, T (like 1.5M)","What-if: importing the party from the game now also fills your own character\'s items and abilities (MWI Combat Tracker 0.9.3).","What-if: \\"Each change alone\\" starts collapsed; the prices line shows only when the market data is a day old or more.","What-if: clearer stage names in the progress list.","What-if: the detail lists are one line each under one \\"See details\\" link; a player whose foods or drinks do not change has no row; each finished stage is one line.","What-if: the Windows runner is now one file, WhatIfRunner.exe: save it and double-click, nothing to unzip."]},"2026-11-12":{"fork":"Ramlock","notes":["What-if: Accept current winner and Skip buttons on the running stage","What-if: weak changes drop out as the search goes, including paid changes that pay back too slowly","What-if: a pool that has not separated yet shows about how many more rounds it needs","What-if: every pick the search makes is re-checked on fresh runs; a pick you accept is taken as is"]},"2026-11-10":{"fork":"Ramlock","notes":["A chart above the all-zones results: each map is a dot, XP per hour against profit per day, click a dot to jump to its rows","Drop, consumable and chest prices now fall back to the other side, then the vendor price, when your chosen side has none","What-if window: each change shows the party\'s gain and the buyer\'s own gain, with cost and payback days","What-if window: fits the screen width, no horizontal scrollbar","What-if: foods and drinks are searched first and shown as Best foods and Best drinks; Apply puts them in first"]},"2026-11-09":{"fork":"Ramlock","notes":["What-if window for the local What-if runner: set a budget and what to search, Stop the search, apply a suggested change in one click","Results: Held by trigger under Ran out of mana shows what held each skill back","Results: Mana Run Out Ratio always shows, replacing the Yes/No line","Importing a group also ticks its players and sets the zone and tier it names"]},"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show shortened, with k, M, B and T from 10,000 up","New ISO numbers toggle at the top right","The page opens in Dark Mode by default","The simulator is now available in Portuguese","Simulations run about five times faster"]},"2026-11-07":{"fork":"Ramlock","notes":["Combat Stats panel now counts slotted drinks and your own equipped auras"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are read from both export formats","Combat Stats panel shows the stats the simulation uses, including house rooms, achievements and guild and community buffs","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
+module.exports = /*#__PURE__*/JSON.parse('{"2026-11-17":{"fork":"Ramlock","notes":["Loot is now priced with each player\'s drop rate at each kill, not at the end of the run, so a run that ends while a drop buff is off (during a wipe, for example) no longer undervalues the whole run\'s loot","Talismans: Smite, Shatter, Fortify and Overkill are now simulated, from their in-game text and not yet checked against real fights; the page marks them with a star","Talismans: Echo is now simulated","What-if: In the running, Set aside and Ruled out add up as soon as a round\'s runs are in, and the first round\'s table drops the ruled-out changes at once","What-if: Payback days show a dash until a change has enough runs, like its gain","What-if: a finished stage\'s chart no longer says it is running, or that figures are yet to come"]},"2026-11-15":{"fork":"Ramlock","notes":["What-if: players with a setup start ticked when the window opens","What-if: trigger changes read fully in Portuguese and Chinese","What-if: Accept and Skip wait while the search is stopping","What-if: Skip and Accept respond faster","What-if: a strong change is no longer set aside as tied with a much weaker one, so the search no longer ends with no change while a real upgrade was still in the running","What-if: equipment is tried at every enhancement level the market sells, and the Philosopher\'s Mirror is no longer used to price levels for now","What-if: when the search cannot tell apart several changes that are each a clear gain, it now tests them together and takes them as one step; the step lists each change, with its own gain in a tooltip","The zone pickers have a \\"Planets only\\" switch, on by default, that hides the single-monster fights","What-if: when only a few changes are left, a search no longer re-checks the leaders every round once their check has its answer, so those rounds take much less time","What-if: the stage buttons no longer flicker while the pointer rests on them","What-if: help tooltips show whole and on top, wherever the mark is","What-if: the chips above the result share one line, the base profit chip says what it is, and the unknown-cost chip is gone","What-if: a new search clears the earlier result from the window; the setup warning is one line with the number of differences, its list opens on a click, and a trigger reads as words; Earlier searches also lists stopped searches, marked as stopped","What-if: when a winner fails its check, the changes only it had put out return to the race and the search goes on without it, so the next best change is no longer lost","What-if: each row of the progress table shows its own check (the change being checked and its runs), a progress bar, and a change its check left out; elapsed time carries on after a resume, runs kept from before are counted, and the columns no longer move","What-if: while a search runs, changes that look positive so far are listed under the chosen changes, marked as not checked yet","What-if: a change the check cannot settle gets more runs, and every change left out now says why (a loss, too small to matter, or too small to tell) with its range","What-if: a press of Accept current winner or Skip this stage is kept through Stop and Resume","Talismans imported from the MWI Combat Tracker are shown with the player\'s equipment and counted in the simulation and in What-if searches (unique effects such as Echo are not simulated yet)","What-if: a live chart for each stage: one line per leading change, round by round, with the latest ranges at the right","What-if: the whole window follows a language change, live stage buttons look live, and a resumed search shows its runs on replayed stages","What-if: the stage list\'s marks line up with their rows","Talisman names, the Talismans label and Talisman Power now show in Chinese and Portuguese with the game\'s own words; \\"Presets\\" is translated in Chinese","The Dark Mode, number format and language switches now scroll with the page instead of covering the results"]},"2026-11-14":{"fork":"Ramlock","notes":["What-if: a new look. One summary bar, every list a table, a setup form that folds while a search runs, and one Start / Stop button that answers at once.","What-if: guild shrine upgrades are proposed, with their cost in Guild Tokens and Coin; an item can go into an empty slot.","What-if: changes that do not fit a player\'s combat style or element are no longer tried.","What-if: every priced row says how it was priced; an empty or 0 budget, and a payback limit of 0, mean no limit."]},"2026-11-13":{"fork":"Ramlock","notes":["What-if: Foods and Drinks are now two separate options, so you can search one without the other","What-if: a figure from too few runs shows a dash instead of a number","What-if: Accept current winner takes the leader as it is; Skip ends the part at once and keeps its finished runs","What-if: a finished search shows which parts ran, which you ended and which changes were left out along the way","What-if: Each change alone shows one row per setting instead of several values of one setting","Importing a group is now remembered when you reload the page, names included","Importing a setup with fewer than four abilities, or with an empty special-ability slot, no longer fails","After importing a setup, the import window now closes by itself","What-if: the What-if button on the public page explains how to get the runner","Importing a profile with an aura now selects the aura and puts the abilities in the right slots","Portuguese: the equipment sets button and window are now called \\"Conjuntos\\", so the buttons no longer wrap","What-if: the window now also lists Linux steps (not tested yet)","Combat Stats: the text values (combat style, damage type, primary and focus training) are now right-aligned like the numbers","What-if: every ± margin is now written in the same unit as the figure beside it (rounded up)","Runner: the window no longer says the runner stopped when it is starting up, and starting it a second time just opens the page","What-if: the budget field now accepts spaces, commas and k, M, B, T (like 1.5M)","What-if: importing the party from the game now also fills your own character\'s items and abilities (MWI Combat Tracker 0.9.3).","What-if: \\"Each change alone\\" starts collapsed; the prices line shows only when the market data is a day old or more.","What-if: clearer stage names in the progress list.","What-if: the detail lists are one line each under one \\"See details\\" link; a player whose foods or drinks do not change has no row; each finished stage is one line.","What-if: the Windows runner is now one file, WhatIfRunner.exe: save it and double-click, nothing to unzip."]},"2026-11-12":{"fork":"Ramlock","notes":["What-if: Accept current winner and Skip buttons on the running stage","What-if: weak changes drop out as the search goes, including paid changes that pay back too slowly","What-if: a pool that has not separated yet shows about how many more rounds it needs","What-if: every pick the search makes is re-checked on fresh runs; a pick you accept is taken as is"]},"2026-11-10":{"fork":"Ramlock","notes":["A chart above the all-zones results: each map is a dot, XP per hour against profit per day, click a dot to jump to its rows","Drop, consumable and chest prices now fall back to the other side, then the vendor price, when your chosen side has none","What-if window: each change shows the party\'s gain and the buyer\'s own gain, with cost and payback days","What-if window: fits the screen width, no horizontal scrollbar","What-if: foods and drinks are searched first and shown as Best foods and Best drinks; Apply puts them in first"]},"2026-11-09":{"fork":"Ramlock","notes":["What-if window for the local What-if runner: set a budget and what to search, Stop the search, apply a suggested change in one click","Results: Held by trigger under Ran out of mana shows what held each skill back","Results: Mana Run Out Ratio always shows, replacing the Yes/No line","Importing a group also ticks its players and sets the zone and tier it names"]},"2026-11-08":{"fork":"Ramlock","notes":["Numbers in the results show shortened, with k, M, B and T from 10,000 up","New ISO numbers toggle at the top right","The page opens in Dark Mode by default","The simulator is now available in Portuguese","Simulations run about five times faster"]},"2026-11-07":{"fork":"Ramlock","notes":["Combat Stats panel now counts slotted drinks and your own equipped auras"]},"2026-11-04":{"fork":"Ramlock","notes":["Guild buffs are read from both export formats","Combat Stats panel shows the stats the simulation uses, including house rooms, achievements and guild and community buffs","Community XP and combat drop buffs are on by default at level 20, and can be edited"]},"2026年9月30日":["支持迷宫升级","支持神龛增益"],"2026年5月5日":["更新装备数据和本地化名称"],"2026年4月7日":["增加字段显示迷宫尝试次数和迷宫成功率"],"2026年3月5日":["优化狂怒相关的模拟性能"],"2026年3月3日":["支持迷宫封印对应的个人增益"],"2026年2月24日":["更新迷宫补丁的数据","新增支持迷宫单体/批量模拟"],"2026年2月1日":["修正战斗等级计算的精度","修正地下城完成或失败后重新进入战斗的时间间隔 by wangchyan","修正诅咒和削弱的持续时间 by wangchyan","修正诅咒和狂怒的触发逻辑 by wangchyan","修正地下城团灭重置机制的部分逻辑 by wangchyan","修复守护光环和速度光环部分增益未正确受对应等级加强的异常 by wangchyan","修复无敌技能未正确影响韧性数值的缺陷 by wangchyan","修复初次进入战斗时未能优先吃喝的异常 by wangchyan","战斗时长相关的统计现在仅计算已完成的战斗，不再包含当前未结束的战斗 by wangchyan"],"2026年1月11日":["修复trigger错误计算已阵亡单位的问题 by wangchyan"],"2025年12月31日":["实验性功能新增HP/MP可视化图表 by wangchyan","修复防御伤害未正确受damge加成的异常 by wangchyan","修复守护光环的治疗加成效果未生效的异常 by wangchyan","修复快速治疗等技能未正确选择最低%生命为目标的错误 by wangchyan"],"2025年12月30日":["地下城增加最短完成时间记录"],"2025年12月24日":["修复技能释放选择的缺陷，之前可能存在异常缺蓝等情况"],"2025年12月18日":["支持成就系统及对应buff效果","地下城怪物的掉落不再生效"],"2025年12月6日":["修复游戏更新后技能在无trigger情况下由[]变为null时造成的异常"],"2025年11月7日":["兼容支持从CN镜像站调用API获取价格"],"2025年10月14日":["修复怪物攻击间隔数值未能适配攻击等级的问题"],"2025年9月17日":["修复暴击光环的trigger缺陷"],"2025年9月9日":["复活时不再错误的清空所有buff","团灭日志增加反伤、荆棘和DOT伤害记录"],"2025年8月21日":["增加单挑战斗批量模拟和对应怪物选项","增加MooPass和社区buff的选项及对应功能","精炼装备数值加强","秘法主教属性削弱","init_client_info_v1.20250819.0.json游戏数据更新"],"2025年8月20日":["修复经验和掉落计算在极端情况下的可能异常"],"2025年8月19日":["合并Test和Temp分支的rework内容","init_client_info_v1.20250818.0.json游戏数据更新"],"2025年8月18日":["修复贯穿技能可能对相同目标造成重复伤害的问题","修复团灭日志在黑夜模式下的显示异常","战斗等级公式更新","钟乳石魔像的荆棘数值调整","init_client_info_v1.20250626.0_0817.json游戏数据更新"],"2025年8月16日":["增加停止模拟按钮 by BKN46","增加技能顺序调整按钮 by BKN46","增加团灭日志 by TruthLight","怪物属性更新","奥术反射更名为报应","init_client_info_v1.20250626.0_0815.json游戏数据更新"],"2025年8月14日":["怪物属性更新","远程和法师装备属性调整","反伤计算上限调整","修复战斗间隔释放技能的异常","修复技能释放判断逻辑的异常","法力值耗尽比例更加准确","调整远程经验的15%和魔法经验的12%映射到攻击经验","init_client_info_v1.20250626.0_0813.json游戏数据更新"],"2025年8月11日":["怪物属性更新","近战和物理技能施法时间更新","盾击和重锤数值调整","双手盾防御经验加成调整","init_client_info_v1.20250626.0_0811.json游戏数据更新"],"2025年8月8日":["实现组队等级差过大时对掉落和经验的惩罚","实现怪物经验随狂暴进度百分比增加","暴击光环数值调整","增加战斗等级数值显示","增加等级差距惩罚数值显示","init_client_info_v1.20250626.0_0807.json游戏数据更新"],"2025年8月7日":["修复组队战斗时一些重复物品掉落数量异常的缺陷 by contr4l","init_client_info_v1.20250626.0_0806.json游戏数据更新"],"2025年8月3日":["怪物狂暴机制及对应trigger生效","精炼装备更新，护符数值调整，守护光环增加闪避率","init_client_info_v1.20250626.0_0802.json游戏数据更新","狂怒层数修正为5层","招架结算机制调整"],"2025年7月31日":["物品数据和怪物属性更新","尖刺外壳和奥术反射重做","强化数值更新","删除异常trigger","狮鹫盾的虚弱重做","君王剑招架对队友生效","狂怒特效最大层数修正为6层","涟漪特效增加10MP恢复","反伤正确显示其命中率","反伤机制调整","同步双手盾属性和反伤荆棘技能数值的调整"],"2025年7月22日":["暴击光环受远程等级加成","光环基础数值和等级加成调整"],"2025年7月17日":["批量模拟支持勾选星球","经验分配比例调整至30%+70%","光环及对应trigger，并按对应技能等级百分比加成","水火自然默认调整为元素光环","init_client_info_v1.20250626.0_0717.json游戏数据更新"],"2025年7月11日":["怪物经验和技能等级公式更新","闪避和抗性计算公式更新","力量更替为近战以及对应的兼容","init_client_info_v1.20250626.0_0711.json游戏数据更新"],"2025年7月10日":["修复贯穿技能由敌人释放时可能多次击中相同目标的缺陷"],"2025年7月9日":["掉落和掉率调整","经验调整","疫病射击和破甲之刺调整","怪物自动恢复移除","疫病射击trigger调整","获取价格使用官方API"],"2025年7月7日":["怪物属性缩放和地图多难度","法师技能调整和装备上\'技能伤害\'词缀生效","攻击等级和房屋等级对施法速度的影响生效","物品调整","精准重做以攻击等级计算","TEST 远程魔法经验的10%映射到攻击经验！","经验重做和护符装备"]}');
 
 /***/ }),
 
@@ -5961,7 +6261,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"/items/bag_of_10_cowbells":[{"itemHr
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + {"1":"6f92b8c7","2":"2984c094","3":"d8459566","5":"86b7e80a","src_multiWorker_js-_004d1":"310e4376","src_multiWorker_js-_004d2":"310e4376","src_multiWorker_js-_004d3":"310e4376","src_multiWorker_js-_004d0":"310e4376","src_multiWorker_js-_004d4":"310e4376"}[chunkId] + ".js";
+/******/ 			return "" + chunkId + "." + {"1":"bf944374","2":"8147db9b","3":"34582de7","5":"fd571bf2","src_multiWorker_js-_004d1":"e055f828","src_multiWorker_js-_004d2":"e055f828","src_multiWorker_js-_004d3":"e055f828","src_multiWorker_js-_004d0":"e055f828","src_multiWorker_js-_004d4":"e055f828"}[chunkId] + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -6066,35 +6366,37 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _combatStatsPanel_js__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./combatStatsPanel.js */ "./src/combatStatsPanel.js");
 /* harmony import */ var _combatsimulator_triggerHolds_js__WEBPACK_IMPORTED_MODULE_16__ = __webpack_require__(/*! ./combatsimulator/triggerHolds.js */ "./src/combatsimulator/triggerHolds.js");
 /* harmony import */ var _combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_17__ = __webpack_require__(/*! ./combatsimulator/heldPopup.js */ "./src/combatsimulator/heldPopup.js");
-/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
-/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
-/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
-/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
-/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
-/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
-/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
-/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
-/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
-/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
-/* harmony import */ var _xpChart_mjs__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./xpChart.mjs */ "./src/xpChart.mjs");
-/* harmony import */ var _unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ./unitPrice.mjs */ "./src/unitPrice.mjs");
-/* harmony import */ var _xpChartView_js__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ./xpChartView.js */ "./src/xpChartView.js");
-/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
-/* harmony import */ var _slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ./slotNames.mjs */ "./src/slotNames.mjs");
-/* harmony import */ var _savedGroup_mjs__WEBPACK_IMPORTED_MODULE_36__ = __webpack_require__(/*! ./savedGroup.mjs */ "./src/savedGroup.mjs");
-/* harmony import */ var _whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ./whatif/minGain.mjs */ "./src/whatif/minGain.mjs");
-/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
-/* harmony import */ var _whatif_history_mjs__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ./whatif/history.mjs */ "./src/whatif/history.mjs");
-/* harmony import */ var _whatif_chartView_mjs__WEBPACK_IMPORTED_MODULE_40__ = __webpack_require__(/*! ./whatif/chartView.mjs */ "./src/whatif/chartView.mjs");
-/* harmony import */ var _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_41__ = __webpack_require__(/*! ./whatif/runnerDownload.mjs */ "./src/whatif/runnerDownload.mjs");
-/* harmony import */ var _talismanView_mjs__WEBPACK_IMPORTED_MODULE_42__ = __webpack_require__(/*! ./talismanView.mjs */ "./src/talismanView.mjs");
-/* harmony import */ var _whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_43__ = __webpack_require__(/*! ./whatif/morph.mjs */ "./src/whatif/morph.mjs");
-/* harmony import */ var _whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_44__ = __webpack_require__(/*! ./whatif/tip.mjs */ "./src/whatif/tip.mjs");
-/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_45__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
-/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_46__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+/* harmony import */ var _combatsimulator_lootPricing_js__WEBPACK_IMPORTED_MODULE_18__ = __webpack_require__(/*! ./combatsimulator/lootPricing.js */ "./src/combatsimulator/lootPricing.js");
+/* harmony import */ var _numberFormat_js__WEBPACK_IMPORTED_MODULE_19__ = __webpack_require__(/*! ./numberFormat.js */ "./src/numberFormat.js");
+/* harmony import */ var _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_20__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerDependencyDetailMap.json */ "./src/combatsimulator/data/combatTriggerDependencyDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerConditionDetailMap.json */ "./src/combatsimulator/data/combatTriggerConditionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_22__ = __webpack_require__(/*! ./combatsimulator/data/combatTriggerComparatorDetailMap.json */ "./src/combatsimulator/data/combatTriggerComparatorDetailMap.json");
+/* harmony import */ var _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_23__ = __webpack_require__(/*! ./combatsimulator/data/abilitySlotsLevelRequirementList.json */ "./src/combatsimulator/data/abilitySlotsLevelRequirementList.json");
+/* harmony import */ var _combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__ = __webpack_require__(/*! ./combatsimulator/data/actionDetailMap.json */ "./src/combatsimulator/data/actionDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_25__ = __webpack_require__(/*! ./combatsimulator/data/combatMonsterDetailMap.json */ "./src/combatsimulator/data/combatMonsterDetailMap.json");
+/* harmony import */ var _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_26__ = __webpack_require__(/*! ./combatsimulator/data/damageTypeDetailMap.json */ "./src/combatsimulator/data/damageTypeDetailMap.json");
+/* harmony import */ var _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_27__ = __webpack_require__(/*! ./combatsimulator/data/combatStyleDetailMap.json */ "./src/combatsimulator/data/combatStyleDetailMap.json");
+/* harmony import */ var _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_28__ = __webpack_require__(/*! ./combatsimulator/data/openableLootDropMap.json */ "./src/combatsimulator/data/openableLootDropMap.json");
+/* harmony import */ var _combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_29__ = __webpack_require__(/*! ./combatsimulator/data/achievementTierDetailMap.json */ "./src/combatsimulator/data/achievementTierDetailMap.json");
+/* harmony import */ var _combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_30__ = __webpack_require__(/*! ./combatsimulator/data/achievementDetailMap.json */ "./src/combatsimulator/data/achievementDetailMap.json");
+/* harmony import */ var _marketplace_mjs__WEBPACK_IMPORTED_MODULE_31__ = __webpack_require__(/*! ./marketplace.mjs */ "./src/marketplace.mjs");
+/* harmony import */ var _xpChart_mjs__WEBPACK_IMPORTED_MODULE_32__ = __webpack_require__(/*! ./xpChart.mjs */ "./src/xpChart.mjs");
+/* harmony import */ var _unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__ = __webpack_require__(/*! ./unitPrice.mjs */ "./src/unitPrice.mjs");
+/* harmony import */ var _xpChartView_js__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ./xpChartView.js */ "./src/xpChartView.js");
+/* harmony import */ var _groupSelection_mjs__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ./groupSelection.mjs */ "./src/groupSelection.mjs");
+/* harmony import */ var _slotNames_mjs__WEBPACK_IMPORTED_MODULE_36__ = __webpack_require__(/*! ./slotNames.mjs */ "./src/slotNames.mjs");
+/* harmony import */ var _savedGroup_mjs__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ./savedGroup.mjs */ "./src/savedGroup.mjs");
+/* harmony import */ var _whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ./whatif/minGain.mjs */ "./src/whatif/minGain.mjs");
+/* harmony import */ var _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ./whatif/panel.mjs */ "./src/whatif/panel.mjs");
+/* harmony import */ var _whatif_history_mjs__WEBPACK_IMPORTED_MODULE_40__ = __webpack_require__(/*! ./whatif/history.mjs */ "./src/whatif/history.mjs");
+/* harmony import */ var _whatif_chartView_mjs__WEBPACK_IMPORTED_MODULE_41__ = __webpack_require__(/*! ./whatif/chartView.mjs */ "./src/whatif/chartView.mjs");
+/* harmony import */ var _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_42__ = __webpack_require__(/*! ./whatif/runnerDownload.mjs */ "./src/whatif/runnerDownload.mjs");
+/* harmony import */ var _talismanView_mjs__WEBPACK_IMPORTED_MODULE_43__ = __webpack_require__(/*! ./talismanView.mjs */ "./src/talismanView.mjs");
+/* harmony import */ var _whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_44__ = __webpack_require__(/*! ./whatif/morph.mjs */ "./src/whatif/morph.mjs");
+/* harmony import */ var _whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_45__ = __webpack_require__(/*! ./whatif/tip.mjs */ "./src/whatif/tip.mjs");
+/* harmony import */ var _patchNote_json__WEBPACK_IMPORTED_MODULE_46__ = __webpack_require__(/*! ../patchNote.json */ "./patchNote.json");
+/* harmony import */ var _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_47__ = __webpack_require__(/*! ../patchNote.i18n.json */ "./patchNote.i18n.json");
+
 
 
 
@@ -6155,8 +6457,8 @@ let simStartTime = 0;
 // The progress bar text, "37% (1.2s)", with the exact elapsed time on hover, both in the number mode in force when drawn.
 function setProgressText(percent) {
     const elapsed = (Date.now() - simStartTime) / 1000;
-    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatUnit)(elapsed, "s") + ")";
-    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.exactUnit)(elapsed, "s") + ")";
+    progressbar.innerHTML = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.formatUnit)(elapsed, "s") + ")";
+    progressbar.title = percent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentSign)() + " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.exactUnit)(elapsed, "s") + ")";
 }
 
 let worker = new Worker(new URL(/* worker import */ __webpack_require__.p + __webpack_require__.u(2), __webpack_require__.b));
@@ -6488,7 +6790,7 @@ function applyGuildBuffsToState(importMap) {
 }
 
 function refreshAchievementStatics() {
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_28__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_29__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
         const checks = document.querySelectorAll(`input[data-achievement-hrid][data-tier="${tier.sortIndex}"]`);
         const done = Array.from(checks).filter(cb => cb.checked).length;
@@ -6513,9 +6815,9 @@ function initAchievementsModal(){
     let newChildren = [];
     player.achievements = {};
 
-    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_28__).sort((a, b) => a.sortIndex - b.sortIndex);
+    let tierMap = Object.values(_combatsimulator_data_achievementTierDetailMap_json__WEBPACK_IMPORTED_MODULE_29__).sort((a, b) => a.sortIndex - b.sortIndex);
     for(const tier of Object.values(tierMap)) {
-        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
+        let detailMap = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_30__).filter((detail) => detail.tierHrid == tier.hrid).sort((a, b) => a.sortIndex - b.sortIndex);
         let detailMapCount = detailMap.length;
         if (detailMapCount <= 0) continue;
 
@@ -6534,8 +6836,8 @@ function initAchievementsModal(){
         bufDesc.appendChild(buffName);
         let buffValue = createElement("i", "");
         const buffPercent = parseFloat(tier["buff"].ratioBoost==0?tier["buff"].flatBoost:tier["buff"].ratioBoost)*100;
-        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)();
-        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentSign)();
+        buffValue.innerText = ":+" + buffPercent + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentSign)();
+        buffValue.title = "+" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.exactNumber)(buffPercent) + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentSign)();
         bufDesc.appendChild(buffValue);
         cardHeader.appendChild(bufDesc);
 
@@ -6750,10 +7052,10 @@ function updateCombatStatsUI() {
     let combatStyleElement = document.getElementById("combatStat_combatStyleHrid");
     let combatStyle = unit.combatDetails.combatStats.combatStyleHrid;
     combatStyleElement.setAttribute("data-i18n", "combatStyleNames." + combatStyle);
-    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_26__[combatStyle].name;
+    combatStyleElement.innerHTML = _combatsimulator_data_combatStyleDetailMap_json__WEBPACK_IMPORTED_MODULE_27__[combatStyle].name;
 
     let damageTypeElement = document.getElementById("combatStat_damageType");
-    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[unit.combatDetails.combatStats.damageType];
+    let damageType = _combatsimulator_data_damageTypeDetailMap_json__WEBPACK_IMPORTED_MODULE_26__[unit.combatDetails.combatStats.damageType];
     damageTypeElement.setAttribute("data-i18n", "damageTypeNames." + damageType.hrid);
     damageTypeElement.innerHTML = damageType.name;
 
@@ -6779,7 +7081,7 @@ function updateCombatStatsUI() {
 
 // Lines the numbers of every column up (one number of decimals per column, src/numberFormat.js); run after a table or list renders.
 function alignNumbers() {
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.alignNumberColumns)(document);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.alignNumberColumns)(document);
 }
 
 // #endregion
@@ -7002,9 +7304,9 @@ function updateAbilityUI() {
         let inputElement = document.getElementById("inputAbilityLevel_" + i);
         let triggerButton = document.getElementById("buttonAbilityTrigger_" + i);
 
-        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1];
-        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1];
-        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1] || !main_abilities[i];
+        selectElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_23__[i + 1];
+        inputElement.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_23__[i + 1];
+        triggerButton.disabled = player.intelligenceLevel < _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_23__[i + 1] || !main_abilities[i];
         let moveUpButton = document.getElementById("selectAbilityMoveUp_" + i);
         moveUpButton.onclick = () => swapAbilityOrder(i, -1);
     }
@@ -7223,7 +7525,7 @@ function updateTriggerModal() {
 
         triggerComparatorSelect.value = modalTriggers[i].comparatorHrid;
 
-        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[modalTriggers[i].comparatorHrid].allowValue) {
+        if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[modalTriggers[i].comparatorHrid].allowValue) {
             showElement(triggerValueInput);
             triggerValueInput.value = modalTriggers[i].value;
         } else {
@@ -7241,7 +7543,7 @@ function fillTriggerDependencySelect(element) {
     element.length = 0;
     element.add(new Option("", ""));
 
-    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__).sort(
+    for (const dependency of Object.values(_combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_20__).sort(
         (a, b) => a.sortIndex - b.sortIndex
     )) {
         let opt = new Option(dependency.name, dependency.hrid);
@@ -7251,13 +7553,13 @@ function fillTriggerDependencySelect(element) {
 }
 
 function fillTriggerConditionSelect(element, dependencyHrid) {
-    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__[dependencyHrid];
+    let dependency = _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[dependencyHrid];
 
     let conditions;
     if (dependency.isSingleTarget) {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__).filter((condition) => condition.isSingleTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__).filter((condition) => condition.isSingleTarget);
     } else {
-        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__).filter((condition) => condition.isMultiTarget);
+        conditions = Object.values(_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__).filter((condition) => condition.isMultiTarget);
     }
 
     element.length = 0;
@@ -7271,9 +7573,9 @@ function fillTriggerConditionSelect(element, dependencyHrid) {
 }
 
 function fillTriggerComparatorSelect(element, conditionHrid) {
-    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[conditionHrid];
+    let condition = _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[conditionHrid];
 
-    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[hrid]);
+    let comparators = condition.allowedComparatorHrids.map((hrid) => _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[hrid]);
 
     element.length = 0;
     element.add(new Option("", ""));
@@ -7341,7 +7643,7 @@ function initZones() {
     let zoneSelect = document.getElementById("selectZone");
 
     // TOOD dungeon wave spawns
-    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+    let gameZones = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -7368,7 +7670,7 @@ function initZones() {
         }
     });
 
-    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+    let zoneHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
         .filter((action) => (0,_zones_mjs__WEBPACK_IMPORTED_MODULE_14__.isPlanetZone)(action))
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -7411,7 +7713,7 @@ function initZones() {
         }
     });
 
-    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+    let soloHrids = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
         .filter((action) => action.type == "/action_types/combat" && action.category != "/action_categories/combat/dungeons" && action.combatZoneInfo.fightInfo.randomSpawnInfo.maxSpawnCount == 1)
         .sort((a, b) => a.sortIndex - b.sortIndex)
         .flat();
@@ -7443,7 +7745,7 @@ function initZones() {
 function initDungeons() {
     let dungeonSelect = document.getElementById("selectDungeon");
 
-    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+    let gameDungeons = Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
         .filter((action) => action.type == "/action_types/combat" && action.category == "/action_categories/combat/dungeons")
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -7466,7 +7768,7 @@ let isLabyRinthSim = false;
 function initLabyrinth() {
     let labyrinthSelect = document.getElementById("selectLabyrinth");
 
-    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
+    let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_25__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -7635,11 +7937,11 @@ function showSimulationResult(simResult) {
     showDamageTaken(simResult, playerToDisplay);
     renderWipeEvents(simResult);
     window.profit = window.revenue - window.expenses;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitSpan'), window.profit);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('profitPreview'), window.profit);
     window.noRngProfit = window.noRngRevenue - window.expenses;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
     alignNumbers();
 
     // 显示战斗图表
@@ -7662,7 +7964,7 @@ function showAllSimulationResults(simResults) {
 
         for (let row = 1; row < rows.length; row++) {
             const cell = rows[row].cells[col];
-            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(cell);
+            const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.cellValue)(cell);
             if (value >= 30) {
                 cell.style.backgroundColor = 'green';
                 cell.style.color = 'white';
@@ -7681,7 +7983,7 @@ function showAllSimulationResults(simResults) {
             // 找到最大值及其单元格
             for (let row = 1; row < rows.length; row++) {
                 const cell = rows[row].cells[col];
-                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(cell);
+                const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.cellValue)(cell);
                 if (value > max) {
                     max = value;
                     maxCell = cell;
@@ -8073,7 +8375,7 @@ function manipulateSimResultsDataForDisplay(simResults) {
                 "expenses": expenses,
                 "noRngProfit": noRngProfit,
                 // Chart only: the table loop skips it (see CHART_ONLY_KEYS). Profit scaled to one day, so the chart does not depend on the Duration input.
-                "ProfitPerDay": (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_31__.profitPerDay)(noRngProfit, hoursSimulated)
+                "ProfitPerDay": (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_32__.profitPerDay)(noRngProfit, hoursSimulated)
             };
             displaySimResults.push(displaySimRow);
         }
@@ -8081,102 +8383,10 @@ function manipulateSimResultsDataForDisplay(simResults) {
     return displaySimResults;
 }
 
-function fidDropAmount(dropAmount) {
-  if (Number.isInteger(dropAmount)) return dropAmount;
-
-  const intPart   = Math.floor(dropAmount);
-  const fracPart  = dropAmount - intPart;
-  return Math.random() < fracPart ? intPart + 1 : intPart;
-}
-
+// The player's drops of the run: totalDropMap rolled kill by kill, noRngTotalDropMap the expected amounts. Each kill is
+// priced with the multipliers the player had at it (src/combatsimulator/lootPricing.js).
 function calcDropMaps(simResult, playerToDisplay) {
-    let dropRateMultiplier = simResult.dropRateMultiplier[playerToDisplay];
-    let rareFindMultiplier = simResult.rareFindMultiplier[playerToDisplay];
-    let combatDropQuantity = simResult.combatDropQuantity[playerToDisplay];
-    let debuffOnLevelGap = simResult.debuffOnLevelGap[playerToDisplay];
-
-    let numberOfPlayers = simResult.numberOfPlayers;
-    let monsters = Object.keys(simResult.deaths)
-        .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
-        .sort();
-
-    const totalDropMap = new Map();
-    const noRngTotalDropMap = new Map();
-    for (const monster of monsters) {
-        const dropMap = new Map();
-        const rareDropMap = new Map();
-        if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].dropTable) {
-            for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].dropTable) {
-                if (drop.minDifficultyTier > simResult.difficultyTier) {
-                    continue;
-                }
-
-                let multiplier = 1.0 + 0.1 * simResult.difficultyTier;
-                let dropRate = Math.min(1.0, multiplier * (drop.dropRate + (drop.dropRatePerDifficultyTier ?? 0) * simResult.difficultyTier));
-                if (dropRate <= 0) continue;
-
-                dropMap.set(drop.itemHrid, { "dropRate": Math.min(1.0, dropRate * dropRateMultiplier), "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
-            }
-            if (_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].rareDropTable)
-                for (const drop of _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].rareDropTable) {
-                    if (drop.minDifficultyTier > simResult.difficultyTier) {
-                        continue;
-                    }
-                    rareDropMap.set(drop.itemHrid, { "dropRate": drop.dropRate * rareFindMultiplier, "number": 0, "dropMin": drop.minCount, "dropMax": drop.maxCount, "noRngDropAmount": 0 });
-                }
-
-            for (let dropObject of dropMap.values()) {
-                dropObject.noRngDropAmount += simResult.deaths[monster] * dropObject.dropRate * ((dropObject.dropMax + dropObject.dropMin) / 2) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity) / numberOfPlayers;
-
-            }
-            for (let dropObject of rareDropMap.values()) {
-                dropObject.noRngDropAmount += simResult.deaths[monster] * dropObject.dropRate * ((dropObject.dropMax + dropObject.dropMin) / 2) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity) / numberOfPlayers;
-            }
-
-            for (let i = 0; i < simResult.deaths[monster]; i++) {
-                for (let dropObject of dropMap.values()) {
-                    let chance = Math.random();
-                    if (chance <= dropObject.dropRate / numberOfPlayers) {
-                        let amount = Math.floor(Math.random() * (dropObject.dropMax - dropObject.dropMin + 1) + dropObject.dropMin) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity);
-                        dropObject.number = dropObject.number + fidDropAmount(amount);
-                    }
-                }
-                for (let dropObject of rareDropMap.values()) {
-                    let chance = Math.random();
-                    if (chance <= dropObject.dropRate / numberOfPlayers) {
-                        let amount = Math.floor(Math.random() * (dropObject.dropMax - dropObject.dropMin + 1) + dropObject.dropMin) * (1 + debuffOnLevelGap) * (1 + combatDropQuantity);
-                        dropObject.number = dropObject.number + fidDropAmount(amount);
-                    }
-                }
-            }
-            for (let [name, dropObject] of dropMap.entries()) {
-                if (totalDropMap.has(name)) {
-                    totalDropMap.set(name, totalDropMap.get(name) + dropObject.number);
-                } else {
-                    totalDropMap.set(name, dropObject.number);
-                }
-                if (noRngTotalDropMap.has(name)) {
-                    noRngTotalDropMap.set(name, noRngTotalDropMap.get(name) + dropObject.noRngDropAmount);
-                } else {
-                    noRngTotalDropMap.set(name, dropObject.noRngDropAmount);
-                }
-            }
-            for (let [name, dropObject] of rareDropMap.entries()) {
-                if (totalDropMap.has(name)) {
-                    totalDropMap.set(name, totalDropMap.get(name) + dropObject.number);
-                } else {
-                    totalDropMap.set(name, dropObject.number);
-                }
-                if (noRngTotalDropMap.has(name)) {
-                    noRngTotalDropMap.set(name, noRngTotalDropMap.get(name) + dropObject.noRngDropAmount);
-                } else {
-                    noRngTotalDropMap.set(name, dropObject.noRngDropAmount);
-                }
-            }
-        }
-    }
-
-    return { totalDropMap, noRngTotalDropMap };
+    return { totalDropMap: (0,_combatsimulator_lootPricing_js__WEBPACK_IMPORTED_MODULE_18__.rolledDrops)(simResult, playerToDisplay), noRngTotalDropMap: (0,_combatsimulator_lootPricing_js__WEBPACK_IMPORTED_MODULE_18__.expectedDrops)(simResult, playerToDisplay) };
 }
 
 function getDropProfit(simResult, playerToDisplay) {
@@ -8184,7 +8394,7 @@ function getDropProfit(simResult, playerToDisplay) {
 
     let noRngTotal = 0;
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
         noRngTotal += price * dropAmount;
     }
 
@@ -8198,7 +8408,7 @@ function getDropProfit(simResult, playerToDisplay) {
 
     let expenses = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
         expenses += price * amount;
     }
 
@@ -8213,7 +8423,7 @@ const CHART_ONLY_KEYS = new Set(['ProfitPerDay']);
 let xpChartView = null;
 function getXpChartView() {
     if (!xpChartView) {
-        xpChartView = (0,_xpChartView_js__WEBPACK_IMPORTED_MODULE_33__.createXpChartView)({ t: (key) => i18next.t(key), format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatNumber)(v), Chart });
+        xpChartView = (0,_xpChartView_js__WEBPACK_IMPORTED_MODULE_34__.createXpChartView)({ t: (key) => i18next.t(key), format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.formatNumber)(v), Chart });
         i18next.on('languageChanged', () => xpChartView.refreshLabels());
     }
     return xpChartView;
@@ -8225,14 +8435,14 @@ function updateAllSimsModal(data) {
     data.forEach(item => {
         const row = document.createElement('tr');
         // The chart finds the rows of a map by these, never by cell text.
-        row.dataset.mapKey = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_31__.mapKey)(item.ZoneName, item.DifficultyTier);
+        row.dataset.mapKey = (0,_xpChart_mjs__WEBPACK_IMPORTED_MODULE_32__.mapKey)(item.ZoneName, item.DifficultyTier);
         row.dataset.player = item.Player;
 
         Object.keys(item).forEach(key => {
             if (CHART_ONLY_KEYS.has(key)) return;
             const cell = document.createElement('td');
             if (typeof item[key] === 'number' && key !== 'DifficultyTier') {
-                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(cell, item[key]);
+                (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(cell, item[key]);
                 cell.dataset.sortValue = item[key];
             } else {
                 cell.textContent = item[key];
@@ -8265,8 +8475,8 @@ function sortTable(tableId, columnIndex, direction) {
 
     const sortedRows = rows.sort((rowA, rowB) => {
         // The exact value the cell was built with (cellValue throws when a cell has none), never its display text.
-        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(rowA.children[columnIndex]);
-        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.cellValue)(rowB.children[columnIndex]);
+        const valueA = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.cellValue)(rowA.children[columnIndex]);
+        const valueB = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.cellValue)(rowB.children[columnIndex]);
 
         return direction === 'asc' ? valueA - valueB : valueB - valueA;
     });
@@ -8360,34 +8570,34 @@ function showKills(simResult, playerToDisplay) {
             failedDungeonsRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.dungeonsFailed");
             newChildren.push(failedDungeonsRow);
         }
-        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
-        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.dungeonsCompleted / hoursSimulated);
+        let averageTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(hoursSimulated * 60 / simResult.dungeonsCompleted);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Average Time", averageTime]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.averageTime");
         if (simResult.minDungenonTime > 0) {
-            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
+            let minimumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.minDungenonTime / ONE_SECOND / 60);
             let minimumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Minimum Time", minimumTime]);
             minimumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.minimumTime");
             newChildren.push(minimumTimeRow);
         }
         if (simResult.maxDungenonTime > 0) {
-            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
+            let maximumTime = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.maxDungenonTime / ONE_SECOND / 60);
             let maximumTimeRow = createRow(["col-md-6", "col-md-6 text-end"], ["Maximum Time", maximumTime]);
             maximumTimeRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.maximumTime");
             newChildren.push(maximumTimeRow);
         }
     } else {
-        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.encounters / hoursSimulated);
+        encountersPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.encounters / hoursSimulated);
         encountersRow = createRow(["col-md-6", "col-md-6 text-end"], ["Encounters", encountersPerHour]);
         encountersRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.encounters");
     }
 
     if (simResult.labyAttemptCount > 0) {
-        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
+        let labyAttemptCountRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Attempt Count", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.labyAttemptCount / hoursSimulated)]);
         labyAttemptCountRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labyAttemptCount");
         newChildren.push(labyAttemptCountRow);
 
-        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
+        let labySuccessRateRow = createRow(["col-md-6", "col-md-6 text-end"], ["Labyrinth Success Rate", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(simResult.encounters / simResult.labyAttemptCount * 100)]);
         labySuccessRateRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.labySuccessRate");
         newChildren.push(labySuccessRateRow);
     }
@@ -8399,7 +8609,7 @@ function showKills(simResult, playerToDisplay) {
     }
 
     if (simResult.debuffOnLevelGap[playerToDisplay] != 0) {
-        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
+        let debuffOnLevelGapRow = createRow(["col-md-6", "col-md-6 text-end"], ["Debuff on Level Gap", (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(simResult.debuffOnLevelGap[playerToDisplay] * 100)]);
         debuffOnLevelGapRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.debuffOnLevelGap");
         newChildren.push(debuffOnLevelGapRow);
     }
@@ -8410,10 +8620,10 @@ function showKills(simResult, playerToDisplay) {
         .filter(enemy => enemy !== "player1" && enemy !== "player2" && enemy !== "player3" && enemy !== "player4" && enemy !== "player5")
         .sort()
         .forEach(monster => {
-            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
+            let killsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.deaths[monster] / hoursSimulated);
             let monsterRow = createRow(
                 ["col-md-6", "col-md-6 text-end"],
-                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[monster].name, killsPerHour]
+                [_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[monster].name, killsPerHour]
             );
             monsterRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + monster);
             newChildren.push(monsterRow);
@@ -8426,7 +8636,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of totalDropMap.entries()) {
         let dropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount)]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(dropAmount)]
         );
         dropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newDropChildren.push(dropRow);
@@ -8434,12 +8644,12 @@ function showKills(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + name.replace(/\s+/g, '') + '"><td data-i18n="itemNames.';
         tableRow += name;
         tableRow += '"></td><td contenteditable="true">';
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(price * dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         revenueModalTable.innerHTML += tableRow;
         total += price * dropAmount;
@@ -8452,7 +8662,7 @@ function showKills(simResult, playerToDisplay) {
     for (let [name, dropAmount] of noRngTotalDropMap.entries()) {
         let noRngDropRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
-            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount)]
+            [name, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(dropAmount)]
         );
         noRngDropRow.firstElementChild.setAttribute("data-i18n", "itemNames." + name);
         newNoRngDropChildren.push(noRngDropRow);
@@ -8460,20 +8670,20 @@ function showKills(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + name.replace(/\s+/g, '') + '"><td data-i18n="itemNames.';
         tableRow += name;
         tableRow += '"></td><td contenteditable="true">';
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__.unitPrice)(window.prices, name, document.getElementById('selectPrices_drops').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(dropAmount);
         tableRow += '</td><td data-total="' + price * dropAmount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(price * dropAmount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(price * dropAmount);
         tableRow += '</td></tr>';
         noRngRevenueModalTable.innerHTML += tableRow;
         noRngTotal += price * dropAmount;
     }
 
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('revenueSpan'), total);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('revenueSpan'), total);
     window.revenue = total;
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('noRngRevenueSpan'), noRngTotal);
     window.noRngRevenue = noRngTotal;
 
     let resultAccordion = document.getElementById("noRngDropsAccordion");
@@ -8489,7 +8699,7 @@ function showDeaths(simResult, playerToDisplay) {
 
     let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
     let playerDeaths = simResult.deaths[playerToDisplay] ?? 0;
-    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(playerDeaths / hoursSimulated);
+    let deathsPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(playerDeaths / hoursSimulated);
 
     let deathRow = createRow(["col-md-6", "col-md-6 text-end"], ["Player", deathsPerHour]);
     deathRow.firstElementChild.setAttribute("data-i18n", "common:player");
@@ -8506,7 +8716,7 @@ function showExperienceGained(simResult, playerToDisplay) {
     if (simResult.experienceGained[playerToDisplay]) {
         totalExperience = Object.values(simResult.experienceGained[playerToDisplay]).reduce((prev, cur) => prev + cur, 0);
     }
-    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalExperience / hoursSimulated);
+    let totalExperiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(totalExperience / hoursSimulated);
     let totalRow = createRow(["col-md-6", "col-md-6 text-end"], ["Total", totalExperiencePerHour]);
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -8516,7 +8726,7 @@ function showExperienceGained(simResult, playerToDisplay) {
         if (experience == 0) {
             return;
         }
-        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(experience / hoursSimulated);
+        let experiencePerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(experience / hoursSimulated);
         let experienceRow = createRow(["col-md-6", "col-md-6 text-end"], [skill, experiencePerHour]);
         experienceRow.firstElementChild.setAttribute("data-i18n", "leaderboardCategoryNames." + skill.toLowerCase());
         newChildren.push(experienceRow);
@@ -8535,7 +8745,7 @@ function showHpSpent(simResult, playerToDisplay) {
         let hoursSimulated = simResult.simulatedTime / ONE_HOUR;
         let hpSpentSources = [];
         for (const source of Object.keys(simResult.hitpointsSpent[playerToDisplay])) {
-            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
+            let hpSpentPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(simResult.hitpointsSpent[playerToDisplay][source] / hoursSimulated);
             let hpSpentRow = createRow(["col-md-6", "col-md-6 text-end"], [_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[source].name, hpSpentPerHour]);
             hpSpentRow.firstElementChild.setAttribute("data-i18n", "abilityNames." + source);
             hpSpentSources.push(hpSpentRow);
@@ -8563,7 +8773,7 @@ function showConsumablesUsed(simResult, playerToDisplay) {
     let expensesModalTable = document.querySelector("#expensesTable > tbody");
     let total = 0;
     for (const [consumable, amount] of consumablesUsed) {
-        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount / hoursSimulated);
+        let consumablesPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(amount / hoursSimulated);
         let consumableRow = createRow(
             ["col-md-6", "col-md-6 text-end"],
             [_combatsimulator_data_itemDetailMap_json__WEBPACK_IMPORTED_MODULE_3__[consumable].name, consumablesPerHour]
@@ -8574,18 +8784,18 @@ function showConsumablesUsed(simResult, playerToDisplay) {
         let tableRow = '<tr class="' + consumable + '"><td data-i18n="itemNames.';
         tableRow += consumable;
         tableRow += '"></td><td contenteditable="true">';
-        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
+        let price = (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__.unitPrice)(window.prices, consumable, document.getElementById('selectPrices_consumables').value);
         tableRow += price;
         tableRow += '</td><td data-amount="' + amount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(amount);
         tableRow += '</td><td data-total="' + price * amount + '">';
-        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(price * amount);
+        tableRow += (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(price * amount);
         tableRow += '</td></tr>';
         expensesModalTable.innerHTML += tableRow;
         total += price * amount;
     }
 
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('expensesSpan'), total);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('expensesSpan'), total);
     window.expenses = total;
 
     resultDiv.replaceChildren(...newChildren);
@@ -8607,8 +8817,8 @@ function showManaUsed(simResult, playerToDisplay) {
     for (let ability in playerManaUsed) {
         let manaUsed = playerManaUsed[ability];
         let manaPerHourValue = Math.round(manaUsed / hoursSimulated);
-        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(manaPerHourValue);
-        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
+        let manaPerHour = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(manaPerHourValue);
+        let castsPerHour = " (" + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(manaPerHourValue / _combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[ability].manaCost) + ")";
 
         let manaRow = createRow(
             ["col-md-6", "col-md-2", "col-md-4 text-end"],
@@ -8635,10 +8845,10 @@ function showHitpointsGained(simResult, playerToDisplay) {
     let hitpointsGained = Object.entries(simResult.hitpointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalHitpointsGained = hitpointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalHitpointsGained / secondsSimulated);
+    let totalHitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(totalHitpointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(100)]
+        ["Total", totalHitpointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -8673,8 +8883,8 @@ function showHitpointsGained(simResult, playerToDisplay) {
                 }
                 break;
         }
-        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * amount) / totalHitpointsGained);
+        let hitpointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)((100 * amount) / totalHitpointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
@@ -8701,10 +8911,10 @@ function showManapointsGained(simResult, playerToDisplay) {
     let manapointsGained = Object.entries(simResult.manapointsGained[playerToDisplay]).sort((a, b) => b[1] - a[1]);
 
     let totalManapointsGained = manapointsGained.reduce((prev, cur) => prev + cur[1], 0);
-    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalManapointsGained / secondsSimulated);
+    let totalManapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(totalManapointsGained / secondsSimulated);
     let totalRow = createRow(
         ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
-        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(100)]
+        ["Total", totalManapointsPerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -8734,8 +8944,8 @@ function showManapointsGained(simResult, playerToDisplay) {
                 sourceFullHrid = "itemNames." + source;
                 break;
         }
-        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(amount / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * amount) / totalManapointsGained);
+        let manapointsPerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(amount / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)((100 * amount) / totalManapointsGained);
 
         let row = createRow(
             ["col-md-6", "col-md-3 text-end", "col-md-3 text-end"],
@@ -8752,7 +8962,7 @@ function showManapointsGained(simResult, playerToDisplay) {
         ["col-md-8 text-nowrap", "col-md-4 text-end"],
         [
             "Run Out Ratio",
-            (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
+            (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(simResult.simulatedTime > 0 ? totalTimeForOut / simResult.simulatedTime * 100 : 0)
         ]
     );
     ranOutOfManaStatRow.firstElementChild.setAttribute("data-i18n", "common:simulationResults.ranOutOfManaRatio");
@@ -8823,12 +9033,12 @@ function showDamageDone(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageDoneAccordionEnemy" + enemyIndex
         );
-        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[target].name;
+        let targetName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[target].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageDone\">Damage Done</span> (" + "<span data-i18n=\"monsterNames." + target + "\">" + targetName + "</span>" + ")</b>";
 
         if (simResult.bossSpawns.includes(target)) {
-            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
-            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
+            let hoursSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(aliveSecondsSimulated / 60 / 60, "h");
+            let percentSpentOnBoss = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(aliveSecondsSimulated / totalSecondsSimulated * 100);
 
             let bossRow = createRow(["col-md-6", "col-md-6 text-end"], [targetName, hoursSpentOnBoss + "(" + percentSpentOnBoss + ")"]);
             bossRow.firstElementChild.setAttribute("data-i18n", "monsterNames." + target);
@@ -8851,7 +9061,7 @@ function showDamageDone(simResult, playerToDisplay) {
                 continue;
             }
             let aliveSecondsSimulated = simResult.timeSpentAlive[idx].timeSpentAlive / ONE_SECOND / simResult.timeSpentAlive[idx].count;
-            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(aliveSecondsSimulated, "s")]);
+            let bossRow = createRow(["col-md-6", "col-md-2", "col-md-4 text-end"], [waveNumber, simResult.timeSpentAlive[idx].count, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(aliveSecondsSimulated, "s")]);
             newChildren.push(bossRow);
         }
         if (newChildren.length > 0) {
@@ -8920,7 +9130,7 @@ function showDamageTaken(simResult, playerToDisplay) {
         let resultAccordionButton = document.getElementById(
             "buttonSimulationResultDamageTakenAccordionEnemy" + enemyIndex
         );
-        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__[source].name;
+        let sourceName = _combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_25__[source].name;
         resultAccordionButton.innerHTML = "<b><span data-i18n=\"common:simulationResults.damageTaken\">Damage Taken</span> (" + "<span data-i18n=\"monsterNames." + source + "\">" + sourceName + "</span>" + ")</b>";
 
         enemyIndex++;
@@ -8938,12 +9148,12 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
     let totalCasts = sortedDamageDone.reduce((prev, cur) => prev + cur[1].casts, 0);
     let totalMisses = sortedDamageDone.reduce((prev, cur) => prev + cur[1].misses, 0);
     let totalDamage = sortedDamageDone.reduce((prev, cur) => prev + cur[1].damage, 0);
-    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
-    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(totalDamage / secondsSimulated);
+    let totalHitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)((100 * (totalCasts - totalMisses)) / totalCasts);
+    let totalDamagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(totalDamage / secondsSimulated);
 
     let totalRow = createRow(
         ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
-        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)(100)]
+        ["Total", totalHitChance, totalDamagePerSecond, (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)(100)]
     );
     totalRow.firstElementChild.setAttribute("data-i18n", "common:total");
     newChildren.push(totalRow);
@@ -8986,9 +9196,9 @@ function createDamageTable(resultDiv, damageDone, secondsSimulated) {
                 break;
         }
 
-        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
-        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(damageInfo.damage / secondsSimulated);
-        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentHtml)((100 * damageInfo.damage) / totalDamage);
+        let hitChance = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)((100 * (damageInfo.casts - damageInfo.misses)) / damageInfo.casts);
+        let damagePerSecond = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(damageInfo.damage / secondsSimulated);
+        let percentage = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentHtml)((100 * damageInfo.damage) / totalDamage);
 
         let row = createRow(
             ["col-md-5", "col-md-3 text-end", "col-md-2 text-end", "col-md-2 text-end"],
@@ -9013,7 +9223,7 @@ function triggerHoldRows(simResult, playerToDisplay) {
     body.innerHTML = (0,_combatsimulator_heldPopup_js__WEBPACK_IMPORTED_MODULE_17__.heldPopupHtml)(holds, {
         abilityName: (hrid) => `<span data-i18n="abilityNames.${hrid}">${_combatsimulator_data_abilityDetailMap_json__WEBPACK_IMPORTED_MODULE_2__[hrid]?.name ?? hrid}</span>`,
         conditionHtml: triggerConditionHtml,
-        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.percentFixedHtml,
+        percentHtml: _numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.percentFixedHtml,
     });
     const row = createRow(["col-md-12"], [`<button type="button" id="heldByTriggerButton" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#heldByTriggerModal" data-i18n="common:simulationResults.heldByTriggerDetails">Held by trigger: details</button>`]);
     return [row];
@@ -9022,10 +9232,10 @@ function triggerHoldRows(simResult, playerToDisplay) {
 // A trigger condition in the game's words ("My Current Mp >= 300"), each part localized by its game key.
 function triggerConditionHtml(c) {
     const part = (key, map, hrid) => `<span data-i18n="${key}.${hrid}">${map[hrid]?.name ?? hrid}</span>`;
-    let html = part("combatTriggerDependencyNames", _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_19__, c.dependencyHrid) + " "
-        + part("combatTriggerConditionNames", _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__, c.conditionHrid) + " "
-        + part("combatTriggerComparatorNames", _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__, c.comparatorHrid);
-    if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[c.comparatorHrid]?.allowValue) html += " " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(c.value);
+    let html = part("combatTriggerDependencyNames", _combatsimulator_data_combatTriggerDependencyDetailMap_json__WEBPACK_IMPORTED_MODULE_20__, c.dependencyHrid) + " "
+        + part("combatTriggerConditionNames", _combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__, c.conditionHrid) + " "
+        + part("combatTriggerComparatorNames", _combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_22__, c.comparatorHrid);
+    if (_combatsimulator_data_combatTriggerComparatorDetailMap_json__WEBPACK_IMPORTED_MODULE_22__[c.comparatorHrid]?.allowValue) html += " " + (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(c.value);
     return html;
 }
 
@@ -9069,7 +9279,7 @@ function updatePlayerNames() {
 // (src/slotNames.mjs: a name two slots share, or none, leaves the tab's text). The What-if window and search read the same names.
 function applySlotNames() {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
-    const names = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__.uniqueSlotNames)(tabs.map((_, i) => playerDataMap[i + 1]));
+    const names = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_36__.uniqueSlotNames)(tabs.map((_, i) => playerDataMap[i + 1]));
     // A tab is written once per name: its own edit after that stays until the slot's name changes.
     tabs.forEach((tab, i) => { if (names[i] && tab.dataset.slotName !== names[i]) { tab.textContent = names[i]; tab.dataset.slotName = names[i]; } });
     updatePlayerNames();
@@ -9221,7 +9431,7 @@ function buildSimPlayerDTO() {
     }
 
     for (let i = 0; i < 5; i++) {
-        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_22__[i + 1]) {
+        if (main_abilities[i] && player.intelligenceLevel >= _combatsimulator_data_abilitySlotsLevelRequirementList_json__WEBPACK_IMPORTED_MODULE_23__[i + 1]) {
             let abilityLevelInput = document.getElementById("inputAbilityLevel_" + i);
             let ability = new _combatsimulator_ability_js__WEBPACK_IMPORTED_MODULE_7__["default"](main_abilities[i], Number(abilityLevelInput.value), triggerMap[main_abilities[i]]);
             player.abilities[i] = ability;
@@ -9368,7 +9578,7 @@ function startSimulation(selectedPlayers) {
         worker.onmessage = onWorkerMessage;
         worker.postMessage(workerMessage);
     } else if (simAllLabyrinthsToggle.checked) {
-        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
+        let gameLabyrinths = Object.values(_combatsimulator_data_combatMonsterDetailMap_json__WEBPACK_IMPORTED_MODULE_25__)
         .filter((monster) => monster.isLabyrinthMonster === true)
         .sort((a, b) => a.sortIndex - b.sortIndex);
 
@@ -9401,7 +9611,7 @@ function startSimulation(selectedPlayers) {
         let targetHrids = {};
 
         if (simAllZonesToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -9412,7 +9622,7 @@ function startSimulation(selectedPlayers) {
         }
 
         if (simAllSoloToggle.checked) {
-            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+            Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
                 .filter(a =>
                     a.type === "/action_types/combat" &&
                     a.category !== "/action_categories/combat/dungeons" &&
@@ -9567,7 +9777,7 @@ document.getElementById("buttonUploadJSONSimulate").addEventListener("click", (e
                     let targetHrids = {};
 
                     if (simAllZonesToggle.checked) {
-                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_23__)
+                        Object.values(_combatsimulator_data_actionDetailMap_json__WEBPACK_IMPORTED_MODULE_24__)
                             .filter(a =>
                                 a.type === "/action_types/combat" &&
                                 a.category !== "/action_categories/combat/dungeons" &&
@@ -10072,7 +10282,7 @@ function fixTriggerMap(triggerMap) {
             triggerMap[key] = [];
         }
         for (const trigger of triggerMap[key]) {
-            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_20__[trigger.conditionHrid]) {
+            if (!_combatsimulator_data_combatTriggerConditionDetailMap_json__WEBPACK_IMPORTED_MODULE_21__[trigger.conditionHrid]) {
                 err = true;
                 break;
             }
@@ -10183,7 +10393,7 @@ function loadEquipmentSetIntoUI(equipmentSet) {
             player.achievements[achievement] = field.checked;
         }
     } else {
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_30__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -10239,15 +10449,19 @@ function whatIfDrawChartsNow() {
     if (!whatIf.rounds.length && !first && !whatIf.result?.endedByUser) { whatIf.charts?.clear(); return; }
     if (!whatIf.charts) {
         const names = () => whatIfNames();
-        whatIf.charts = (0,_whatif_chartView_mjs__WEBPACK_IMPORTED_MODULE_40__.createChartHost)(box, {
-            t: whatIfT, format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatNumber)(v), stageLabel: (stage) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.stageLabel)(stage, whatIfT),
-            labelOf: (d) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.localizeDesc)(d.label ?? d.id, names(), d.player ? [d.player] : [], d.player ?? null),
+        whatIf.charts = (0,_whatif_chartView_mjs__WEBPACK_IMPORTED_MODULE_41__.createChartHost)(box, {
+            t: whatIfT, format: (v) => (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.formatNumber)(v), stageLabel: (stage) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.stageLabel)(stage, whatIfT),
+            labelOf: (d) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.localizeDesc)(d.label ?? d.id, names(), d.player ? [d.player] : [], d.player ?? null),
             onHover: (id) => whatIfMarkHot(id),
             onPick: (id) => { whatIfMarkHot(id); document.querySelector('#whatIfRounds tr.whatif-hot')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
         });
     }
     const progress = live ? whatIf.status?.progress : null;
-    whatIf.charts.update((0,_whatif_history_mjs__WEBPACK_IMPORTED_MODULE_39__.buildHistory)(whatIf.rounds, { firstLook: first }), { running: live ? progress?.stage ?? null : null, flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
+    // The stage that runs now: the progress' stage, unless its end mark (stageEnded) names it. An ended race stage stays the progress' stage through
+    // what follows it under its name (its pick checks, the base runs of a search that picked nothing); its progress row reads Done, so its chart does too.
+    const running = progress && progress.stageEnded !== progress.stage ? progress.stage ?? null : null;
+    const history = (0,_whatif_history_mjs__WEBPACK_IMPORTED_MODULE_40__.buildHistory)(whatIf.rounds, { firstLook: first });
+    whatIf.charts.update(history, { running, ended: (0,_whatif_chartView_mjs__WEBPACK_IMPORTED_MODULE_41__.endedStages)(history, { running, live, done: whatIf.state === 'done' }), flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
 }
 
 // The round records of a search the window did not watch run (an earlier search, or one finished before the window looked): fetched once per search id.
@@ -10255,7 +10469,7 @@ async function whatIfLoadRounds(id) {
     if (!id || whatIf.roundsLoaded === id) return;
     whatIf.roundsLoaded = id;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.rounds(id));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.rounds(id));
         if (ok && Array.isArray(body) && whatIf.roundsLoaded === id) { whatIf.rounds = body; whatIfDrawCharts(); }
     } catch (err) { /* the runner is gone; the chart stays as it is */ }
 }
@@ -10278,7 +10492,7 @@ function whatIfSlots(onlySelected) {
 // (its `name`), else the tab's own text. A name two slots share, or an empty one, falls back to the tab's text.
 function whatIfPlayerNames() {
     const tabs = [...document.querySelectorAll('#playerTab .nav-link')];
-    return (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__.shownNames)(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
+    return (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_36__.shownNames)(tabs.map((_, i) => playerDataMap[i + 1]), tabs.map((tab) => tab.textContent));
 }
 
 // The window's own choices: a tick box per player tab, and a zone and a tier selector built from the page's. When the window
@@ -10292,7 +10506,7 @@ function whatIfRenderChoices(fromPage) {
     const shownNames = whatIfPlayerNames();
     const players = document.getElementById('whatIfPlayers');
     const ticked = new Set(fromPage
-        ? tabs.map((_, i) => i + 1).filter((i) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.slotHasData)(playerDataMap[i])).map(String)
+        ? tabs.map((_, i) => i + 1).filter((i) => (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.slotHasData)(playerDataMap[i])).map(String)
         : [...players.querySelectorAll('input:checked')].map((c) => c.value));
     players.replaceChildren();
     // One row of equal columns, one per player (a long name is cut with an ellipsis, its title holds the whole name).
@@ -10334,15 +10548,15 @@ function whatIfRenderChoices(fromPage) {
 
 // The kept character export of a player (browser storage, one key per player name), or null.
 function whatIfKeptExport(name) {
-    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
+    try { const text = localStorage.getItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.exportKey)(name)); return text ? JSON.parse(text) : null; } catch (e) { return null; }
 }
 
 // Keeps one player's character export under the player's name (browser storage), then redraws the marks and the ticks that need it.
 // A party import ends here (whatIfKeepImportedExports). `data`: the export object; a valid one replaces the kept one, a bad one is not kept.
 function whatIfKeepExport(name, data) {
-    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.parseExport)(JSON.stringify(data));
+    const parsed = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.parseExport)(JSON.stringify(data));
     if (parsed.ok) {
-        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportKey)(name), JSON.stringify(parsed.data)); } catch (e) { /* storage full or blocked: the mark below says none */ }
+        try { localStorage.setItem((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.exportKey)(name), JSON.stringify(parsed.data)); } catch (e) { /* storage full or blocked: the mark below says none */ }
     }
     whatIfShowExportStatus();
     whatIfApplyExportLevers();
@@ -10351,7 +10565,7 @@ function whatIfKeepExport(name, data) {
 // Each player's mark under the budget: where the owned items and abilities come from (that player's kept export).
 function whatIfShowExportStatus() {
     for (const mark of document.querySelectorAll('#whatIfBudgets [data-export-status]')) {
-        mark.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportStatus)(whatIfKeptExport(mark.dataset.exportStatus), whatIfT);
+        mark.textContent = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.exportStatus)(whatIfKeptExport(mark.dataset.exportStatus), whatIfT);
         mark.title = mark.textContent;
     }
 }
@@ -10382,7 +10596,7 @@ function whatIfDrawMessage() {
 // null when not readable (the field is then marked invalid).
 function whatIfBudgetValue(input) {
     if (input.value.trim() === '') return 0;
-    const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.parseNumber)(input.value);
+    const value = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.parseNumber)(input.value);
     return value === null || Number.isNaN(value) ? null : Math.round(value);
 }
 function whatIfMarkBudget(input) {
@@ -10420,10 +10634,10 @@ function whatIfRenderSetup() {
     whatIfShowExportStatus();
     const levers = document.getElementById('whatIfLevers');
     // The boxes that needed the export and were off before this redraw (all of them on the first draw): they come back ticked once one is there.
-    const prevDisabled = new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.EXPORT_LEVERS.filter((id) => { const old = document.getElementById('whatIfLever_' + id); return !old || old.disabled; }));
-    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.LEVERS.filter((l) => l.def).map((l) => l.id));
+    const prevDisabled = new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.EXPORT_LEVERS.filter((id) => { const old = document.getElementById('whatIfLever_' + id); return !old || old.disabled; }));
+    const checked = levers.childElementCount ? new Set([...levers.querySelectorAll('input:checked')].map((i) => i.value)) : new Set(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.LEVERS.filter((l) => l.def).map((l) => l.id));
     levers.replaceChildren();
-    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.LEVERS) {
+    for (const lever of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.LEVERS) {
         const row = document.createElement('div');
         row.className = 'form-check';
         const input = document.createElement('input');
@@ -10456,10 +10670,10 @@ function whatIfRenderSetup() {
 // given: read from the boxes as they are now).
 function whatIfApplyExportLevers(prevDisabled = null) {
     const hasExport = whatIfSlots(true).some((s) => whatIfKeptExport(s.name));
-    for (const id of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.EXPORT_LEVERS) {
+    for (const id of _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.EXPORT_LEVERS) {
         const input = document.getElementById('whatIfLever_' + id);
         if (!input) continue;
-        const view = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.exportLeverView)({ hasExport, wasDisabled: prevDisabled ? prevDisabled.has(id) : input.disabled, wasChecked: input.checked }, whatIfT);
+        const view = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.exportLeverView)({ hasExport, wasDisabled: prevDisabled ? prevDisabled.has(id) : input.disabled, wasChecked: input.checked }, whatIfT);
         input.disabled = view.disabled;
         input.checked = view.checked;
         input.title = view.title;
@@ -10470,7 +10684,7 @@ function whatIfApplyExportLevers(prevDisabled = null) {
 // The game's names in the shown language, from the same bundles the page's data-i18n lookups read (output only).
 function whatIfNames() {
     const bundle = (lng) => i18next.getResourceBundle(lng, 'translation');
-    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty'), ability: bundle(i18next.resolvedLanguage || i18next.language)?.abilitySlot?.ability || bundle('en')?.abilitySlot?.ability, trig: Object.fromEntries(['trigger', 'always', 'and', 'then', 'gameDefault', 'drop', 'add', 'kept', 'copied'].map((k) => [k, whatIfT('trig.' + k, { x: '{x}' })])) });
+    return (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.namesFrom)(bundle(i18next.resolvedLanguage || i18next.language), bundle('en'), { empty: whatIfT('rounds.slotEmpty'), ability: bundle(i18next.resolvedLanguage || i18next.language)?.abilitySlot?.ability || bundle('en')?.abilitySlot?.ability, trig: Object.fromEntries(['trigger', 'always', 'and', 'then', 'gameDefault', 'drop', 'add', 'kept', 'copied'].map((k) => [k, whatIfT('trig.' + k, { x: '{x}' })])) });
 }
 
 // `running`: the report so far of a search that is still going (the runner's `partial`), drawn as the finished report is, with a
@@ -10478,7 +10692,7 @@ function whatIfNames() {
 // `loaded`: the report was put on show from "Earlier searches" (whatIfLoadResult), not by the search the window watches.
 // The "so far" rows of a running report (panel soFarSteps): from the latest round record and the stage the progress names; none for a report put on show
 // from "Earlier searches", a stopped one or a finished one. The key tells a poll whether they changed (the report is redrawn only then).
-function whatIfSoFarOf(result, running) { return running === true && !whatIf.resultLoaded ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.soFarSteps)(whatIf.round, whatIf.status?.progress, result?.steps) : []; }
+function whatIfSoFarOf(result, running) { return running === true && !whatIf.resultLoaded ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.soFarSteps)(whatIf.round, whatIf.status?.progress, result?.steps) : []; }
 function whatIfSoFarKey(rows) { return JSON.stringify(rows.map((r) => [r.desc, r.gainPerUser, r.sePerUser, r.buyerNet, r.buyerNetSe])); }
 function whatIfShowResult(result, running = false, loaded = false) {
     const box = document.getElementById('whatIfResult');
@@ -10488,7 +10702,7 @@ function whatIfShowResult(result, running = false, loaded = false) {
     whatIf.resultLoaded = loaded;
     const soFar = whatIfSoFarOf(result, running);
     whatIf.soFarKey = whatIfSoFarKey(soFar);
-    box.innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderResult)(result, whatIfT, Date.now(), whatIfNames(), running, soFar) : '';
+    box.innerHTML = result ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.renderResult)(result, whatIfT, Date.now(), whatIfNames(), running, soFar) : '';
     for (const id of open) {
         const body = document.getElementById(id);
         if (body) body.hidden = false;
@@ -10519,7 +10733,7 @@ function whatIfShowSetup() {
         // Goal and zone names come from the locale, not from the selects' text: on a language change this runs before the page relabels the selects.
         chip(whatIfT('goalLabel'), whatIfT('goal.' + document.getElementById('selectWhatIfGoal').value)),
         chip(whatIfT('zone'), i18next.t('actionNames.' + document.getElementById('selectWhatIfZone').value) + ' · ' + sel('selectWhatIfTier')),
-        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.formatNumber)(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
+        ...[...document.querySelectorAll('#whatIfBudgets input[data-player]')].map((i) => chip(i.dataset.player, whatIfBudgetValue(i) ? (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.formatNumber)(whatIfBudgetValue(i)) : whatIfT('budgetPlaceholder'))),
         chip(whatIfT('paybackChip'), pay > 0 ? whatIfT('days', { n: pay }) : whatIfT('budgetPlaceholder')),
         chip(whatIfT('levers'), [...document.querySelectorAll('#whatIfLevers input:checked')].map((i) => whatIfT('lever.' + i.value + '.name')).join(', ')));
 }
@@ -10535,10 +10749,10 @@ function whatIfShowDiff() {
     const box = document.getElementById('whatIfDiff');
     if (!result?.setups) { box.innerHTML = ''; return; }
     const names = new Set(result.setups.map((s) => s.name));
-    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
+    const page = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.pageSetups)(whatIfSlots(false).filter((s) => names.has(s.name)));
     // The list behind the warning's one line stays open when a redraw replaces it (each running report redraws the warning).
     const open = document.getElementById('whatIfDiffList')?.hidden === false;
-    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
+    box.innerHTML = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.renderDiff)((0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.diffSetups)(page, result.setups), whatIfT, whatIfNames());
     const list = document.getElementById('whatIfDiffList');
     if (open && list) list.hidden = false;
     whatIfSyncToggles(box);
@@ -10559,7 +10773,7 @@ function whatIfClearResult() {
 // pressed button is drawn disabled by every redraw, not only by the click; so is Stopping (whatIf.pending), which draws both disabled.
 function whatIfDrawProgress() {
     if (!whatIf.status) return;
-    (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_43__.morphInto)(document.getElementById('whatIfProgress'), (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderProgress)(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping', whatIfNames()));
+    (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_44__.morphInto)(document.getElementById('whatIfProgress'), (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.renderProgress)(whatIf.status, whatIfT, whatIf.pressed, whatIf.pending === 'stopping', whatIfNames()));
     alignNumbers();
 }
 
@@ -10580,7 +10794,7 @@ function whatIfShowStatus(status) {
     // last one stays on show when the search stops or is done (the result carries it too).
     if (status.round) { whatIf.round = status.round; whatIf.partialVersion = Math.max(whatIf.partialVersion, status.roundVersion || 0); }
     else if (status.state === 'done' && status.result?.round) whatIf.round = status.result.round;
-    (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_43__.morphInto)(document.getElementById('whatIfRounds'), whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : ''); // in place, as the progress box (a help mark keeps its hover)
+    (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_44__.morphInto)(document.getElementById('whatIfRounds'), whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : ''); // in place, as the progress box (a help mark keeps its hover)
     if (whatIf.hotCand) whatIfMarkHot(whatIf.hotCand);
     // The chart's history: every finished round after `since` comes with the status (the runner's `rounds`); a search that is no longer running and brought none (the window
     // opened on it, or the runner restarted) is read from its file. A resumed search keeps what it had: its replayed rounds come again and buildHistory keeps each stage's last run.
@@ -10621,7 +10835,7 @@ function whatIfDrawSearchButton() {
 // The window's settings as a start would send them, without the prices (null when a start would refuse them).
 function whatIfSettingsKeyNow() {
     const read = whatIfReadSettings(false);
-    return read.params ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.settingsKey)(read.params) : null;
+    return read.params ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.settingsKey)(read.params) : null;
 }
 
 // A click on the one button does what it reads (whatIfDrawSearchButton decides it).
@@ -10664,7 +10878,7 @@ function whatIfSyncToggles(box) {
 function whatIfPollSoon() {
     const w = whatIf.watch;
     if (!w) return;
-    w.fastUntil = Date.now() + _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.FAST_FOR_MS;
+    w.fastUntil = Date.now() + _whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.FAST_FOR_MS;
     if (w.busy) { w.again = true; return; }
     clearTimeout(w.timer);
     whatIfPoll(w);
@@ -10673,14 +10887,14 @@ function whatIfPollSoon() {
 async function whatIfPoll(w) {
     w.timer = null; w.busy = true;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.status(whatIf.searchId, whatIf.partialVersion));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.status(whatIf.searchId, whatIf.partialVersion));
         if (w !== whatIf.watch) return;
         if (ok) whatIfShowStatus(body); // a state other than running ends the watch
         else { whatIfMessage(body.error || whatIfSaid('runnerError')); whatIfStopWatching(); }
     } catch (err) { if (w === whatIf.watch) { whatIfMessage(whatIfSaid('runnerGone')); whatIfStopWatching(); } }
     finally { w.busy = false; }
     if (w !== whatIf.watch) return;
-    const delay = w.again ? 0 : (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.pollDelay)(whatIf.status, whatIf.pressed, Date.now(), w.fastUntil);
+    const delay = w.again ? 0 : (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.pollDelay)(whatIf.status, whatIf.pressed, Date.now(), w.fastUntil);
     w.again = false;
     w.timer = setTimeout(() => whatIfPoll(w), delay);
 }
@@ -10710,7 +10924,7 @@ function whatIfReadSettings(mark) {
     const maxPayback = document.getElementById('inputWhatIfMaxPayback').value;
     if (maxPayback === '' || !Number.isFinite(Number(maxPayback)) || Number(maxPayback) < 0) return { message: whatIfSaid('badMaxPayback') };
     // The smallest gain worth showing (src/whatif/minGain.mjs: its unit and default): empty = the default.
-    const minGainPct = (0,_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__.parseMinGain)(document.getElementById('inputWhatIfMinGain').value);
+    const minGainPct = (0,_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_38__.parseMinGain)(document.getElementById('inputWhatIfMinGain').value);
     if (minGainPct === null) return { message: whatIfSaid('badMinGain') };
     // The guild's shrine level: empty = the game's maximum, else a whole number of 0 or more (the search's --shrine-cap).
     const shrineCap = document.getElementById('inputWhatIfShrineCap').value.trim();
@@ -10733,14 +10947,14 @@ async function whatIfPostSearch() {
     // The search runs on the market prices of now: the snapshot is fetched here and sent with the request; when the
     // fetch fails no search starts (no older snapshot is used in its place).
     whatIfMessage(whatIfSaid('fetchingPrices'));
-    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.searchRequest)(read.params, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__.fetchMarketplace)());
+    const request = await (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.searchRequest)(read.params, () => (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_31__.fetchMarketplace)());
     if (request.error) { whatIfMessage(whatIfSaid('pricesFailed', { error: request.error })); return; }
     whatIfMessage('');
     const body = request.body;
     try {
-        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const { ok, body: answer } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.search, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         // whatIf.sentKey: the settings this search was started with, so a stop of it offers Resume while they stay the same.
-        if (ok) { whatIf.sentKey = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.settingsKey)(read.params); whatIfWatch(answer.id); }
+        if (ok) { whatIf.sentKey = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.settingsKey)(read.params); whatIfWatch(answer.id); }
         else if (answer.id) { whatIf.sentKey = null; whatIfMessage(whatIfSaid('alreadyRunning')); whatIfWatch(answer.id); }
         else whatIfMessage(answer.error || whatIfSaid('runnerError'));
     } catch (err) { whatIfMessage(whatIfSaid('runnerGone')); }
@@ -10752,7 +10966,7 @@ async function whatIfStopOrResume() {
     whatIf.pending = resuming ? 'starting' : 'stopping'; whatIfDrawSearchButton(); whatIfDrawProgress(); // until the runner's state shows (whatIfShowStatus); Stopping disables the stage buttons
     const failed = (message) => { whatIf.pending = null; whatIfDrawSearchButton(); whatIfDrawProgress(); whatIfMessage(message); };
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.stop(whatIf.searchId), { method: 'POST' });
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.stop(whatIf.searchId), { method: 'POST' });
         if (!ok) { failed(body.error || whatIfSaid('runnerError')); return; }
         if (body.state) { whatIfShowStatus(body); if (body.state === 'running') whatIfWatch(whatIf.searchId); return; }
         // The runner answers at once ({ stopping } or { resumed }); the change itself shows at the poll that sees it.
@@ -10766,7 +10980,7 @@ async function whatIfStopOrResume() {
 // "Earlier searches": the runner's list (finished and stopped searches, one list), kept in whatIf.earlier so a language change redraws it.
 async function whatIfLoadList() {
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.results);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.results);
         if (!ok || !Array.isArray(body)) return;
         whatIf.earlier = body;
         whatIfDrawList();
@@ -10789,13 +11003,13 @@ async function whatIfLoadResult() {
     const id = document.getElementById('selectWhatIfResult').value;
     if (!id) return;
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.result(id));
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.result(id));
         // A stopped search (the runner sends its partial.json) is put on show as the window shows it right after Stop: its report with the
         // stopped mark and its last search round under it; a finished one as before, with its last round. The id's entry says which.
         if (ok) {
             whatIfMessage('');
             whatIf.round = body.round ?? null;
-            document.getElementById('whatIfRounds').innerHTML = whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : '';
+            document.getElementById('whatIfRounds').innerHTML = whatIf.round ? (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.renderRounds)(whatIf.round, whatIfT, whatIfNames()) : '';
             whatIfShowResult(body, whatIf.earlier.find((r) => r.id === id)?.stopped ? 'stopped' : false, true);
             whatIf.rounds = []; whatIf.roundsFor = id; whatIf.roundsLoaded = null; whatIfDrawCharts(); whatIfLoadRounds(id); // its chart, from its rounds.jsonl
         }
@@ -10804,8 +11018,8 @@ async function whatIfLoadResult() {
 }
 
 function whatIfApply(key) {
-    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.opsFor)(whatIf.result, key);
-    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.applyToSlots)(whatIfSlots(false), ops);
+    const ops = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.opsFor)(whatIf.result, key);
+    const out = (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.applyToSlots)(whatIfSlots(false), ops);
     if (out.missing) { whatIfMessage(whatIfSaid('missingPlayer', { names: out.missing.join(', ') })); return; }
     for (const [id, json] of Object.entries(out.slots)) playerDataMap[id] = json;
     updateNextPlayer(currentPlayerTabId);
@@ -10818,8 +11032,8 @@ function whatIfApply(key) {
 // No runner answers: the same button opens the same window in its "get the runner" state (the CSS in index.html shows
 // that pane and hides the search). Its strings are data-i18n like the rest of the page; the links are the two constants of runnerDownload.mjs.
 function whatIfShowGetRunner() {
-    document.getElementById('linkWhatIfRunner').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_41__.RUNNER_DOWNLOAD_URL;
-    document.getElementById('linkWhatIfRunnerLinux').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_41__.RUNNER_ZIP_URL;
+    document.getElementById('linkWhatIfRunner').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_42__.RUNNER_DOWNLOAD_URL;
+    document.getElementById('linkWhatIfRunnerLinux').href = _whatif_runnerDownload_mjs__WEBPACK_IMPORTED_MODULE_42__.RUNNER_ZIP_URL;
     document.getElementById('whatIfModal').classList.add('whatif-norunner');
     whatIfShowButton();
 }
@@ -10840,13 +11054,13 @@ function whatIfDrawVersion() { if (whatIf.version) document.getElementById('what
 
 async function initWhatIf() {
     try {
-        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.version);
+        const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.version);
         if (!ok || !body || body.runner === undefined) { whatIfShowGetRunner(); return; }
         whatIf.version = body;
     } catch (err) { whatIfShowGetRunner(); return; } // not served by the runner (the public page): the window offers the download
     whatIfShowButton();
-    { const g = document.getElementById('inputWhatIfMinGain'); if (g.value === '') g.value = String(_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_37__.MIN_GAIN_PCT); } // the default lives in minGain.mjs only
-    (0,_whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_44__.attachTips)(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
+    { const g = document.getElementById('inputWhatIfMinGain'); if (g.value === '') g.value = String(_whatif_minGain_mjs__WEBPACK_IMPORTED_MODULE_38__.MIN_GAIN_PCT); } // the default lives in minGain.mjs only
+    (0,_whatif_tip_mjs__WEBPACK_IMPORTED_MODULE_45__.attachTips)(document.getElementById('whatIfModal')); // every help mark of the window: one tooltip over everything (tip.mjs)
     // Strings are read when the window opens (the button shows only once they are loaded: whatIfShowButton).
     document.getElementById('whatIfModal').addEventListener('show.bs.modal', () => {
         whatIfDrawVersion(); whatIfRenderChoices(true); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfLoadList(); whatIfShowDiff(); whatIfTips(); whatIfShowSetup(); whatIfDrawSearchButton(); });
@@ -10864,7 +11078,7 @@ async function initWhatIf() {
         const pressed = { key: button.dataset.whatifPart, mode: button.dataset.whatifDone };
         whatIf.pressed = pressed; whatIfDrawProgress(); // the press shows at once (both disabled), and stays in every redraw until the stage ends
         const failed = (message) => { if (whatIf.pressed === pressed) whatIf.pressed = null; whatIfMessage(message); whatIfDrawProgress(); };
-        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfSaid('runnerError')); else whatIfPollSoon(); }
+        try { const { ok, body } = await whatIfRequest(_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.API.done(whatIf.searchId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pressed.mode }) }); if (!ok) failed(body.error || whatIfSaid('runnerError')); else whatIfPollSoon(); }
         catch (err) { failed(whatIfSaid('runnerGone')); }
     });
     // A fold toggle (data-whatif-more) in the result or in the setup warning opens or closes its bodies.
@@ -10886,7 +11100,7 @@ async function initWhatIf() {
     // Every part of the window is drawn again in the new language: the state badge and the Start / Stop button, the progress table, the rounds, the result, the charts.
     i18next.on('languageChanged', () => {
         whatIfDrawVersion(); whatIfDrawMessage(); whatIfTips(); whatIfRenderChoices(false); whatIfRenderSetup(); whatIfCheckPlayers(); whatIfDrawList(); whatIfDrawSearchButton(); whatIfDrawProgress();
-        if (whatIf.round) (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_43__.morphInto)(document.getElementById('whatIfRounds'), (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_38__.renderRounds)(whatIf.round, whatIfT, whatIfNames()));
+        if (whatIf.round) (0,_whatif_morph_mjs__WEBPACK_IMPORTED_MODULE_44__.morphInto)(document.getElementById('whatIfRounds'), (0,_whatif_panel_mjs__WEBPACK_IMPORTED_MODULE_39__.renderRounds)(whatIf.round, whatIfT, whatIfNames()));
         if (whatIf.result) whatIfShowResult(whatIf.result, whatIf.resultRunning, whatIf.resultLoaded);
         whatIfDrawCharts();
     });
@@ -11078,9 +11292,9 @@ function doGroupImport() {
     const value = document.getElementById("inputSetGroupCombatAll")?.value || "";
     // `selected` (slot numbers to tick) and `fight` (zone, tier, kind) travel next to the slots in the all-players field; they are not players
     // (the per-player fields carry neither, so nothing is applied for them).
-    const { slots: importMap, selected, fight, exports } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_34__.splitGroupImport)(value.trim() ? JSON.parse(value) : groupFromPlayerBoxes());
+    const { slots: importMap, selected, fight, exports } = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_35__.splitGroupImport)(value.trim() ? JSON.parse(value) : groupFromPlayerBoxes());
     importGroupSlots(importMap);
-    const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_34__.applyGroupSelection)(document, { selected, fight });
+    const applied = (0,_groupSelection_mjs__WEBPACK_IMPORTED_MODULE_35__.applyGroupSelection)(document, { selected, fight });
     if (applied.skipped.length) console.info("Group import: left as it is (the page does not offer it): " + applied.skipped.join(", "));
     return exports;
 }
@@ -11103,13 +11317,13 @@ function browserStorage() {
 // After an Import: the screen's player is saved into its slot, then every slot is kept, replacing the group kept before.
 function saveImportedGroup() {
     savePreviousPlayer(currentPlayerTabId);
-    (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_36__.keepGroup)(browserStorage(), playerDataMap);
+    (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_37__.keepGroup)(browserStorage(), playerDataMap);
 }
 
 // On page load: the kept group (when it is there and of the shape this page writes) goes through the same function as an
 // import. A value that is not usable is ignored and the page starts blank.
 function restoreImportedGroup() {
-    const slots = (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_36__.loadKeptGroup)(browserStorage());
+    const slots = (0,_savedGroup_mjs__WEBPACK_IMPORTED_MODULE_37__.loadKeptGroup)(browserStorage());
     if (!slots) return;
     const before = { ...playerDataMap };
     try {
@@ -11173,7 +11387,7 @@ function doSoloImport() {
     let importSet = document.getElementById("inputSetSolo").value;
     importSet = JSON.parse(importSet);
     // The character's name goes with the slot (the what-if window and search show it instead of "Player N").
-    playerDataMap[currentPlayerTabId] = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_35__.withSlotName)(playerDataMap[currentPlayerTabId], importSet.name);
+    playerDataMap[currentPlayerTabId] = (0,_slotNames_mjs__WEBPACK_IMPORTED_MODULE_36__.withSlotName)(playerDataMap[currentPlayerTabId], importSet.name);
     // A kind missing from the import is unknown, never empty: it leaves what the sim already holds for it
     // (docs/proposals/what-if.md 4.4 item 2; the MWICS Exporter leaves out each kind switched off).
     const importPlayer = importSet.player ?? {};
@@ -11308,7 +11522,7 @@ function setPlayerTalismans(talismans) {
     else delete player.talismans;
     const box = document.getElementById("talismanView");
     if (!box) return;
-    box.innerHTML = (0,_talismanView_mjs__WEBPACK_IMPORTED_MODULE_42__.talismanViewHtml)(player.talismans, (key) => i18next.t(key));
+    box.innerHTML = (0,_talismanView_mjs__WEBPACK_IMPORTED_MODULE_43__.talismanViewHtml)(player.talismans, (key) => i18next.t(key));
     box.hidden = !box.innerHTML;
 }
 
@@ -11464,7 +11678,7 @@ function updateNextPlayer(currentPlayerNumber) {
     applyGuildBuffsToState((0,_importGuildBuffs_js__WEBPACK_IMPORTED_MODULE_12__["default"])(importSet));
 
     { // reset all achievements
-        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_29__);
+        let achievements = Object.values(_combatsimulator_data_achievementDetailMap_json__WEBPACK_IMPORTED_MODULE_30__);
         for (const detail of Object.values(achievements)) {
             const field = document.querySelector('[data-achievement-hrid="' + detail.hrid + '"]');
             field.checked = false;
@@ -11520,7 +11734,7 @@ window.prices;
 async function fetchPrices() {
     let pricesJson;
     try {
-        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_30__.fetchMarketplace)();
+        pricesJson = await (0,_marketplace_mjs__WEBPACK_IMPORTED_MODULE_31__.fetchMarketplace)();
     } catch (error) {
         console.error(error);
         console.log('Error fetching prices');
@@ -11549,11 +11763,11 @@ async function fetchPrices() {
 
         for (const chest of ["/items/small_treasure_chest", "/items/medium_treasure_chest", "/items/large_treasure_chest"]) {
             // A chest's drops are priced by unitPrice, the one function every other drop goes through; a drop with no price at all is worth nothing.
-            const chestValue = (side) => _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_27__[chest].map((item) => Math.max(0, (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_32__.unitPrice)(window.prices, item.itemHrid, side)) * item.dropRate * (item.maxCount + item.minCount) / 2).reduce((a, b) => a + b, 0);
+            const chestValue = (side) => _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_28__[chest].map((item) => Math.max(0, (0,_unitPrice_mjs__WEBPACK_IMPORTED_MODULE_33__.unitPrice)(window.prices, item.itemHrid, side)) * item.dropRate * (item.maxCount + item.minCount) / 2).reduce((a, b) => a + b, 0);
             window.prices[chest] = {
                 "ask": chestValue('ask'),
                 "bid": chestValue('bid'),
-                "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_27__[chest].map((item) => {
+                "vendor": _combatsimulator_data_openableLootDropMap_json__WEBPACK_IMPORTED_MODULE_28__[chest].map((item) => {
                     return item.itemHrid in window.prices ? window.prices[item.itemHrid].vendor : 0;
                 }).reduce((a, b) => a + b, 0),
             };
@@ -11614,18 +11828,18 @@ document.addEventListener("input", (e) => {
         }
 
         window.expenses += expensesDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('expensesSpan'), window.expenses);
         window.revenue += revenueDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('revenueSpan'), window.revenue);
         window.noRngRevenue += noRngRevenueDifference;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('noRngRevenueSpan'), window.noRngRevenue);
 
         window.profit = window.revenue - window.expenses;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitPreview'), window.profit);
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('profitSpan'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('profitPreview'), window.profit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('profitSpan'), window.profit);
         window.noRngProfit = window.noRngRevenue - window.expenses;
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
-        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('noRngProfitSpan'), window.noRngProfit);
+        (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberText)(document.getElementById('noRngProfitPreview'), window.noRngProfit);
         alignNumbers();
     }
 });
@@ -11648,7 +11862,7 @@ function updateTable(tableId, item, price) {
         priceTd.innerText = price;
     }
     // The total shows formatted (numberHtml: exact value on hover, ISO toggle refreshes it); the exact value stays in data-total.
-    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.numberHtml)(newTotal);
+    totalTd.innerHTML = (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.numberHtml)(newTotal);
     totalTd.dataset.total = newTotal;
 
     return newTotal - oldTotal;
@@ -11667,15 +11881,15 @@ function renderPatchNotes() {
     patchNotesRows.replaceChildren();
     const shownLanguage = i18next.language || "en";
     const lang = shownLanguage.startsWith("zh") ? "zh" : shownLanguage.startsWith("pt") ? "pt" : "en";
-    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_45__) {
+    for (const pn in _patchNote_json__WEBPACK_IMPORTED_MODULE_46__) {
         const patchNoteContainer = document.createElement("div");
         patchNotesRows.setAttribute('class', 'col-12 mb-4');
 
         // An entry is either upstream's plain list of notes (all from shykai's fork, checked
         // against git history) or { fork, notes } for an entry from another fork.
-        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_45__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_45__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_45__[pn];
+        const entry = Array.isArray(_patchNote_json__WEBPACK_IMPORTED_MODULE_46__[pn]) ? { fork: "shykai", notes: _patchNote_json__WEBPACK_IMPORTED_MODULE_46__[pn] } : _patchNote_json__WEBPACK_IMPORTED_MODULE_46__[pn];
         // This fork's machine translation (patchNote.i18n.json), when the shown language is not the entry's own.
-        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_46__[pn];
+        const tr = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_47__[pn];
         const shown = tr && tr.from !== lang && tr[lang] ? tr[lang] : null;
         const patchNoteElement = document.createElement("h6");
         patchNoteElement.innerHTML = shown ? shown.title : pn;
@@ -11686,7 +11900,7 @@ function renderPatchNotes() {
         if (shown) {
             const mtLabel = document.createElement("small");
             mtLabel.className = "text-muted fst-italic ms-2 fw-normal";
-            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_46__._label[lang];
+            mtLabel.textContent = _patchNote_i18n_json__WEBPACK_IMPORTED_MODULE_47__._label[lang];
             patchNoteElement.appendChild(mtLabel);
         }
         const patchNoteList = document.createElement("ul");
@@ -11883,12 +12097,12 @@ darkModeToggle.addEventListener('change', () => {
 // ISO number display (1 234, 1.79 %): off by default, remembered like Dark Mode.
 const isoNumbersToggle = document.getElementById('isoNumbersToggle');
 isoNumbersToggle.checked = localStorage.getItem('isoNumbersEnabled') === 'true';
-(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+(0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
 
 isoNumbersToggle.addEventListener('change', () => {
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.setNumberFormatSettings)({ iso: isoNumbersToggle.checked });
     localStorage.setItem('isoNumbersEnabled', isoNumbersToggle.checked);
-    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_18__.refreshFormattedNumbers)(document);
+    (0,_numberFormat_js__WEBPACK_IMPORTED_MODULE_19__.refreshFormattedNumbers)(document);
 });
 
 function updateContent() {
@@ -11951,4 +12165,4 @@ restoreImportedGroup();
 
 /******/ })()
 ;
-//# sourceMappingURL=bundle.2682ae7a.js.map
+//# sourceMappingURL=bundle.7e311a95.js.map
