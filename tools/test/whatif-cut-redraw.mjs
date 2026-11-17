@@ -1,7 +1,8 @@
 // Test: the what-if window follows a round's cut at once (row 155, defects 4 and 5). When a round's runs are in, the elimination rule rules changes out
 // (core.mjs race: eliminate), then the leaders are checked (the reading phase, which can take minutes). From the cut on: the progress record's "In the
 // running" and "Set aside" (stageContending, stagePaused) are that round's counts, so they add up with "Ruled out" (stageDropped, counted live); and in
-// round 1 the first look goes out again with only the changes still standing, so the table drops the ones ruled out before the leaders' check.
+// round 1 the first look goes out again with only the changes still standing, so the table drops the ones ruled out before the leaders' check. Also
+// (row 139, finding 17): a part drawn Done keeps its Round and Runs while it stays done.
 // Runs one search on the synthetic scenario (tools/whatif/synthetic.mjs, scenario tools/test/synthetic/scenario.json), up to the first record of Change 1.
 // Usage: node tools/test/run-tests.mjs whatif-cut-redraw.mjs        Exit code 0 on pass, 1 on fail.
 import './heavyrun-guard.mjs';   // first, before any other import: runs only through the test loop (docs/codebase/test-loop.md)
@@ -56,6 +57,22 @@ for (const { rec, i } of records.filter((e) => e.rec.round === 1 && e.rec.candid
         bad.push({ stage: rec.stage, out: rec.candidates.out, cutAt: cutMsg?.j ?? null, lookAt: look?.j ?? null, lookTotal: look?.rec.firstLook.total ?? null, standing: cutMsg ? cutMsg.p.stageCandidates - cutMsg.p.stageDropped : null, shown });
 }
 check(`round 1: after the cut the first look goes out again with only the changes still standing (${cutStages} stages whose round 1 ruled changes out)`, cutStages > 0 && bad.length === 0, JSON.stringify(bad));
+
+// (Row 139, finding 17) A part drawn Done keeps its Round and Runs while it stays done: no later message (a pick check, the next stage) raises them. A part
+// that goes back to running (a pick check that failed reopens its race) may count on, and is held to it again once it is done again.
+const doneAt = new Map(); bad = [];
+let doneSeen = 0;
+for (const { p } of events.filter((e) => e.p && Array.isArray(e.p.parts))) {
+    for (const r of p.parts) {
+        if (!['foods', 'drinks', 'screen', 'halving', 'step'].includes(r.kind)) continue;
+        const id = r.kind + ':' + r.index;
+        if (r.state !== 'done') { doneAt.delete(id); continue; }
+        const was = doneAt.get(id);
+        if (!was) { doneAt.set(id, { round: r.round, runs: r.runs }); doneSeen++; continue; }
+        if (was.round !== r.round || was.runs !== r.runs) bad.push({ part: id, wasRound: was.round, round: r.round, wasRuns: was.runs, runs: r.runs, stage: p.stage });
+    }
+}
+check(`a part drawn Done keeps its Round and Runs while it stays done (${doneSeen} times a part was done)`, doneSeen > 0 && bad.length === 0, JSON.stringify(bad.slice(0, 5)));
 
 console.log(failed ? `${failed} FAILED` : 'all passed');
 process.exit(failed ? 1 : 0);
