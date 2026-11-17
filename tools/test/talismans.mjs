@@ -486,7 +486,8 @@ check(await runOf(gen({ talismans: U })) !== eBase, 'engine: the four unique mod
     check(withStep === withoutStep, 'echo: without the line, a run is byte-equal with Echo\'s step taken out (no random call added)');
     // Pinned on commit 3634182, the engine before Echo; an engine change that moves this run re-pins it here. Re-pinned at the merge with loot at
     // each kill, which adds the result's killMultipliers: with that field taken out, this run still hashes to the 3634182 pin (380a7240...).
-    const sha = createHash('sha256').update(withStep).digest('hex');
+    // The what-if payback's cast count adds the result's abilityUses (simResult.js): it is taken out here, and the run hashes to the pin above.
+    const sha = createHash('sha256').update((({ r, details }) => JSON.stringify({ r: { ...r, abilityUses: undefined }, details }))(JSON.parse(withStep))).digest('hex');
     check(sha === 'ee5bf7902ba68f3719ff8380ffd9511f37665e24474c00e825cb203dc1afcbdf', 'echo: a 10 minute run with five abilities and no Echo is the same as before Echo was built', sha);
 }
 console.log(fails === 0 ? 'PASS: talismans.' : `FAIL: ${fails} problems.`);
