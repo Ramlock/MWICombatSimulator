@@ -82,6 +82,23 @@ let serveTrigger = false;
 const pokeTrigger = [{ dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/current_hp', comparatorHrid: '/combat_trigger_comparators/less_than_equal', value: 60 },
     { dependencyHrid: '/combat_trigger_dependencies/self', conditionHrid: '/combat_trigger_conditions/current_mp', comparatorHrid: '/combat_trigger_comparators/greater_than_equal', value: 10 }];
 const withTrigger = () => ({ ...result, setups: result.setups.map((x, i) => (i ? x : { ...x, triggerMap: { ...(x.triggerMap || {}), '/abilities/poke': pokeTrigger } })) });
+// serveBooks: a result with ability books: a books step with its total (levels, cost, payback) marked "not even" with its knee, a switch step marked
+// "evenness assumed" with the levels its gain's high end would reach, and the rows not bought, each with its reason (one past 5 years, one not measured).
+let serveBooks = false;
+const bookStep = (id, desc, cost, payback, book, versus, ops) => ({ id, player: 'Player 1', desc, gain: 2600, se: 300, gainPerUser: 866, sePerUser: 100, sharedGainPerUser: 0, sharedSePerUser: 0, ownSuppliesPerDay: 0, ownSuppliesSe: 0, buyerNet: 2600, buyerNetSe: 300, paybackOwn: null, cost, payback, costPath: 'books', note: '', accepted: true, ops, book, versus });
+const booksResult = {
+    ...result,
+    steps: [result.steps[0],
+        bookStep('Player 1:a1=fireball', 'Player 1 fireball 12 -> 18', 117000, 45, { mark: 'notEven', knee: { from: 18, to: 22 }, to: 18, upTo: 18 }, 92, [{ op: 'abilityLevel', player: 'Player 1', index: 1, delta: 6 }]),
+        bookStep('Player 1:a2=switch:ice_spear', 'Player 1 flame_blast 9 -> ice_spear 6', 640000, 300, { mark: 'assumed', to: 6, upTo: 9 }, null, [{ op: 'ability', player: 'Player 1', index: 2, ability: '/abilities/ice_spear', level: 6 }])],
+    books: [
+        { id: 'b1', player: 'Player 1', kind: 'level', desc: 'Player 1 water_strike 20 -> 31', cost: 2400000, payback: 2100, notTaken: 'noPayback' },
+        { id: 'b2', player: 'Player 1', kind: 'level', desc: 'Player 1 heal 14 -> 26', cost: 9000000, payback: 400, notTaken: 'overBudget', mark: 'notEven', knee: { from: 26, to: 30 }, to: 26 },
+        { id: 'b3', player: 'Player 1', kind: 'switch', desc: 'Player 1 flame_blast 9 -> entangle 4', cost: 300000, payback: 200, notTaken: 'slotTaken' },
+        { id: 'b4', player: 'Player 1', kind: 'level', desc: 'Player 1 fireball 18 -> 19', cost: 30000, payback: null, notTaken: 'unsettled', mark: 'assumed', to: 19 },
+    ],
+    booksApart: [{ id: 'b5', player: 'Player 1', kind: 'level', desc: 'Player 1 toxic_pollen 3', cost: 0 }],
+};
 // The live report: what the runner would serve as `partial` (with its version) while the search runs; `sinces` is what the window asked with.
 let live = null;
 const sinces = [];
@@ -128,7 +145,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/results') return send(res, 200, [...(serveStopped ? [{ id: 'search-stopped', finished: '2026-01-02 09:00', goal: 'profit', players: ['Player 1'], stopped: true }] : []), ...(search?.state === 'done' ? [{ id: search.id, finished: '2026-01-01 12:00', goal: 'profit', players: ['Player 1'] }] : [])]);
     if (/^\/api\/results\/[^/]+\/rounds$/.test(url.pathname)) { roundsFetches++; return send(res, 200, savedRounds); }
     if (url.pathname === '/api/results/search-stopped') return send(res, 200, stoppedReport());
-    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBig ? bigResult : serveOlder ? olderResult : serveTrigger ? withTrigger() : result);
+    if (url.pathname.startsWith('/api/results/')) return send(res, 200, serveBooks ? booksResult : serveBig ? bigResult : serveOlder ? olderResult : serveTrigger ? withTrigger() : result);
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     const file = path.join(dist, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
     if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
@@ -867,6 +884,31 @@ try {
     await shot('whatIfModal', 'trigger-change-zh.png');
     await js(`i18next.changeLanguage('en').then(() => true)`);
     serveBig = false;
+    // Ability books: the steps carry their marks and payback, and the rows not bought are their own list, each with its reason; in en, pt and zh.
+    serveBooks = true;
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
+    await js(`(() => { document.getElementById('selectWhatIfResult').value = 'search-1'; document.getElementById('buttonWhatIfLoad').click(); return true; })()`);
+    check('books: the books step shows its levels, its payback and its knee', await until(`(() => { const tr = [...document.querySelectorAll('#whatIfResult tbody tr')].find((x) => x.textContent.includes('gain stops between 18 and 22')); return !!tr && tr.textContent.includes('45 days') && tr.textContent.includes('18'); })()`), await resultText());
+    check('books: the switch step shows "evenness assumed" and "up to 9"', await js(`[...document.querySelectorAll('#whatIfResult tbody tr')].some((x) => x.textContent.includes('evenness assumed') && x.textContent.includes('up to 9') && x.textContent.includes('9.9 months'))`));
+    check('books: a chip under the answer counts the 5 rows not bought', await js(`document.querySelector('#whatIfResult [data-left-out="booksNotTaken"]')?.textContent === '5 ability-book rows not bought'`));
+    await openFolds('whatIfDetails', 'whatIfBooksNotTaken');
+    const notTaken = () => js(`[...document.querySelectorAll('#whatIfBooksNotTaken tbody tr')].map((tr) => tr.textContent)`);
+    const nt = await notTaken();
+    check('books: the not-bought list has its 5 rows, each with its reason, one past 5 years', nt.length === 5 && nt.some((x) => x.includes('pays back too slowly') && x.includes('over 5 years')) && nt.some((x) => x.includes('over budget') && x.includes('gain stops between 26 and 30')) && nt.some((x) => x.includes('slot taken')) && nt.some((x) => x.includes('unsure') && x.includes('evenness assumed')) && nt.some((x) => x.includes('not measured')), JSON.stringify(nt));
+    await js(`(() => { [...document.querySelectorAll('#whatIfResult tbody tr')].find((x) => x.textContent.includes('gain stops between 18'))?.scrollIntoView({ block: 'center' }); return true; })()`);
+    await shot('whatIfModal', 'books-steps.png');
+    const showList = () => js(`(() => { document.getElementById('whatIfBooksNotTaken')?.scrollIntoView({ block: 'center' }); return true; })()`);
+    await showList();
+    await shot('whatIfModal', 'books-not-taken.png');
+    for (const [lang, word] of [['pt', 'o ganho para entre 26 e 30'], ['zh', '收益在 26 到 30']]) {
+        await js(`i18next.changeLanguage('${lang}').then(() => true)`);
+        check(`books: in ${lang} the not-bought list reads in its language`, await until(`document.getElementById('whatIfBooksNotTaken')?.textContent.includes(${JSON.stringify(word)})`), JSON.stringify(await notTaken()));
+        await openFolds('whatIfDetails', 'whatIfBooksNotTaken');
+        await showList();
+        await shot('whatIfModal', `books-not-taken-${lang}.png`);
+    }
+    await js(`i18next.changeLanguage('en').then(() => true)`);
+    serveBooks = false;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
     await new Promise((r) => setTimeout(r, 400));
     check('at 1100 wide the five tick boxes still share one row and no name is cut', await js(`(() => { const b = [...document.querySelectorAll('#whatIfPlayers .form-check')].map((e) => e.getBoundingClientRect()); return b.length === 5 && new Set(b.map((r) => Math.round(r.top))).size === 1 && [...document.querySelectorAll('#whatIfPlayers label')].every((e) => e.scrollWidth <= e.clientWidth); })()`));

@@ -251,11 +251,11 @@
             },
             "abilitylevels": {
                 "name": "Níveis de técnica",
-                "desc": "subir uma técnica equipada com livros; o custo pode ser um limite superior (≤)"
+                "desc": "subir uma técnica equipada com livros, até onde os níveis se pagam; o custo pode ser um limite superior (≤)"
             },
             "books": {
                 "name": "Novas técnicas",
-                "desc": "aprender uma técnica que você não tem em um espaço livre (precisa das técnicas aprendidas do exportador)"
+                "desc": "aprender uma técnica que você não tem, no lugar de uma que você usa ou em um espaço livre, até onde os níveis se pagam (precisa das técnicas aprendidas do exportador)"
             },
             "shrines": {
                 "name": "Santuários da guilda",
@@ -391,9 +391,9 @@
             "poolSizeOne": "{{n}} candidata",
             "sortedBy": "ordenado por {{col}}, melhor primeiro",
             "sortedByLater": "ordenado por {{col}} quando houver valores",
-            "col": { "candidate": "Mudança", "cost": "Custo", "hours": "Horas simuladas", "payback": "Dias de retorno", "status": "Status" },
+            "col": { "candidate": "Mudança", "cost": "Custo", "hours": "Horas simuladas", "payback": "Retorno", "status": "Status" },
             "hoursTitle": "{{search}} h de execuções da busca + {{fresh}} h de execuções novas",
-            "status": { "contending": "ainda medindo", "contendingTip": "na disputa; ainda sem execuções novas suficientes", "paused": "deixada de lado", "pausedTip": "volta sozinha se os intervalos dos líderes se alargarem", "confirmed": "ganho claro", "confirmedTip": "o intervalo fica inteiro acima de 0, conferido em execuções novas", "few": "ainda medindo", "fewTip": "{{n}} execuções novas até agora; faltam {{more}} para o intervalo ficar final", "first": "ainda medindo", "firstTip": "primeiro olhar, execuções até agora: {{n}}", "tooFew": "ainda medindo", "tooFewTip": "ainda sem execuções novas", "refuted": "descartada", "refutedTip": "descartada", "zero": "sem mudança clara ainda", "zeroTip": "ainda não difere de nenhuma mudança", "loses": "o grupo perde loot", "losesTip": "o loot compartilhado por usuário cai, mesmo que o ganho do próprio comprador não seja claramente diferente de 0", "bestTip": "Melhor candidato até agora: {{items}} ({{figures}}; execuções novas: {{n}})" },
+            "status": { "contending": "ainda medindo", "contendingTip": "na disputa; ainda sem execuções novas suficientes", "paused": "deixada de lado", "pausedTip": "volta sozinha se os intervalos dos líderes se alargarem", "confirmed": "ganho claro", "confirmedTip": "o intervalo fica inteiro acima de 0, conferido em execuções novas", "few": "ainda medindo", "fewTip": "{{n}} execuções novas até agora; faltam {{more}} para o intervalo ficar final", "first": "ainda medindo", "firstTip": "primeiro olhar, execuções até agora: {{n}}", "tooFew": "ainda medindo", "tooFewTip": "ainda sem execuções novas", "refuted": "descartada", "refutedTip": "descartada", "zero": "sem mudança clara ainda", "zeroTip": "ainda não difere de nenhuma mudança", "loses": "o grupo perde loot", "losesTip": "o loot compartilhado por usuário cai, mesmo que o ganho do próprio comprador não seja claramente diferente de 0", "books": "livros de técnica", "booksTip": "medida uma vez pela etapa dos livros de técnica, fora da disputa; comprada antes da escolha da disputa quando se paga mais rápido", "bestTip": "Melhor candidato até agora: {{items}} ({{figures}}; execuções novas: {{n}})" },
             "tooFew": "ainda sem execuções novas",
             "needsMoreRuns": "Precisa de mais execuções para mostrar um valor",
             "rangeWidth": "largura do intervalo {{now}}",
@@ -422,9 +422,9 @@
             "endedByUserDuring": "encerrada por você durante a rodada {{n}}, as execuções concluídas mantidas",
             "acceptedAsIs": "aceita como está",
             "setMarginals": "Aceitas juntas. O ganho próprio de cada mudança (o conjunto contra o conjunto sem ela), por usuário por dia:",
-            "setBuyer": "{{who}}: ganho do comprador {{net}} por dia, retorno em {{days}} dias",
+            "setBuyer": "{{who}}: ganho do comprador {{net}} por dia, retorno em {{days}}",
             "gainPerDay": "Ganho por dia",
-            "paysBackIn": "Se paga em (dias)",
+            "paysBackIn": "Se paga em",
             "singlesNotShown": "mais {{n}} buscadas, não confirmadas, não mostradas",
             "confirmedPartyRow": "Grupo (o loot compartilhado, por usuário)",
             "stoppedMark": "Parado: foi até aqui que a busca chegou.",
@@ -468,12 +468,16 @@
             "detailsShow": "Ver detalhes",
             "detailsHide": "Ocultar detalhes",
             "overPayback": "Retorno lento demais",
-            "overPaybackNote": "({{n}}, não escolhidas: cada uma se paga em mais de {{days}} dias)",
+            "overPaybackNote": "({{n}}, não escolhidas: cada uma se paga em mais de {{days}})",
             "answer": "Todas as mudanças escolhidas juntas, conferidas em novas simulações",
             "leftOutPayback": "{{n}} acima do limite de retorno",
             "leftOutPaybackOne": "1 acima do limite de retorno",
             "leftOutBudget": "{{n}} acima do orçamento",
             "leftOutBudgetOne": "1 acima do orçamento",
+            "leftOutBooks": "{{n}} linhas de livros de técnica não compradas",
+            "leftOutBooksOne": "1 linha de livros de técnica não comprada",
+            "booksNotTaken": "Livros de técnica não comprados",
+            "booksNotTakenNote": "({{n}} medidas e não compradas: o motivo está em cada linha)",
             "upperChip": "limite superior",
             "pricesChip": "Preços: snapshot antigo",
             "overPaybackShow": "Mostrar as {{n}} de retorno lento demais",
@@ -513,6 +517,8 @@
             "pricesCommitted": "Preços: o retrato salvo do próprio simulador, de {{when}} ({{elapsed}} atrás), não o mercado de agora.",
             "upperNote": "≤: o custo é só um limite superior (livros de técnica sem a experiência já dentro do nível)."
         },
+        "payback": { "days": "{{n}} dias", "daysOne": "{{n}} dia", "months": "{{n}} meses", "years": "{{n}} anos", "over": "mais de {{n}} anos", "overTip": "Depois de 5 anos, só a variação dos preços do mercado já tira o sentido deste número." },
+        "books": { "notEven": "o ganho para entre {{from}} e {{to}}", "notEvenTip": "Não uniforme: cada nível até {{from}} soma quase o mesmo ganho, e o ganho para em algum ponto entre os níveis {{from}} e {{to}}; nada além de {{from}} é comprado.", "assumed": "uniformidade presumida", "assumedTip": "O ganho é do tamanho do seu erro, então a verificação de que cada nível soma o mesmo ganho não poderia falhar: ela é presumida.", "upTo": "até {{n}}", "upToTip": "Os níveis comprados são os que se pagam mesmo na ponta baixa do ganho medido; na ponta alta chegariam ao nível {{n}}.", "stepTip": "Livros de técnica: comprados antes da escolha da disputa, que se pagava em {{versus}}. Medidos uma vez contra o setup depois das comidas e bebidas, não por cima dos passos anteriores.", "stepTipAlone": "Livros de técnica: comprados porque nenhuma mudança da disputa se pagava mais rápido. Medidos uma vez contra o setup depois das comidas e bebidas, não por cima dos passos anteriores.", "reason": { "unsettled": "incerto", "unsettledTip": "Nenhum nível com certeza se paga: o intervalo do ganho medido ainda deixa em aberto.", "noPayback": "se paga devagar demais", "noPaybackTip": "Nenhum nível se paga em até {{days}}.", "slotTaken": "espaço ocupado", "slotTakenTip": "Outra mudança nesta técnica ou no seu espaço foi comprada.", "overBudget": "acima do orçamento", "overBudgetTip": "O custo passa do que restava no orçamento do jogador.", "stepLimit": "limite de passos", "stepLimitTip": "O plano chegou antes ao máximo de passos.", "castsUnknown": "não medido", "castsUnknownTip": "Os usos por dia são desconhecidos (execuções gravadas antes de serem contados), então seus níveis não foram medidos." } },
         "col": {
             "player": "Jogador",
             "change": "Alterar",
@@ -522,7 +528,7 @@
             "buyerGainTip": "a parte do comprador no loot menos o que o comprador gasta com a própria comida e bebida",
             "se": "± erro",
             "cost": "Custo",
-            "payback": "Dias de retorno",
+            "payback": "Retorno",
             "costPath": "Como é comprado"
         },
         "price": {

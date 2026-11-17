@@ -279,8 +279,10 @@ export async function main(settings, seams) {
     // The buyer's own payback in days: the price over (his share of the loot gain per user minus the change in his own supplies
     // spend); null unless that net and the price are above 0.
     const paybackOwnOf = (cost, sharedPerUser, supplies) => (goal === 'profit' ? paybackDays(cost, sharedPerUser - supplies) : null);
-    // The payback limit the picks are held to: the profit goal only (the other goals have no buyer's gain); 0 = none.
-    const payLimit = goal === 'profit' ? maxPayback : 0;
+    // The payback limit the picks are held to: the profit goal only (the other goals have no buyer's gain: 0 there, no limit).
+    // The Payback limit the search applies (days): the user's, or with none (0) the horizon, HORIZON_DAYS (5 years: "no limit" is a cap of 5 years,
+    // past which market prices alone have moved too far for a payback to mean anything). result.options.maxPaybackDays keeps the user's own value.
+    const payLimit = goal === 'profit' ? (maxPayback > 0 ? maxPayback : HORIZON_DAYS) : 0;
     const seedsFor = (k, off = 0) => Array.from({ length: k }, (_, i) => off + i + 1);
     // Seeds of k samples of a setup at h hours. Paired: the fixed list 1..k (approved 3.3). Unpaired (delta 4, his point
     // 23:14 BRT): any k runs of that setup that reach h, the lowest seeds first, and for the rest the next seeds that
@@ -837,7 +839,7 @@ export async function main(settings, seams) {
         const it = slotItem(applyOps(setups0, base), o.player, o.slot);
         return it ? { item: it.itemHrid, level: it.enhancementLevel + o.delta } : null;
     };
-    async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd, onBack, reopenFor = [], failedSets = new Set(), left = null }) {
+    async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd, onBack, reopenFor = [], failedSets = new Set(), left = null, extraRows = null }) {
         const H = unitH, bk = keyOf(base), n = setups0.length, raceAt = ++raceNo;
         liveCands = cands; lastBase = base;
         // presses.json (main): the press this search took at this point of this race before a stop, if any; replay() presses it again (stop.press, so
@@ -989,7 +991,8 @@ export async function main(settings, seams) {
                 // rangeWidth: the width (high minus low, per user per day) of the pool's top leader's range; rangeWidthPrev: the same pool's width one round
                 // earlier of this race (absent on the stage's first round, or when that round had no range). Computed here once; the panel only prints them.
                 pools: cont.pools.map((p) => {
-                    const lr = rows(p), order = sortRows(lr, p.key), t = lr[0], w = order.sortedBy !== null && t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
+                    // extraRows: rows shown in the pool that do not race (the merge's books rows), sorted with the leaders; the range width stays the race's.
+                    const lr = [...rows(p), ...(extraRows?.(p.key) ?? [])], order = sortRows(lr, p.key), t = lr.find((l) => l.status !== 'books'), w = order.sortedBy !== null && t && t.low !== null && t.high !== null ? t.high - t.low : null, was = widthPrev.get(p.key) ?? null;
                     widthPrev.set(p.key, w);
                     // `prev` on each leader row: its place in this pool's table the round before (null when it was not among the leaders then, or on the stage's first round).
                     const placed = placePrev.get(p.key);
@@ -1198,10 +1201,14 @@ export async function main(settings, seams) {
                     const uses = usesAll.every((u) => u && typeof u === 'object') ? Object.fromEntries([...new Set(usesAll.flatMap(Object.keys))].map((a) => [a, usesAll.reduce((x, u) => x + (u[a] ?? 0), 0) / usesAll.length])) : null;
                     return { samples, uses };
                 };
+                // A switch needs the player's learned abilities (the export): without them no switch row is made, and the player is listed as skipped.
+                if (levers.has('books') && !exportFor(p)?.learnedAbilities) skipNoExport('books', p);
                 const got = await booksForPlayer({ player: p, setup: setupsB.find((x) => x.name === p), learned: exportFor(p)?.learnedAbilities ?? null, buy: (h) => pricer.buy(h, 0).cost, limit: payLimit, measure, firstHours: booksFirstH, fullHours: fin.h, switches: levers.has('books') });
                 if (!got) return stop(result);
                 const rows = levers.has('abilitylevels') ? got.rows : got.rows.filter((r) => r.kind === 'switch');
-                result.books.push(...rows); result.booksApart.push(...got.apart.filter((r) => levers.has(r.kind === 'switch' ? 'books' : 'abilitylevels')));
+                const apart = got.apart.filter((r) => levers.has(r.kind === 'switch' ? 'books' : 'abilitylevels'));
+                for (const r of [...rows, ...apart]) r.desc = bookDesc(r);
+                result.books.push(...rows); result.booksApart.push(...apart);
                 for (const r of rows) console.log(`books: ${bookRowText(r)}`);
                 publish(result);
             }
@@ -1266,12 +1273,19 @@ export async function main(settings, seams) {
         // paybackDays, its no-lead case, for a race pick). Known weak point (result.md and docs/codebase/payback.md say it): a race pick's
         // payback is measured on top of the plan so far, a row's against the baseline, and only a row's settled-in levels are bought. A row
         // whose levels do not pay back inside the Payback limit (or the 5-year horizon) is never taken.
-        const horizon = payLimit > 0 ? payLimit : HORIZON_DAYS;
+        const horizon = payLimit; // the user's limit, or the 5-year horizon
         const bookPool = result.books.filter((r) => r.ops && r.payback != null && r.payback <= horizon).map((r) => ({
             id: `${r.kind}:${r.player}:${r.slot}:${short(r.ability)}:${r.to}`, kind: r.kind === 'switch' ? 'switch' : 'books', player: r.player, ops: r.ops, groups: [`${r.player}:ability${r.slot}`], monotone: false,
-            desc: `${r.player} ${bookChangeText(r)}, ${bookLevelsText(r)}`, cost: { cost: r.cost, known: true, path: '', ...(r.costBound ? { costBound: r.costBound } : {}) },
+            desc: bookDesc(r), cost: { cost: r.cost, known: true, path: '', ...(r.costBound ? { costBound: r.costBound } : {}) },
             est: { gain: r.gain, se: r.gainSe, net: r.gain, netSe: r.gainSe, payback: r.payback, accepted: true, stage: 'books' }, book: r }));
         const nextRow = () => bookPool.filter((b) => !b.book.step && !b.book.notTaken && affordable(b, budgets, spent)).sort((a, b) => a.est.payback - b.est.payback)[0] ?? null;
+        // The rows not yet taken that their player's budget can pay, as rows of the race's paid pool (status 'books'): the rounds table and its chart
+        // list them by payback beside the race's own changes, the order the merge buys in. Display only: the race reads none of them. Their figure is
+        // the buyer's gain on the day bought (measured once, not run again), its range 2 errors; no party figure (the books stage measures the buyer's).
+        const bookRows = (key) => (key !== 'paid' ? [] : bookPool.filter((b) => !b.book.step && !b.book.notTaken && affordable(b, budgets, spent)).map((b, i) => ({
+            id: b.id, built: -1 - i, player: b.player, desc: b.desc, change: null, cost: b.cost.cost, seeds: b.book.seeds, readingSeeds: b.book.seeds, searchHours: null, readHours: null, hours: null,
+            tooFew: false, few: false, status: 'books', screen: b.est.net, reading: null, low: null, high: null, buyerNet: b.est.net, netLow: b.est.net - 2 * b.est.netSe, netHigh: b.est.net + 2 * b.est.netSe,
+            payback: b.est.payback, paybackLow: null, paybackHigh: null, book: { mark: b.book.mark, knee: b.book.knee, to: b.book.to, upTo: b.book.upTo } })));
         const pickPayback = (list) => { const cost = list.reduce((a, m) => a + m.cost.cost, 0); return cost <= 0 ? 0 : paybackDays(cost, list.reduce((a, m) => a + (m.est?.net ?? 0), 0)) ?? Infinity; };
         let step = 0;
         const takeStep = (members, fresh, asIs, marginals, orig = members[0]) => {
@@ -1319,7 +1333,7 @@ export async function main(settings, seams) {
                 else { dead.add(c.id); result.notConfirmed.push({ ...row(c), step: step + 1, fresh: p.fresh, ...checkOf(p.fresh, p.ending), inRace: true }); console.log(`${label}: ${c.desc} not confirmed on fresh seeds (${p.fresh.seeds} per arm), left out`); }
                 publish(result);
             };
-            const res = await race(cur, baseOps, { stage: at, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result), onBack: markBack, reopenFor: reopenFor.splice(0), failedSets: failedAt(baseOps), left: (p) => (p in budgets ? budgets[p] - (spent[p] ?? 0) : 0) });
+            const res = await race(cur, baseOps, { stage: at, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result), onBack: markBack, reopenFor: reopenFor.splice(0), failedSets: failedAt(baseOps), left: (p) => (p in budgets ? budgets[p] - (spent[p] ?? 0) : 0), extraRows: step < maxSteps ? bookRows : null });
             if (!res) return stop(result);
             if (!singlesDone) {
                 singlesDone = true;
@@ -1475,6 +1489,12 @@ export async function main(settings, seams) {
     const bookChangeText = (r) => (r.kind === 'switch' ? `ability ${r.slot + 1}: ${r.was ? `${abilityName(r.was.ability)} ${r.was.level}` : 'empty'} -> learn ${abilityName(r.ability)}${r.dayOne != null ? ` (day one ${fmt(r.dayOne)} ± ${fmt(r.dayOneSe)})` : ''}` : `${abilityName(r.ability)} ${r.from}`);
     const bookLevelsText = (r) => (r.kind === 'switch' && !(r.to >= 1) ? 'no switch' : r.to === r.from && r.kind !== 'switch' ? 'none' : `${r.kind === 'switch' ? `learn to ${r.to}` : `to ${r.to}`}${r.upTo > r.to ? `, up to ${r.upTo}` : ''}`);
     const bookMarkText = (r) => (r.mark === 'notEven' ? `not even: the gain stops between ${r.knee.from} and ${r.knee.to}` : r.mark === 'assumed' ? 'evenness assumed' : r.mark === 'even' ? 'even' : '-');
+    // A books row's desc (every row of result.books and result.booksApart carries it; the merge's steps too): the abilities by their slugs, so the
+    // window words them in the page's language (panel.mjs localizeDesc). A held ability "<p> <ability> <from> -> <to>" ("<p> <ability> <from>" when
+    // no level is recommended), a switch "<p> <old ability> <its level> -> <new ability> <to>" ("—" for an empty slot; no level when none).
+    const bookDesc = (r) => (r.kind === 'switch'
+        ? `${r.player} ${r.was ? `${short(r.was.ability)} ${r.was.level}` : '—'} -> ${short(r.ability)}${r.to >= 1 ? ` ${r.to}` : ''}`
+        : `${r.player} ${short(r.ability)}${r.from != null ? ` ${r.from}` : ''}${r.to > r.from ? ` -> ${r.to}` : ''}`);
     const NOT_TAKEN_MD = { unsettled: 'not taken: no level settled in', noPayback: 'not taken: no level pays back in time', slotTaken: 'not taken: another change to this ability was bought', overBudget: 'not taken: over the budget left', stepLimit: 'not taken: the plan reached its step limit' };
     const bookRowText = (r) => `${r.player} ${bookChangeText(r)}: ${bookLevelsText(r)}, cost ${fmt(r.cost)}, payback ${r.payback == null ? '-' : r.payback.toFixed(1)} days, ${bookMarkText(r)}, ${r.states} states`;
     const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));

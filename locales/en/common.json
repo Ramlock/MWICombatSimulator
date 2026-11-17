@@ -251,11 +251,11 @@
             },
             "abilitylevels": {
                 "name": "Ability levels",
-                "desc": "raise an equipped ability with books; the cost can be an upper bound (≤)"
+                "desc": "raise an equipped ability with books, as far as its levels pay back; the cost can be an upper bound (≤)"
             },
             "books": {
                 "name": "New abilities",
-                "desc": "learn an ability you do not have into an open slot (needs the exporter's learned abilities)"
+                "desc": "learn an ability you do not have, in place of one you hold or into an open slot, as far as its levels pay back (needs the exporter's learned abilities)"
             },
             "shrines": {
                 "name": "Guild shrines",
@@ -393,9 +393,9 @@
             "poolSizeOne": "{{n}} candidate",
             "sortedBy": "sorted by {{col}}, best first",
             "sortedByLater": "sorted by {{col}} once figures exist",
-            "col": { "candidate": "Change", "cost": "Cost", "hours": "Hours simulated", "payback": "Payback days", "status": "Status" },
+            "col": { "candidate": "Change", "cost": "Cost", "hours": "Hours simulated", "payback": "Payback", "status": "Status" },
             "hoursTitle": "{{search}} h of search runs + {{fresh}} h of fresh runs",
-            "status": { "contending": "still measuring", "contendingTip": "in the running; not yet checked on enough fresh runs", "paused": "set aside", "pausedTip": "comes back by itself if the leaders' ranges widen", "confirmed": "clear gain", "confirmedTip": "the range lies entirely above 0, checked on fresh runs", "few": "still measuring", "fewTip": "{{n}} fresh runs so far; {{more}} more before the range is final", "first": "still measuring", "firstTip": "first look, runs so far: {{n}}", "tooFew": "still measuring", "tooFewTip": "no fresh runs yet", "refuted": "ruled out", "refutedTip": "ruled out", "zero": "no clear change yet", "zeroTip": "not yet different from no change", "loses": "party loses loot", "losesTip": "the shared loot per user falls, even though the buyer's own gain is not clearly different from 0", "bestTip": "Best candidate so far: {{items}} ({{figures}}; fresh runs: {{n}})" },
+            "status": { "contending": "still measuring", "contendingTip": "in the running; not yet checked on enough fresh runs", "paused": "set aside", "pausedTip": "comes back by itself if the leaders' ranges widen", "confirmed": "clear gain", "confirmedTip": "the range lies entirely above 0, checked on fresh runs", "few": "still measuring", "fewTip": "{{n}} fresh runs so far; {{more}} more before the range is final", "first": "still measuring", "firstTip": "first look, runs so far: {{n}}", "tooFew": "still measuring", "tooFewTip": "no fresh runs yet", "refuted": "ruled out", "refutedTip": "ruled out", "zero": "no clear change yet", "zeroTip": "not yet different from no change", "loses": "party loses loot", "losesTip": "the shared loot per user falls, even though the buyer's own gain is not clearly different from 0", "books": "ability books", "booksTip": "measured once by the ability-books stage, not raced; bought before the race's pick when it pays back sooner", "bestTip": "Best candidate so far: {{items}} ({{figures}}; fresh runs: {{n}})" },
             "tooFew": "no fresh runs yet",
             "needsMoreRuns": "Needs more runs before a figure can be shown",
             "rangeWidth": "range width {{now}}",
@@ -424,9 +424,9 @@
             "endedByUserDuring": "ended by you during round {{n}}, its finished runs kept",
             "acceptedAsIs": "accepted as is",
             "setMarginals": "Accepted together. Each one's own gain (the set against the set without it), per user per day:",
-            "setBuyer": "{{who}}: buyer's gain {{net}} a day, repaid in {{days}} days",
+            "setBuyer": "{{who}}: buyer's gain {{net}} a day, repaid in {{days}}",
             "gainPerDay": "Gain per day",
-            "paysBackIn": "Pays back in (days)",
+            "paysBackIn": "Pays back in",
             "singlesNotShown": "{{n}} more searched, not confirmed, not shown",
             "confirmedPartyRow": "Party (the shared loot, per user)",
             "stoppedMark": "Stopped: this is where the search got to.",
@@ -470,12 +470,16 @@
             "detailsShow": "See details",
             "detailsHide": "Hide details",
             "overPayback": "Pays back too slowly",
-            "overPaybackNote": "({{n}}, not chosen: each pays back in more than {{days}} days)",
+            "overPaybackNote": "({{n}}, not chosen: each pays back in more than {{days}})",
             "answer": "All chosen changes together, checked on fresh runs",
             "leftOutPayback": "{{n}} over the payback limit",
             "leftOutPaybackOne": "1 over the payback limit",
             "leftOutBudget": "{{n}} over budget",
             "leftOutBudgetOne": "1 over budget",
+            "leftOutBooks": "{{n}} ability-book rows not bought",
+            "leftOutBooksOne": "1 ability-book row not bought",
+            "booksNotTaken": "Ability books not bought",
+            "booksNotTakenNote": "({{n}} measured and not bought: the reason is on each row)",
             "upperChip": "upper bound",
             "pricesChip": "Prices: old snapshot",
             "overPaybackShow": "Show the {{n}} that pay back too slowly",
@@ -515,6 +519,8 @@
             "pricesCommitted": "Prices: the simulator's own saved snapshot of {{when}} ({{elapsed}} old), not the market of now.",
             "upperNote": "≤: the cost is only an upper bound (ability books without the experience already inside the level)."
         },
+        "payback": { "days": "{{n}} days", "daysOne": "{{n}} day", "months": "{{n}} months", "years": "{{n}} years", "over": "over {{n}} years", "overTip": "Past 5 years, market prices alone will have moved too far for this figure to mean anything." },
+        "books": { "notEven": "gain stops between {{from}} and {{to}}", "notEvenTip": "Not even: each level up to {{from}} adds about the same gain, and the gain stops somewhere between levels {{from}} and {{to}}; nothing past {{from}} is bought.", "assumed": "evenness assumed", "assumedTip": "The gain is about the size of its error, so the check that each level adds the same gain could not have failed: it is assumed.", "upTo": "up to {{n}}", "upToTip": "The levels bought are those that pay back even at the low end of the measured gain; at its high end they would reach level {{n}}.", "stepTip": "Ability books: bought before the race's pick, which paid back in {{versus}}. Measured once against the setup after foods and drinks, not on top of the steps before it.", "stepTipAlone": "Ability books: bought because no change in the race paid back sooner. Measured once against the setup after foods and drinks, not on top of the steps before it.", "reason": { "unsettled": "unsure", "unsettledTip": "Not one level is sure to pay back: the measured gain's range still leaves it open.", "noPayback": "pays back too slowly", "noPaybackTip": "Not one level pays back within {{days}}.", "slotTaken": "slot taken", "slotTakenTip": "Another change to this ability or its slot was bought.", "overBudget": "over budget", "overBudgetTip": "Its cost is above what the player's budget had left.", "stepLimit": "step limit", "stepLimitTip": "The plan reached its most steps first.", "castsUnknown": "not measured", "castsUnknownTip": "Its casts a day are unknown (runs recorded before they were counted), so its levels were not measured." } },
         "col": {
             "player": "Player",
             "change": "Change",
@@ -524,7 +530,7 @@
             "buyerGainTip": "the buyer's loot share minus what the buyer spends on their own food and drink",
             "se": "± error",
             "cost": "Cost",
-            "payback": "Payback days",
+            "payback": "Payback",
             "costPath": "How it is bought"
         },
         "price": {

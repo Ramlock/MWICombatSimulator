@@ -250,11 +250,11 @@
             },
             "abilitylevels": {
                 "name": "技能等级",
-                "desc": "用技能书提升已装备技能的等级；成本可能是上限（≤）"
+                "desc": "用技能书提升已装备技能的等级，只升到能回本的等级；成本可能是上限（≤）"
             },
             "books": {
                 "name": "新技能",
-                "desc": "在空栏位学习尚未拥有的技能（需要导出器的已学技能数据）"
+                "desc": "学习尚未拥有的技能，替换已装备的技能或放入空栏位，只升到能回本的等级（需要导出器的已学技能数据）"
             },
             "shrines": {
                 "name": "公会神龛",
@@ -392,9 +392,9 @@
             "poolSizeOne": "{{n}} 个候选",
             "sortedBy": "按「{{col}}」排序，最优在前",
             "sortedByLater": "有数值后按「{{col}}」排序",
-            "col": { "candidate": "改动", "cost": "成本", "hours": "模拟小时", "payback": "回本天数", "status": "状态" },
+            "col": { "candidate": "改动", "cost": "成本", "hours": "模拟小时", "payback": "回本时间", "status": "状态" },
             "hoursTitle": "搜索运行 {{search}} 小时 + 新运行 {{fresh}} 小时",
-            "status": { "contending": "仍在测量", "contendingTip": "仍在竞争；新运行次数还不够", "paused": "已搁置", "pausedTip": "若领先者的区间变宽，会自动回来", "confirmed": "明确收益", "confirmedTip": "区间完全高于 0，已用新运行核对", "few": "仍在测量", "fewTip": "目前新运行 {{n}} 次；区间定稿前还需 {{more}} 次", "first": "仍在测量", "firstTip": "初步结果，目前运行次数：{{n}}", "tooFew": "仍在测量", "tooFewTip": "还没有新运行", "refuted": "已排除", "refutedTip": "已排除", "zero": "暂无明显变化", "zeroTip": "与不改动尚无明显差别", "loses": "队伍损失战利品", "losesTip": "每位用户的共享战利品下降，即使买家自己的收益与 0 没有明显差别", "bestTip": "目前最佳候选：{{items}}（{{figures}}；新运行：{{n}} 次）" },
+            "status": { "contending": "仍在测量", "contendingTip": "仍在竞争；新运行次数还不够", "paused": "已搁置", "pausedTip": "若领先者的区间变宽，会自动回来", "confirmed": "明确收益", "confirmedTip": "区间完全高于 0，已用新运行核对", "few": "仍在测量", "fewTip": "目前新运行 {{n}} 次；区间定稿前还需 {{more}} 次", "first": "仍在测量", "firstTip": "初步结果，目前运行次数：{{n}}", "tooFew": "仍在测量", "tooFewTip": "还没有新运行", "refuted": "已排除", "refutedTip": "已排除", "zero": "暂无明显变化", "zeroTip": "与不改动尚无明显差别", "loses": "队伍损失战利品", "losesTip": "每位用户的共享战利品下降，即使买家自己的收益与 0 没有明显差别", "books": "技能书", "booksTip": "由技能书阶段测量一次，不参与竞争；回本更快时先于竞争的选择购买", "bestTip": "目前最佳候选：{{items}}（{{figures}}；新运行：{{n}} 次）" },
             "tooFew": "还没有新运行",
             "needsMoreRuns": "需要更多运行次数才能显示数值",
             "rangeWidth": "范围宽度 {{now}}",
@@ -423,9 +423,9 @@
             "endedByUserDuring": "由你在第 {{n}} 轮中结束，已完成的运行已保留",
             "acceptedAsIs": "按原样采纳",
             "setMarginals": "一起采纳。每项改动自身的增益（整组对比去掉该项后的整组），每人每天：",
-            "setBuyer": "{{who}}：买家收益每天 {{net}}，{{days}} 天回本",
+            "setBuyer": "{{who}}：买家收益每天 {{net}}，{{days}}回本",
             "gainPerDay": "每日收益",
-            "paysBackIn": "回本天数",
+            "paysBackIn": "回本时间",
             "singlesNotShown": "另有 {{n}} 个已搜索但未确认，不显示",
             "confirmedPartyRow": "队伍（共享战利品，每位用户）",
             "stoppedMark": "已停止：搜索进行到了这里。",
@@ -469,12 +469,16 @@
             "detailsShow": "查看详情",
             "detailsHide": "隐藏详情",
             "overPayback": "回本太慢",
-            "overPaybackNote": "（{{n}} 项，未选用：每项回本都超过 {{days}} 天）",
+            "overPaybackNote": "（{{n}} 项，未选用：每项回本都超过 {{days}}）",
             "answer": "所有已选改动合计，经新一轮模拟复核",
             "leftOutPayback": "{{n}} 项超过回本期限",
             "leftOutPaybackOne": "1 项超过回本期限",
             "leftOutBudget": "{{n}} 项超出预算",
             "leftOutBudgetOne": "1 项超出预算",
+            "leftOutBooks": "{{n}} 项技能书未购买",
+            "leftOutBooksOne": "1 项技能书未购买",
+            "booksNotTaken": "未购买的技能书",
+            "booksNotTakenNote": "（{{n}} 项已测量但未购买：原因见每一行）",
             "upperChip": "上限",
             "pricesChip": "价格：旧快照",
             "overPaybackShow": "显示这 {{n}} 项回本太慢的改动",
@@ -503,7 +507,7 @@
             "leftOutItemTip": "竞争中的读数",
             "notConfirmedItemTip": "新的运行",
             "endingCol": "原因",
-            "ending": { "loss": "亏损：{{low}} 至 {{high}}", "small": "太小，无关紧要：确定低于每天 {{floor}}（{{low}} 至 {{high}}）", "smallExp": "太小，无关紧要：确定低于 {{floor}}（{{low}} 至 {{high}}）", "unsure": "太小，无法判断：{{low}} 至 {{high}}", "slow": "回本超过期限", "lossTip": "整个范围都低于 0：数值加减 {{z}} 个误差。", "smallTip": "整个范围都低于值得显示的最小收益（买家自身每日利润的 {{pct}} %）。", "unsureTip": "每侧 {{seeds}} 次运行后，范围仍高于值得显示的最小收益，且改动未被确认：运行无法判断。它并未被否定。", "slowTip": "已确认，但回本天数超过回本期限。" },
+            "ending": { "loss": "亏损：{{low}} 至 {{high}}", "small": "太小，无关紧要：确定低于每天 {{floor}}（{{low}} 至 {{high}}）", "smallExp": "太小，无关紧要：确定低于 {{floor}}（{{low}} 至 {{high}}）", "unsure": "太小，无法判断：{{low}} 至 {{high}}", "slow": "回本超过期限", "lossTip": "整个范围都低于 0：数值加减 {{z}} 个误差。", "smallTip": "整个范围都低于值得显示的最小收益（买家自身每日利润的 {{pct}} %）。", "unsureTip": "每侧 {{seeds}} 次运行后，范围仍高于值得显示的最小收益，且改动未被确认：运行无法判断。它并未被否定。", "slowTip": "已确认，但回本时间超过回本期限。" },
             "unsure": "太小，无法判断",
             "unsureNote": "（{{n}} 项被排除：在核对的最多运行次数后，其范围仍无法区分值得显示的收益与无收益；它们并未被否定）",
             "dominatedShow": "显示",
@@ -514,6 +518,8 @@
             "pricesCommitted": "价格：模拟器自带的 {{when}} 保存快照（已过 {{elapsed}}），不是当前市场。",
             "upperNote": "≤：成本仅为上限（技能书未计入当前等级内已有的经验）。"
         },
+        "payback": { "days": "{{n}} 天", "daysOne": "{{n}} 天", "months": "{{n}} 个月", "years": "{{n}} 年", "over": "超过 {{n}} 年", "overTip": "超过 5 年后，仅市场价格的波动就会让这个数字失去意义。" },
+        "books": { "notEven": "收益在 {{from}} 到 {{to}} 级之间停止", "notEvenTip": "不均匀：到 {{from}} 级为止每级带来的收益大致相同，收益在 {{from}} 到 {{to}} 级之间某处停止；不会购买超过 {{from}} 级的部分。", "assumed": "假定均匀", "assumedTip": "收益与其误差大小相当，因此“每级收益相同”的检验不可能失败：只能假定。", "upTo": "最多 {{n}}", "upToTip": "购买的等级是按测得收益的下限也能回本的等级；按其上限可达到 {{n}} 级。", "stepTip": "技能书：先于竞争的选择购买（该选择的回本时间为 {{versus}}）。只针对食物和饮料之后的配置测量一次，而不是叠加在之前的步骤上。", "stepTipAlone": "技能书：竞争中没有回本更快的改动，因此购买。只针对食物和饮料之后的配置测量一次，而不是叠加在之前的步骤上。", "reason": { "unsettled": "不确定", "unsettledTip": "没有任何一级确定能回本：测得收益的区间仍未定。", "noPayback": "回本太慢", "noPaybackTip": "没有任何一级能在 {{days}}内回本。", "slotTaken": "栏位已占用", "slotTakenTip": "这个技能或其栏位已购买了另一项改动。", "overBudget": "超出预算", "overBudgetTip": "成本高于该玩家剩余的预算。", "stepLimit": "步数上限", "stepLimitTip": "计划已先达到最多步数。", "castsUnknown": "未测量", "castsUnknownTip": "每天施放次数未知（在开始计数之前记录的运行），因此未测量其等级。" } },
         "col": {
             "player": "玩家",
             "change": "改动",
@@ -523,7 +529,7 @@
             "buyerGainTip": "买家分得的战利品减去买家自己食物和饮品的花费",
             "se": "± 误差",
             "cost": "成本",
-            "payback": "回本天数",
+            "payback": "回本时间",
             "costPath": "购买方式"
         },
         "price": {

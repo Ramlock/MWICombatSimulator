@@ -8,14 +8,16 @@ import { EN as TRIG_EN, readChange, readList, changeWords, listWords, termOf } f
 import { applyOps } from './applyOps.mjs';
 import { numberHtml, formatNumber, unitOf } from '../numberFormat.js';
 import { isMarketplace } from '../marketplace.mjs';
-import { paybackDays } from './payback.mjs';
+import { paybackDays, HORIZON_DAYS } from './payback.mjs';
 import { FIGURE_MIN_SEEDS, figureSeeds } from './figure.mjs';
 
 // The optimizer's levers (tools/whatif/optimize.mjs LEVERS), in the order the window lists them. Seals and the
-// Labyrinth are not levers. Books (ability levels, new abilities) are left out until the long-term model can say what
-// waiting for the XP is worth (the optimizer keeps both levers, see tools/whatif/levers/houses.mjs). The window no longer offers `pairs`
+// Labyrinth are not levers. Ability books are two boxes: `abilitylevels` (books on the abilities held) and `books` (a new ability in a slot,
+// a switch); the search measures each row's levels by their payback day (docs/codebase/payback.md). The window no longer offers `pairs`
 // (the foods and drinks race tries whole combinations; the optimizer ignores the name) nor `skills` (the optimizer keeps the lever, only the
 // window stops offering it). `def` = checked by default: every box starts ticked (a lever that needs an export stays ticked, its player is skipped and listed).
+// Whether the two ability-book boxes start ticked: the one place their default is set.
+export const BOOK_BOXES_TICKED = true;
 export const LEVERS = [
     { id: 'equip', def: true },
     { id: 'foods', def: true },
@@ -25,6 +27,8 @@ export const LEVERS = [
     { id: 'order', def: true },
     { id: 'triggers', def: true },
     { id: 'houses', def: true },
+    { id: 'abilitylevels', def: BOOK_BOXES_TICKED },
+    { id: 'books', def: BOOK_BOXES_TICKED },
     { id: 'shrines', def: true }, // guild shrines, capped by the guild's shrine level field (shrineCap)
 ];
 
@@ -149,9 +153,9 @@ export function searchBody({ slots, goal, budgets, levers, zone, tier, marketpla
 }
 
 // The character export (the userscript's "Copy character export"): a JSON object with an inventory or a learned-ability list.
-// The levers that skip a player with none (the optimizer's skippedNoExport). Ability levels are not among them: without
-// the export they keep their labelled upper-bound cost.
-export const EXPORT_LEVERS = ['owned', 'abilities'];
+// The levers that skip a player with none (the optimizer's skippedNoExport): New abilities (a switch) needs the learned list. Ability
+// levels are not among them: without the export they keep their labelled upper-bound cost.
+export const EXPORT_LEVERS = ['owned', 'abilities', 'books'];
 export const exportKey = (name) => 'whatIfExport:' + name;
 // The boxes of the levers that need a character export ("Items you own", "Abilities"): off, unticked and not interactable (with a tooltip
 // saying why) while no ticked player has a kept export, and on, ticked, the moment one has. `hasExport`: some ticked player has a kept
@@ -297,6 +301,13 @@ export function stageLabel(stage, t) {
 // parts, each "a -> b" and joined by ", " like a shrine row's all five, splits each part, so no raw "->" is left).
 const chip = (html, cls = '', tip = '') => `<span class="whatif-chip${cls ? ' ' + cls : ''}"${tip ? ` title="${tip}"` : ''}>${html}</span>`;
 const help = (tip) => (tip ? `<span class="whatif-help" tabindex="0" data-tip="${tip}">?</span>` : '');
+// A books or switch row's marks (its `book`: mark, knee, to, upTo; docs/codebase/payback.md): "not even" with the knee's levels, "evenness
+// assumed", and "up to N" when the gain's range leaves levels unsettled. Html, each mark a chip after the change (empty for any other row).
+const bookMarks = (b, t) => (!b ? '' : [
+    b.mark === 'notEven' && b.knee ? chip(esc(t('books.notEven', { from: b.knee.from, to: b.knee.to })), 'whatif-chip-warn', esc(t('books.notEvenTip', { from: b.knee.from, to: b.knee.to }))) : '',
+    b.mark === 'assumed' ? chip(esc(t('books.assumed')), '', esc(t('books.assumedTip'))) : '',
+    b.upTo > b.to ? chip(esc(t('books.upTo', { n: b.upTo })), '', esc(t('books.upToTip', { n: b.upTo }))) : '',
+].filter(Boolean).map((h) => ' ' + h).join(''));
 const fig = (k, v) => `<span class="whatif-fig"><span class="whatif-fig-k">${esc(k)}</span> <span class="whatif-fig-v">${v}</span></span>`;
 const arrowOne = (html) => html.replace(/^(.*?)\s*(?:-&gt;|→)\s*(.*)$/, '<span class="whatif-from">$1</span><span class="whatif-arrow">→</span><span class="whatif-to">$2</span>');
 const ARROW = /-&gt;|→/g;
@@ -444,7 +455,7 @@ export function renderRounds(round, t, names = null) {
                 const s = l.change.slots.find((x) => x.index === i), cur = (l.change.current || [])[i];
                 return `<td class="chg">${s ? itemLabel(s, names) : cur ? greyed(itemLabel({ item: cur }, names)) : i < (l.change.current || []).length ? emptyWord(t) : ''}</td>`;
             }).join('')
-            : `<td class="chg">${!owner && l.player ? chip(esc(who(l.player))) + ' ' : ''}${arrowed(esc(localizeDesc(l.desc, names, players, owner || l.player)))}</td>`);
+            : `<td class="chg">${!owner && l.player ? chip(esc(who(l.player))) + ' ' : ''}${arrowed(esc(localizeDesc(l.desc, names, players, owner || l.player)))}${bookMarks(l.book, t)}</td>`);
         // The pool's title is the header of its own table: it takes the place of the first column's header (the Change column). A table with one
         // column per slot puts it over the slot columns (a header row of its own), the slot names under it; the other columns span both rows.
         const titleTh = `<th class="whatif-pool-title"${bySlot ? ` colspan="${nSlots}"` : ''} data-pool="${esc(p.key)}"><b>${title}</b></th>`;
@@ -456,7 +467,7 @@ export function renderRounds(round, t, names = null) {
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
             const figSeeds = figureSeeds(l);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: formatNumber(l.searchHours), fresh: formatNumber(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : paybackText(l.payback, t)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;
@@ -571,8 +582,24 @@ const supplyNote = (c, p, t, se, floor) => {
 const costCell = (row) => (upper(row) ? '≤ ' : '') + num(row.cost);
 // In the confirmation lines, a payback that is not a number above 0 (a saved 0 means nothing was bought) is missing.
 const confirmedPayback = (v) => (typeof v === 'number' && v > 0 ? v : null);
+// Every payback the window shows, in the unit that reads well: the one formatter. `days` is what payback() returns (src/whatif/payback.mjs, the
+// exact crossing point); under 60 days it reads as the payback day, its ceiling (the first whole day the change has paid for itself), as whole
+// days; under two years as months (30.44 days), then as years, both to one decimal. Past the horizon (HORIZON_DAYS, 5 years: "no limit" is a cap
+// of 5 years) it reads "over 5 years", its note on hover. `plain`: text with no markup (a title attribute). Not a number: a dash.
+const MONTH_DAYS = 365.25 / 12;
+export function paybackText(days, t, plain = false) {
+    if (typeof days !== 'number' || !Number.isFinite(days)) return '—';
+    const n = plain ? plainNum : num, one = (x) => Math.round(x * 10) / 10;
+    if (days > HORIZON_DAYS) {
+        const over = t('payback.over', { n: n(Math.round(HORIZON_DAYS / 365)) });
+        return plain ? over : esc(over) + help(esc(t('payback.overTip')));
+    }
+    if (days < 60) { const d = Math.ceil(days); return plural(t, 'payback.days', d, { n: n(d) }); }
+    if (days < 730) return t('payback.months', { n: n(one(days / MONTH_DAYS)) });
+    return t('payback.years', { n: n(one(days / 365.25)) });
+}
 // A cost of exactly 0 (a free change) has nothing to pay back: that reads as words, not as the dash of a cost with no gain.
-const paybackCell = (row, t) => (row.payback === null || row.payback === undefined ? (row.cost === 0 && t ? esc(t('result.noCost')) : '—') : (upper(row) ? '≤ ' : '') + num(row.payback));
+const paybackCell = (row, t) => (row.payback === null || row.payback === undefined ? (row.cost === 0 ? esc(t('result.noCost')) : '—') : (upper(row) ? '≤ ' : '') + paybackText(row.payback, t));
 
 // The split of a row: the party's gain per user and its error, then the buyer's gain per day and its error (profit goal; "—" on the EXP
 // goal and on a result saved before the buyer's net). hasSplit: the row carries the buyer's split, so Payback is the buyer's.
@@ -825,16 +852,19 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             `<th>${esc(t('col.costPath'))}</th><th></th></tr></thead><tbody>`);
         // One row of the chosen changes: a confirmed step (its number, its fresh reading, its Apply button) or a "so far" row (no number, its figure so far,
         // the "so far" mark where the Apply button stands: it can never be applied or read as final).
+        // A step the merge bought from the ability-book rows (s.book; tools/whatif/core.mjs bookPool): its marks, and on hover how it was bought (before
+        // the race's pick, whose payback it beat: s.versus) and that it was measured once against the start, not on top of the steps before it.
+        const bookStep = (s) => (s.book ? bookMarks(s.book, t) + help(esc(t(s.versus != null ? 'books.stepTip' : 'books.stepTipAlone', { versus: paybackText(s.versus, t, true) }))) : '');
         const stepRow = (s, i) => {
             // A step that holds a set accepted together: its members joined, each worded alone, the players joined, and each member's own gain (its marginal) in the tooltip.
             const set = Array.isArray(s.members) && s.members.length > 1;
             const tip = set ? ` title="${esc([t('result.setMarginals'), ...s.members.map((m) => `${localizeDesc(m.desc, names, [m.player, ...known], m.player)}: ${m.marginal ? `${plainNum(m.marginal.gainPerUser)} ± ${plainNum(m.marginal.sePerUser)}` : '—'}`),
-                ...(s.buyers && Object.keys(s.buyers).length > 1 ? Object.entries(s.buyers).map(([p, b]) => t('result.setBuyer', { who: p, net: plainNum(b.buyerNet), days: Number.isFinite(b.payback) ? b.payback.toFixed(1) : '—' })) : [])].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
+                ...(s.buyers && Object.keys(s.buyers).length > 1 ? Object.entries(s.buyers).map(([p, b]) => t('result.setBuyer', { who: p, net: plainNum(b.buyerNet), days: paybackText(b.payback, t, true) })) : [])].join(String.fromCharCode(10)))}" data-set="${s.members.length}"` : '';
             const who = set ? [...new Set(s.members.map((m) => m.player))].join(', ') : s.player, what = set ? s.members.map((m) => shown(m)).join(' + ') : shown(s);
             const cls = s.soFar ? ' class="whatif-so-far" data-so-far' : s.accepted === false ? ' class="whatif-weak"' : '';
             const end = s.soFar ? `<td>${chip(esc(t('result.soFar')), 'whatif-st-running', esc(t('result.soFarRowTip')))}</td>`
                 : `<td><button type="button" class="btn btn-primary btn-sm py-0" data-whatif-apply="steps:${i + 1}">${esc(i === 0 ? t('apply') : t('applyTo', { n: i + 1 }))}</button></td>`;
-            return `<tr${cls}><td>${s.soFar ? '' : i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}</td>` +
+            return `<tr${cls}><td>${s.soFar ? '' : i + 1}</td><td>${esc(who)}</td><td class="chg"${tip}>${what}${s.acceptedAsIs ? asIsMark(t) : ''}${bookStep(s)}</td>` +
                 gainCells(s, goalExp, t, floor, true) + `<td class="num">${costCell(s)}</td>${paybackTd(s, goalExp, t, true)}` + (s.soFar && !s.costPath ? '<td></td>' : pathCell(s, t)) + end + '</tr>';
         };
         (result.steps || []).forEach((s, i) => L.push(stepRow(s, i)));
@@ -856,7 +886,7 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
             const party = `<tr data-confirm-row="party"><td>${esc(t('result.confirmedPartyRow'))}</td>${gainCell(c.gainPerUser, c.sePerUser, t, floor)}<td class="num">—</td><td class="small">${esc(t('col.cost'))} ${costCell({ cost: c.cost, costBound: bound })}</td></tr>`;
             const body = party + Object.entries(c.buyerByPlayer).map(([p, b]) => {
                 const free = c.runningSpend?.[p] === 0;
-                const payback = free ? esc(t('result.noCost')) : paybackCell({ payback: confirmedPayback(b.payback), costBound: bound });
+                const payback = free ? esc(t('result.noCost')) : paybackCell({ payback: confirmedPayback(b.payback), costBound: bound }, t);
                 return `<tr><td>${esc(p)}</td>${gainCell(b.gain, b.se, t, floor)}<td class="num${free ? ' whatif-free' : ''}">${payback}</td><td class="small">${supplyNote(c, p, t, c.sePerUser, floor)}</td></tr>`;
             }).join('');
             L.push(`<table class="table table-sm whatif-table whatif-confirm" data-confirm="players"><thead><tr><th>${esc(t('col.player'))}</th><th class="num">${esc(t('result.gainPerDay'))}</th><th class="num">${esc(t('result.paysBackIn'))}</th><th></th></tr></thead><tbody>${body}</tbody></table>`);
@@ -869,8 +899,13 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     if (answer.length) answer.unshift(`<div class="whatif-h">${esc(t('result.answer'))}</div>`);
     // What a limit or a missing price left out, and stale prices: one row of chips under the answer, each opening its list under See details.
     // (No chip for the changes with no known cost: their list under See details says it.)
-    const leftOut = [['overPayback', 'leftOutPayback', 'whatIfOverPayback', { days: formatNumber(result.options?.maxPaybackDays) }], ['overBudget', 'leftOutBudget', 'whatIfOverBudget', {}]]
-        .filter(([k]) => result[k]?.length).map(([k, key, id, p]) => { const n = result[k].length; return `<button type="button" class="whatif-chip whatif-chip-warn" data-left-out="${k}" data-whatif-more="${id} whatIfDetails" title="${esc(t('result.' + k + 'Note', { n, ...p }))}">${esc(plural(t, 'result.' + key, n, { n }))}</button>`; });
+    // The Payback limit the search applied: the user's, or with none the 5-year horizon ("no limit" is a cap of 5 years).
+    const limitText = paybackText(result.options?.maxPaybackDays > 0 ? result.options.maxPaybackDays : HORIZON_DAYS, t, true);
+    // The ability-book rows the plan did not buy (each with its reason, result.books[].notTaken) and those not judged (result.booksApart: casts a day unknown).
+    const booksNotTaken = [...(result.books || []).filter((r) => r.notTaken), ...(result.booksApart || []).map((r) => ({ ...r, notTaken: 'castsUnknown' }))];
+    const listOf = (k) => (k === 'booksNotTaken' ? booksNotTaken : result[k] || []);
+    const leftOut = [['overPayback', 'leftOutPayback', 'whatIfOverPayback', { days: limitText }], ['overBudget', 'leftOutBudget', 'whatIfOverBudget', {}], ['booksNotTaken', 'leftOutBooks', 'whatIfBooksNotTaken', {}]]
+        .filter(([k]) => listOf(k).length).map(([k, key, id, p]) => { const n = listOf(k).length; return `<button type="button" class="whatif-chip whatif-chip-warn" data-left-out="${k}" data-whatif-more="${id} whatIfDetails" title="${esc(t('result.' + k + 'Note', { n, ...p }))}">${esc(plural(t, 'result.' + key, n, { n }))}</button>`; });
     const under = answer.length ? [...leftOut, pricesChip].filter(Boolean) : [];
     if (!answer.length) topChips.push(...leftOut, ...(pricesChip ? [pricesChip] : []));
     const chipsRow = under.length ? [`<div class="whatif-chips mb-2">${under.join('')}</div>`] : [];
@@ -923,8 +958,13 @@ export function renderResult(result, t, now = Date.now(), names = null, running 
     }
     if (result.overPayback?.length) {
         // The changes the payback limit left out (result.options.maxPaybackDays): each with its cost and the days it would take to pay back.
-        const days = (a) => (Number.isFinite(a.paybackDays) ? num(a.paybackDays) : chip(esc(t('result.overPaybackNever'))));
-        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a) + pathAfter(a, t), true)}${td(days(a), true)}</tr>`), { days: formatNumber(result.options?.maxPaybackDays) }, t, [H.player, H.change, H.cost, H.payback]));
+        const days = (a) => (Number.isFinite(a.paybackDays) ? paybackText(a.paybackDays, t) : chip(esc(t('result.overPaybackNever'))));
+        D.push(closedList('overPayback', 'whatIfOverPayback', result.overPayback.map((a) => `<tr>${td(esc(a.player))}${td(shown(a))}${td(costCell(a) + pathAfter(a, t), true)}${td(days(a), true)}</tr>`), { days: limitText }, t, [H.player, H.change, H.cost, H.payback]));
+    }
+    if (booksNotTaken.length) {
+        // The ability-book rows not bought: each with its levels' marks, its cost, its payback and why it was not taken (the reason's sentence on hover).
+        const why = (r) => `<span data-not-taken="${esc(r.notTaken)}">${chip(esc(t('books.reason.' + r.notTaken)), '', esc(t('books.reason.' + r.notTaken + 'Tip', { days: limitText })))}</span>`;
+        D.push(closedList('booksNotTaken', 'whatIfBooksNotTaken', booksNotTaken.map((r) => `<tr>${td(esc(r.player))}${td(shown(r) + bookMarks(r, t))}${td(r.cost > 0 ? costCell(r) : '—', true)}${td(paybackCell({ ...r, cost: r.cost > 0 ? r.cost : null }, t), true)}${td(why(r))}</tr>`), {}, t, [H.player, H.change, H.cost, H.payback, [t('result.endingCol')]]));
     }
     if (result.notConfirmed?.length) {
         // The picks the search left out because their fresh reading did not confirm them: closed behind one toggle, like the over-budget list.
