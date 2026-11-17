@@ -86,12 +86,14 @@ function pm(v, half) {
     // A gain green, a loss red (its minus sign says it too), the error dim: as in gainCell.
     return `<span class="${v < 0 ? 'whatif-loss' : 'whatif-gain'}">${p.main}</span>${p.err === null ? '' : '<span class="whatif-pm"> ± ' + p.err + '</span>'}`;
 }
-// One table cell for the party gain or the buyer's gain, in the rounds tables and the Best tables (the one helper for both columns). `seeds`: the
-// runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than FIGURE_MIN_SEEDS: a dim "—" and a hover text.
-function pmCell(v, half, t, seeds = null) {
+// One table cell for a figure that rests on runs: the party gain, the buyer's gain (rounds tables and Best tables) and the payback of a rounds-table
+// row (the one helper for these columns). `seeds`: the runs the figure rests on (null = not known, an older result: the figure is drawn). Fewer than
+// FIGURE_MIN_SEEDS: a dim "—" and a hover text, in every such column alike.
+function figCell(html, t, seeds = null) {
     if (Number.isFinite(seeds) && seeds < FIGURE_MIN_SEEDS) return `<td class="num whatif-dim" title="${esc(t('rounds.needsMoreRuns'))}">—</td>`;
-    return `<td class="num">${pm(v, half)}</td>`;
+    return `<td class="num">${html}</td>`;
 }
+const pmCell = (v, half, t, seeds = null) => figCell(pm(v, half), t, seeds);
 // One figure in a line of text: "no change", or "<value> ± <error>".
 const figure = (v, se, t, floor) => (isNoChange(v, se, floor) ? noChange(v, se, t) : num(fit(v, se)) + ' ± ' + marginHtml(fit(v, se), se));
 // One cell for a gain and its error, "<value> ± <error>": "no change" (the real value as title) when it reads as no change.
@@ -456,7 +458,7 @@ export function renderRounds(round, t, names = null) {
             const status = t('rounds.status.' + sk), statusTip = t('rounds.status.' + sk + 'Tip', vals);
             const figSeeds = figureSeeds(l);
             const hours = Number.isFinite(l.hours) ? `<td class="num" title="${esc(t('rounds.hoursTitle', { search: formatNumber(l.searchHours), fresh: formatNumber(l.readHours) }))}">${num(l.hours)}</td>` : '<td class="num">—</td>';
-            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}<td class="num">${l.tooFew || l.payback == null ? '—' : num(l.payback)}</td><td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
+            return `<tr data-status="${esc(l.status)}" data-cand="${esc(l.id)}"${l.status === 'zero' ? ' class="whatif-dim"' : ''}>${changeCells(l)}<td class="num">${num(l.cost)}</td>${hours}${pmCell(l.reading, halfOf(l.low, l.high), t, figSeeds)}${pmCell(l.buyerNet, halfOf(l.netLow, l.netHigh), t, figSeeds)}${figCell(l.tooFew || l.payback == null ? '—' : num(l.payback), t, figSeeds)}<td>${chip(esc(status), 'whatif-st-' + esc(l.status), esc(statusTip))}</td></tr>`;
         }).join('');
         const head2 = `<th class="num c-cost">${esc(t('rounds.col.cost'))}</th><th class="num c-hours">${esc(t('rounds.col.hours'))}</th>${gainTh(t, 'partyGain', ' c-gain')}${gainTh(t, 'buyerGain', ' c-gain')}<th class="num c-pay">${esc(t('rounds.col.payback'))}</th><th class="c-status">${esc(t('rounds.col.status'))}</th>`;
         const thead = bySlot ? `<tr>${titleTh}${head2.replace(/<th /g, '<th rowspan="2" ')}</tr><tr>${slotHead}</tr>` : `<tr>${titleTh}${head2}</tr>`;

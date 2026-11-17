@@ -4150,7 +4150,10 @@ function whatIfDrawChartsNow() {
         });
     }
     const progress = live ? whatIf.status?.progress : null;
-    whatIf.charts.update(whatIfBuildHistory(whatIf.rounds, { firstLook: first }), { running: live ? progress?.stage ?? null : null, flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
+    // The stage that runs now: the progress' stage, unless its end mark (stageEnded) names it. An ended race stage stays the progress' stage through
+    // what follows it under its name (its pick checks, the base runs of a search that picked nothing); its progress row reads Done, so its chart does too.
+    const running = progress && progress.stageEnded !== progress.stage ? progress.stage ?? null : null;
+    whatIf.charts.update(whatIfBuildHistory(whatIf.rounds, { firstLook: first }), { running, flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
 }
 
 // The round records of a search the window did not watch run (an earlier search, or one finished before the window looked): fetched once per search id.
