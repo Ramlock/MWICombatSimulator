@@ -399,33 +399,121 @@ const keysOf = (calls) => calls.flatMap((c) => c.records.map((x) => x.key));
 async function atest(name, fn) { await fn(); n++; console.log('ok - ' + name); }
 
 (async () => {
-await atest('a helper request whose callback never comes fails after the watchdog, the sink retries and sends; a late callback is ignored', async () => {
-    const { guardRequest, REQUEST_WATCHDOG_MS } = mod.exports;
-    assert.equal(REQUEST_WATCHDOG_MS, 30000);
-    let lose = true;
-    const r = fresh();
-    const s = sinkFor(r);
-    const dogs = [];
+// A sink whose post goes through guardRequest with a fake watchdog: each request waits until the test answers it (posts[i].done) or fires its watchdog (dogs[i]).
+const { guardRequest, REQUEST_WATCHDOG_MS } = mod.exports;
+function lateSink(r) {
+    const posts = [], dogs = [], timers = [], logs = [];
+    let t = 1e6;
     const sink = createSink({
         recorder: r, enabled: () => true, selfOnly: () => false,
-        post: (body) => guardRequest((done) => { if (!lose) { s.calls.push(J(body)); done({ ok: true, status: 200, text: '{}' }); } }, REQUEST_WATCHDOG_MS, (fn, ms) => dogs.push({ fn, ms })),
-        now: () => 1e6, setTimer: (fn, ms) => s.timers.push({ fn, ms }), log() {},
+        post: (body) => guardRequest((done) => { posts.push({ body: J(body), done }); }, REQUEST_WATCHDOG_MS, (fn, ms) => dogs.push({ fn, ms })),
+        now: () => t, setTimer: (fn, ms) => timers.push({ fn, ms }), log: (x) => logs.push(x),
     });
-    r.handle({ type: 'quests_updated', endCharacterQuests: [{ status: '/quest_status/in_progress', category: 'c', monsterHrid: '/monsters/m', goalCount: 5, currentCount: 1 }] }, 900);
-    sink.notify();
-    await tick();
-    assert.equal(sink.state.flushing, true, 'the send is in flight and its callback never comes');
-    lose = false;
-    dogs.find((d) => d.ms === REQUEST_WATCHDOG_MS).fn();
-    await tick(); await tick();
-    assert.equal(sink.state.flushing, false, 'the watchdog ends the send as failed');
-    s.timers.find((t) => t.ms === SINK.RETRY_MIN_MS).fn();
-    await tick(); await tick();
-    assert.equal(s.calls.length, 1, 'the retry sends');
+    const ok = (p) => p.done({ ok: true, status: 200, text: JSON.stringify({ accepted: p.body.records.length, duplicate: 0, rejected: 0 }) });
+    const timer = (ms) => { const i = timers.findIndex((x) => x.ms === ms); assert.ok(i >= 0, 'a timer of ' + ms + ' ms is set'); return timers.splice(i, 1)[0].fn; };
+    return { sink, posts, dogs, timers, logs, ok, timer, advance: (ms) => { t += ms; } };
+}
+const quest = (r, t, count) => r.handle({ type: 'quests_updated', endCharacterQuests: [{ status: '/quest_status/in_progress', category: 'c', monsterHrid: '/monsters/m', goalCount: 50, currentCount: count }] }, t);
+const ticks = async () => { for (let i = 0; i < 10; i++) await tick(); };
+const postedKeys = (posts) => posts.flatMap((p) => p.body.records.map((x) => x.key));
+
+await atest('guardRequest: after the watchdog the result is timedOut and carries the late answer; an answer in time has no late', async () => {
+    assert.equal(REQUEST_WATCHDOG_MS, 30000);
     let late;
     const res = await guardRequest((done) => { late = done; }, 5, (fn) => fn());
+    assert.equal(res.timedOut, true);
     late({ ok: true, status: 200 });
-    assert.equal(res.timedOut, true, 'a late callback is ignored');
+    late({ ok: false, status: 0 });
+    assert.deepEqual(await res.late, { ok: true, status: 200 }, 'the first late callback is the late answer');
+    const dogs = [];
+    const inTime = await guardRequest((done) => done({ ok: true, status: 200 }), 5, (fn) => dogs.push(fn));
+    dogs[0]();
+    assert.deepEqual(inTime, { ok: true, status: 200 }, 'a watchdog after the answer changes nothing');
+});
+
+await atest('sink, background tab: the answer and the watchdog come together after more than 30 s, in either order: no record is sent twice and the queue empties', async () => {
+    for (const order of ['watchdog first', 'answer first']) {
+        const r = fresh(), s = lateSink(r);
+        quest(r, 900, 1); s.sink.notify(); await ticks();
+        assert.equal(s.posts.length, 1, order);
+        s.advance(61000);
+        if (order === 'watchdog first') { s.dogs[0].fn(); s.ok(s.posts[0]); } else { s.ok(s.posts[0]); s.dogs[0].fn(); }
+        await ticks();
+        assert.equal(s.sink.state.pending, null, order + ': nothing pending once the answer is in');
+        assert.equal(s.sink.state.queue.length, 0, order + ': the answered record left the queue');
+        quest(r, 950, 2); s.sink.notify(); await ticks();
+        assert.equal(s.posts.length, 2, order + ': the next recorder message sends');
+        s.ok(s.posts[1]); await ticks();
+        const keys = postedKeys(s.posts);
+        assert.equal(new Set(keys).size, keys.length, order + ': no record sent twice: ' + keys.join(','));
+        assert.equal(keys.length, 2, order);
+        assert.equal(s.sink.state.queue.length, 0, order + ': the queue empties');
+        assert.equal(s.sink.state.stats.failed, 0, order);
+        assert.equal(s.sink.state.stats.accepted, 2, order + ': the late answer is counted');
+        assert.equal(s.logs.filter((x) => /^late answer counted: 1 records marked sent, 61000 ms after the send$/.test(x)).length, order === 'watchdog first' ? 1 : 0, order + ': ' + s.logs.join(' | '));
+    }
+});
+
+await atest('sink: a batch whose answer is pending is not sent again on the next recorder message, nor on page hide; its late answer frees the send path', async () => {
+    const r = fresh(), s = lateSink(r);
+    quest(r, 900, 1); s.sink.notify(); await ticks();
+    s.dogs[0].fn(); await ticks();
+    assert.ok(s.sink.state.pending, 'the watchdog leaves the batch pending');
+    assert.equal(s.sink.state.flushing, false);
+    quest(r, 950, 2); s.sink.notify(); await ticks();
+    await s.sink.finish(); await ticks();
+    assert.equal(s.posts.length, 1, 'nothing is sent while the answer is pending');
+    assert.equal(s.sink.state.queue.length, 2);
+    s.ok(s.posts[0]); await ticks();
+    assert.equal(s.posts.length, 2, 'the late answer frees the send path and the rest goes');
+    assert.deepEqual(s.posts[1].body.records.map((x) => x.key), [s.sink.state.queue[0].key]);
+    s.ok(s.posts[1]); await ticks();
+    assert.equal(s.sink.state.queue.length, 0);
+    const keys = postedKeys(s.posts);
+    assert.equal(new Set(keys).size, 2);
+});
+
+await atest('sink: an answer that never comes: one retry after SINK.LOST_MS, nothing lost', async () => {
+    assert.equal(SINK.LOST_MS, 300000);
+    const r = fresh(), s = lateSink(r);
+    quest(r, 900, 1); s.sink.notify(); await ticks();
+    s.dogs[0].fn(); await ticks();
+    assert.ok(!s.timers.some((x) => x.ms === SINK.RETRY_MIN_MS), 'no retry yet: the answer may still come');
+    s.timer(SINK.LOST_MS)(); await ticks();
+    assert.equal(s.sink.state.pending, null);
+    assert.equal(s.sink.state.stats.failed, 1);
+    assert.equal(s.posts.length, 1);
+    s.timer(SINK.RETRY_MIN_MS)(); await ticks();
+    assert.equal(s.posts.length, 2, 'one retry');
+    assert.deepEqual(s.posts[1].body.records.map((x) => x.key), s.posts[0].body.records.map((x) => x.key), 'the retry carries the record');
+    s.ok(s.posts[1]); await ticks();
+    assert.equal(s.sink.state.queue.length, 0);
+    assert.equal(s.sink.state.sent.size, 1, 'nothing lost');
+});
+
+await atest('sink: a late ok answer after a retry was already made still counts, by key; records queued meanwhile are kept and sent once', async () => {
+    const r = fresh(), s = lateSink(r);
+    quest(r, 900, 1); s.sink.notify(); await ticks();
+    s.dogs[0].fn(); await ticks();
+    quest(r, 950, 2); s.sink.notify(); await ticks();
+    assert.equal(s.posts.length, 1);
+    s.timer(SINK.LOST_MS)(); await ticks();
+    s.timer(SINK.RETRY_MIN_MS)(); await ticks();
+    assert.equal(s.posts.length, 2, 'the retry is in flight with both records');
+    assert.equal(s.posts[1].body.records.length, 2);
+    quest(r, 990, 3); s.sink.notify(); await ticks();
+    s.advance(400000);
+    s.ok(s.posts[0]); await ticks();
+    assert.ok(s.logs.some((x) => /^late answer counted: 1 records marked sent, 400000 ms after the send, after the bound$/.test(x)), s.logs.join(' | '));
+    assert.equal(s.sink.state.queue.length, 2, 'the late record left the queue; the two others stay');
+    assert.equal(s.posts.length, 2, 'a late answer after the bound starts no send of its own');
+    s.ok(s.posts[1]); await ticks();
+    assert.equal(s.posts.length, 3);
+    assert.equal(s.posts[2].body.records.length, 1, 'only the record queued meanwhile goes');
+    s.ok(s.posts[2]); await ticks();
+    assert.equal(s.sink.state.queue.length, 0);
+    assert.equal(s.sink.state.sent.size, 3, 'nothing lost');
+    assert.equal(s.dogs.length, 3);
 });
 
 await atest('sink: an encounter goes out only after four later ones have closed; window and tasks go at once', async () => {
