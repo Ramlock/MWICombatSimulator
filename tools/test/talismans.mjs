@@ -484,9 +484,10 @@ check(await runOf(gen({ talismans: U })) !== eBase, 'engine: the four unique mod
     const withoutStep = await runSeeded(4242);
     CombatSimulator.prototype.processEcho = realEcho;
     check(withStep === withoutStep, 'echo: without the line, a run is byte-equal with Echo\'s step taken out (no random call added)');
-    // Pinned on commit 3634182, the engine before Echo; an engine change that moves this run re-pins it here.
+    // Pinned on commit 3634182, the engine before Echo; an engine change that moves this run re-pins it here. Re-pinned at the merge with loot at
+    // each kill, which adds the result's killMultipliers: with that field taken out, this run still hashes to the 3634182 pin (380a7240...).
     const sha = createHash('sha256').update(withStep).digest('hex');
-    check(sha === '380a72408f4f985818d8706b25cbb67185f394573c4e789229b6080b3691a6a1', 'echo: a 10 minute run with five abilities and no Echo is the same as before Echo was built', sha);
+    check(sha === 'ee5bf7902ba68f3719ff8380ffd9511f37665e24474c00e825cb203dc1afcbdf', 'echo: a 10 minute run with five abilities and no Echo is the same as before Echo was built', sha);
 }
 console.log(fails === 0 ? 'PASS: talismans.' : `FAIL: ${fails} problems.`);
 process.exit(fails === 0 ? 0 : 1);
