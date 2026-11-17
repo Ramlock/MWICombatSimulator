@@ -362,6 +362,7 @@
             "running": "running",
             "firstLook": "First look: figures from the first runs, no lines yet.",
             "noFigures": "No change has the {{n}} fresh runs a figure needs yet.",
+            "noFiguresEnded": "No change reached the {{n}} fresh runs a figure needs.",
             "noRounds": "{{stage}}: ended before its first round finished, so there is no chart.",
             "tipFigure": "{{value}} [{{low}}, {{high}}] · round {{round}}",
             "tipFigureOne": "{{value}} · round {{round}}",

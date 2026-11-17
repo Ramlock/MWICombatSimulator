@@ -39,7 +39,7 @@ import { keepGroup, loadKeptGroup } from "./savedGroup.mjs";
 import { parseMinGain, MIN_GAIN_PCT as WHATIF_MIN_GAIN_PCT } from './whatif/minGain.mjs';
 import { LEVERS as WHATIF_LEVERS, API as WHATIF_API, pageSetups as whatIfPageSetups, searchRequest as whatIfSearchRequest, settingsKey as whatIfSettingsKey, applyToSlots as whatIfApplyToSlots, opsFor as whatIfOpsFor, diffSetups as whatIfDiffSetups, renderProgress as whatIfRenderProgress, renderRounds as whatIfRenderRounds, renderResult as whatIfRenderResult, soFarSteps as whatIfSoFarSteps, namesFrom as whatIfNamesFrom, renderDiff as whatIfRenderDiff, parseExport as whatIfParseExport, exportStatus as whatIfExportStatus, exportKey as whatIfExportKey, EXPORT_LEVERS as WHATIF_EXPORT_LEVERS, exportLeverView as whatIfExportLeverView, pollDelay as whatIfPollDelay, FAST_FOR_MS as WHATIF_FAST_FOR_MS, slotHasData as whatIfSlotHasData, stageLabel as whatIfStageLabel, localizeDesc as whatIfLocalizeDesc } from "./whatif/panel.mjs";
 import { buildHistory as whatIfBuildHistory } from "./whatif/history.mjs";
-import { createChartHost as whatIfCreateCharts } from "./whatif/chartView.mjs";
+import { createChartHost as whatIfCreateCharts, endedStages as whatIfEndedStages } from "./whatif/chartView.mjs";
 import { RUNNER_DOWNLOAD_URL, RUNNER_ZIP_URL } from "./whatif/runnerDownload.mjs";
 import { talismanViewHtml } from "./talismanView.mjs";
 import { morphInto as whatIfMorphInto } from "./whatif/morph.mjs";
@@ -4153,7 +4153,8 @@ function whatIfDrawChartsNow() {
     // The stage that runs now: the progress' stage, unless its end mark (stageEnded) names it. An ended race stage stays the progress' stage through
     // what follows it under its name (its pick checks, the base runs of a search that picked nothing); its progress row reads Done, so its chart does too.
     const running = progress && progress.stageEnded !== progress.stage ? progress.stage ?? null : null;
-    whatIf.charts.update(whatIfBuildHistory(whatIf.rounds, { firstLook: first }), { running, flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
+    const history = whatIfBuildHistory(whatIf.rounds, { firstLook: first });
+    whatIf.charts.update(history, { running, ended: whatIfEndedStages(history, { running, live, done: whatIf.state === 'done' }), flying: progress?.inFlight?.ids ?? [], endedByUser: (whatIf.result ?? whatIf.status?.partial)?.endedByUser });
 }
 
 // The round records of a search the window did not watch run (an earlier search, or one finished before the window looked): fetched once per search id.
