@@ -142,6 +142,6 @@ export async function measureLadder({ room, measure, stopAt, margin = 2, block =
         }
         const levels = Math.min(stops.low, measuredTo), upTo = Math.max(levels, Math.min(stops.high, measuredTo));
         const mark = flagged && confirmed ? 'notEven' : ev.mark, pairs = flagged ? [...ev.pairs, failed] : ev.pairs;
-        return { steps: steps.map((s) => ({ levels: s.levels, gain: s.gain, se: s.se, seeds: s.samples ? Object.keys(s.samples).length : null })), seeds: plan[prec].k, hours: plan[prec].h ?? null, perLevel: ev.perLevel, perLevelLow: ends.low, perLevelHigh: ends.high, mark, knee: confirmed ? knee : null, pairs, stops, levels, upTo, measuredTo, runs };
+        return { steps: steps.map((s) => ({ levels: s.levels, gain: s.gain, se: s.se, seeds: s.samples ? Object.keys(s.samples).length : null })), seeds: plan[prec].k, hours: plan[prec].h ?? null, perLevel: ev.perLevel, perLevelSe: ev.perLevelSe, perLevelLow: ends.low, perLevelHigh: ends.high, mark, knee: confirmed ? knee : null, pairs, stops, levels, upTo, measuredTo, runs };
     }
 }

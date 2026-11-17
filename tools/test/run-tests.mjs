@@ -17,7 +17,7 @@ export const HEAVYRUN = 'D:\\Apps\\HeavyRun\\HeavyRun.exe';
 export const DEFAULT_MINUTES = 1;
 // The long files (minutes each may take): about twice the time measured through this loop on 2026-11-15 (synthetic 409 s, presses 338 s,
 // window 95 s, foods-drinks 65 s); whatif-runner-exe.mjs is not measured (needs a built exe). Every other file took under 40 s.
-export const LONG_MINUTES = { 'whatif-runner-exe.mjs': 15, 'whatif-synthetic.mjs': 14, 'whatif-presses.mjs': 12, 'whatif-window.mjs': 4, 'whatif-foods-drinks.mjs': 3 };
+export const LONG_MINUTES = { 'whatif-runner-exe.mjs': 15, 'whatif-synthetic.mjs': 14, 'whatif-presses.mjs': 12, 'whatif-window.mjs': 4, 'whatif-foods-drinks.mjs': 3, 'whatif-books.mjs': 4 };
 const stamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 // The counts of a log's text: lines starting ok / PASS / pass / ✔, and FAIL / fail / not ok / ✖ (after the line's own timestamp, if any).

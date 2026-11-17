@@ -52,7 +52,7 @@ export async function booksForPlayer({ player, setup, learned, buy, limit, measu
         return {
             ...base, from, to, upTo: from + r.upTo, measuredTo: from + r.measuredTo,
             cost: at ? at.cost : 0, payback: at ? payback(at, { table: XP }) : null,
-            perLevel: r.perLevel, perLevelLow: r.perLevelLow, perLevelHigh: r.perLevelHigh, mark: r.mark,
+            perLevel: r.perLevel, perLevelSe: r.perLevelSe, perLevelLow: r.perLevelLow, perLevelHigh: r.perLevelHigh, mark: r.mark,
             knee: r.knee ? { from: from + r.knee.from, to: from + r.knee.to } : null, seeds: r.seeds, states: r.runs.length,
         };
     };
@@ -76,7 +76,9 @@ export async function booksForPlayer({ player, setup, learned, buy, limit, measu
         const r = await measureLadder({ room: MAX_LEVEL - L0, measure: toLadder((levels, k, h) => measure(ops(levels), k, h)), stopAt, schedule });
         if (r === null) return null;
         held[i] = { ability, xp: xpNow, perDay, perLevel: r.perLevel, knee: r.knee ? L0 + r.knee.from : undefined };
-        rows.push({ ...rowOf(base, r, L0, (to) => changeAt(r.perLevel, r.knee?.from)(to)), books: nBooks(L0 + r.levels), ...(ex ? {} : { costBound: 'upper' }) });
+        // ops, gain: the change at the recommended level (what the plan buys when the row is taken) and its gain a day on the day bought.
+        rows.push({ ...rowOf(base, r, L0, (to) => changeAt(r.perLevel, r.knee?.from)(to)), books: nBooks(L0 + r.levels), ...(ex ? {} : { costBound: 'upper' }),
+            ops: r.levels > 0 ? ops(r.levels) : null, gain: r.perLevel * r.levels, gainSe: r.perLevelSe * r.levels });
     }
     if (!switches || !learned) return { rows, apart };
 
@@ -124,7 +126,8 @@ export async function booksForPlayer({ player, setup, learned, buy, limit, measu
             if (perDayOf(dayOne.uses, ability) === null) { apart.push({ ...base, note: 'casts a day unknown (runs recorded before the count existed): start a new search' }); continue; }
             const row = rowOf(base, r, 1, (to) => changeAt(r.perLevel, r.knee?.from)(to));
             // levels -1: no switch (not even the first book pays back); the row keeps its figures, with no level bought.
-            rows.push(r.levels < 0 ? { ...row, to: 0, cost: 0, payback: null, books: 0, dayOne: dayOne.gain, dayOneSe: dayOne.se } : { ...row, books: nBooks(row.to), dayOne: dayOne.gain, dayOneSe: dayOne.se });
+            rows.push(r.levels < 0 ? { ...row, to: 0, cost: 0, payback: null, books: 0, dayOne: dayOne.gain, dayOneSe: dayOne.se, ops: null }
+                : { ...row, books: nBooks(row.to), dayOne: dayOne.gain, dayOneSe: dayOne.se, ops: ops(row.to), gain: dayOne.gain + r.perLevel * (row.to - 1), gainSe: Math.hypot(dayOne.se, r.perLevelSe * (row.to - 1)) });
         }
     }
     return { rows, apart };

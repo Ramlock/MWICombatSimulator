@@ -34,7 +34,7 @@ import { playerFit, misfit, abilityMisfit } from './stylefit.mjs';
 import { createParts } from './progress.mjs';
 import { MIN_GAIN_PCT } from '../../src/whatif/minGain.mjs';
 import { SURE_BLOCK, SURE_MAX, verdict, rangeOf, checkPick, firstConfirmed, confirmFillings, checkSet } from './sure.mjs';
-import { paybackDays, overPaybackLimit } from '../../src/whatif/payback.mjs';
+import { paybackDays, overPaybackLimit, HORIZON_DAYS } from '../../src/whatif/payback.mjs';
 import { hasFigure, showsFigure } from '../../src/whatif/figure.mjs';
 // A count with its noun, singular for 1 ("1 run", "2 runs").
 const nOf = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
@@ -1179,10 +1179,10 @@ export async function main(settings, seams) {
                 publish(result); // snapshot 1 (foods) and 2 (drinks)
             }
         }
-        // STAGE B, the books stage (the private design's section 10, placement A): every held ability's books and every switch to a not-learned
-        // ability, each judged alone against this start (the baseline after foods and drinks) by the measuring loop and the break-even rule
-        // (books.mjs); no pick check. The rows go to result.books: they join neither the chain nor the budget (a row joining the plan would go
-        // through takeStep, the one seam). Its states run on the pick check's seeds (sureSeeds), first block at --books-first-hours.
+        // STAGE B, the books stage (the private design's section 10): every held ability's books and every switch to a not-learned ability,
+        // each measured once against this start (the baseline after foods and drinks) by the measuring loop and the break-even rule
+        // (books.mjs); no pick check. The rows go to result.books; the greedy steps below merge them into the plan by payback (placement B:
+        // bookPool). Its states run on the pick check's seeds (sureSeeds), first block at --books-first-hours.
         result.books = []; result.booksApart = [];
         if (booksOn) {
             const startOps = baseOps, setupsB = applyOps(setups0, startOps), n = setups0.length;
@@ -1260,6 +1260,19 @@ export async function main(settings, seams) {
         // without it, on the same seeds). The race restarts on the new base with the survivors, rebuilt from the new setup (a survivor whose change no
         // longer applies drops out): the equipment slots an equipment member changed get fresh candidates from the new item, as in phase 1; the other
         // groups touched keep only their survivors, so a loadout step does not re-add dozens. `orig`: the race's candidate a refined pick came from.
+        // THE MERGE (the private design's section 10, placement B): each round, the books or switch row not yet taken with the shortest payback
+        // is compared with the race's pick, and the shorter payback is taken; a taken row is bought through takeStep (its levels join the base,
+        // its cost leaves its player's budget) and the race runs again on top of it. Both paybacks come from payback() (books.mjs for a row,
+        // paybackDays, its no-lead case, for a race pick). Known weak point (result.md and docs/codebase/payback.md say it): a race pick's
+        // payback is measured on top of the plan so far, a row's against the baseline, and only a row's settled-in levels are bought. A row
+        // whose levels do not pay back inside the Payback limit (or the 5-year horizon) is never taken.
+        const horizon = payLimit > 0 ? payLimit : HORIZON_DAYS;
+        const bookPool = result.books.filter((r) => r.ops && r.payback != null && r.payback <= horizon).map((r) => ({
+            id: `${r.kind}:${r.player}:${r.slot}:${short(r.ability)}:${r.to}`, kind: r.kind === 'switch' ? 'switch' : 'books', player: r.player, ops: r.ops, groups: [`${r.player}:ability${r.slot}`], monotone: false,
+            desc: `${r.player} ${bookChangeText(r)}, ${bookLevelsText(r)}`, cost: { cost: r.cost, known: true, path: '', ...(r.costBound ? { costBound: r.costBound } : {}) },
+            est: { gain: r.gain, se: r.gainSe, net: r.gain, netSe: r.gainSe, payback: r.payback, accepted: true, stage: 'books' }, book: r }));
+        const nextRow = () => bookPool.filter((b) => !b.book.step && !b.book.notTaken && affordable(b, budgets, spent)).sort((a, b) => a.est.payback - b.est.payback)[0] ?? null;
+        const pickPayback = (list) => { const cost = list.reduce((a, m) => a + m.cost.cost, 0); return cost <= 0 ? 0 : paybackDays(cost, list.reduce((a, m) => a + (m.est?.net ?? 0), 0)) ?? Infinity; };
         let step = 0;
         const takeStep = (members, fresh, asIs, marginals, orig = members[0]) => {
             for (const m of members) spent = pay(spent, m);
@@ -1268,7 +1281,9 @@ export async function main(settings, seams) {
             const running = { runningCost: Object.values(spent).reduce((a, x) => a + x, 0), runningSpend: { ...spent } };
             if (members.length === 1) {
                 const best = members[0];
-                result.steps.push({ ...row(best), ...(asIs ? { acceptedAsIs: true } : { fresh }), kind: best.kind, owner: best.owner, ...running });
+                // A books or switch row: its gain is the buyer's (the stage measures no party gain), its payback the row's own; versus: the race pick's payback it beat.
+                const book = best.book ? { gainPerUser: null, sePerUser: null, book: best.book, versus: Number.isFinite(best.versus) ? best.versus : null } : {};
+                result.steps.push({ ...row(best), ...(asIs ? { acceptedAsIs: true } : { fresh }), kind: best.kind, owner: best.owner, ...book, ...running });
                 console.log(`step ${step + 1}: ${best.desc}, gain ${fmt(best.est.gain)} ± ${fmt(best.est.se)}, cost ${fmt(best.cost.cost)}`);
             } else {
                 const cost = members.reduce((a, m) => a + m.cost.cost, 0), n = setups0.length, ps = [...new Set(members.map((m) => m.player))];
@@ -1316,6 +1331,20 @@ export async function main(settings, seams) {
                 publish(result); // snapshot 4: the first race has a pick (each change alone, the base)
             }
             logCandidates(step + 1, res.leaders.filter((c) => !c.timeOnly).slice(0, 5));
+            // The merge: the best row not yet taken against the race's pick (a lone pick, a set, or the first budget group); a pick the user
+            // accepted as it is always joins. The row with the shorter payback is bought; the race runs again on top of it.
+            const rowNext = step < maxSteps && !res.accepted?.length ? nextRow() : null;
+            if (rowNext) {
+                const racing = res.locked ? [res.locked] : res.set ?? res.groups?.[0] ?? [], versus = racing.length ? pickPayback(racing) : Infinity;
+                if (rowNext.est.payback < versus) {
+                    rowNext.versus = versus;
+                    for (const b of bookPool) if (b !== rowNext && b.player === rowNext.player && (b.book.slot === rowNext.book.slot || b.book.ability === rowNext.book.ability)) b.book.notTaken ??= 'slotTaken';
+                    console.log(`${label}: ${rowNext.desc}, payback ${rowNext.est.payback.toFixed(1)} days, before the race's pick (${Number.isFinite(versus) ? `${versus.toFixed(1)} days` : 'none'})`);
+                    takeStep([rowNext], null, false, null);
+                    rowNext.book.step = result.steps.length;
+                    continue;
+                }
+            }
             // The locked pick joins only once it is confirmed on fresh seeds against the chain as it is now (the same cache as its reading
             // seeds); one that is not is left out (result.notConfirmed, never tried again). No lock ends the chain. A trigger pick is refined
             // first, so the row that is confirmed and shown is the owner's trigger from its value in the chain to its final one.
@@ -1371,6 +1400,10 @@ export async function main(settings, seams) {
             if (!picked.best) continue; // not confirmed: it left the race, the race goes on without it
             takeStep([picked.best], picked.fresh, asIs, null, picked.orig);
         }
+        // Every books or switch row the plan did not take says why (result.books[].notTaken; a taken one has its step): unsettled (no level
+        // settled in, some may pay back: the range), noPayback (no level pays back inside the limit), slotTaken (another change to the same
+        // ability slot or ability was bought), overBudget (its player's budget left was too small), stepLimit (the plan ended at --max-steps).
+        for (const r of result.books) if (!r.step) r.notTaken ??= !r.ops ? (r.upTo > r.to ? 'unsettled' : 'noPayback') : !(r.payback <= horizon) ? 'noPayback' : !affordable({ player: r.player, cost: { cost: r.cost } }, budgets, spent) ? 'overBudget' : 'stepLimit';
         // One confirmation on fresh seeds (3.3): the original base against the final result (the chosen foods and drinks and every
         // accepted step), so the combined gain is shown.
         if (baseOps.length) {
@@ -1442,6 +1475,7 @@ export async function main(settings, seams) {
     const bookChangeText = (r) => (r.kind === 'switch' ? `ability ${r.slot + 1}: ${r.was ? `${abilityName(r.was.ability)} ${r.was.level}` : 'empty'} -> learn ${abilityName(r.ability)}${r.dayOne != null ? ` (day one ${fmt(r.dayOne)} ± ${fmt(r.dayOneSe)})` : ''}` : `${abilityName(r.ability)} ${r.from}`);
     const bookLevelsText = (r) => (r.kind === 'switch' && !(r.to >= 1) ? 'no switch' : r.to === r.from && r.kind !== 'switch' ? 'none' : `${r.kind === 'switch' ? `learn to ${r.to}` : `to ${r.to}`}${r.upTo > r.to ? `, up to ${r.upTo}` : ''}`);
     const bookMarkText = (r) => (r.mark === 'notEven' ? `not even: the gain stops between ${r.knee.from} and ${r.knee.to}` : r.mark === 'assumed' ? 'evenness assumed' : r.mark === 'even' ? 'even' : '-');
+    const NOT_TAKEN_MD = { unsettled: 'not taken: no level settled in', noPayback: 'not taken: no level pays back in time', slotTaken: 'not taken: another change to this ability was bought', overBudget: 'not taken: over the budget left', stepLimit: 'not taken: the plan reached its step limit' };
     const bookRowText = (r) => `${r.player} ${bookChangeText(r)}: ${bookLevelsText(r)}, cost ${fmt(r.cost)}, payback ${r.payback == null ? '-' : r.payback.toFixed(1)} days, ${bookMarkText(r)}, ${r.states} states`;
     const fmt = (x) => (x == null ? '-' : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + 'K' : x.toFixed(1));
     const unit = () => (goal === 'exp' ? 'EXP/h' : 'coin/day ' + TAX_LABEL);
@@ -1496,12 +1530,13 @@ export async function main(settings, seams) {
         for (const [stage, n] of Object.entries(endedByUser)) if (stage !== 'foods' && stage !== 'drinks') L.push(`The ${stage} stage was ${endedMd(n, endedBySkip[stage])}.`, '');
         L.push('## Changes, in order', '','| # | Change | Party gain per user | Buyer\'s gain per day | Cost | Payback days | Running cost | Cost path |', '|---|---|---|---|---|---|---|---|');
         result.steps.forEach((s, i) => {
-            L.push(`| ${i + 1} | ${s.desc}${s.acceptedAsIs ? ' (accepted as is)' : ''}${s.members ? ' (accepted together)' : ''} | ${gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`);
+            L.push(`| ${i + 1} | ${s.desc}${s.acceptedAsIs ? ' (accepted as is)' : ''}${s.members ? ' (accepted together)' : ''}${s.book ? ` (books: before the race's pick${s.versus != null ? `, ${s.versus.toFixed(1)} days` : ''})` : ''} | ${s.book ? '-' : gainMd(s.gainPerUser, s.sePerUser)} | ${buyerMd(s)} | ${s.costBound === 'upper' ? '≤ ' : ''}${fmt(s.cost)} | ${paybackMd(s)} | ${fmt(s.runningCost)} | ${pathMd(s)} |`);
             // A set accepted together: one indented line per member, with its own gain (the set against the set without it, same seeds).
             for (const m of s.members || []) L.push(`|  | ↳ ${m.desc} (own gain ${m.marginal ? gainMd(m.marginal.gainPerUser, m.marginal.sePerUser) : '—'}) |  |  | ${fmt(m.cost)} |  |  |  |`);
             // A set of two or more buyers: one line per buyer, his own net and payback on his own cost (the row shows the longest, s.payer's).
             if (s.buyers && Object.keys(s.buyers).length > 1) for (const [p, b] of Object.entries(s.buyers)) L.push(`|  | ↳ ${p} pays ${fmt(b.cost)} |  | ${gainMd(b.buyerNet, b.buyerNetSe)} | ${fmt(b.cost)} | ${b.payback?.toFixed(1) ?? '-'} |  |  |`);
         });
+        if (result.steps.some((s) => s.book)) L.push('', "A books or switch step is measured once against the baseline after foods and drinks, not on top of the steps before it, and only its settled-in levels are bought; the race's picks are measured on top of the plan so far. Its gain is the buyer's on the day bought.");
         L.push('', "Party gain: the change in the group's shared loot per player per day, before anyone's food and drink. Buyer's gain: that player's share of it plus the change in what they spend on their own food and drink, so a free change can show no party gain and still pay the player by saving food and drink.");
         if (result.confirmation) {
             const c = result.confirmation;
@@ -1515,8 +1550,8 @@ export async function main(settings, seams) {
         if (result.overBudget.length) { L.push('', '## Priced, over budget, not ranked', ''); for (const a of result.overBudget) L.push(`- ${a.player}, ${a.desc}: ${a.costBound === 'upper' ? '≤ ' : ''}${fmt(a.cost)}`); }
         if (result.apart.length) { L.push('', '## Unknown cost, not ranked', ''); for (const a of result.apart) L.push(`- ${a.desc}: ${a.note}`); }
         if (result.books?.length || result.booksApart?.length) {
-            L.push('', '## Ability books and switches (each alone against the baseline after foods and drinks)', '', '| Player | Change | Levels | Cost | Payback days | Gain per level per day | Evenness | Seeds x hours, states |', '|---|---|---|---|---|---|---|---|');
-            for (const r of result.books) L.push(`| ${r.player} | ${bookChangeText(r)} | ${bookLevelsText(r)} | ${r.costBound === 'upper' ? '≤ ' : ''}${fmt(r.cost)} | ${r.payback == null ? '-' : r.payback.toFixed(1)} | ${fmt(r.perLevel)} (${fmt(r.perLevelLow)} to ${fmt(r.perLevelHigh)}) | ${bookMarkText(r)} | ${r.seeds} x ${r.hours ?? fin.h} h, ${r.states} |`);
+            L.push('', '## Ability books and switches (each alone against the baseline after foods and drinks)', '', '| Player | Change | Levels | Cost | Payback days | Gain per level per day | Evenness | Seeds x hours, states | In the plan |', '|---|---|---|---|---|---|---|---|---|');
+            for (const r of result.books) L.push(`| ${r.player} | ${bookChangeText(r)} | ${bookLevelsText(r)} | ${r.costBound === 'upper' ? '≤ ' : ''}${fmt(r.cost)} | ${r.payback == null ? '-' : r.payback.toFixed(1)} | ${fmt(r.perLevel)} (${fmt(r.perLevelLow)} to ${fmt(r.perLevelHigh)}) | ${bookMarkText(r)} | ${r.seeds} x ${r.hours ?? fin.h} h, ${r.states} | ${r.step ? `step ${r.step}` : NOT_TAKEN_MD[r.notTaken] ?? '-'} |`);
             L.push('', 'Levels: the levels bought that pay back at the low end of the gain per level; "up to" the high end\'s, when the range leaves some unsettled. A switch\'s first book teaches the ability at level 1; its day-one gain (the new ability at level 1 against the one it replaces) is in the change. Evenness: "even" (the steps agree and could have disagreed), "evenness assumed" (the check could not have failed: the gain is about the size of its error), "not even" (the gain stops between the two levels named; nothing past the first is recommended).');
             for (const a of result.booksApart || []) L.push(`- ${a.player}, ${bookChangeText(a)}: not judged, ${a.note}`);
         }

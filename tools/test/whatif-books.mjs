@@ -93,6 +93,17 @@ const buy = () => 20000, limit = 365;
     const oldScen = structuredClone(scen); delete oldScen.model.abilityUses;
     const old = await runSynthetic(oldScen, { 'max-steps': 0 });
     check(old.result.books.length === 0 && old.result.booksApart.length === scen.players.length && old.result.booksApart.every((x) => /casts a day unknown/.test(x.note)), 'search: runs without casts a day (an old record) give no books row, each listed apart with the reason');
+    check(r.books.every((x) => !x.step && x.notTaken), 'merge: with no step allowed (--max-steps 0) no row is taken, and each says why', JSON.stringify(r.books.map((x) => x.notTaken)));
+
+    // The merge (placement B): the row that pays back is bought as a step of the plan, with the row's own payback (payback(), never a second
+    // figure), only before a race pick whose payback is longer; its levels join the base; every row not taken says why.
+    const merged = await runSynthetic(scen, { 'max-steps': 4 });
+    const m = merged.result, mb = m.books.find((x) => x.player === scen.players[0].name), ms = m.steps.find((s) => s.book);
+    check(mb?.step >= 1 && ms && m.steps[mb.step - 1] === ms && ms.payback === mb.payback && ms.cost === mb.cost, 'merge: the books row that pays back is a step of the plan, with its own payback and cost', JSON.stringify({ step: mb?.step, steps: m.steps.map((s) => [s.desc, s.payback]) }));
+    check(m.steps.filter((s) => s.book).every((s) => s.versus == null || s.payback < s.versus), 'merge: a row is taken only before a race pick with a longer payback');
+    check(JSON.stringify(ms?.ops) === JSON.stringify(mb?.ops) && mb.ops[0].delta === mb.to - mb.from, 'merge: the step buys the row\'s recommended levels');
+    check(m.books.filter((x) => !x.step).every((x) => ['unsettled', 'noPayback', 'slotTaken', 'overBudget', 'stepLimit'].includes(x.notTaken)), 'merge: every row not taken says why', JSON.stringify(m.books.map((x) => [x.step, x.notTaken])));
+    check(/books: before the race's pick/.test(merged.markdown) && /measured once against the baseline after foods and drinks, not on top of the steps before it/.test(merged.markdown), 'merge: result.md marks the books step and says its weak point');
 }
 
 console.log(fails ? `${fails} FAILED` : 'all passed');
