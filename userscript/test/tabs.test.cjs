@@ -170,6 +170,33 @@ await test('Clear recorded combat data still empties the shared copy', () => {
     assert.equal(stored(store).win.stats.closed, 2);
 });
 
+await test('the storage cap: a shared copy past REC.MAX_BYTES is cut to it on the next save, the oldest rows first; rows the helper never got count as dropped', async () => {
+    const store = {};
+    const a = boot(store, { token: 'tok' });
+    a.send(init(1));
+    fight(a, 1, [101, 102, 103, 104, 105, 106, 107]);
+    await tick(); await tick();
+    // Another tab's copy, saved meanwhile: 100 old made-up encounters of about 100 KB each (about 10 MB), none of them sent from this tab.
+    const old = [];
+    for (let i = 0; i < 100; i++) old.push({ startedAt: clock.t - 1e9 + i, battleId: 9000 + i, players: [], pad: 'x'.repeat(100000) });
+    store.mwicsRecorderEncounters = JSON.stringify(old.concat(stored(store).enc));
+    a.hide();
+    const cap = (s) => (s.mwicsRecorderEncounters || '').length + (s.mwicsRecorderWindows || '').length;
+    const max = 8 * 1048576;
+    assert.ok(cap(store) <= max, 'stored ' + cap(store) + ' chars, past the cap ' + max);
+    const ids = battleIds(stored(store).enc);
+    assert.ok([101, 102, 103, 104, 105, 106].every((id) => ids.includes(id)), 'this tab\'s newest rows are kept');
+    assert.ok(!ids.includes(9000), 'the oldest row went');
+    assert.ok(ids.includes(9099), 'only as many as needed went');
+    const lost = 100 - ids.filter((id) => id >= 9000).length;
+    a.toasts.length = 0; a.commands['Status']();
+    assert.ok(a.toasts.some((t) => t.includes('dropped ' + lost + '.')), 'Status shows the dropped rows: ' + a.toasts.join(' | '));
+    // the tab forgot them too: its next save does not bring them back
+    fight(a, 1, [108, 109]); a.hide();
+    assert.ok(!battleIds(stored(store).enc).includes(9000));
+    assert.ok(cap(store) <= max);
+});
+
 await test('the sent keys are a union, and a tab does not resend what another tab sent', async () => {
     const store = {};
     const a = boot(store, { token: 'tok', charId: 1 }), b = boot(store, { token: 'tok', charId: 2 });
@@ -244,6 +271,19 @@ if (mod.mergeRecorded) {
         const r = mod.mergeRecorded({ encounters: [null, 5, 'x', E(2, 2)], windows: 'no', quests: null, stats: null }, mine, {});
         assert.deepEqual(r.encounters.map((e) => e.battleId), [1, 2]);
         assert.deepEqual(r.windows, []);
+    });
+    if (mod.capRecorded) await test('capRecorded: under the cap nothing changes; past it the oldest rows of any kind go until the text fits', () => {
+        const cr = (...a) => JSON.parse(JSON.stringify(mod.capRecorded(...a))); // out of the script's context, as the merges above
+        const d = { encounters: [E(1, 1), E(5, 5)], windows: [{ startedAt: 3, buffEvents: ['b'.repeat(500)] }], quests: [{ t: 2, tasks: [] }], stats: { closed: 2 } };
+        const len = (x) => JSON.stringify(x.encounters).length + JSON.stringify({ windows: x.windows, quests: x.quests, stats: x.stats }).length;
+        assert.deepEqual(cr(d, 1e6).dropped, { encounters: [], windows: [], quests: [] });
+        const r = cr(d, len(d) - 10);
+        assert.ok(len(r.d) <= len(d) - 10);
+        assert.deepEqual(r.dropped.encounters.map((e) => e.battleId), [1], 'the oldest row (time 1) went first');
+        const r2 = cr(d, len(d) - 300);
+        assert.deepEqual([r2.dropped.encounters.length, r2.dropped.quests.length, r2.dropped.windows.length], [1, 1, 1], 'then time 2 and 3, the big window');
+        assert.deepEqual(r2.d.encounters.map((e) => e.battleId), [5]);
+        assert.equal(r2.d.stats.closed, 2, 'the counters stay');
     });
     await test('mergeRecorded: the caps keep the newest rows', () => {
         const { REC } = mod;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MWI Combat Tracker
 // @namespace    https://github.com/Ramlock/MWICombatSimulator
-// @version      0.13.1
+// @version      0.13.2
 // @description  Combat recorder and read-only export for the MWICS combat simulator: your character (setup JSON, learned abilities, inventory, Coin) and a combat recorder (loot, damage, healing, buffs per party slot) that can append to a file through a local helper. Sends nothing to the game or to any server: the only place it can send to is a helper on 127.0.0.1 that you give a token. Presses nothing in the game.
 // @author       Ramlock
 // @license      CC-BY-NC-SA-4.0
@@ -551,7 +551,11 @@
     // ================= Combat recorder (read-only) =================
     // Spec: docs/codebase/toolasha-loot-tracker.md ("Recorder spec"). Pure state machine: handle(message, nowMs) per game message,
     // exportData(selfOnly) for the file, no DOM and no network. The likelihood split, shares and closed-form checks are NOT here.
-    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000, MAX_TRACE: 1500, MAX_GROUPS: 8 };
+    const REC = { MAX_ENCOUNTERS: 800, MAX_WINDOWS: 200, GAP_MS: 60000, DOT_TICK_MS: 3000, HOT_TICK_MS: 5000, MAX_AMBIGUOUS: 100, MAX_CASTS: 200, MAX_QUESTLOG: 300, MAX_PENDING_AGE: 2, MAX_HITS: 20000, MAX_TRACE: 1500, MAX_GROUPS: 8, MAX_BYTES: 8 * 1048576 };
+    // MAX_BYTES: the most the recording of one game server may take in script storage (its encounters and windows keys together, as stored text).
+    // The userscript manager hands a script all of its storage in one browser message at start, and Chrome refuses one past 64 MiB: the script then
+    // cannot start at all, and neither can the other scripts of that manager. Live plus test is 16 MiB, the other keys are capped by count well under
+    // 1 MiB, so even with the message's own escaping (each quote of the stored JSON text is escaped again) it stays far under the limit. capRecorded.
     const REC_TYPES = ['new_battle', 'battle_updated', 'action_completed', 'quests_updated', 'init_character_data', 'talismans_updated', 'character_stats_updated'];
     // Which game server a tab is on: the test server (test.milkywayidle.com) is told from the live one by host name. Everything the tab records,
     // stores or sends is tagged with it (a record carries `server`), and the test server's storage keys and sink keys carry a suffix or prefix.
@@ -1081,9 +1085,17 @@
 
         function persistable() { return { windows: S.windows, encounters: S.encounters, quests: S.quests, stats: S.stats }; }
         function restore(d) { if (!d) return; S.windows = d.windows || []; S.encounters = d.encounters || []; S.quests = d.quests || []; Object.assign(S.stats, d.stats || {}); if (S.windows.length) { S.win = null; for (const w of S.windows) delete w.open; } }
+        // dropped: what capRecorded took out of the stored copy; this tab forgets the same rows, or its next save would merge them back in.
+        function forget(dropped) {
+            const e = new Set(dropped.encounters.map(encKey)), w = new Set(dropped.windows.map((x) => x.startedAt)), q = new Set(dropped.quests.map((x) => x.t));
+            S.encounters = S.encounters.filter((x) => !e.has(encKey(x)));
+            S.windows = S.windows.filter((x) => x.open || !w.has(x.startedAt));
+            S.quests = S.quests.filter((x) => !q.has(x.t));
+            if (S.groups) for (const t of w) S.groups.delete(t);
+        }
         function clear() { S.windows = []; S.encounters = []; S.quests = []; S.win = null; S.cur = null; S.prev = null; S.dot = []; S.series = []; S.carry = []; S.stats = { skippedUpdates: 0, lateUpdates: 0, closed: 0, negativeDiffs: 0 }; S.groups = new Map(); }
 
-        return { handle, setGroup, exportData, persistable, restore, clear, state: S };
+        return { handle, setGroup, exportData, persistable, restore, forget, clear, state: S };
     }
 
     // ---- Helper sink ----
@@ -1280,7 +1292,18 @@
         // Page hidden or closing: everything not yet queued goes into the queue and one send is tried.
         function finish() { scan(true); return flush(); }
 
-        return { notify, finish, flush, scan, state: st };
+        // Rows the storage cap took out (capRecorded): one this tab neither sent nor still holds in its queue is lost to the helper, and counts as dropped.
+        // Nothing is owed while sending is off. A queued row stays queued: it can still go from memory.
+        function noteDropped(dropped) {
+            if (!deps.enabled()) return 0;
+            const keys = [].concat(dropped.encounters.map((e) => pre + encKey(e)), dropped.windows.map((w) => pre + winKeyOf(w)), dropped.quests.map((q) => pre + 'task:' + q.t));
+            let lost = 0;
+            for (const k of keys) if (!st.sent.has(k) && !st.queued.has(k)) lost++;
+            st.stats.dropped += lost;
+            return lost;
+        }
+
+        return { notify, finish, flush, scan, noteDropped, state: st };
     }
 
     // The notice after a group copy or import: per slot what is missing, and how each gap can be filled.
@@ -1388,6 +1411,25 @@
             stats,
         };
     }
+    // The byte cap on what saveRecorded writes (REC.MAX_BYTES): the oldest rows, encounters, windows and task lines alike by their time, are dropped until
+    // the two keys' text fits. d: { encounters, windows, quests, stats } as it would be stored. Returns the copy to store and the rows dropped.
+    function capRecorded(d, maxBytes) {
+        const dropped = { encounters: [], windows: [], quests: [] };
+        const size = (x) => JSON.stringify(x).length;
+        let total = size(d.encounters) + size({ windows: d.windows, quests: d.quests, stats: d.stats });
+        if (total <= maxBytes) return { d, dropped };
+        const rows = [].concat(d.encounters.map((r) => ['encounters', r.startedAt, r]), d.windows.map((r) => ['windows', r.startedAt, r]), d.quests.map((r) => ['quests', r.t, r]));
+        rows.sort((a, b) => (Number(a[1]) || 0) - (Number(b[1]) || 0));
+        const gone = new Set();
+        for (const [kind, , r] of rows) {
+            if (total <= maxBytes) break;
+            gone.add(r);
+            dropped[kind].push(r);
+            total -= size(r) + 1; // the row and its comma
+        }
+        const keep = (a) => a.filter((r) => !gone.has(r));
+        return { d: { encounters: keep(d.encounters), windows: keep(d.windows), quests: keep(d.quests), stats: d.stats }, dropped };
+    }
     // The sent keys, oldest first: the shared list, then this tab's keys it lacks; the newest SINK.MAX_SENT stay.
     function mergeSent(stored, mine, max) {
         const seenKeys = new Set(), out = [];
@@ -1406,7 +1448,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, talismanInventory, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, abilityKey, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
+        module.exports = { serverOf, serverKey, talismanLines, talismansForSim, talismanInventory, HEALED_NOTE, TRACE_FIELDS, mergeSnapIndex, snapLabel, SNAP_KEEP, mergeProfiles, mergeRecorded, capRecorded, mergeSent, encKey, attributeBonuses, ATTR, createHitLog, unpackHits, filterHits, bytesToB64, b64ToBytes, buildExport, groupNotice, ageText, fightStartOf, abilityKey, selfGroup, buildGroupExport, checkGroupSnapshot, applyActionsUpdate, currentFight, groupWithSelection, applySelectionDom, SNAP_MAX_AGE_MS, trimBattle, trimProfile, PROFILE_MAX, KINDS, defaultToggles, createRecorder, createSink, SINK, gameData, REC, REC_TYPES, guardRequest, REQUEST_WATCHDOG_MS, simImportLabel, SIM_IMPORT_LABELS };
         return;
     }
 
@@ -1425,7 +1467,7 @@
     }
     let recToggles = loadRecToggles();
     const recorder = createRecorder({ clientData: () => clientData(), server: SERVER });
-    const VERSION = '0.13.1'; // keep equal to @version (a test checks it)
+    const VERSION = '0.13.2'; // keep equal to @version (a test checks it)
     const HELPER_URL_KEY = 'mwicsHelperUrl', HELPER_TOKEN_KEY = 'mwicsHelperToken', SENT_KEY = serverKey('mwicsSinkSent', SERVER), DEFAULT_HELPER_URL = 'http://127.0.0.1:47631';
     let helperToast = false;
     function helperUrl() { return String(GM_getValue(HELPER_URL_KEY, DEFAULT_HELPER_URL)).replace(/\/+$/, ''); }
@@ -1522,7 +1564,12 @@
     function saveRecorded(replace) {
         try {
             const mine = recorder.persistable();
-            const d = replace ? mine : mergeRecorded(readRecorded(), mine, recBase);
+            const capped = capRecorded(replace ? mine : mergeRecorded(readRecorded(), mine, recBase), REC.MAX_BYTES), d = capped.d, dr = capped.dropped;
+            if (dr.encounters.length + dr.windows.length + dr.quests.length) {
+                const lost = sink.noteDropped(dr);
+                recorder.forget(dr);
+                console.warn('[MWI Combat Tracker] storage cap ' + REC.MAX_BYTES / 1048576 + ' MiB: dropped the oldest ' + dr.encounters.length + ' encounters, ' + dr.windows.length + ' windows, ' + dr.quests.length + ' task lines; ' + lost + ' never reached the helper');
+            }
             GM_setValue(REC_ENC_KEY, JSON.stringify(d.encounters));
             GM_setValue(REC_WIN_KEY, JSON.stringify({ windows: d.windows, quests: d.quests, stats: d.stats }));
             recBase = { ...mine.stats };
@@ -1794,7 +1841,7 @@
     function helperStatus() {
         const s = sink.state.stats;
         const on = sendToHelperOn() && recToggles.recorder;
-        toast('MWI Combat Tracker v' + VERSION + (SERVER === 'test' ? ' (test server)' : '') + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + '.');
+        toast('MWI Combat Tracker v' + VERSION + (SERVER === 'test' ? ' (test server)' : '') + ': ' + (helperToken() === '' ? 'no helper token set, nothing is sent' : on ? 'sending to the helper' : 'sending to the helper is off') + '. Written ' + s.accepted + ', already held ' + s.duplicate + ', rejected ' + s.rejected + ', queued ' + sink.state.queue.length + ', failed sends ' + s.failed + ', dropped ' + s.dropped + '.');
     }
 
     function openSettings() {
