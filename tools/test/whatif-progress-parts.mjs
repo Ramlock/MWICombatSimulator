@@ -153,6 +153,24 @@ check('a single stage plan has the screen only', createParts({ stages: [{ k: 4, 
     q = tp.sync({ stage: 'done' });
     const prD = partRows(panel.renderParts({ state: 'done', progress: { parts: q } }, t)).find((r) => r.kind === 'step');
     check('failed winner, row done: "Left out by its check:", no candidate in the running nor set aside, the bar at 100 %', prD.cls === 'done' && txt(prD.html).includes('Left out by its check:') && prD.cont === '' && prD.paused === '' && prD.html.includes('width: 100%') && !txt(prD.html).includes('returned to the race'), prD.html);
+    // A Change's work after its race ended and before its pick is taken or left out (a trigger pick's refinement and its measurement, the first step's
+    // original base, a budget-group race: core.mjs checkOn) is that row's check: its runs (planned once, counted from the check's start) show on the row,
+    // which reads "Checking the winner", never "Done", until the pick is taken. The old record sent those runs under the ended stage's own name (Done, 100 %).
+    {
+        const tr = createParts(plan);
+        tr.sync(race('screen', { stageEnded: 'screen' }));
+        tr.sync({ ...race('greedy step 1', { stageEnded: 'greedy step 1' }), picksPlanned: 40, picksDone: 40 });
+        const refine = { stage: 'confirming picks', candidatesLeft: 0, checking: 'step 2', checkingStage: 'greedy step 1', checkingWhat: what, stageEnded: 'greedy step 1' };
+        tr.sync({ ...refine, runsPlanned: 0, runsDone: 0, picksPlanned: 40, picksDone: 40 }); // checkOn: the check starts, nothing planned yet
+        const rq = tr.sync({ ...refine, runsPlanned: 169, runsDone: 103, picksPlanned: 40 + 169, picksDone: 40 + 103 }); // the refinement's ensure, 103 of 169 runs done
+        const rs = rq.find((r) => r.kind === 'step' && r.index === 1), rp = partRows(panel.renderParts({ state: 'running', progress: { parts: rq } }, t)).find((r) => r.kind === 'step');
+        check('refinement on its row: the row is under check, not plain done, with the refinement\'s runs counted from the check\'s start (103 / 169)', rs.checking === true && rs.checkPlanned === 169 && rs.checkDone === 103 && rp.st === 'Checking the winner' && rp.state === 'running' && txt(rp.html).includes('103 / 169 runs'), JSON.stringify(rs));
+        const cq = tr.sync({ ...refine, picksPlanned: 40 + 169 + 32, picksDone: 40 + 169 + 10 }); // the pick check follows on the same row: its runs add to the count
+        const cs = cq.find((r) => r.kind === 'step' && r.index === 1);
+        check('refinement on its row: the pick check after it adds to the same count (179 / 201)', cs.checking === true && cs.checkPlanned === 201 && cs.checkDone === 179, JSON.stringify(cs));
+        const core = read('tools/whatif/core.mjs');
+        check('refinement on its row: core opens the check as soon as a step race ends with a pick to check, before the first step\'s base, the refinement and a budget-group race, and the group race runs under it (asCheck); a race of its own and a taken pick close it', /if \(toCheck\) checkOn\(label, at, whatOf\(toCheck\)\);\s*\n\s*if \(!singlesDone\)/.test(core) && /asCheck: true \}\);/.test(core) && /if \(!asCheck\) checkOff\(\);/.test(core) && /const takeStep = [^\n]*\n\s*checkOff\(\);/.test(core) && /if \(checkCtx\) planSure\(reqs\);/.test(core));
+    }
     const next = tp.sync({ ...race('greedy step 2'), checkFailed: undefined });
     check('check on its row: a check of a later row starts its runs from 0', tp.sync({ stage: 'confirming picks', checkingStage: 'greedy step 2', checkingWhat: what, picksPlanned: 48, picksDone: 36 }).find((r) => r.kind === 'step' && r.index === 2).checkDone === 4 && next.length > 0);
 }
@@ -404,7 +422,7 @@ for (const l of ['en', 'pt', 'zh']) check(`strings: ${l} has every progress key`
         const textU = partRows(panel.renderParts({ state: 'running', progress: { parts: first } }, t)).find((x) => x.kind === 'foods').stTip;
         check('pick check on the stage row: the first player already shows the whole total ("player 1 of 3 · 0 / 64 runs")', textU.includes('player 1 of 3 · 0 / 64 runs'), textU);
         const csU = read('tools/whatif/core.mjs');
-        check('pick check on the stage row: core plans every player\'s first block before the first check starts, with the same planning the check itself uses', /for \(const p of checkers\) planSure\(sureReqs\(start, fpool\.find\(\(c\) => c\.player === p\), SURE_BLOCK, fin\.h\)\);/.test(csU) && /const reqs = sureReqs\(against, c, k, h\);\s*planSure\(reqs\);/.test(csU) && /measureArms\(baseOps, c, k, fin\.h,/.test(csU));
+        check('pick check on the stage row: core plans every player\'s first block before the first check starts, with the same planning the check itself uses', /for \(const p of checkers\) planSure\(sureReqs\(start, fpool\.find\(\(c\) => c\.player === p\), SURE_BLOCK, fin\.h\)\);/.test(csU) && /checkOn\(label, at, what, who\);\s*return !!await ensure\(sureReqs\(against, c, k, h\)\);/.test(csU) && /if \(checkCtx\) planSure\(reqs\);/.test(csU) && /measureArms\(baseOps, c, k, fin\.h,/.test(csU));
         const after = tf.sync({ stage: 'drinks', round: 1, phase: 'search', runsDone: 1, runsPlanned: 9, candidatesLeft: 9, stageContending: 9, stagePaused: 0, stageDropped: 0, stageRuns: 1, stageSimHours: 1, stageEnded: 'foods', picksPlanned: 32, picksDone: 32 });
         check('pick check on the stage row: once the next stage runs the foods row is plain done again', after.find((r) => r.kind === 'foods').checking === false && after.find((r) => r.kind === 'foods').state === 'done' && !panel.renderParts({ state: 'running', progress: { parts: after } }, t).includes('checking the winner'));
         const ck2 = tf.sync({ stage: 'confirming picks', candidatesLeft: 0, checking: 'drinks', stageEnded: 'drinks', round: 1, picksPlanned: 80, picksDone: 36, stageContending: 9, stagePaused: 0, stageDropped: 0, stageRuns: 1, stageSimHours: 1 });

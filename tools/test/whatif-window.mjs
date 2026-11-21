@@ -535,6 +535,28 @@ try {
             const ref = JSON.stringify(seen[0].cols), moved = seen.filter((x) => JSON.stringify(x.cols) !== ref || x.scroll);
             check(`columns at ${w}x${h}: every header's left edge and width are the same across ${states.length} states of a row in en, pt and zh, and no horizontal scroll`, seen.length === states.length * 3 && seen[0].cols.length === 12 && moved.length === 0, JSON.stringify(moved.slice(0, 2).map((x) => [x.l, x.name, x.cols, x.scroll])) + ' ref ' + ref);
         }
+        // Every column title of the progress table on one line and whole, none cut by its column (his ask: "Make the titles all fit single-line as well"), its help mark included, in en, pt and zh,
+        // at the window's normal width (1920x1080); --shots saves the header in each language (progress-header-<lng>.png).
+        {
+            await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+            await new Promise((r) => setTimeout(r, 300));
+            const wrapped = [];
+            for (const l of ['en', 'pt', 'zh']) {
+                const html = panelM.renderParts({ state: 'running', progress: { elapsedSeconds: 123456, secondsPerRun: 12.34, parts: [{ ...race, state: 'running', phase: 'search' }] } }, tOf(l));
+                const m = await js(`(() => { const box = document.getElementById('whatIfProgress'); let t = document.getElementById('__headTest'); if (!t) { t = document.createElement('div'); t.id = '__headTest'; box.before(t); } t.innerHTML = ${JSON.stringify(html)};
+                    return [...t.querySelectorAll('thead th')].filter((th) => th.textContent.trim()).map((th) => { const r = document.createRange(); r.selectNodeContents(th); const tops = [...r.getClientRects()].filter((x) => x.height > 0).map((x) => x.top).sort((a, b) => a - b);
+                        const lines = tops.reduce((n, y, i) => n + (i && y - tops[i - 1] > parseFloat(getComputedStyle(th).fontSize) * 0.8 ? 1 : 0), tops.length ? 1 : 0); return { title: th.textContent.trim(), lines, width: Math.round(th.getBoundingClientRect().width), cut: th.scrollWidth - th.clientWidth }; }); })()`);
+                for (const x of m) if (x.lines !== 1 || x.cut > 0) wrapped.push({ l, ...x });
+                if (shots) {
+                    const [x, y, width, height] = await js(`(() => { const h = document.querySelector('#__headTest thead'); h.scrollIntoView({ block: 'center' }); const b = h.closest('table').getBoundingClientRect(); return [b.x + scrollX, b.y + scrollY, b.width, b.height]; })()`);
+                    const s = await page.send('Page.captureScreenshot', { format: 'png', clip: { x, y, width, height, scale: 1 }, captureBeyondViewport: true });
+                    fs.mkdirSync(shots, { recursive: true });
+                    fs.writeFileSync(path.join(shots, `progress-header-${l}.png`), Buffer.from(s.data, 'base64'));
+                }
+            }
+            await js(`document.getElementById('__headTest')?.remove()`);
+            check('column titles: every title of the progress table is on one line and whole (none cut by its column), its help mark included, in en, pt and zh at 1920x1080', wrapped.length === 0, JSON.stringify(wrapped));
+        }
         // The mark (check, arrow, circle) is its row's first cell, centred on the row like every other cell (TODO row 140): its glyph's vertical centre is the
         // State chip's, within 2 px, in a one-line row, in the running row with its stage buttons and in a row whose stage name takes two lines; en, pt and zh.
         {

@@ -71,12 +71,15 @@ const carried = [], seenStages = new Set();
 // A race stage that has ended stays a done row (no stage buttons) through the pick checks that follow under its name (TODO row 93: a Skip pressed
 // just before the pick check showed its stage running, buttons and all, until the search ended, 25 s on a real search).
 let endedStage = null, afterEnd = 0;
-const reran = [];
+const reran = [], doneRowRuns = [];
 const readingPhases = new Set(); // stage#round of every round that showed a reading phase
 const run = await runSynthetic(scenario, {}, { onProgress: (p) => {
     if (p.phase === 'reading') readingPhases.add(`${p.stage}#${p.round}`);
     if (p.stageEnded) endedStage = p.stageEnded;
     else if (endedStage && p.stage === endedStage) reran.push(`${p.stage}: the end mark went`);
+    // A batch started under an ended stage's own name (ensure's first message: none done, some planned) is work drawn on a Done row; a Change's work after its
+    // race is its check instead (core.mjs checkOn: stage 'confirming picks'), so no such message exists.
+    if (endedStage && p.stage === endedStage && p.runsDone === 0 && p.runsPlanned > 0) doneRowRuns.push(`${p.stage}: ${p.runsPlanned} runs started on a done row`);
     if (endedStage && p.stage === endedStage) { afterEnd++; const live = (p.parts || []).filter((r) => r.state === 'running' && r.kind !== 'picks'); if (live.length) reran.push(`${p.stage}: ${live.map((r) => r.kind + ':' + r.index).join(',')} running`); }
     if (endedStage && p.stage !== endedStage) endedStage = null;
     seenStages.add(/^greedy step/.test(p.stage) ? 'greedy step' : p.stage);
@@ -84,6 +87,7 @@ const run = await runSynthetic(scenario, {}, { onProgress: (p) => {
     if ((p.stage === 'confirmation' || p.stage === 'done') && (STAGE_FIELDS.some((k) => p[k] !== undefined) || (conf && (conf.round !== undefined || conf.runs !== undefined || conf.simHours !== undefined)))) carried.push(`${p.stage}: ${STAGE_FIELDS.filter((k) => p[k] !== undefined).join(',')} ${JSON.stringify(conf)}`);
 } });
 const res = run.result, steps = res.steps, step = (i) => steps[i];
+check("progress: no batch of runs starts under an ended race stage's name (a Change's work after its race is its check, on its row)", doneRowRuns.length === 0, doneRowRuns.slice(0, 3).join(' | '));
 check(`progress: an ended race stage stays done (no running row, its end mark kept) on every message under its name after its end (${afterEnd} such messages)`, afterEnd > 0 && reran.length === 0, reran.slice(0, 3).join(' | '));
 check('progress: a greedy step with rounds, then the confirmation: the confirmation (and the end) carry no round and no stage counters, on the record or on its row', seenStages.has('greedy step') && seenStages.has('confirmation') && carried.length === 0, carried.slice(0, 2).join(' | '));
 const opsOf = (s) => (s.ops ?? s.est?.ops ?? []);

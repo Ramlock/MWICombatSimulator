@@ -181,7 +181,9 @@ export async function main(settings, seams) {
     let batch = { hoursLeft: 0, wall: 0, done: 0 };
     // The runs of the pick checks, counted as distinct runs (a run is one arm on one seed; a run counted once is never counted again, a
     // cached run is done when it is counted): planned never drops and done never exceeds it. Shown as the part "Confirming the picks".
-    const sure = { planned: 0, done: 0, counted: new Set() };
+    // The same counts take every run of a Change's work between its race's end and its pick being taken or left out (checkOn, below): the trigger refinement,
+    // the refined change's measurement, the original base the first step's single rows need, a budget-group race; a run is done once (doneIds).
+    const sure = { planned: 0, done: 0, counted: new Set(), doneIds: new Set() };
     let partsTracker = null; // stacked parts (progress.mjs), created once the candidates are known
     const STAGE_FIELDS = ['round', 'phase', 'stageCandidates', 'stageContending', 'stagePaused', 'stageAcceptable', 'stageSeparate', 'stageDropped', 'stageRuns', 'stageSimHours', 'stageEnded', 'stageSkipped']; // the progress fields of a race stage
     // The end mark of a race stage outlives the race: the pick checks that follow report under the same stage name, and the row must stay done (no
@@ -189,9 +191,14 @@ export async function main(settings, seams) {
     const STAGE_END = ['stageEnded', 'stageSkipped'];
     let notConfirmedList = null; // result.notConfirmed once the report exists (read by report())
     let stageCtx = null; // the race stage's own counters (race() sets it, clears it at the stage's end): added to every progress message of the stage
+    // The check of a Change (checkOn): while it is set, every progress message is that Change's check (stage 'confirming picks', checkingStage its race stage),
+    // whatever runs, so its row reads "Checking the winner" with these runs counted, never "Done", until the pick is taken or left out (checkOff).
+    let checkCtx = null;
+    const checkOff = () => { checkCtx = null; };
     function report(patch = {}) {
         if (patch.stage === 'confirmation' || patch.stage === 'done') for (const k of STAGE_END) delete progress[k];
-        Object.assign(progress, patch, stageCtx ? stageCtx() : {});
+        if (patch.stage === 'confirmation' || patch.stage === 'done' || patch.stage === 'stopped') checkOff();
+        Object.assign(progress, patch, stageCtx ? stageCtx() : {}, checkCtx ?? {});
         const wall = wallLog.reduce((a, r) => a + r.wallSeconds, 0), hours = wallLog.reduce((a, r) => a + r.h, 0);
         const left = progress.runsPlanned - progress.runsDone;
         progress.secondsPerRun = batch.done ? batch.wall / batch.done : wallLog.length ? wall / wallLog.length : null;
@@ -224,6 +231,7 @@ export async function main(settings, seams) {
         for (const t of need.values()) tasks.push({ ...t, checkpoints: allHours.filter((x) => x <= t.h) });
         tasks.sort((a, b) => b.h - a.h); // longest first, so the last wave is short
         batch = { hoursLeft: tasks.reduce((a, t) => a + t.h, 0), wall: 0, done: 0 };
+        if (checkCtx) planSure(reqs); // a Change's check: every run of its work counts on its row (planned once, a cached one done at once)
         // The runs of this batch the record already held when the search was resumed (kept from before the stop), of all the batch asks for. Only a batch that
         // kept some sets it; it names the stage and round it belongs to, so the window shows it on that row while that round runs (progress.mjs).
         const ids = new Set(reqs.map((r) => keyOf(r.ops) + '#' + r.seed)), kept = [...ids].filter((id) => fromRecord.has(id) && !need.has(id)).length;
@@ -253,7 +261,7 @@ export async function main(settings, seams) {
                 put(rec);
                 wallLog.push({ tag: t.tag, h: t.h, wallSeconds: res.wallSeconds });
                 batch.hoursLeft -= t.h; batch.wall += res.wallSeconds; batch.done++;
-                if (t.tag === 'sure') sure.done++;
+                sureDone(t.variant + '#' + t.seed);
                 report({ runsDone: progress.runsDone + 1 });
                 onRun?.();
             }
@@ -326,22 +334,27 @@ export async function main(settings, seams) {
     // `who` ({ index, of }, foods and drinks only): which player's pick this is of how many are checked in the stage; the row of the stage shows "player N of M".
     // The runs of a check at k seeds per arm: the start's arm and the pick's arm, same seeds.
     const sureReqs = (baseOps, c, k, h) => sureSeeds(k).flatMap((seed) => [{ ops: baseOps, seed, h, tag: 'sure' }, { ops: [...baseOps, ...c.ops], seed, h, tag: 'sure' }]);
-    // A run is planned once; a cached one is done at once.
+    // A run is planned once; a cached one is done at once. A planned run is done once (sureDone), whichever batch runs it.
     function planSure(reqs) {
         for (const r of reqs) {
             const id = keyOf(r.ops) + '#' + r.seed;
             if (sure.counted.has(id)) continue;
             sure.counted.add(id); sure.planned++;
-            if (cache.get(id)?.byHours[r.h]) sure.done++;
+            if (cache.get(id)?.byHours[r.h]) sureDone(id);
         }
+    }
+    function sureDone(id) { if (sure.counted.has(id) && !sure.doneIds.has(id)) { sure.doneIds.add(id); sure.done++; } }
+    // The check of a Change, shown on its race stage's row (`at`, progress.checkingStage) with the change it checks (`what`) and, for foods and drinks, which
+    // player's (`who`): the one path for a pick check and for every other run of that Change's work after its race ended (checkCtx, report()).
+    function checkOn(label, at, what, who = null) {
+        checkCtx = { stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who, checkingStage: at, checkingWhat: what };
+        report();
     }
     // One measurement of a check (confirmPick and measureSet, one code flow): the runs of k seeds per arm, `against` and `against` + c's ops, planned
     // and run, with the check shown on the progress row; false when a stop or the time limit ended them. Its log line: checkLine.
     async function measureArms(against, c, k, h, label, who = null, at = label, what = null) {
-        const reqs = sureReqs(against, c, k, h);
-        planSure(reqs);
-        report({ stage: 'confirming picks', candidatesLeft: 0, checking: label, checkingWho: who, checkingStage: at, checkingWhat: what });
-        return !!await ensure(reqs);
+        checkOn(label, at, what, who);
+        return !!await ensure(sureReqs(against, c, k, h));
     }
     const checkLine = (label, what, k, fresh, withBuyer) => console.log(`  ${label} check of ${what}: ${k} seeds per arm, gain ${fmt(fresh.gain)} ± ${fmt(fresh.se)}${withBuyer && goal === 'profit' ? `, buyer ${fmt(fresh.buyerNet)} ± ${fmt(fresh.buyerNetSe)}` : ''}, ${ENDING_LOG[verdict(fresh, k, { z, goal })] ?? 'not decided yet'}`);
     const ENDING_LOG = { pass: 'passes', loss: 'a loss', small: `too small to matter (under ${minGainPct} % of the buyer's profit)`, unsure: 'too small to tell' };
@@ -831,7 +844,7 @@ export async function main(settings, seams) {
         const it = slotItem(applyOps(setups0, base), o.player, o.slot);
         return it ? { item: it.itemHrid, level: it.enhancementLevel + o.delta } : null;
     };
-    async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd, onBack, reopenFor = [], failedSets = new Set(), left = null }) {
+    async function race(cands, base, { stage, byPlayer, onRefute, onRound, onEnd, onBack, reopenFor = [], failedSets = new Set(), left = null, asCheck = false }) {
         const H = unitH, bk = keyOf(base), n = setups0.length, raceAt = ++raceNo;
         liveCands = cands; lastBase = base;
         // presses.json (main): the press this search took at this point of this race before a stop, if any; replay() presses it again (stop.press, so
@@ -843,6 +856,7 @@ export async function main(settings, seams) {
         const lockedBy = new Map(); // player (or '*') -> candidate
         stopSignal.done = false; // a press before this stage's first round belongs to no stage that ran: dropped
         for (const k of STAGE_END) delete progress[k]; // the stage before this one has its row done already (its key is not this one)
+        if (!asCheck) checkOff(); // a race stage of its own: no Change is under check now (a budget-group race is part of its Change's check: asCheck)
         // The stage's runs and sim. hours: those it made and those it took from the record (takenLog), so a resumed stage's row is never blank.
         const stageLogs = () => [...wallLog, ...takenLog];
         const sinceStart = roundNo, hours0 = stageLogs().reduce((a, r) => a + r.h, 0), runs0 = wallLog.length + takenLog.length;
@@ -1167,6 +1181,7 @@ export async function main(settings, seams) {
                     const again = new Set(reopenFor.map((c) => c.player));
                     open = fc.filter((c) => again.has(c.player));
                 }
+                checkOff(); // every pick of the stage is taken or left out
                 baseOps = [...start, ...players.flatMap((p) => chosen[p]?.ops ?? [])];
                 const after = applyOps(setups0, baseOps);
                 for (const p of players) result.best[kind][p] = bestEntry(kind, after.find((s) => s.name === p), chosen[p], freshOf[p], !!chosen[p] && asIs.has(chosen[p]));
@@ -1233,6 +1248,7 @@ export async function main(settings, seams) {
         // groups touched keep only their survivors, so a loadout step does not re-add dozens. `orig`: the race's candidate a refined pick came from.
         let step = 0;
         const takeStep = (members, fresh, asIs, marginals, orig = members[0]) => {
+            checkOff(); // the pick is taken: its row is done
             for (const m of members) spent = pay(spent, m);
             baseOps = [...baseOps, ...setOps(members)];
             chain.add(keyOf(baseOps));
@@ -1277,6 +1293,11 @@ export async function main(settings, seams) {
             };
             const res = await race(cur, baseOps, { stage: at, byPlayer: false, onRefute: refuteStep, onEnd: () => publish(result), onBack: markBack, reopenFor: reopenFor.splice(0), failedSets: failedAt(baseOps), left: (p) => (p in budgets ? budgets[p] - (spent[p] ?? 0) : 0) });
             if (!res) return stop(result);
+            // From here until its pick is taken (takeStep) or left out (the next race), the Change's work is its check on its row (checkOn): the original base the
+            // first step's single rows need, a trigger pick's refinement and its measurement, a budget-group race, the pick check itself. A race that picked
+            // nothing, the race after the last step and a pick taken as it is ("Accept current winner") have no check: the row is done.
+            const toCheck = step >= maxSteps ? null : res.groups ? [...new Set(res.groups.flat())] : res.set ? res.set : res.locked && !res.accepted.includes(res.locked) ? [res.locked] : null;
+            if (toCheck) checkOn(label, at, whatOf(toCheck));
             if (!singlesDone) {
                 singlesDone = true;
                 // The original base (no food or drink change), per user, in the goal's unit: the mean over the base seeds of the confirmation's block.
@@ -1297,6 +1318,7 @@ export async function main(settings, seams) {
                     cand = await refineAt(baseOps, c, fin, visitedFor(c));
                     if (cand === null) return null;
                     if (cand !== c) { // the refined change is measured against the chain as one change (the figures the row shows)
+                        checkOn(label, at, whatOf([cand]));
                         if (!await ensure([...req(baseOps, fin.h, fin.k * baseMult, 'base'), ...reqPair(baseOps, [...baseOps, ...cand.ops], fin.h, fin.k, 'variant')])) return null;
                         cand.est = estimate(baseOps, cand, fin, fin.k * baseMult);
                         console.log(`  ${label}: ${c.desc} refined to ${cand.desc}, gain ${fmt(cand.est.gain)} ± ${fmt(cand.est.se)}`);
@@ -1312,7 +1334,7 @@ export async function main(settings, seams) {
             // set checked below. No winner, or a check that fails, puts the set by: the race restarts without offering it again.
             if (res.groups && step < maxSteps) {
                 const gc = res.groups.map((g) => ({ id: setKey(g), kind: 'group', members: g, player: g[0].player, buyers: [...new Set(g.map((m) => m.player))], desc: g.map((m) => m.desc).join(' + '), ops: setOps(g), groups: [...new Set(g.flatMap((m) => m.groups))], monotone: false, cost: { cost: 0, known: true, path: '' } }));
-                const gr = await race(gc, baseOps, { stage: `${step === 0 ? 'screen' : `greedy step ${step}`} groups`, byPlayer: false, onRefute: (c) => console.log(`${label}: the group ${c.desc} not confirmed on its reading seeds`), onEnd: () => publish(result) });
+                const gr = await race(gc, baseOps, { stage: `${step === 0 ? 'screen' : `greedy step ${step}`} groups`, byPlayer: false, onRefute: (c) => console.log(`${label}: the group ${c.desc} not confirmed on its reading seeds`), onEnd: () => publish(result), asCheck: true });
                 if (!gr) return stop(result);
                 const win = gr.locked ?? (gr.set?.length === 1 ? gr.set[0] : null);
                 if (!win) { failedAt(baseOps).add(res.togetherKey); console.log(`${label}: no budget group won, the set is put by`); continue; }

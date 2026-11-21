@@ -421,7 +421,7 @@ const result = {
     // order and heading
     const oh = panel.renderRounds(rec([pool({ key: 'Player 1:free', sortedBy: 'buyerNet' }), pool({ key: 'Player 1:paid', sortedBy: 'payback' })]), t);
     const ohHeads = [...oh.matchAll(/<th class="whatif-pool-title"[^>]*>([^]*?)<\/th>/g)].map((m) => txt(m[1]));
-    check('order: each pool heading says what it is sorted by', ohHeads.length === 2 && ohHeads[0].startsWith('Free changes Player 1') && ohHeads[0].includes('In the running 2') && ohHeads[0].includes('Set aside 2') && ohHeads[0].includes("sorted by Buyer's gain, best first") && ohHeads[1].startsWith('Paid changes Player 1') && ohHeads[1].includes('sorted by Payback days, best first'), ohHeads.join(' || '));
+    check('order: each pool heading says what it is sorted by', ohHeads.length === 2 && ohHeads[0].startsWith('Free changes Player 1') && ohHeads[0].includes('Contenders 2') && ohHeads[0].includes('Set aside 2') && ohHeads[0].includes("sorted by Buyer's gain, best first") && ohHeads[1].startsWith('Paid changes Player 1') && ohHeads[1].includes('sorted by Payback days, best first'), ohHeads.join(' || '));
     // ± everywhere: no "low – high"
     const allHtml = zeroHtml + oh + panel.renderResult({ ...result, rounds: { readingMin: 8 }, best: { foods: { Alpha: { items: [{ item: '/items/donut', trigger: null }], soFar: true, readingSeeds: 8, gainPerUser: 12, low: 9, high: 15, buyerNet: 40, netLow: 30, netHigh: 50 } }, drinks: {} } }, t, undefined, null, true);
     check('range: written with ± everywhere (rounds, Best so far), never "low – high"', !allHtml.includes(' – ') && allHtml.includes(' ± '));

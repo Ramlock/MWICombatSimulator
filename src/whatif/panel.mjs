@@ -310,8 +310,8 @@ function stageButtons(t, acceptable, key, pressed, stopping = false) {
     return (acceptable > 0 || done === 'accept' ? b('accept', t('progress.stageAccept'), 'progress.stageAcceptTip') : '<span class="btn btn-sm py-0 whatif-btn-slot" aria-hidden="true">&nbsp;</span>') + ' ' + b('skip', t('progress.stageSkip'), 'progress.stageSkipTip');
 }
 // The Search progress table's column widths (a fixed layout: no state, badge, count, bar or text of a row moves a column; the Details column takes the rest
-// of the width and cuts a long text, its whole text in its tooltip). One per column of `cols` below, in order; null = the rest.
-export const PART_COL_WIDTHS = ['1.75rem', '10rem', '10.5rem', '4rem', '5.5rem', '6rem', '6rem', '5.5rem', '5.5rem', '8rem', null, '16rem'];
+// of the width and cuts a long text, its whole text in its tooltip). One per column of `cols` below, in order; null = the rest. Each title fits its column on one line in en, pt and zh (whatif-window.mjs, "column titles").
+export const PART_COL_WIDTHS = ['1.75rem', '10rem', '10.5rem', '4rem', '5.5rem', '6rem', '6rem', '5.5rem', '6.5rem', '8rem', null, '16rem'];
 // Markup to plain text, for a title attribute (escaped again where it is put in one).
 const plainOf = (html) => String(html).replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 export function renderParts(status, t, pressed = null, stopping = false, names = null) {
