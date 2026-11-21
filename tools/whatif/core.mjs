@@ -39,6 +39,7 @@ const nOf = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 import { refineTrigger } from './refine.mjs';
 import { lootOf, suppliesOf, barsFrom, diffStat as diffStatBy, buyerNet, acceptBoth, scoreOf, rankEst, rankAcceptedFirst } from './buyer.mjs';
 import { makeArg, list } from './options.mjs';
+import { zoneOf } from './zone-arg.mjs'; // --zone checked against the game's combat zones (Git Bash path conversion undone)
 import itemDetailMap from '../../src/combatsimulator/data/itemDetailMap.json' with { type: 'json' };
 import abilityDetailMap from '../../src/combatsimulator/data/abilityDetailMap.json' with { type: 'json' };
 import abilitySlotsLevelRequirementList from '../../src/combatsimulator/data/abilitySlotsLevelRequirementList.json' with { type: 'json' };
@@ -105,7 +106,7 @@ export async function main(settings, seams) {
     // The pick check (confirmPick): seeds above the final confirmation's block (10001..20000), blocks of SURE_BLOCK per arm, at most SURE_MAX.
     const sureOffset = confirmOffset + 10000;
     const setupsDir = settings.setupsDir, pricesFile = settings.pricesFile;
-    const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile };
+    const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: zoneOf(arg('zone', '/actions/combat/infernal_abyss')), prices: pricesFile };
     const LEVERS = ['equip', 'foods', 'drinks', 'owned', 'abilities', 'order', 'triggers', 'skills', ...UPGRADE_LEVERS, 'shrines'];
     const shrineOpts = { cap: parseShrineCap(arg('shrine-cap', null)), steps: parseShrineSteps(arg('shrine-steps', null)) }; // the guild's shrine level (null = the game's maximum) and the jumps
     const skillOpts = { maxUp: Number(arg('skill-up', 2)), left: parseSkillLeft(arg('skill-left', null)), items: itemDetailMap, styles: combatStyleDetailMap };

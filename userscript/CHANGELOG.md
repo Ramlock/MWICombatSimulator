@@ -4,6 +4,10 @@ The userscripts in this folder are separate from the simulator. Their changes ar
 
 ## MWI Combat Tracker (`mwics-exporter.user.js`; called MWICS Exporter up to 0.4.1)
 
+### 0.13.2 (2026-11-21)
+
+- The recorded combat data can no longer grow until Tampermonkey cannot start the script (Chrome's 64 MiB message limit, which also stopped the other scripts on the game page): each save keeps the recording of each game server under 8 MiB, dropping the oldest fights, windows and task lines first. A dropped row the helper never got is counted, and Status now shows the `dropped` count. A script already past the limit cannot start to trim itself: its recorded data has to be cleared in Tampermonkey first.
+
 ### 0.13.1 (2026-11-16)
 
 - Sending to the helper from a game tab in the background no longer sends the same fights again and again. A background tab can handle the helper's answer only after the script has given up waiting for it (30 s); that late answer now still counts, and a batch whose answer is still due is not sent again. A request that never gets an answer is sent again after 5 minutes, so nothing is lost. The browser console notes each late answer counted. Nothing else changes.
