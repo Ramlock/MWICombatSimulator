@@ -33,6 +33,7 @@ import achievementDetailMap from "./combatsimulator/data/achievementDetailMap.js
 import { fetchMarketplace } from "./marketplace.mjs";
 import { profitPerDay, mapKey } from "./xpChart.mjs";
 import { unitPrice } from "./unitPrice.mjs";
+import { workerErrorReport, windowErrorReport } from "./errorReport.mjs";
 import { createXpChartView } from "./xpChartView.js";
 import { splitGroupImport, applyGroupSelection } from "./groupSelection.mjs";
 import { withSlotName, shownNames, uniqueSlotNames } from "./slotNames.mjs";
@@ -117,7 +118,7 @@ function onWorkerMessage(event) {
             }
             break;
         case "simulation_error":
-            showErrorModal(event.data.error.toString());
+            showErrorModal(workerErrorReport(event.data.error));
             break;
     }
 };
@@ -140,7 +141,7 @@ function onMultiWorkerMessage(event) {
             setProgressText(progress);
             break;
         case "simulation_error":
-            showErrorModal(event.data.error.toString());
+            showErrorModal(workerErrorReport(event.data.error));
             break;
     }
 };
@@ -4016,7 +4017,7 @@ function loadEquipmentSetIntoUI(equipmentSet) {
 
 function initErrorHandling() {
     window.addEventListener("error", (event) => {
-        showErrorModal(event.message);
+        showErrorModal(windowErrorReport(event));
     });
 
     let copyErrorButton = document.getElementById("buttonCopyError");
@@ -5303,12 +5304,14 @@ function updateNextPlayer(currentPlayerNumber) {
     refreshAchievementStatics();
 }
 
-function showErrorModal(error) {
+// report: { message, stack } from src/errorReport.mjs; the copied JSON carries both.
+function showErrorModal(report) {
     let zoneSelect = document.getElementById("selectZone");
     let simulationTimeInput = document.getElementById("inputSimulationTime");
 
     let state = {
-        error: error,
+        error: report.message,
+        stack: report.stack,
         player: player,
         food: food,
         drinks: drinks,

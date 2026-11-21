@@ -40,8 +40,10 @@ Single module (5031 lines) that owns all UI state, builds the simulation message
 |---|---|---|---|
 | `simulation_progress` | `worker.js` every 1000 events (`src/worker.js:148-158`) | `progress` (0-1), `zone`, `difficultyTier`, `labyrinth`, `roomLevel`, `timeSeriesData` | progress bar; HP/MP chart if enabled (`src/main.js:77-85`) |
 | `simulation_result` | `worker.js` (`src/worker.js:162`) | `simResult` | `showSimulationResult` (`src/main.js:1505`) |
-| `simulation_error` | `worker.js` catch (`src/worker.js:163-166`) | `error` | `showErrorModal` |
+| `simulation_error` | `worker.js` catch (`src/worker.js:163-166`) | `error` (the Error object; the structured clone keeps its stack) | `showErrorModal(workerErrorReport(error))` |
 | `simulation_progress` | `multiWorker.js` (`src/multiWorker.js:42`) | averaged `progress` | progress bar (`src/main.js:104-108`) |
 | `simulation_result_allZones` / `simulation_result_allLabyrinths` | `multiWorker.js` (`src/multiWorker.js:62, 126`) | `simResults[]` in task order | `showAllSimulationResults` (`src/main.js:1545`) |
+
+The error window (`showErrorModal`, `src/main.js`) takes `{ message, stack }` from `src/errorReport.mjs`: `workerErrorReport` for `simulation_error` (both workers), `windowErrorReport` for a page `window` "error" event (the thrown error's stack, else `filename:lineno:colno`). Its copied JSON carries `error` (the text, as before) and `stack`. Test: `tools/test/error-report.mjs`.
 
 Results are structured-cloned `SimResult` objects (class instances arrive as plain objects). Stop button terminates and recreates the workers (`src/main.js:3122-3141`).

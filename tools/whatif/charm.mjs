@@ -22,6 +22,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { zoneOf } from './zone-arg.mjs'; // --zone checked against the game's combat zones (Git Bash path conversion undone)
 import { fileURLToPath } from 'node:url';
 
 import { XP, MAX_LEVEL, toNext, vecKey, parseKey, nextLevelUp, advance, trajectory, segAt, pairedDiff, wearSum, branches, payback, peakOf, candidates } from './charm-lib.mjs';
@@ -57,7 +58,7 @@ async function main() {
     const maxH = Number(arg('max-days', 120)) * 24, lookH = Number(arg('lookahead', 60)) * 24;
     const fall = Number(arg('fall', 3)), win = Number(arg('window', 6)), lookBest = Number(arg('look-best', 3));
     const pricesFile = arg('prices', DEFAULT_PRICES);
-    const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: arg('zone', '/actions/combat/infernal_abyss'), prices: pricesFile, streams: true };
+    const options = { comdrop: Number(arg('comdrop', 20)), comexp: Number(arg('comexp', 20)), tier: Number(arg('tier', 4)), zone: zoneOf(arg('zone', '/actions/combat/infernal_abyss')), prices: pricesFile, streams: true };
     const startLv = Object.fromEntries(skills.map((s) => [s, Number(setup.player[s + 'Level'])]));
     const startXp = Object.fromEntries(skills.map((s) => [s, 0]));
     if (arg('start-exp', null)) for (const p of String(arg('start-exp')).split(',')) { const [s, v] = p.split('='); if (!(s in startXp)) throw new Error('--start-exp: unknown skill ' + s); startXp[s] = Number(v); }
